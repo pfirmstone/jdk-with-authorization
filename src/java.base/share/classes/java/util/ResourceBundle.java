@@ -2909,7 +2909,7 @@ public abstract class ResourceBundle {
                         // as bundle names (recommended for Java7+)
                         switch (region) {
                             case "TW", "HK", "MO" -> script = "Hant";
-                            case "CN", "SG" -> script = "Hans";
+                            case "CN", "SG"       -> script = "Hans";
                         }
                     }
                 }
