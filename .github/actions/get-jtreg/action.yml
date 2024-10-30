@@ -43,7 +43,7 @@ runs:
       id: download-jtreg
       uses: actions/download-artifact@v4
       with:
-        name: bundles-jtreg-${{ steps.version.outputs.value }}
+        name: jtreg-${{ steps.version.outputs.value }}
         path: jtreg/installed
 
     - name: 'Export path to where JTReg is installed'
