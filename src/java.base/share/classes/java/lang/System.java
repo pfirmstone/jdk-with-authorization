@@ -45,26 +45,21 @@ import java.lang.reflect.Executable;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.net.URI;
-import java.net.URL;
 import java.nio.channels.Channel;
 import java.nio.channels.spi.SelectorProvider;
 import java.nio.charset.CharacterCodingException;
 import java.nio.charset.Charset;
 import java.security.AccessControlContext;
 import java.security.AccessController;
-import java.security.CodeSource;
 import java.security.PrivilegedAction;
 import java.security.ProtectionDomain;
-import java.util.Collections;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Properties;
 import java.util.PropertyPermission;
 import java.util.ResourceBundle;
 import java.util.Set;
-import java.util.WeakHashMap;
 import java.util.concurrent.Executor;
 import java.util.function.Supplier;
 import java.util.concurrent.ConcurrentHashMap;
@@ -347,20 +342,6 @@ public final class System {
     private static native void setOut0(PrintStream out);
     private static native void setErr0(PrintStream err);
 
-    private static class CallersHolder {
-        // Remember callers of setSecurityManager() here so that warning
-        // is only printed once for each different caller
-        static final Map<Class<?>, Boolean> callers
-            = Collections.synchronizedMap(new WeakHashMap<>());
-    }
-
-    static URL codeSource(Class<?> clazz) {
-        PrivilegedAction<ProtectionDomain> pa = clazz::getProtectionDomain;
-        @SuppressWarnings("removal")
-        CodeSource cs = AccessController.doPrivileged(pa).getCodeSource();
-        return (cs != null) ? cs.getLocation() : null;
-    }
-
     /**
      * Sets the system-wide security manager.
      *
@@ -382,6 +363,9 @@ public final class System {
      * method cannot be used to set a security manager. See the following
      * <a href="SecurityManager.html#set-security-manager">section of the
      * {@code SecurityManager} class specification</a> for more details.
+     * 
+     * <p> Deprecated since 17, removed or disabled since 24,
+     * retained and maintained operational for Authorization.
      *
      * @param  sm the security manager or {@code null}
      * @throws SecurityException
@@ -393,44 +377,18 @@ public final class System {
      * @see #getSecurityManager
      * @see SecurityManager#checkPermission
      * @see java.lang.RuntimePermission
-     * @deprecated This method is only useful in conjunction with
-     *       {@linkplain SecurityManager the Security Manager}, which is
-     *       deprecated and subject to removal in a future release.
-     *       Consequently, this method is also deprecated and subject to
-     *       removal. There is no replacement for the Security Manager or this
-     *       method.
-     */
-    @Deprecated(since="17", forRemoval=true)
+     */ 
+//     * @deprecated This method is only useful in conjunction with
+//     *       {@linkplain SecurityManager the Security Manager}, which is
+//     *       deprecated and subject to removal in a future release.
+//     *       Consequently, this method is also deprecated and subject to
+//     *       removal. There is no replacement for the Security Manager or this
+//     *       method.
+//     */
+//    @Deprecated(since="17", forRemoval=true)
     @CallerSensitive
     public static void setSecurityManager(@SuppressWarnings("removal") SecurityManager sm) {
         if (allowSecurityManager()) {
-            var callerClass = Reflection.getCallerClass();
-            if (CallersHolder.callers.putIfAbsent(callerClass, true) == null) {
-                URL url = codeSource(callerClass);
-                final String source;
-                if (url == null) {
-                    source = callerClass.getName();
-                } else {
-                    source = callerClass.getName() + " (" + url + ")";
-                }
-                initialErr.printf("""
-                        WARNING: A terminally deprecated method in java.lang.System has been called
-                        WARNING: System::setSecurityManager has been called by %s
-                        WARNING: Please consider reporting this to the maintainers of %s
-                        WARNING: System::setSecurityManager will be removed in a future release
-                        """, source, callerClass.getName());
-            }
-            implSetSecurityManager(sm);
-        } else {
-            // security manager not allowed
-            if (sm != null) {
-                throw new UnsupportedOperationException(
-                    "The Security Manager is deprecated and will be removed in a future release");
-            }
-        }
-    }
-
-    private static void implSetSecurityManager(@SuppressWarnings("removal") SecurityManager sm) {
         if (security == null) {
             // ensure image reader is initialized
             Object.class.getResource("java/lang/ANY");
@@ -448,6 +406,13 @@ public final class System {
             }
         }
         setSecurityManager0(sm);
+        } else {
+            // security manager not allowed
+            if (sm != null) {
+                throw new UnsupportedOperationException(
+                    "Runtime configured to disallow security manager");
+    }
+        }
     }
 
     @SuppressWarnings("removal")
@@ -483,20 +448,24 @@ public final class System {
 
     /**
      * Gets the system-wide security manager.
+     * 
+     *  <p> Deprecated since 17, removed or disabled since 24,
+     * retained and maintained operational for Authorization.
      *
      * @return  if a security manager has already been established for the
      *          current application, then that security manager is returned;
      *          otherwise, {@code null} is returned.
      * @see     #setSecurityManager
-     * @deprecated This method is only useful in conjunction with
-     *       {@linkplain SecurityManager the Security Manager}, which is
-     *       deprecated and subject to removal in a future release.
-     *       Consequently, this method is also deprecated and subject to
-     *       removal. There is no replacement for the Security Manager or this
-     *       method.
-     */
+     */ 
+//     * @deprecated This method is only useful in conjunction with
+//     *       {@linkplain SecurityManager the Security Manager}, which is
+//     *       deprecated and subject to removal in a future release.
+//     *       Consequently, this method is also deprecated and subject to
+//     *       removal. There is no replacement for the Security Manager or this
+//     *       method.
+//     */
     @SuppressWarnings("removal")
-    @Deprecated(since="17", forRemoval=true)
+    //@Deprecated(since="17", forRemoval=true)
     public static SecurityManager getSecurityManager() {
         if (allowSecurityManager()) {
             return security;
@@ -2359,7 +2328,6 @@ public final class System {
         }
 
         String smProp = System.getProperty("java.security.manager");
-        boolean needWarning = false;
         if (smProp != null) {
             switch (smProp) {
                 case "disallow":
@@ -2370,9 +2338,8 @@ public final class System {
                     break;
                 case "":
                 case "default":
-                    implSetSecurityManager(new SecurityManager());
+                    setSecurityManager(new SecurityManager());
                     allowSecurityManager = MAYBE;
-                    needWarning = true;
                     break;
                 default:
                     try {
@@ -2390,21 +2357,14 @@ public final class System {
                         // custom security manager may be in non-exported package
                         ctor.setAccessible(true);
                         SecurityManager sm = (SecurityManager) ctor.newInstance();
-                        implSetSecurityManager(sm);
-                        needWarning = true;
+                        setSecurityManager(sm);
                     } catch (Exception e) {
                         throw new InternalError("Could not create SecurityManager", e);
                     }
                     allowSecurityManager = MAYBE;
             }
         } else {
-            allowSecurityManager = NEVER;
-        }
-
-        if (needWarning) {
-            System.err.println("""
-                    WARNING: A command line option has enabled the Security Manager
-                    WARNING: The Security Manager is deprecated and will be removed in a future release""");
+            allowSecurityManager = MAYBE;
         }
 
         // Emit a warning if `sun.jnu.encoding` is not supported.

@@ -74,16 +74,20 @@ package java.security;
  * AccessControlContext that has both the combined ProtectionDomains
  * as well as the {@code DomainCombiner}.
  *
+ * <p> Deprecated since 17, removed or disabled since 24,
+ * retained and maintained operational for Authorization
+ *
  * @see AccessController
  * @see AccessControlContext
  * @since 1.3
- * @deprecated This class is only useful in conjunction with
- *       {@linkplain SecurityManager the Security Manager}, which is deprecated
- *       and subject to removal in a future release. Consequently, this class
- *       is also deprecated and subject to removal. There is no replacement for
- *       the Security Manager or this class.
- */
-@Deprecated(since="17", forRemoval=true)
+ */ 
+// * @deprecated This class is only useful in conjunction with
+// *       {@linkplain SecurityManager the Security Manager}, which is deprecated
+// *       and subject to removal in a future release. Consequently, this class
+// *       is also deprecated and subject to removal. There is no replacement for
+// *       the Security Manager or this class.
+// */
+//@Deprecated(since="17", forRemoval=true)
 public interface DomainCombiner {
 
     /**

@@ -35,18 +35,22 @@ package java.security;
  * value, or request access that is not allowed according to the
  * security policy.  Such information should be given whenever
  * possible at the time the exception is thrown.
+ * 
+ * <p> Deprecated since 17, removed or disabled since 24,
+ * retained and maintained operational for Authorization.
  *
  * @author Li Gong
  * @author Roland Schemers
  * @since 1.2
- * @deprecated This class is only useful in conjunction with
- *       {@linkplain SecurityManager the Security Manager}, which is deprecated
- *       and subject to removal in a future release. Consequently, this class
- *       is also deprecated and subject to removal. There is no replacement for
- *       the Security Manager or this class.
- */
+ */ 
+// * @deprecated This class is only useful in conjunction with
+// *       {@linkplain SecurityManager the Security Manager}, which is deprecated
+// *       and subject to removal in a future release. Consequently, this class
+// *       is also deprecated and subject to removal. There is no replacement for
+// *       the Security Manager or this class.
+// */
 
-@Deprecated(since="17", forRemoval=true)
+//@Deprecated(since="17", forRemoval=true)
 public class AccessControlException extends SecurityException {
 
     @java.io.Serial

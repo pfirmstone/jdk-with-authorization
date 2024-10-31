@@ -38,15 +38,19 @@ import java.lang.ref.WeakReference;
  * with Principals from the {@code Subject} associated with this
  * {@code SubjectDomainCombiner}.
  *
+ * <p> Deprecated since 17, removed or disabled since 24, 
+ * retained and maintained operational for Authorization.
+ * 
  * @since 1.4
- * @deprecated This class is only useful in conjunction with
- *       {@linkplain SecurityManager the Security Manager}, which is deprecated
- *       and subject to removal in a future release. Consequently, this class
- *       is also deprecated and subject to removal. There is no replacement for
- *       the Security Manager or this class.
  */
+// * @deprecated This class is only useful in conjunction with
+// *       {@linkplain SecurityManager the Security Manager}, which is deprecated
+// *       and subject to removal in a future release. Consequently, this class
+// *       is also deprecated and subject to removal. There is no replacement for
+// *       the Security Manager or this class.
+// */
 @SuppressWarnings("removal")
-@Deprecated(since="17", forRemoval=true)
+//@Deprecated(since="17", forRemoval=true)
 public class SubjectDomainCombiner implements java.security.DomainCombiner {
 
     private Subject subject;

@@ -265,20 +265,21 @@ import jdk.internal.vm.annotation.ReservedStackAccess;
  * arguments. Passing a zero length array of {@code Permission} disables
  * the code privileges so that checking always continues beyond the caller of
  * that {@code doPrivileged} method.
+ * <p> Deprecated since 17, removed or disabled since 24,
+ * retained and maintained operational for Authorization.
  *
  * @see AccessControlContext
  *
  * @author Li Gong
  * @author Roland Schemers
  * @since 1.2
- * @deprecated This class is only useful in conjunction with
- *       {@linkplain SecurityManager the Security Manager}, which is deprecated
- *       and subject to removal in a future release. Consequently, this class
- *       is also deprecated and subject to removal. There is no replacement for
- *       the Security Manager or this class.
  */
-
-@Deprecated(since="17", forRemoval=true)
+// * @deprecated This class is only useful in conjunction with
+// *       {@linkplain SecurityManager the Security Manager}, which is deprecated
+// *       and subject to removal in a future release. Consequently, this class
+// *       is also deprecated and subject to removal. There is no replacement for
+// *       the Security Manager or this class.
+//Deprecated(since="17", forRemoval=true)
 public final class AccessController {
 
     /**

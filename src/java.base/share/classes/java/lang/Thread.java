@@ -2208,18 +2208,22 @@ public class Thread implements Runnable {
      * If there is a security manager, its {@code checkAccess} method
      * is called with this thread as its argument. This may result in
      * throwing a {@code SecurityException}.
+     *  
+     * <p> Deprecated since 17, removed or disabled since 24,
+     * retained and maintained operational for Authorization.
      *
      * @throws  SecurityException  if the current thread is not allowed to
      *          access this thread.
      * @see        SecurityManager#checkAccess(Thread)
-     * @deprecated This method is only useful in conjunction with
-     *       {@linkplain SecurityManager the Security Manager}, which is
-     *       deprecated and subject to removal in a future release.
-     *       Consequently, this method is also deprecated and subject to
-     *       removal. There is no replacement for the Security Manager or this
-     *       method.
-     */
-    @Deprecated(since="17", forRemoval=true)
+     */ 
+//     * @deprecated This method is only useful in conjunction with
+//     *       {@linkplain SecurityManager the Security Manager}, which is
+//     *       deprecated and subject to removal in a future release.
+//     *       Consequently, this method is also deprecated and subject to
+//     *       removal. There is no replacement for the Security Manager or this
+//     *       method.
+//     */
+//    @Deprecated(since="17", forRemoval=true)
     public final void checkAccess() {
         @SuppressWarnings("removal")
         SecurityManager security = System.getSecurityManager();

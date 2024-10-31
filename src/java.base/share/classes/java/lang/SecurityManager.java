@@ -285,6 +285,8 @@ import sun.security.util.SecurityConstants;
  * It also contains a table of the methods
  * that require permissions, and for each such method tells
  * which permission it requires.
+ * <p> Deprecated since 17, removed or disabled since 24, 
+ * retained and maintained operational for Authorization.
  *
  * @author  Arthur van Hoff
  * @author  Roland Schemers
@@ -308,12 +310,13 @@ import sun.security.util.SecurityConstants;
  * @see     java.security.ProtectionDomain
  *
  * @since   1.0
- * @deprecated The Security Manager is deprecated and subject to removal in a
- *       future release. There is no replacement for the Security Manager.
- *       See <a href="https://openjdk.org/jeps/411">JEP 411</a> for
- *       discussion and alternatives.
  */
-@Deprecated(since="17", forRemoval=true)
+// * @deprecated The Security Manager is deprecated and subject to removal in a
+// *       future release. There is no replacement for the Security Manager.
+// *       See <a href="https://openjdk.org/jeps/411">JEP 411</a> for
+// *       discussion and alternatives.
+// */
+//@Deprecated(since="17", forRemoval=true)
 public class SecurityManager {
 
     /*

@@ -75,6 +75,9 @@ import sun.security.util.SecurityConstants;
  * in a particular ProtectionDomain. This is dependent on the policy
  * provider's implementation of the {@code implies}
  * method and its PermissionCollection caching strategy.
+ * 
+ * <p> Deprecated since 17, removed or disabled since 24,
+ * retained and maintained operational for Authorization.
  *
  * @author Roland Schemers
  * @author Gary Ellison
@@ -83,14 +86,15 @@ import sun.security.util.SecurityConstants;
  * @see java.security.ProtectionDomain
  * @see java.security.Permission
  * @see java.security.Security security properties
- * @deprecated This class is only useful in conjunction with
- *       {@linkplain SecurityManager the Security Manager}, which is deprecated
- *       and subject to removal in a future release. Consequently, this class
- *       is also deprecated and subject to removal. There is no replacement for
- *       the Security Manager or this class.
- */
+ */ 
+// * @deprecated This class is only useful in conjunction with
+// *       {@linkplain SecurityManager the Security Manager}, which is deprecated
+// *       and subject to removal in a future release. Consequently, this class
+// *       is also deprecated and subject to removal. There is no replacement for
+// *       the Security Manager or this class.
+// */
 
-@Deprecated(since="17", forRemoval=true)
+//@Deprecated(since="17", forRemoval=true)
 public abstract class Policy {
 
     /**
@@ -827,15 +831,18 @@ public abstract class Policy {
 
     /**
      * This represents a marker interface for Policy parameters.
+     * <p> Deprecated since 17, removed or disabled since 24,
+     * retained and maintained operational for Authorization.
      *
      * @since 1.6
-     * @deprecated This class is only useful in conjunction with
-     *       {@linkplain SecurityManager the Security Manager}, which is
-     *       deprecated and subject to removal in a future release.
-     *       Consequently, this class is also deprecated and subject to removal.
-     *       There is no replacement for the Security Manager or this class.
-     */
-    @Deprecated(since="17", forRemoval=true)
+     */ 
+//     * @deprecated This class is only useful in conjunction with
+//     *       {@linkplain SecurityManager the Security Manager}, which is
+//     *       deprecated and subject to removal in a future release.
+//     *       Consequently, this class is also deprecated and subject to removal.
+//     *       There is no replacement for the Security Manager or this class.
+//     */
+//    @Deprecated(since="17", forRemoval=true)
     public static interface Parameters { }
 
     /**
