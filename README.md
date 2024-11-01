@@ -10,7 +10,7 @@
 - Add netmask wild cards to SocketPermission.
 - Follow and review OpenJDK changes.
 - Maintain Authorization and Authentication API's.
-- Sandboxed code is a non goal, our focus is user authorization, and ensuring users only have authorization when using approved code, prevent loading of untrusted code and provide an auditing tool to assess privileges that third party code intends to use.
+- Sandboxing untrusted code is a non goal, our focus is user authorization, and ensuring users only have authorization when using approved code, prevent loading of untrusted code and provide an auditing tool to assess privileges that third party code intends to use.
 - https://www.youtube.com/watch?v=uVob-4aXbxY
 - https://www.youtube.com/watch?v=sIuVbVbjZcw
   
