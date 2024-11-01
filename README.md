@@ -12,6 +12,7 @@
 - Maintain Authorization and Authentication API's.
 - Sandboxed code is a non goal, our focus is user authorization, and ensuring users only have authorization when using approved code, prevent loading of untrusted code and provide an auditing tool to assess privileges that third party code intends to use.
 - https://www.youtube.com/watch?v=uVob-4aXbxY
+- https://www.youtube.com/watch?v=sIuVbVbjZcw
   
 ## Security Tooling:
 - It is not recommended to run unaudited, untrusted code in a deployed environment, but how many programs today are downloading code their developers haven't audited, is it even practical for small development teams to audit thousands of lines of code?   The PolicyWriter tool from JGDMS, allows administrators to test untrusted code (following static analysis), in a safe environment (eg a test machine) to determine the privileges code will access.
