@@ -25,9 +25,13 @@
 - One of the problems with the existing PrivilegedAction model, is many developers will call methods that require privileges, without encapsulating that call in a PrivilegedAction, also programmers often forget to preserve the security context between threads.  PolicyWriter makes it easy to read policy files and identify where Permissions are leaking into code that shouldn't have those Permissions, it provides visiblity.  Once there is visibility, there is less complexity, in hindsight, it would have been better if the methods in the Java API, that required privileges, required a PrivilegedAction method parameter, to warn the programmer to not leak information.  Also PrivilegedAction should have been merged with Runnable and Callable, to remind developers to preserve the current thread's context if necessary.
 - An alternative to the privileged action model would have been privileged calls, such that a privileged call was required to call privileged methods, so that no privileges are granted unless a privileged call has been made.
 - JGDMS contains some interesting Authorization API's, such as ScalableNestedPolicy and PermissionGrant, which utilise immutability and safe publication.
-
+- One root cause of problems, is the fact that SecurityManager was not on by default, the practical reason that didn't occur was simple, there were no decent tools for managing policy, perhaps policy was too complex, the design was developed prior to annotations, perhaps a more declarative approach would allow an annotation processor to assist with policy generation and development.
+- Another issue is every domain ends up with some permission, so programs typically operate with a minimum set of permissions, if everything has a minimum set of permissions, then why regulate them?  Missing PrivilegedAction's are the cause, but the effect is that the users permissions are in force and could be used for privilege escallation if an attacker can take advantage of a data parsing vulnerability, as the attacker is domainless.  A slightly different model is privileged calls, outside a privileged call there are no permissions, the code developer and the user need to be trustworthy enough to not leak privileged information, in the real world if someone is untrustworthy, permissions are revoked.
 ## Ultimate Goal
 - Community based redesign of Authorization API for Java as a preview feature and integration.
+
+## Why OpenJDK removed Authorization
+- Not enough developers use it, the work required to maintain it only services a small section of the Java ecosystem.
 
 # Welcome to the JDK!
 
