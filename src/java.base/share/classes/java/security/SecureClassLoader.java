@@ -229,6 +229,7 @@ public class SecureClassLoader extends ClassLoader {
                         = SecureClassLoader.this.getPermissions(key.cs);
                 ProtectionDomain pd = new ProtectionDomain(
                         key.cs, perms, SecureClassLoader.this, null);
+                @SuppressWarnings("removal")
                 SecurityManager sm = System.getSecurityManager();
                 if (sm != null){
                     if (!pd.implies(LOAD_CLASS_ALLOW)){
