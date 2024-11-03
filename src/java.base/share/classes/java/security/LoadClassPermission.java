@@ -24,13 +24,13 @@
  */
 package java.security;
 
-import java.io.URL;
+import java.net.URL;
 
 /**
  * When a {@link java.lang.SecurityManager} is in force, this {@link Permission}
  * is required to load classes with {@link SecureClassLoader}.   This allows
  * an administrator to prevent class loading from unsigned jar files or other
- * untrusted {@link java.io.URL}.  
+ * untrusted {@link java.net.URL}.  
  * <p>
  * It is advisable to use either signed jar's
  * or a secure hash algorithm with a message digest of the file containing
