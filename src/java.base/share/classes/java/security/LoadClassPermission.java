@@ -24,6 +24,8 @@
  */
 package java.security;
 
+import java.io.URL;
+
 /**
  * When a {@link java.lang.SecurityManager} is in force, this {@link Permission}
  * is required to load classes with {@link SecureClassLoader}.   This allows
@@ -37,6 +39,7 @@ package java.security;
  * @author Peter Firmstone.
  */
 public class LoadClassPermission extends BasicPermission {
+    private static final long serialVersionUID = 1L;
     
     /**
      * Creates a LoadClassPermission, with the name "ALLOW".
