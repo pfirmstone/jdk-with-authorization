@@ -42,10 +42,14 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.ReentrantLock;
+import java.security.AccessController;
+import java.security.PrivilegedActionException;
+import java.security.PrivilegedExceptionAction;
 import jdk.internal.access.JavaIOFileDescriptorAccess;
 import jdk.internal.access.SharedSecrets;
 import jdk.internal.util.OperatingSystem;
 import jdk.internal.util.StaticProperty;
+import sun.security.action.GetPropertyAction;
 
 /**
  * java.lang.Process subclass in the UNIX environment.
@@ -91,7 +95,7 @@ final class ProcessImpl extends Process {
      * @throws Error if the requested launch mechanism is not found or valid
      */
     private static LaunchMechanism launchMechanism() {
-        String s = System.getProperty("jdk.lang.Process.launchMechanism");
+        String s = GetPropertyAction.privilegedGetProperty("jdk.lang.Process.launchMechanism");
         if (s == null) {
             return LaunchMechanism.POSIX_SPAWN;
         }
@@ -278,6 +282,7 @@ final class ProcessImpl extends Process {
                                    boolean redirectErrorStream)
         throws IOException;
 
+    @SuppressWarnings("removal")
     private ProcessImpl(final byte[] prog,
                 final byte[] argBlock, final int argc,
                 final byte[] envBlock, final int envc,
@@ -297,7 +302,14 @@ final class ProcessImpl extends Process {
                           redirectErrorStream);
         processHandle = ProcessHandleImpl.getInternal(pid);
 
-        initStreams(fds, forceNullOutputStream);
+        try {
+            AccessController.doPrivileged((PrivilegedExceptionAction<Void>) () -> {
+                initStreams(fds, forceNullOutputStream);
+                return null;
+            });
+        } catch (PrivilegedActionException ex) {
+            throw (IOException) ex.getCause();
+        }
     }
 
     static FileDescriptor newFileDescriptor(int fd) {
@@ -495,6 +507,11 @@ final class ProcessImpl extends Process {
 
     @Override
     public ProcessHandle toHandle() {
+        @SuppressWarnings("removal")
+        SecurityManager sm = System.getSecurityManager();
+        if (sm != null) {
+            sm.checkPermission(new RuntimePermission("manageProcess"));
+        }
         return processHandle;
     }
 
