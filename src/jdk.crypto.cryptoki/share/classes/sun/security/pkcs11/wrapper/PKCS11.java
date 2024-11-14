@@ -51,6 +51,9 @@ import java.io.File;
 import java.io.IOException;
 import java.util.*;
 
+import java.security.AccessController;
+import java.security.PrivilegedAction;
+
 import sun.security.util.Debug;
 
 import sun.security.pkcs11.P11Util;
@@ -77,12 +80,16 @@ public class PKCS11 {
     private static final String PKCS11_WRAPPER = "j2pkcs11";
 
     static {
-        loadAndInitializeLibrary();
-    }
-
-    @SuppressWarnings("restricted")
-    private static void loadAndInitializeLibrary() {
-        System.loadLibrary(PKCS11_WRAPPER);
+        // cannot use LoadLibraryAction because that would make the native
+        // library available to the bootclassloader, but we run in the
+        // extension classloader.
+        @SuppressWarnings({"removal", "restricted"})
+        var dummy = AccessController.doPrivileged(new PrivilegedAction<Object>() {
+            public Object run() {
+                System.loadLibrary(PKCS11_WRAPPER);
+                return null;
+            }
+        });
         boolean enableDebug = Debug.getInstance("sunpkcs11") != null;
         initializeLibrary(enableDebug);
     }

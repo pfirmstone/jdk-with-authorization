@@ -117,13 +117,19 @@ public final class SunPKCS11 extends AuthProvider {
         poller = null;
     }
 
+    @SuppressWarnings("removal")
     @Override
     public Provider configure(String configArg) throws InvalidParameterException {
         final String newConfigName = checkNull(configArg);
         try {
-            return new SunPKCS11(new Config(newConfigName));
-        } catch (IOException ioe) {
-            throw new InvalidParameterException("Error configuring SunPKCS11 provider", ioe);
+            return AccessController.doPrivileged(new PrivilegedExceptionAction<>() {
+                @Override
+                public SunPKCS11 run() throws Exception {
+                    return new SunPKCS11(new Config(newConfigName));
+                }
+            });
+        } catch (PrivilegedActionException pae) {
+            throw new InvalidParameterException("Error configuring SunPKCS11 provider", pae.getException());
         }
     }
 
@@ -1111,6 +1117,7 @@ public final class SunPKCS11 extends AuthProvider {
     }
 
     // create the poller thread, if not already active
+    @SuppressWarnings("removal")
     private void createPoller() {
         if (poller != null) {
             return;
@@ -1190,6 +1197,7 @@ public final class SunPKCS11 extends AuthProvider {
     }
 
     // create the cleaner thread, if not already active
+    @SuppressWarnings("removal")
     private void createCleaner() {
         cleaner = new NativeResourceCleaner();
         Thread t = InnocuousThread.newSystemThread(
@@ -1202,6 +1210,7 @@ public final class SunPKCS11 extends AuthProvider {
     }
 
     // destroy the token. Called if we detect that it has been removed
+    @SuppressWarnings("removal")
     synchronized void uninitToken(Token token) {
         if (this.token != token) {
             // mismatch, our token must already be destroyed
@@ -1210,7 +1219,12 @@ public final class SunPKCS11 extends AuthProvider {
         destroyPoller();
         this.token = null;
         // unregister all algorithms
-        clear();
+        AccessController.doPrivileged(new PrivilegedAction<Object>() {
+            public Object run() {
+                clear();
+                return null;
+            }
+        });
         // keep polling for token insertion unless configured not to
         if (removable && !config.getDestroyTokenAfterLogout()) {
             createPoller();
@@ -1372,29 +1386,36 @@ public final class SunPKCS11 extends AuthProvider {
         }
 
         // register algorithms in provider
-        for (Map.Entry<Descriptor,Integer> entry : supportedAlgs.entrySet()) {
-            Descriptor d = entry.getKey();
-            int mechanism = entry.getValue().intValue();
-            Service s = d.service(token, mechanism);
-            putService(s);
-        }
-        if (((token.tokenInfo.flags & CKF_RNG) != 0)
-                && config.isEnabled(PCKM_SECURERANDOM)
-                && !token.sessionManager.lowMaxSessions()) {
-            // do not register SecureRandom if the token does
-            // not support many sessions. if we did, we might
-            // run out of sessions in the middle of a
-            // nextBytes() call where we cannot fail over.
-            putService(new P11Service(token, SR, "PKCS11",
-                "sun.security.pkcs11.P11SecureRandom", null,
-                PCKM_SECURERANDOM));
-        }
-        if (config.isEnabled(PCKM_KEYSTORE)) {
-            putService(new P11Service(token, KS, "PKCS11",
-                "sun.security.pkcs11.P11KeyStore",
-                List.of("PKCS11-" + config.getName()),
-                PCKM_KEYSTORE));
-        }
+        @SuppressWarnings("removal")
+        var dummy = AccessController.doPrivileged(new PrivilegedAction<Object>() {
+            public Object run() {
+                for (Map.Entry<Descriptor,Integer> entry
+                        : supportedAlgs.entrySet()) {
+                    Descriptor d = entry.getKey();
+                    int mechanism = entry.getValue().intValue();
+                    Service s = d.service(token, mechanism);
+                    putService(s);
+                }
+                if (((token.tokenInfo.flags & CKF_RNG) != 0)
+                        && config.isEnabled(PCKM_SECURERANDOM)
+                        && !token.sessionManager.lowMaxSessions()) {
+                    // do not register SecureRandom if the token does
+                    // not support many sessions. if we did, we might
+                    // run out of sessions in the middle of a
+                    // nextBytes() call where we cannot fail over.
+                    putService(new P11Service(token, SR, "PKCS11",
+                        "sun.security.pkcs11.P11SecureRandom", null,
+                        PCKM_SECURERANDOM));
+                }
+                if (config.isEnabled(PCKM_KEYSTORE)) {
+                    putService(new P11Service(token, KS, "PKCS11",
+                        "sun.security.pkcs11.P11KeyStore",
+                        List.of("PKCS11-" + config.getName()),
+                        PCKM_KEYSTORE));
+                }
+                return null;
+            }
+        });
 
         this.token = token;
         if (cleaner == null) {
@@ -1600,12 +1621,27 @@ public final class SunPKCS11 extends AuthProvider {
      * @throws IllegalStateException if the provider requires configuration
      * and Provider.configure has not been called
      * @throws LoginException if the login operation fails
+     * @throws SecurityException if the does not pass a security check for
+     *  <code>SecurityPermission("authProvider.<i>name</i>")</code>,
+     *  where <i>name</i> is the value returned by
+     *  this provider's <code>getName</code> method
      */
     public void login(Subject subject, CallbackHandler handler)
         throws LoginException {
 
         if (!isConfigured()) {
             throw new IllegalStateException("Configuration is required");
+        }
+
+        // security check
+        @SuppressWarnings("removal")
+        SecurityManager sm = System.getSecurityManager();
+        if (sm != null) {
+            if (debug != null) {
+                debug.println("checking login permission");
+            }
+            sm.checkPermission(new SecurityPermission
+                        ("authProvider." + this.getName()));
         }
 
         if (!hasValidToken()) {
@@ -1717,10 +1753,22 @@ public final class SunPKCS11 extends AuthProvider {
      * @throws IllegalStateException if the provider requires configuration
      * and Provider.configure has not been called
      * @throws LoginException if the logout operation fails
+     * @throws SecurityException if the does not pass a security check for
+     *  <code>SecurityPermission("authProvider.<i>name</i>")</code>,
+     *  where <i>name</i> is the value returned by
+     *  this provider's <code>getName</code> method
      */
     public void logout() throws LoginException {
         if (!isConfigured()) {
             throw new IllegalStateException("Configuration is required");
+        }
+
+        // security check
+        @SuppressWarnings("removal")
+        SecurityManager sm = System.getSecurityManager();
+        if (sm != null) {
+            sm.checkPermission
+                (new SecurityPermission("authProvider." + this.getName()));
         }
 
         if (!hasValidToken()) {
@@ -1796,11 +1844,24 @@ public final class SunPKCS11 extends AuthProvider {
      *
      * @throws IllegalStateException if the provider requires configuration
      * and Provider.configure has not been called
+     * @throws SecurityException if the caller does not pass a
+     *  security check for
+     *  <code>SecurityPermission("authProvider.<i>name</i>")</code>,
+     *  where <i>name</i> is the value returned by
+     *  this provider's <code>getName</code> method
      */
     public void setCallbackHandler(CallbackHandler handler) {
 
         if (!isConfigured()) {
             throw new IllegalStateException("Configuration is required");
+        }
+
+        // security check
+        @SuppressWarnings("removal")
+        SecurityManager sm = System.getSecurityManager();
+        if (sm != null) {
+            sm.checkPermission
+                (new SecurityPermission("authProvider." + this.getName()));
         }
 
         synchronized (LOCK_HANDLER) {
@@ -1826,51 +1887,60 @@ public final class SunPKCS11 extends AuthProvider {
                 return pHandler;
             }
 
-            if (debug != null) {
-                debug.println("getting default callback handler");
-            }
-
-            String defaultHandler = Security.getProperty
-                    ("auth.login.defaultCallbackHandler");
-
-            if (defaultHandler == null || defaultHandler.length() == 0) {
-
-                // ok
-                if (debug != null) {
-                    debug.println("no default handler set");
-                }
-                return null;
-            }
-
             try {
-                Class<?> c = Class.forName
-                           (defaultHandler,
-                           true,
-                           Thread.currentThread().getContextClassLoader());
-                if (!CallbackHandler.class.isAssignableFrom(c)) {
-                    // not the right subtype
-                    if (debug != null) {
-                        debug.println("default handler " + defaultHandler +
-                                      " is not a CallbackHandler");
-                    }
-                    return null;
+                if (debug != null) {
+                    debug.println("getting default callback handler");
                 }
-                @SuppressWarnings("deprecation")
-                Object result = c.newInstance();
-                CallbackHandler myHandler = (CallbackHandler)result;
+
+                @SuppressWarnings("removal")
+                CallbackHandler myHandler = AccessController.doPrivileged
+                    (new PrivilegedExceptionAction<CallbackHandler>() {
+                    public CallbackHandler run() throws Exception {
+
+                        String defaultHandler =
+                                java.security.Security.getProperty
+                                ("auth.login.defaultCallbackHandler");
+
+                        if (defaultHandler == null ||
+                            defaultHandler.length() == 0) {
+
+                            // ok
+                            if (debug != null) {
+                                debug.println("no default handler set");
+                            }
+                            return null;
+                        }
+
+                        Class<?> c = Class.forName
+                                   (defaultHandler,
+                                   true,
+                                   Thread.currentThread().getContextClassLoader());
+                        if (!javax.security.auth.callback.CallbackHandler.class.isAssignableFrom(c)) {
+                            // not the right subtype
+                            if (debug != null) {
+                                debug.println("default handler " + defaultHandler +
+                                              " is not a CallbackHandler");
+                            }
+                            return null;
+                        }
+                        @SuppressWarnings("deprecation")
+                        Object result = c.newInstance();
+                        return (CallbackHandler)result;
+                    }
+                });
                 // save it
                 pHandler = myHandler;
                 return myHandler;
 
-            } catch (ReflectiveOperationException roe) {
+            } catch (PrivilegedActionException pae) {
                 // ok
                 if (debug != null) {
                     debug.println("Unable to load default callback handler");
-                    roe.printStackTrace();
+                    pae.printStackTrace();
                 }
             }
-            return null;
         }
+        return null;
     }
 
     private Object writeReplace() throws ObjectStreamException {

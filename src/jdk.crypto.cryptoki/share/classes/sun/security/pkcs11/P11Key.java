@@ -108,9 +108,12 @@ abstract class P11Key implements Key, Length {
      *
      */
     static {
-        String disableKeyExtraction =
-                System.getProperty(
+        PrivilegedAction<String> getKeyExtractionProp =
+                () -> System.getProperty(
                         "sun.security.pkcs11.disableKeyExtraction", "false");
+        @SuppressWarnings("removal")
+        String disableKeyExtraction =
+                AccessController.doPrivileged(getKeyExtractionProp);
         DISABLE_NATIVE_KEYS_EXTRACTION =
                 "true".equalsIgnoreCase(disableKeyExtraction);
     }
