@@ -28,6 +28,9 @@ package javax.swing;
 import java.awt.*;
 import java.awt.event.*;
 import java.awt.image.VolatileImage;
+import java.security.AccessControlContext;
+import java.security.AccessController;
+import java.security.PrivilegedAction;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.applet.*;
@@ -208,13 +211,22 @@ public class RepaintManager
             }
         });
 
-        volatileImageBufferEnabled = "true".equals(System.getProperty("swing.volatileImageBufferEnabled", "true"));
+        @SuppressWarnings("removal")
+        var t1 = "true".equals(AccessController.
+                doPrivileged(new GetPropertyAction(
+                "swing.volatileImageBufferEnabled", "true")));
+        volatileImageBufferEnabled = t1;
         boolean headless = GraphicsEnvironment.isHeadless();
         if (volatileImageBufferEnabled && headless) {
             volatileImageBufferEnabled = false;
         }
-        nativeDoubleBuffering = "true".equals(System.getProperty("awt.nativeDoubleBuffering"));
-        String bs = System.getProperty("swing.bufferPerWindow");
+        @SuppressWarnings("removal")
+        var t2 = "true".equals(AccessController.doPrivileged(
+                    new GetPropertyAction("awt.nativeDoubleBuffering")));
+        nativeDoubleBuffering = t2;
+        @SuppressWarnings("removal")
+        String bs = AccessController.doPrivileged(
+                          new GetPropertyAction("swing.bufferPerWindow"));
         if (headless) {
             BUFFER_STRATEGY_TYPE = BUFFER_STRATEGY_SPECIFIED_OFF;
         }
@@ -227,7 +239,10 @@ public class RepaintManager
         else {
             BUFFER_STRATEGY_TYPE = BUFFER_STRATEGY_SPECIFIED_OFF;
         }
-        HANDLE_TOP_LEVEL_PAINT = "true".equals(System.getProperty("swing.handleTopLevelPaint", "true"));
+        @SuppressWarnings("removal")
+        var t3 = "true".equals(AccessController.doPrivileged(
+               new GetPropertyAction("swing.handleTopLevelPaint", "true")));
+        HANDLE_TOP_LEVEL_PAINT = t3;
         GraphicsEnvironment ge = GraphicsEnvironment.
                 getLocalGraphicsEnvironment();
         if (ge instanceof SunGraphicsEnvironment) {
@@ -596,7 +611,21 @@ public class RepaintManager
             if (runnableList == null) {
                 runnableList = new LinkedList<Runnable>();
             }
-            runnableList.add(r);
+            runnableList.add(new Runnable() {
+                public void run() {
+                    @SuppressWarnings("removal")
+                    AccessControlContext stack = AccessController.getContext();
+                    @SuppressWarnings("removal")
+                    AccessControlContext acc =
+                        AWTAccessor.getComponentAccessor().getAccessControlContext(c);
+                    javaSecurityAccess.doIntersectionPrivilege(new PrivilegedAction<Void>() {
+                        public Void run() {
+                            r.run();
+                            return null;
+                        }
+                    }, stack, acc);
+                }
+            });
         }
         scheduleProcessingRunnable(appContext);
     }
@@ -717,7 +746,18 @@ public class RepaintManager
         int n = ic.size();
         for(int i = 0; i < n; i++) {
             final Component c = ic.get(i);
-            c.validate();
+            @SuppressWarnings("removal")
+            AccessControlContext stack = AccessController.getContext();
+            @SuppressWarnings("removal")
+            AccessControlContext acc =
+                AWTAccessor.getComponentAccessor().getAccessControlContext(c);
+            javaSecurityAccess.doIntersectionPrivilege(
+                new PrivilegedAction<Void>() {
+                    public Void run() {
+                        c.validate();
+                        return null;
+                    }
+                }, stack, acc);
         }
     }
 
@@ -813,50 +853,61 @@ public class RepaintManager
             for (int j=0 ; j < count.get(); j++) {
                 final int i = j;
                 final Component dirtyComponent = roots.get(j);
-                Rectangle rect = tmpDirtyComponents.get(dirtyComponent);
-                // Sometimes when RepaintManager is changed during the painting
-                // we may get null here, see #6995769 for details
-                if (rect == null) {
-                    continue;
-                }
-
-                int localBoundsH = dirtyComponent.getHeight();
-                int localBoundsW = dirtyComponent.getWidth();
-                SwingUtilities.computeIntersection(0,
-                                                   0,
-                                                   localBoundsW,
-                                                   localBoundsH,
-                                                   rect);
-                if (dirtyComponent instanceof JComponent) {
-                    ((JComponent)dirtyComponent).paintImmediately(
-                        rect.x,rect.y,rect.width, rect.height);
-                }
-                else if (dirtyComponent.isShowing()) {
-                    Graphics g = JComponent.safelyGetGraphics(
-                            dirtyComponent, dirtyComponent);
-                    // If the Graphics goes away, it means someone disposed of
-                    // the window, don't do anything.
-                    if (g != null) {
-                        g.setClip(rect.x, rect.y, rect.width, rect.height);
-                        try {
-                            dirtyComponent.paint(g);
-                        } finally {
-                            g.dispose();
+                @SuppressWarnings("removal")
+                AccessControlContext stack = AccessController.getContext();
+                @SuppressWarnings("removal")
+                AccessControlContext acc =
+                    AWTAccessor.getComponentAccessor().getAccessControlContext(dirtyComponent);
+                javaSecurityAccess.doIntersectionPrivilege(new PrivilegedAction<Void>() {
+                    public Void run() {
+                        Rectangle rect = tmpDirtyComponents.get(dirtyComponent);
+                        // Sometimes when RepaintManager is changed during the painting
+                        // we may get null here, see #6995769 for details
+                        if (rect == null) {
+                            return null;
                         }
+
+                        int localBoundsH = dirtyComponent.getHeight();
+                        int localBoundsW = dirtyComponent.getWidth();
+                        SwingUtilities.computeIntersection(0,
+                                                           0,
+                                                           localBoundsW,
+                                                           localBoundsH,
+                                                           rect);
+                        if (dirtyComponent instanceof JComponent) {
+                            ((JComponent)dirtyComponent).paintImmediately(
+                                rect.x,rect.y,rect.width, rect.height);
+                        }
+                        else if (dirtyComponent.isShowing()) {
+                            Graphics g = JComponent.safelyGetGraphics(
+                                    dirtyComponent, dirtyComponent);
+                            // If the Graphics goes away, it means someone disposed of
+                            // the window, don't do anything.
+                            if (g != null) {
+                                g.setClip(rect.x, rect.y, rect.width, rect.height);
+                                try {
+                                    dirtyComponent.paint(g);
+                                } finally {
+                                    g.dispose();
+                                }
+                            }
+                        }
+                        // If the repaintRoot has been set, service it now and
+                        // remove any components that are children of repaintRoot.
+                        if (repaintRoot != null) {
+                            adjustRoots(repaintRoot, roots, i + 1);
+                            count.set(roots.size());
+                            paintManager.isRepaintingRoot = true;
+                            repaintRoot.paintImmediately(0, 0, repaintRoot.getWidth(),
+                                                         repaintRoot.getHeight());
+                            paintManager.isRepaintingRoot = false;
+                            // Only service repaintRoot once.
+                            repaintRoot = null;
+                        }
+
+                        return null;
                     }
-                }
-                // If the repaintRoot has been set, service it now and
-                // remove any components that are children of repaintRoot.
-                if (repaintRoot != null) {
-                    adjustRoots(repaintRoot, roots, i + 1);
-                    count.set(roots.size());
-                    paintManager.isRepaintingRoot = true;
-                    repaintRoot.paintImmediately(0, 0, repaintRoot.getWidth(),
-                                                 repaintRoot.getHeight());
-                    paintManager.isRepaintingRoot = false;
-                    // Only service repaintRoot once.
-                    repaintRoot = null;
-                }
+                }, stack, acc);
             }
         } finally {
             painting = false;

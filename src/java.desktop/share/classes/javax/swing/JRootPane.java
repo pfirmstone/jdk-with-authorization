@@ -26,9 +26,12 @@ package javax.swing;
 
 import java.awt.*;
 import java.beans.*;
+import java.security.AccessController;
 import javax.accessibility.*;
 import javax.swing.plaf.RootPaneUI;
 import java.io.Serializable;
+
+import sun.security.action.GetBooleanAction;
 
 
 /**
@@ -199,15 +202,19 @@ public class JRootPane extends JComponent implements Accessible {
      * Whether or not we should dump the stack when true double buffering
      * is disabled. Default is false.
      */
+    @SuppressWarnings("removal")
     private static final boolean LOG_DISABLE_TRUE_DOUBLE_BUFFERING
-            = Boolean.getBoolean("swing.logDoubleBufferingDisable");
+            = AccessController.doPrivileged(new GetBooleanAction(
+                                   "swing.logDoubleBufferingDisable"));
 
     /**
      * Whether or not we should ignore requests to disable true double
      * buffering. Default is false.
      */
+    @SuppressWarnings("removal")
     private static final boolean IGNORE_DISABLE_TRUE_DOUBLE_BUFFERING
-           = Boolean.getBoolean("swing.ignoreDoubleBufferingDisable");
+            = AccessController.doPrivileged(new GetBooleanAction(
+                                   "swing.ignoreDoubleBufferingDisable"));
 
     /**
      * Constant used for the windowDecorationStyle property. Indicates that

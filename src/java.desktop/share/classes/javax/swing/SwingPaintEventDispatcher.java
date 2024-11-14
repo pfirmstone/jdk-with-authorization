@@ -32,6 +32,8 @@ import java.security.AccessController;
 import sun.awt.AppContext;
 import sun.awt.SunToolkit;
 import sun.awt.event.IgnorePaintEvent;
+import sun.security.action.GetBooleanAction;
+import sun.security.action.GetPropertyAction;
 
 /**
  * Swing's PaintEventDispatcher.  If the component specified by the PaintEvent
@@ -39,15 +41,16 @@ import sun.awt.event.IgnorePaintEvent;
  * will forward the request to the RepaintManager for eventual painting.
  *
  */
+@SuppressWarnings("removal")
 class SwingPaintEventDispatcher extends sun.awt.PaintEventDispatcher {
     private static final boolean SHOW_FROM_DOUBLE_BUFFER;
     private static final boolean ERASE_BACKGROUND;
 
     static {
-        SHOW_FROM_DOUBLE_BUFFER =
-              "true".equals(System.getProperty("swing.showFromDoubleBuffer", "true"));
-        ERASE_BACKGROUND =
-              "true".equals(System.getProperty("swing.swing.nativeErase", "false"));
+        SHOW_FROM_DOUBLE_BUFFER = "true".equals(AccessController.doPrivileged(
+              new GetPropertyAction("swing.showFromDoubleBuffer", "true")));
+        ERASE_BACKGROUND = AccessController.doPrivileged(
+                                 new GetBooleanAction("swing.nativeErase"));
     }
 
     public PaintEvent createPaintEvent(Component component, int x, int y,

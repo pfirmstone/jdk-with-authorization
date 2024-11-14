@@ -29,6 +29,8 @@ import java.awt.Container;
 import java.util.*;
 import java.awt.FocusTraversalPolicy;
 import sun.util.logging.PlatformLogger;
+import sun.security.action.GetPropertyAction;
+import java.security.AccessController;
 
 /**
  * A FocusTraversalPolicy that determines traversal order by sorting the
@@ -93,8 +95,10 @@ public class SortingFocusTraversalPolicy
      * When false, the default (tim-sort) algo is used, which may lead to an exception.
      * See: JDK-8048887
      */
+    @SuppressWarnings("removal")
     private static final boolean legacySortingFTPEnabled = "true".equals(
-        System.getProperty("swing.legacySortingFTPEnabled", "true"));
+            AccessController.doPrivileged(
+                    new GetPropertyAction("swing.legacySortingFTPEnabled", "true")));
 
     /**
      * Constructs a SortingFocusTraversalPolicy without a Comparator.

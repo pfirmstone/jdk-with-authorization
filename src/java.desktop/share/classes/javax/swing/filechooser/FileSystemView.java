@@ -32,6 +32,8 @@ import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.lang.ref.WeakReference;
+import java.security.AccessController;
+import java.security.PrivilegedAction;
 import java.text.MessageFormat;
 import java.util.ArrayList;
 import java.util.List;
@@ -919,7 +921,13 @@ class WindowsFileSystemView extends FileSystemView {
     }
 
     public boolean isFloppyDrive(final File dir) {
-        String path = dir.getAbsolutePath();
+        @SuppressWarnings("removal")
+        String path = AccessController.doPrivileged(new PrivilegedAction<String>() {
+            public String run() {
+                return dir.getAbsolutePath();
+            }
+        });
+
         return path != null && (path.equals("A:\\") || path.equals("B:\\"));
     }
 

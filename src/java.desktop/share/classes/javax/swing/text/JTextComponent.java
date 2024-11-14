@@ -26,6 +26,9 @@ package javax.swing.text;
 
 import com.sun.beans.util.Cache;
 
+import java.security.AccessController;
+import java.security.PrivilegedAction;
+
 import java.beans.JavaBean;
 import java.beans.BeanProperty;
 import java.beans.Transient;
@@ -3972,12 +3975,17 @@ public abstract class JTextComponent extends JComponent implements Scrollable, A
             if (get(type.getSuperclass())) {
                 return Boolean.TRUE;
             }
-            try {
-                type.getDeclaredMethod("processInputMethodEvent", InputMethodEvent.class);
-                return Boolean.TRUE;
-            } catch (NoSuchMethodException exception) {
-                return Boolean.FALSE;
-            }
+            return AccessController.doPrivileged(
+                    new PrivilegedAction<Boolean>() {
+                        public Boolean run() {
+                            try {
+                                type.getDeclaredMethod("processInputMethodEvent", InputMethodEvent.class);
+                                return Boolean.TRUE;
+                            } catch (NoSuchMethodException exception) {
+                                return Boolean.FALSE;
+                            }
+                        }
+                    });
         }
     };
 

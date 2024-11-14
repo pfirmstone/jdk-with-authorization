@@ -40,6 +40,8 @@ import javax.accessibility.*;
 import javax.swing.event.MenuDragMouseEvent;
 import javax.swing.plaf.UIResource;
 import javax.swing.text.View;
+import java.security.AccessController;
+import sun.security.action.GetPropertyAction;
 
 import sun.awt.AppContext;
 import sun.awt.AWTAccessor;
@@ -73,9 +75,12 @@ public class SwingUtilities implements SwingConstants
      * Returns true if <code>setTransferHandler</code> should change the
      * <code>DropTarget</code>.
      */
+    @SuppressWarnings("removal")
     private static boolean getSuppressDropTarget() {
         if (!checkedSuppressDropSupport) {
-            suppressDropSupport = Boolean.getBoolean("suppressSwingDropSupport");
+            suppressDropSupport = Boolean.parseBoolean(
+                AccessController.doPrivileged(
+                    new GetPropertyAction("suppressSwingDropSupport")));
             checkedSuppressDropSupport = true;
         }
         return suppressDropSupport;

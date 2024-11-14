@@ -32,6 +32,9 @@ import java.io.InvalidObjectException;
 import java.io.ObjectInputStream;
 import java.io.Serial;
 import java.io.Serializable;
+import java.security.AccessControlContext;
+import java.security.AccessController;
+import java.security.PrivilegedAction;
 import java.util.EventListener;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.locks.Lock;
@@ -205,6 +208,25 @@ public class Timer implements Serializable
             addActionListener(listener);
         }
     }
+
+    /*
+     * The timer's AccessControlContext.
+     */
+     @SuppressWarnings("removal")
+     private transient volatile AccessControlContext acc =
+            AccessController.getContext();
+
+    /**
+      * Returns the acc this timer was constructed with.
+      */
+     @SuppressWarnings("removal")
+     final AccessControlContext getAccessControlContext() {
+       if (acc == null) {
+           throw new SecurityException(
+                   "Timer is missing AccessControlContext");
+       }
+       return acc;
+     }
 
     /**
      * DoPostEvent is a runnable class that fires actionEvents to
@@ -587,9 +609,15 @@ public class Timer implements Serializable
     }
 
 
+    @SuppressWarnings("removal")
     void post() {
-        if (notify.compareAndSet(false, true) || !coalesce) {
-             SwingUtilities.invokeLater(doPostEvent);
+         if (notify.compareAndSet(false, true) || !coalesce) {
+             AccessController.doPrivileged(new PrivilegedAction<Void>() {
+                 public Void run() {
+                     SwingUtilities.invokeLater(doPostEvent);
+                     return null;
+                }
+            }, getAccessControlContext());
         }
     }
 
@@ -602,6 +630,7 @@ public class Timer implements Serializable
     private void readObject(ObjectInputStream in)
         throws ClassNotFoundException, IOException
     {
+        this.acc = AccessController.getContext();
         ObjectInputStream.GetField f = in.readFields();
 
         EventListenerList newListenerList = (EventListenerList)

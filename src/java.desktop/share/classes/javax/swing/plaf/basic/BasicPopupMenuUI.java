@@ -776,14 +776,22 @@ public class BasicPopupMenuUI extends PopupMenuUI {
             }
         }
 
+        @SuppressWarnings("removal")
         void grabWindow(MenuElement[] newPath) {
             // A grab needs to be added
             final Toolkit tk = Toolkit.getDefaultToolkit();
-            tk.addAWTEventListener(MouseGrabber.this,
-                    AWTEvent.MOUSE_EVENT_MASK |
-                    AWTEvent.MOUSE_MOTION_EVENT_MASK |
-                    AWTEvent.MOUSE_WHEEL_EVENT_MASK |
-                    AWTEvent.WINDOW_EVENT_MASK | sun.awt.SunToolkit.GRAB_EVENT_MASK);
+            java.security.AccessController.doPrivileged(
+                new java.security.PrivilegedAction<Object>() {
+                    public Object run() {
+                        tk.addAWTEventListener(MouseGrabber.this,
+                                AWTEvent.MOUSE_EVENT_MASK |
+                                AWTEvent.MOUSE_MOTION_EVENT_MASK |
+                                AWTEvent.MOUSE_WHEEL_EVENT_MASK |
+                                AWTEvent.WINDOW_EVENT_MASK | sun.awt.SunToolkit.GRAB_EVENT_MASK);
+                        return null;
+                    }
+                }
+            );
 
             Component invoker = newPath[0].getComponent();
             if (invoker instanceof JPopupMenu) {
@@ -804,10 +812,18 @@ public class BasicPopupMenuUI extends PopupMenuUI {
             }
         }
 
+        @SuppressWarnings("removal")
         void ungrabWindow() {
             final Toolkit tk = Toolkit.getDefaultToolkit();
             // The grab should be removed
-            tk.removeAWTEventListener(MouseGrabber.this);
+             java.security.AccessController.doPrivileged(
+                new java.security.PrivilegedAction<Object>() {
+                    public Object run() {
+                        tk.removeAWTEventListener(MouseGrabber.this);
+                        return null;
+                    }
+                }
+            );
             realUngrabWindow();
         }
 

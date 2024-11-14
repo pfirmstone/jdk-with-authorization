@@ -393,9 +393,12 @@ public class BasicHTML {
 
         private static Boolean useOV = null;
 
+        @SuppressWarnings("removal")
         private static void setAllowHTMLObject() {
             if (useOV == null) {
-                useOV = Boolean.getBoolean("swing.html.object");
+                useOV = java.security.AccessController.doPrivileged(
+                    new sun.security.action.GetBooleanAction(
+                        "swing.html.object"));
             };
             SwingAccessor.setAllowHTMLObject(useOV);
         }

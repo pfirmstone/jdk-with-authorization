@@ -35,6 +35,8 @@ import java.awt.Toolkit;
 
 import java.awt.event.KeyEvent;
 
+import java.security.AccessController;
+
 import javax.swing.plaf.ComponentUI;
 import javax.swing.border.Border;
 
@@ -53,6 +55,7 @@ import java.util.Locale;
 
 import sun.awt.SunToolkit;
 import sun.awt.OSInfo;
+import sun.security.action.GetPropertyAction;
 import sun.swing.SwingUtilities2;
 import java.util.HashMap;
 import java.util.Objects;
@@ -289,6 +292,8 @@ public class UIManager implements Serializable
      */
     private static String makeSwingPropertiesFilename() {
         String sep = File.separator;
+        // No need to wrap this in a doPrivileged as it's called from
+        // a doPrivileged.
         String javaHome = System.getProperty("java.home");
         if (javaHome == null) {
             javaHome = "<java.home undefined>";
@@ -647,7 +652,9 @@ public class UIManager implements Serializable
      * @see #getCrossPlatformLookAndFeelClassName
      */
     public static String getSystemLookAndFeelClassName() {
-        String systemLAF = System.getProperty("swing.systemlaf");
+        @SuppressWarnings("removal")
+        String systemLAF = AccessController.doPrivileged(
+                             new GetPropertyAction("swing.systemlaf"));
         if (systemLAF != null) {
             return systemLAF;
         }
@@ -686,7 +693,9 @@ public class UIManager implements Serializable
      * @see #getSystemLookAndFeelClassName
      */
     public static String getCrossPlatformLookAndFeelClassName() {
-        String laf = System.getProperty("swing.crossplatformlaf");
+        @SuppressWarnings("removal")
+        String laf = AccessController.doPrivileged(
+                             new GetPropertyAction("swing.crossplatformlaf"));
         if (laf != null) {
             return laf;
         }
@@ -1275,38 +1284,46 @@ public class UIManager implements Serializable
         else {
             final Properties props = new Properties();
 
-            if (OSInfo.getOSType() == OSInfo.OSType.MACOSX) {
-                props.put(defaultLAFKey, getSystemLookAndFeelClassName());
-            }
-
-            try {
-                File file = new File(makeSwingPropertiesFilename());
-
-                if (file.exists()) {
-                    // InputStream has been buffered in Properties
-                    // class
-                    try (FileInputStream ins = new FileInputStream(file)) {
-                        props.load(ins);
+            java.security.AccessController.doPrivileged(
+                new java.security.PrivilegedAction<Object>() {
+                public Object run() {
+                    if (OSInfo.getOSType() == OSInfo.OSType.MACOSX) {
+                        props.put(defaultLAFKey, getSystemLookAndFeelClassName());
                     }
+
+                    try {
+                        File file = new File(makeSwingPropertiesFilename());
+
+                        if (file.exists()) {
+                            // InputStream has been buffered in Properties
+                            // class
+                            try (FileInputStream ins = new FileInputStream(file)) {
+                                props.load(ins);
+                            }
+                        }
+                    }
+                    catch (Exception e) {
+                        // No such file, or file is otherwise non-readable.
+                    }
+
+                    // Check whether any properties were overridden at the
+                    // command line.
+                    checkProperty(props, defaultLAFKey);
+                    checkProperty(props, auxiliaryLAFsKey);
+                    checkProperty(props, multiplexingLAFKey);
+                    checkProperty(props, installedLAFsKey);
+                    checkProperty(props, disableMnemonicKey);
+                    // Don't care about return value.
+                    return null;
                 }
-            }
-            catch (Exception e) {
-                // No such file, or file is otherwise non-readable.
-            }
-
-            // Check whether any properties were overridden at the
-            // command line.
-            checkProperty(props, defaultLAFKey);
-            checkProperty(props, auxiliaryLAFsKey);
-            checkProperty(props, multiplexingLAFKey);
-            checkProperty(props, installedLAFsKey);
-            checkProperty(props, disableMnemonicKey);
-
+            });
             return props;
         }
     }
 
     private static void checkProperty(Properties props, String key) {
+        // No need to do catch the SecurityException here, this runs
+        // in a doPrivileged.
         String value = System.getProperty(key);
         if (value != null) {
             props.put(key, value);

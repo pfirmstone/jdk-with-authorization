@@ -36,6 +36,7 @@ import java.beans.PropertyChangeEvent;
 import java.beans.PropertyChangeListener;
 import java.lang.ref.ReferenceQueue;
 import java.lang.ref.WeakReference;
+import java.security.AccessController;
 
 import javax.swing.ButtonModel;
 import javax.swing.DefaultButtonModel;
@@ -144,7 +145,9 @@ public class MetalLookAndFeel extends BasicLookAndFeel
         if (!checkedWindows) {
             if (OSInfo.getOSType() == OSInfo.OSType.WINDOWS) {
                 isWindows = true;
-                String systemFonts = System.getProperty("swing.useSystemFontSettings");
+                @SuppressWarnings("removal")
+                String systemFonts = AccessController.doPrivileged(
+                    new GetPropertyAction("swing.useSystemFontSettings"));
                 useSystemFonts = Boolean.parseBoolean(systemFonts);
             }
             checkedWindows = true;
@@ -1659,7 +1662,9 @@ public class MetalLookAndFeel extends BasicLookAndFeel
             else {
                 // Create the default theme. We prefer Ocean, but will
                 // use DefaultMetalTheme if told to.
-                String theme = System.getProperty("swing.metalTheme");
+                @SuppressWarnings("removal")
+                String theme = AccessController.doPrivileged(
+                               new GetPropertyAction("swing.metalTheme"));
                 if ("steel".equals(theme)) {
                     currentTheme = new DefaultMetalTheme();
                 }

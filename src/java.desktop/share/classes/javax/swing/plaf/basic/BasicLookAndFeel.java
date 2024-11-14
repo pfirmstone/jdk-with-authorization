@@ -45,6 +45,8 @@ import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.Serializable;
+import java.security.AccessController;
+import java.security.PrivilegedAction;
 import java.util.HashSet;
 import java.util.Locale;
 
@@ -192,6 +194,7 @@ public abstract class BasicLookAndFeel extends LookAndFeel implements Serializab
     /**
      * {@inheritDoc}
      */
+    @SuppressWarnings("removal")
     public void uninitialize() {
         AppContext context = AppContext.getAppContext();
         synchronized (BasicPopupMenuUI.MOUSE_GRABBER_KEY) {
@@ -209,7 +212,7 @@ public abstract class BasicLookAndFeel extends LookAndFeel implements Serializab
         }
 
         if(invocator != null) {
-            invocator.run();
+            AccessController.doPrivileged(invocator);
             invocator = null;
         }
 
@@ -2079,18 +2082,25 @@ public abstract class BasicLookAndFeel extends LookAndFeel implements Serializab
          * Class.getResourceAsStream just returns raw
          * bytes, which we can convert to a sound.
          */
-        byte[] buffer = null;
-        try {
-            InputStream resource = BasicLookAndFeel.this.
-                getClass().getResourceAsStream(soundFile);
-            if (resource != null) {
-                try (BufferedInputStream in = new BufferedInputStream(resource)) {
-                    buffer = in.readAllBytes();
+        @SuppressWarnings("removal")
+        byte[] buffer = AccessController.doPrivileged(
+                                                 new PrivilegedAction<byte[]>() {
+                public byte[] run() {
+                    try {
+                        InputStream resource = BasicLookAndFeel.this.
+                            getClass().getResourceAsStream(soundFile);
+                        if (resource == null) {
+                            return null;
+                        }
+                        try (BufferedInputStream in = new BufferedInputStream(resource)) {
+                            return in.readAllBytes();
+                        }
+                    } catch (IOException ioe) {
+                        System.err.println(ioe.toString());
+                        return null;
+                    }
                 }
-            }
-        } catch (IOException ioe) {
-            System.err.println(ioe.toString());
-        }
+            });
         if (buffer == null) {
             System.err.println(getClass().getName() + "/" +
                                soundFile + " not found.");
@@ -2180,10 +2190,11 @@ public abstract class BasicLookAndFeel extends LookAndFeel implements Serializab
      * This class contains listener that watches for all the mouse
      * events that can possibly invoke popup on the component
      */
-    class AWTEventHelper implements AWTEventListener {
+    class AWTEventHelper implements AWTEventListener,PrivilegedAction<Object> {
+        @SuppressWarnings("removal")
         AWTEventHelper() {
             super();
-            run();
+            AccessController.doPrivileged(this);
         }
 
         public Object run() {

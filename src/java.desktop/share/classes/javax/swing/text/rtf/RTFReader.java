@@ -37,6 +37,8 @@ import java.nio.CharBuffer;
 import java.nio.charset.Charset;
 import java.nio.charset.CharsetDecoder;
 import java.nio.charset.CodingErrorAction;
+import java.security.AccessController;
+import java.security.PrivilegedAction;
 import java.util.Dictionary;
 import java.util.Enumeration;
 import java.util.HashMap;
@@ -642,7 +644,13 @@ getCharacterSet(final String name)
 {
     char[] set = characterSets.get(name);
     if (set == null) {
-        InputStream charsetStream = RTFReader.class.getResourceAsStream("charsets/" + name + ".txt");
+        @SuppressWarnings("removal")
+        InputStream charsetStream = AccessController.doPrivileged(
+                new PrivilegedAction<InputStream>() {
+                    public InputStream run() {
+                        return RTFReader.class.getResourceAsStream("charsets/" + name + ".txt");
+                    }
+                });
         set = readCharset(charsetStream);
         defineCharacterSet(name, set);
     }
