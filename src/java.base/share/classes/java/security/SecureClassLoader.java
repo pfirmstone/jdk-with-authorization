@@ -42,6 +42,8 @@ import java.util.function.Function;
  * @since 1.2
  */
 public class SecureClassLoader extends ClassLoader {
+    
+    private static final Permission LOAD_CLASS_ALLOW = new LoadClassPermission();
 
     /*
      * Map that maps the CodeSource to a ProtectionDomain. The key is a
@@ -227,6 +229,16 @@ public class SecureClassLoader extends ClassLoader {
                         = SecureClassLoader.this.getPermissions(key.cs);
                 ProtectionDomain pd = new ProtectionDomain(
                         key.cs, perms, SecureClassLoader.this, null);
+                @SuppressWarnings("removal")
+                SecurityManager sm = System.getSecurityManager();
+                if (sm != null){
+                    if (!pd.implies(LOAD_CLASS_ALLOW)){
+                        throw new SecurityException(
+                            "java.lang.LoadClassPermission hasn't been granted to this CodeSource: " 
+                                    + key.cs().toString()
+                        );
+                    }
+                }
                 if (DebugHolder.debug != null) {
                     DebugHolder.debug.println(" getPermissions " + pd);
                     DebugHolder.debug.println("");
