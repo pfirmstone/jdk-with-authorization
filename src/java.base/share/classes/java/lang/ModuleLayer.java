@@ -44,6 +44,7 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
+import jdk.internal.javac.PreviewFeature;
 import jdk.internal.javac.Restricted;
 import jdk.internal.loader.ClassLoaderValue;
 import jdk.internal.loader.Loader;
@@ -53,6 +54,7 @@ import jdk.internal.misc.CDS;
 import jdk.internal.reflect.CallerSensitive;
 import jdk.internal.reflect.Reflection;
 import jdk.internal.vm.annotation.Stable;
+import sun.security.util.SecurityConstants;
 
 /**
  * A layer of modules in the Java virtual machine.
@@ -503,6 +505,9 @@ public final class ModuleLayer {
         List<ModuleLayer> parents = List.copyOf(parentLayers);
         checkConfiguration(cf, parents);
 
+        checkCreateClassLoaderPermission();
+        checkGetClassLoaderPermission();
+
         try {
             Loader loader = new Loader(cf.modules(), parentLoader);
             loader.initRemotePackageMap(cf, parents);
@@ -566,6 +571,9 @@ public final class ModuleLayer {
     {
         List<ModuleLayer> parents = List.copyOf(parentLayers);
         checkConfiguration(cf, parents);
+
+        checkCreateClassLoaderPermission();
+        checkGetClassLoaderPermission();
 
         LoaderPool pool = new LoaderPool(cf, parents, parentLoader);
         try {
@@ -646,6 +654,8 @@ public final class ModuleLayer {
         checkConfiguration(cf, parents);
         Objects.requireNonNull(clf);
 
+        checkGetClassLoaderPermission();
+
         // The boot layer is checked during module system initialization
         if (boot() != null) {
             checkForDuplicatePkgs(cf, clf);
@@ -681,6 +691,20 @@ public final class ModuleLayer {
             }
             index++;
         }
+    }
+
+    private static void checkCreateClassLoaderPermission() {
+        @SuppressWarnings("removal")
+        SecurityManager sm = System.getSecurityManager();
+        if (sm != null)
+            sm.checkPermission(SecurityConstants.CREATE_CLASSLOADER_PERMISSION);
+    }
+
+    private static void checkGetClassLoaderPermission() {
+        @SuppressWarnings("removal")
+        SecurityManager sm = System.getSecurityManager();
+        if (sm != null)
+            sm.checkPermission(SecurityConstants.GET_CLASSLOADER_PERMISSION);
     }
 
     /**
