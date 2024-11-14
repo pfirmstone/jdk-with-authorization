@@ -61,6 +61,7 @@ import javax.management.NotificationBroadcasterSupport;
 import javax.management.ObjectName;
 import javax.management.ReflectionException;
 import javax.security.auth.Subject;
+import jdk.internal.access.SharedSecrets;
 import static javax.management.monitor.MonitorNotification.*;
 
 /**
@@ -715,10 +716,14 @@ public abstract class Monitor
             //
             cleanupIsComplexTypeAttribute();
 
-            // Cache the Subject of the Monitor.start() caller.
+            // Cache the Subject or AccessControlContext of the Monitor.start() caller.
             // The monitor tasks will be executed within this context.
             //
-            subject = Subject.current();
+            if (!SharedSecrets.getJavaLangAccess().allowSecurityManager()) {
+                subject = Subject.current();
+            } else {
+                acc = AccessController.getContext();
+            }
 
             // Start the scheduler.
             //
@@ -1516,9 +1521,11 @@ public abstract class Monitor
         public void run() {
             final ScheduledFuture<?> sf;
             final Subject s;
+            final AccessControlContext ac;
             synchronized (Monitor.this) {
                 sf = Monitor.this.schedulerFuture;
                 s  = Monitor.this.subject;
+                ac = Monitor.this.acc;
             }
             PrivilegedAction<Void> action = new PrivilegedAction<>() {
                 public Void run() {
@@ -1534,10 +1541,19 @@ public abstract class Monitor
                     return null;
                 }
             };
-            if (s == null) {
-                action.run();
+            if (!SharedSecrets.getJavaLangAccess().allowSecurityManager()) {
+                // No SecurityManager permitted:
+                if (s == null) {
+                    action.run();
+                } else {
+                    Subject.doAs(s, action);
+                }
             } else {
-                Subject.doAs(s, action);
+                if (ac == null) {
+                    throw new SecurityException("AccessControlContext cannot be null");
+                }
+                // ACC means SM is permitted.
+                AccessController.doPrivileged(action, ac);
             }
             synchronized (Monitor.this) {
                 if (Monitor.this.isActive() &&

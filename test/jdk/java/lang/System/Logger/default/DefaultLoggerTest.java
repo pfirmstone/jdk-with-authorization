@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2015, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2015, 2022, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -20,6 +20,13 @@
  * or visit www.oracle.com if you need additional information or have any
  * questions.
  */
+import java.security.AccessControlException;
+import java.security.CodeSource;
+import java.security.Permission;
+import java.security.PermissionCollection;
+import java.security.Permissions;
+import java.security.Policy;
+import java.security.ProtectionDomain;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.Enumeration;
@@ -52,14 +59,29 @@ import java.util.stream.Stream;
  * @modules java.logging
  * @build DefaultLoggerTest AccessSystemLogger
  * @run driver AccessSystemLogger
- * @run main/othervm -Xbootclasspath/a:boot DefaultLoggerTest DEFAULTS
- * @run main/othervm -Xbootclasspath/a:boot DefaultLoggerTest WITHCUSTOMWRAPPERS
- * @run main/othervm -Xbootclasspath/a:boot DefaultLoggerTest WITHREFLECTION
+ * @run main/othervm -Xbootclasspath/a:boot DefaultLoggerTest NOSECURITY
+ * @run main/othervm -Xbootclasspath/a:boot -Djava.security.manager=allow DefaultLoggerTest NOPERMISSIONS
+ * @run main/othervm -Xbootclasspath/a:boot -Djava.security.manager=allow DefaultLoggerTest WITHPERMISSIONS
+ * @run main/othervm -Xbootclasspath/a:boot -Djava.security.manager=allow DefaultLoggerTest WITHCUSTOMWRAPPERS
+ * @run main/othervm -Xbootclasspath/a:boot -Djava.security.manager=allow DefaultLoggerTest WITHREFLECTION
+ * @author danielfuchs
  */
 public class DefaultLoggerTest {
 
     final static AtomicLong sequencer = new AtomicLong();
     final static boolean VERBOSE = false;
+    static final ThreadLocal<AtomicBoolean> allowControl = new ThreadLocal<AtomicBoolean>() {
+        @Override
+        protected AtomicBoolean initialValue() {
+            return  new AtomicBoolean(false);
+        }
+    };
+    static final ThreadLocal<AtomicBoolean> allowAll = new ThreadLocal<AtomicBoolean>() {
+        @Override
+        protected AtomicBoolean initialValue() {
+            return  new AtomicBoolean(false);
+        }
+    };
 
     public static final Queue<LogEvent> eventQueue = new ArrayBlockingQueue<>(128);
 
@@ -157,7 +179,13 @@ public class DefaultLoggerTest {
     }
 
     static void setLevel(java.util.logging.Logger sink, java.util.logging.Level loggerLevel) {
-        sink.setLevel(loggerLevel);
+        boolean before = allowAll.get().get();
+        try {
+            allowAll.get().set(true);
+            sink.setLevel(loggerLevel);
+        } finally {
+            allowAll.get().set(before);
+        }
     }
 
     public static class MyHandler extends Handler {
@@ -209,7 +237,15 @@ public class DefaultLoggerTest {
 
     static final AccessSystemLogger accessSystemLogger = new AccessSystemLogger();
 
-    static enum TestCases {DEFAULTS, WITHCUSTOMWRAPPERS, WITHREFLECTION};
+    static enum TestCases {NOSECURITY, NOPERMISSIONS, WITHPERMISSIONS,
+            WITHCUSTOMWRAPPERS, WITHREFLECTION};
+
+    static void setSecurityManager() {
+        if (System.getSecurityManager() == null) {
+            Policy.setPolicy(new SimplePolicy(allowControl, allowAll));
+            System.setSecurityManager(new SecurityManager());
+        }
+    }
 
     /**
      * The CustomLoggerWrapper makes it possible to verify that classes
@@ -378,7 +414,9 @@ public class DefaultLoggerTest {
     public static void main(String[] args) {
         if (args.length == 0)
             args = new String[] {
-                "DEFAULTS",
+                "NOSECURITY",
+                "NOPERMISSIONS",
+                "WITHPERMISSIONS",
                 "WITHCUSTOMWRAPPERS",
                 "WITHREFLECTION"
             };
@@ -389,21 +427,53 @@ public class DefaultLoggerTest {
 
         Stream.of(args).map(TestCases::valueOf).forEach((testCase) -> {
             switch (testCase) {
-                case DEFAULTS:
-                    System.out.println("\n*** Using defaults\n");
-                    test();
+                case NOSECURITY:
+                    System.out.println("\n*** Without Security Manager\n");
+                    test(true);
                     System.out.println("Tetscase count: " + sequencer.get());
+                    break;
+                case NOPERMISSIONS:
+                    System.out.println("\n*** With Security Manager, without permissions\n");
+                    setSecurityManager();
+                    test(false);
+                    System.out.println("Tetscase count: " + sequencer.get());
+                    break;
+                case WITHPERMISSIONS:
+                    System.out.println("\n*** With Security Manager, with control permission\n");
+                    setSecurityManager();
+                    final boolean control = allowControl.get().get();
+                    try {
+                        allowControl.get().set(true);
+                        test(true);
+                    } finally {
+                        allowControl.get().set(control);
+                    }
                     break;
                 case WITHCUSTOMWRAPPERS:
-                    System.out.println("\n*** Using custom Wrappers\n");
-                    test(CustomLoggerWrapper::new);
-                    System.out.println("Tetscase count: " + sequencer.get());
+                    System.out.println("\n*** With Security Manager, with control permission, using custom Wrappers\n");
+                    setSecurityManager();
+                    final boolean previous = allowControl.get().get();
+                    try {
+                        allowControl.get().set(true);
+                        test(CustomLoggerWrapper::new, true);
+                    } finally {
+                        allowControl.get().set(previous);
+                    }
                     break;
                 case WITHREFLECTION:
-                    System.out.println("\n*** Using reflection while logging\n");
-                    test(ReflectionLoggerWrapper::new);
-                    System.out.println("Tetscase count: " + sequencer.get());
+                    System.out.println("\n*** With Security Manager,"
+                            + " with control permission,"
+                            + " using reflection while logging\n");
+                    setSecurityManager();
+                    final boolean before = allowControl.get().get();
+                    try {
+                        allowControl.get().set(true);
+                        test(ReflectionLoggerWrapper::new, true);
+                    } finally {
+                        allowControl.get().set(before);
+                    }
                     break;
+
                 default:
                     throw new RuntimeException("Unknown test case: " + testCase);
             }
@@ -411,11 +481,11 @@ public class DefaultLoggerTest {
         System.out.println("\nPASSED: Tested " + sequencer.get() + " cases.");
     }
 
-    public static void test() {
-        test(Function.identity());
+    public static void test(boolean hasRequiredPermissions) {
+        test(Function.identity(), hasRequiredPermissions);
     }
 
-    public static void test(Function<Logger, Logger> wrapper) {
+    public static void test(Function<Logger, Logger> wrapper, boolean hasRequiredPermissions) {
 
         ResourceBundle loggerBundle = ResourceBundle.getBundle(MyLoggerBundle.class.getName());
         final Map<Logger, String> loggerDescMap = new HashMap<>();
@@ -425,8 +495,18 @@ public class DefaultLoggerTest {
         //   - System.getLogger("foo")
         //   - and AccessSystemLogger.getLogger("foo")
         Logger sysLogger1 = null;
-        sysLogger1 = wrapper.apply(accessSystemLogger.getLogger("foo"));
-        loggerDescMap.put(sysLogger1, "AccessSystemLogger.getLogger(\"foo\")");
+        try {
+            sysLogger1 = wrapper.apply(accessSystemLogger.getLogger("foo"));
+            loggerDescMap.put(sysLogger1, "AccessSystemLogger.getLogger(\"foo\")");
+        } catch (AccessControlException acx) {
+            if (hasRequiredPermissions) {
+                throw new RuntimeException("Unexpected security exception: ", acx);
+            }
+            if (!acx.getPermission().equals(SimplePolicy.LOGGERFINDER_PERMISSION)) {
+                throw new RuntimeException("Unexpected permission in exception: " + acx, acx);
+            }
+            throw new RuntimeException("unexpected exception: " + acx, acx);
+        }
 
         Logger appLogger1 = wrapper.apply(System.getLogger("foo"));
         loggerDescMap.put(appLogger1, "System.getLogger(\"foo\");");
@@ -443,9 +523,18 @@ public class DefaultLoggerTest {
         loggerDescMap.put(appLogger2, "System.getLogger(\"foo\", loggerBundle)");
 
         Logger sysLogger2 = null;
-        sysLogger2 = wrapper.apply(accessSystemLogger.getLogger("foo", loggerBundle));
-        loggerDescMap.put(sysLogger2, "AccessSystemLogger.getLogger(\"foo\", loggerBundle)");
-
+        try {
+            sysLogger2 = wrapper.apply(accessSystemLogger.getLogger("foo", loggerBundle));
+            loggerDescMap.put(sysLogger2, "AccessSystemLogger.getLogger(\"foo\", loggerBundle)");
+        } catch (AccessControlException acx) {
+            if (hasRequiredPermissions) {
+                throw new RuntimeException("Unexpected security exception: ", acx);
+            }
+            if (!acx.getPermission().equals(SimplePolicy.LOGGERFINDER_PERMISSION)) {
+                throw new RuntimeException("Unexpected permission in exception: " + acx, acx);
+            }
+            throw new RuntimeException("unexpected exception: " + acx, acx);
+        }
         if (appLogger2 == sysLogger2) {
             throw new RuntimeException("identical loggers");
         }
@@ -456,24 +545,32 @@ public class DefaultLoggerTest {
         final java.util.logging.Handler appHandler;
         final java.util.logging.Handler sysHandler;
         final  LoggerFinder provider;
-
-        appSink = java.util.logging.Logger.getLogger("foo");
-        sysSink = accessSystemLogger.demandSystemLogger("foo");
-        sink = java.util.logging.Logger.getLogger("foo");
-        sink.addHandler(appHandler = sysHandler = new MyHandler());
-        sink.setUseParentHandlers(false);
-        provider = LoggerFinder.getLoggerFinder();
-
+        allowAll.get().set(true);
+        try {
+            appSink = java.util.logging.Logger.getLogger("foo");
+            sysSink = accessSystemLogger.demandSystemLogger("foo");
+            sink = java.util.logging.Logger.getLogger("foo");
+            sink.addHandler(appHandler = sysHandler = new MyHandler());
+            sink.setUseParentHandlers(false);
+            provider = LoggerFinder.getLoggerFinder();
+        } finally {
+            allowAll.get().set(false);
+        }
         try {
             testLogger(provider, loggerDescMap, "foo", null, sysLogger1, sysSink);
             testLogger(provider, loggerDescMap, "foo", null, appLogger1, appSink);
             testLogger(provider, loggerDescMap, "foo", loggerBundle, sysLogger2, sysSink);
             testLogger(provider, loggerDescMap, "foo", loggerBundle, appLogger2, appSink);
         } finally {
-            appSink.removeHandler(appHandler);
-            sysSink.removeHandler(sysHandler);
-            sysSink.setLevel(null);
-            appSink.setLevel(null);
+            allowAll.get().set(true);
+            try {
+                appSink.removeHandler(appHandler);
+                sysSink.removeHandler(sysHandler);
+                sysSink.setLevel(null);
+                appSink.setLevel(null);
+            } finally {
+                allowAll.get().set(false);
+            }
         }
     }
 
@@ -759,4 +856,76 @@ public class DefaultLoggerTest {
         }
     }
 
+    final static class PermissionsBuilder {
+        final Permissions perms;
+        public PermissionsBuilder() {
+            this(new Permissions());
+        }
+        public PermissionsBuilder(Permissions perms) {
+            this.perms = perms;
+        }
+        public PermissionsBuilder add(Permission p) {
+            perms.add(p);
+            return this;
+        }
+        public PermissionsBuilder addAll(PermissionCollection col) {
+            if (col != null) {
+                for (Enumeration<Permission> e = col.elements(); e.hasMoreElements(); ) {
+                    perms.add(e.nextElement());
+                }
+            }
+            return this;
+        }
+        public Permissions toPermissions() {
+            final PermissionsBuilder builder = new PermissionsBuilder();
+            builder.addAll(perms);
+            return builder.perms;
+        }
+    }
+
+    public static class SimplePolicy extends Policy {
+
+        static final Policy DEFAULT_POLICY = Policy.getPolicy();
+
+        static final RuntimePermission LOGGERFINDER_PERMISSION =
+                new RuntimePermission("loggerFinder");
+        final Permissions permissions;
+        final Permissions allPermissions;
+        final Permissions controlPermissions;
+        final ThreadLocal<AtomicBoolean> allowControl;
+        final ThreadLocal<AtomicBoolean> allowAll;
+        public SimplePolicy(ThreadLocal<AtomicBoolean> allowControl, ThreadLocal<AtomicBoolean> allowAll) {
+            this.allowControl = allowControl;
+            this.allowAll = allowAll;
+            permissions = new Permissions();
+
+            // these are used for configuring the test itself...
+            controlPermissions = new Permissions();
+            controlPermissions.add(LOGGERFINDER_PERMISSION);
+            allPermissions = new Permissions();
+            allPermissions.add(new java.security.AllPermission());
+
+        }
+
+        @Override
+        public boolean implies(ProtectionDomain domain, Permission permission) {
+            if (allowAll.get().get()) return allPermissions.implies(permission);
+            if (allowControl.get().get()) return controlPermissions.implies(permission);
+            return permissions.implies(permission) || DEFAULT_POLICY.implies(domain, permission);
+        }
+
+        @Override
+        public PermissionCollection getPermissions(CodeSource codesource) {
+            return new PermissionsBuilder().addAll(allowAll.get().get()
+                    ? allPermissions : allowControl.get().get()
+                    ? controlPermissions : permissions).toPermissions();
+        }
+
+        @Override
+        public PermissionCollection getPermissions(ProtectionDomain domain) {
+            return new PermissionsBuilder().addAll(allowAll.get().get()
+                    ? allPermissions : allowControl.get().get()
+                    ? controlPermissions : permissions).toPermissions();
+        }
+    }
 }

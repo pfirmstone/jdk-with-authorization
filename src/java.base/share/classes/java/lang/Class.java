@@ -530,6 +530,11 @@ public final class Class<T> implements java.io.Serializable,
      *            by this method fails
      * @throws    ClassNotFoundException if the class cannot be located by
      *            the specified class loader
+     * @throws    SecurityException
+     *            if a security manager is present, and the {@code loader} is
+     *            {@code null}, and the caller's class loader is not
+     *            {@code null}, and the caller does not have the
+     *            {@link RuntimePermission}{@code ("getClassLoader")}
      *
      * @see       java.lang.Class#forName(String)
      * @see       java.lang.ClassLoader
@@ -605,6 +610,8 @@ public final class Class<T> implements java.io.Serializable,
      * a binary name.  This method returns {@code null} on failure rather than
      * throwing a {@link ClassNotFoundException}, as is done by
      * the {@link #forName(String, boolean, ClassLoader)} method.
+     * The security check is a stack-based permission check if the caller
+     * loads a class in another module.
      *
      * @param  module   A module
      * @param  name     The {@linkplain ClassLoader##binary-name binary name}
@@ -615,6 +622,16 @@ public final class Class<T> implements java.io.Serializable,
      * @throws NullPointerException if the given module or name is {@code null}
      *
      * @throws LinkageError if the linkage fails
+     *
+     * @throws SecurityException
+     *         <ul>
+     *         <li> if the caller is not the specified module and
+     *         {@code RuntimePermission("getClassLoader")} permission is denied; or</li>
+     *         <li> access to the module content is denied. For example,
+     *         permission check will be performed when a class loader calls
+     *         {@link ModuleReader#open(String)} to read the bytes of a class file
+     *         in a module.</li>
+     *         </ul>
      *
      * @jls 12.2 Loading of Classes and Interfaces
      * @jls 12.3 Linking of Classes and Interfaces
@@ -739,6 +756,13 @@ public final class Class<T> implements java.io.Serializable,
      *          or if the instantiation fails for some other reason.
      * @throws  ExceptionInInitializerError if the initialization
      *          provoked by this method fails.
+     * @throws  SecurityException
+     *          If a security manager, <i>s</i>, is present and
+     *          the caller's class loader is not the same as or an
+     *          ancestor of the class loader for the current class and
+     *          invocation of {@link SecurityManager#checkPackageAccess
+     *          s.checkPackageAccess()} denies access to the package
+     *          of this class.
      */
     @SuppressWarnings("removal")
     @CallerSensitive
@@ -1033,7 +1057,15 @@ public final class Class<T> implements java.io.Serializable,
      *
      * @return  the class loader that loaded the class or interface
      *          represented by this {@code Class} object.
+     * @throws  SecurityException
+     *          if a security manager is present, and the caller's class loader
+     *          is not {@code null} and is not the same as or an ancestor of the
+     *          class loader for the class whose class loader is requested,
+     *          and the caller does not have the
+     *          {@link RuntimePermission}{@code ("getClassLoader")}
      * @see java.lang.ClassLoader
+     * @see SecurityManager#checkPermission
+     * @see java.lang.RuntimePermission
      */
     @CallerSensitive
     @ForceInline // to ensure Reflection.getCallerClass optimization
@@ -1509,10 +1541,30 @@ public final class Class<T> implements java.io.Serializable,
      * @return the immediately enclosing method of the underlying class, if
      *     that class is a local or anonymous class; otherwise {@code null}.
      *
+     * @throws SecurityException
+     *         If a security manager, <i>s</i>, is present and any of the
+     *         following conditions is met:
+     *
+     *         <ul>
+     *
+     *         <li> the caller's class loader is not the same as the
+     *         class loader of the enclosing class and invocation of
+     *         {@link SecurityManager#checkPermission
+     *         s.checkPermission} method with
+     *         {@code RuntimePermission("accessDeclaredMembers")}
+     *         denies access to the methods within the enclosing class
+     *
+     *         <li> the caller's class loader is not the same as or an
+     *         ancestor of the class loader for the enclosing class and
+     *         invocation of {@link SecurityManager#checkPackageAccess
+     *         s.checkPackageAccess()} denies access to the package
+     *         of the enclosing class
+     *
+     *         </ul>
      * @since 1.5
      */
     @CallerSensitive
-    public Method getEnclosingMethod() {
+    public Method getEnclosingMethod() throws SecurityException {
         EnclosingMethodInfo enclosingInfo = getEnclosingMethodInfo();
 
         if (enclosingInfo == null)
@@ -1645,11 +1697,30 @@ public final class Class<T> implements java.io.Serializable,
      *
      * @return the immediately enclosing constructor of the underlying class, if
      *     that class is a local or anonymous class; otherwise {@code null}.
+     * @throws SecurityException
+     *         If a security manager, <i>s</i>, is present and any of the
+     *         following conditions is met:
      *
+     *         <ul>
+     *
+     *         <li> the caller's class loader is not the same as the
+     *         class loader of the enclosing class and invocation of
+     *         {@link SecurityManager#checkPermission
+     *         s.checkPermission} method with
+     *         {@code RuntimePermission("accessDeclaredMembers")}
+     *         denies access to the constructors within the enclosing class
+     *
+     *         <li> the caller's class loader is not the same as or an
+     *         ancestor of the class loader for the enclosing class and
+     *         invocation of {@link SecurityManager#checkPackageAccess
+     *         s.checkPackageAccess()} denies access to the package
+     *         of the enclosing class
+     *
+     *         </ul>
      * @since 1.5
      */
     @CallerSensitive
-    public Constructor<?> getEnclosingConstructor() {
+    public Constructor<?> getEnclosingConstructor() throws SecurityException {
         EnclosingMethodInfo enclosingInfo = getEnclosingMethodInfo();
 
         if (enclosingInfo == null)
@@ -1706,10 +1777,16 @@ public final class Class<T> implements java.io.Serializable,
      * type, or void, then this method returns null.
      *
      * @return the declaring class for this class
+     * @throws SecurityException
+     *         If a security manager, <i>s</i>, is present and the caller's
+     *         class loader is not the same as or an ancestor of the class
+     *         loader for the declaring class and invocation of {@link
+     *         SecurityManager#checkPackageAccess s.checkPackageAccess()}
+     *         denies access to the package of the declaring class
      * @since 1.1
      */
     @CallerSensitive
-    public Class<?> getDeclaringClass() {
+    public Class<?> getDeclaringClass() throws SecurityException {
         final Class<?> candidate = getDeclaringClass0();
 
         if (candidate != null) {
@@ -1731,10 +1808,16 @@ public final class Class<T> implements java.io.Serializable,
      * class.  If the underlying class is a top level class this
      * method returns {@code null}.
      * @return the immediately enclosing class of the underlying class
+     * @throws     SecurityException
+     *             If a security manager, <i>s</i>, is present and the caller's
+     *             class loader is not the same as or an ancestor of the class
+     *             loader for the enclosing class and invocation of {@link
+     *             SecurityManager#checkPackageAccess s.checkPackageAccess()}
+     *             denies access to the package of the enclosing class
      * @since 1.5
      */
     @CallerSensitive
-    public Class<?> getEnclosingClass() {
+    public Class<?> getEnclosingClass() throws SecurityException {
         // There are five kinds of classes (or interfaces):
         // a) Top level classes
         // b) Nested classes (static member classes)
@@ -1989,6 +2072,14 @@ public final class Class<T> implements java.io.Serializable,
      *
      * @return the array of {@code Class} objects representing the public
      *         members of this class
+     * @throws SecurityException
+     *         If a security manager, <i>s</i>, is present and
+     *         the caller's class loader is not the same as or an
+     *         ancestor of the class loader for the current class and
+     *         invocation of {@link SecurityManager#checkPackageAccess
+     *         s.checkPackageAccess()} denies access to the package
+     *         of this class.
+     *
      * @since 1.1
      */
     @SuppressWarnings("removal")
@@ -2049,13 +2140,20 @@ public final class Class<T> implements java.io.Serializable,
      *
      * @return the array of {@code Field} objects representing the
      *         public fields
+     * @throws SecurityException
+     *         If a security manager, <i>s</i>, is present and
+     *         the caller's class loader is not the same as or an
+     *         ancestor of the class loader for the current class and
+     *         invocation of {@link SecurityManager#checkPackageAccess
+     *         s.checkPackageAccess()} denies access to the package
+     *         of this class.
      *
      * @since 1.1
      * @jls 8.2 Class Members
      * @jls 8.3 Field Declarations
      */
     @CallerSensitive
-    public Field[] getFields() {
+    public Field[] getFields() throws SecurityException {
         @SuppressWarnings("removal")
         SecurityManager sm = System.getSecurityManager();
         if (sm != null) {
@@ -2133,13 +2231,20 @@ public final class Class<T> implements java.io.Serializable,
      *
      * @return the array of {@code Method} objects representing the
      *         public methods of this class
+     * @throws SecurityException
+     *         If a security manager, <i>s</i>, is present and
+     *         the caller's class loader is not the same as or an
+     *         ancestor of the class loader for the current class and
+     *         invocation of {@link SecurityManager#checkPackageAccess
+     *         s.checkPackageAccess()} denies access to the package
+     *         of this class.
      *
      * @jls 8.2 Class Members
      * @jls 8.4 Method Declarations
      * @since 1.1
      */
     @CallerSensitive
-    public Method[] getMethods() {
+    public Method[] getMethods() throws SecurityException {
         @SuppressWarnings("removal")
         SecurityManager sm = System.getSecurityManager();
         if (sm != null) {
@@ -2169,12 +2274,19 @@ public final class Class<T> implements java.io.Serializable,
      *
      * @return the array of {@code Constructor} objects representing the
      *         public constructors of this class
+     * @throws SecurityException
+     *         If a security manager, <i>s</i>, is present and
+     *         the caller's class loader is not the same as or an
+     *         ancestor of the class loader for the current class and
+     *         invocation of {@link SecurityManager#checkPackageAccess
+     *         s.checkPackageAccess()} denies access to the package
+     *         of this class.
      *
      * @see #getDeclaredConstructors()
      * @since 1.1
      */
     @CallerSensitive
-    public Constructor<?>[] getConstructors() {
+    public Constructor<?>[] getConstructors() throws SecurityException {
         @SuppressWarnings("removal")
         SecurityManager sm = System.getSecurityManager();
         if (sm != null) {
@@ -2214,13 +2326,21 @@ public final class Class<T> implements java.io.Serializable,
      * @throws NoSuchFieldException if a field with the specified name is
      *         not found.
      * @throws NullPointerException if {@code name} is {@code null}
+     * @throws SecurityException
+     *         If a security manager, <i>s</i>, is present and
+     *         the caller's class loader is not the same as or an
+     *         ancestor of the class loader for the current class and
+     *         invocation of {@link SecurityManager#checkPackageAccess
+     *         s.checkPackageAccess()} denies access to the package
+     *         of this class.
      *
      * @since 1.1
      * @jls 8.2 Class Members
      * @jls 8.3 Field Declarations
      */
     @CallerSensitive
-    public Field getField(String name) throws NoSuchFieldException {
+    public Field getField(String name)
+        throws NoSuchFieldException, SecurityException {
         Objects.requireNonNull(name);
         @SuppressWarnings("removal")
         SecurityManager sm = System.getSecurityManager();
@@ -2317,6 +2437,13 @@ public final class Class<T> implements java.io.Serializable,
      *         or if the name is {@value ConstantDescs#INIT_NAME} or
      *         {@value ConstantDescs#CLASS_INIT_NAME}.
      * @throws NullPointerException if {@code name} is {@code null}
+     * @throws SecurityException
+     *         If a security manager, <i>s</i>, is present and
+     *         the caller's class loader is not the same as or an
+     *         ancestor of the class loader for the current class and
+     *         invocation of {@link SecurityManager#checkPackageAccess
+     *         s.checkPackageAccess()} denies access to the package
+     *         of this class.
      *
      * @jls 8.2 Class Members
      * @jls 8.4 Method Declarations
@@ -2324,7 +2451,7 @@ public final class Class<T> implements java.io.Serializable,
      */
     @CallerSensitive
     public Method getMethod(String name, Class<?>... parameterTypes)
-            throws NoSuchMethodException {
+        throws NoSuchMethodException, SecurityException {
         Objects.requireNonNull(name);
         @SuppressWarnings("removal")
         SecurityManager sm = System.getSecurityManager();
@@ -2359,13 +2486,21 @@ public final class Class<T> implements java.io.Serializable,
      * @throws NoSuchMethodException if a matching constructor is not found,
      *         including when this {@code Class} object represents
      *         an interface, a primitive type, an array class, or void.
+     * @throws SecurityException
+     *         If a security manager, <i>s</i>, is present and
+     *         the caller's class loader is not the same as or an
+     *         ancestor of the class loader for the current class and
+     *         invocation of {@link SecurityManager#checkPackageAccess
+     *         s.checkPackageAccess()} denies access to the package
+     *         of this class.
      *
-     * @see #getDeclaredConstructor(Class[])
+     * @see #getDeclaredConstructor(Class<?>[])
      * @since 1.1
      */
     @CallerSensitive
     public Constructor<T> getConstructor(Class<?>... parameterTypes)
-            throws NoSuchMethodException {
+        throws NoSuchMethodException, SecurityException
+    {
         @SuppressWarnings("removal")
         SecurityManager sm = System.getSecurityManager();
         if (sm != null) {
@@ -2388,12 +2523,32 @@ public final class Class<T> implements java.io.Serializable,
      *
      * @return the array of {@code Class} objects representing all the
      *         declared members of this class
+     * @throws SecurityException
+     *         If a security manager, <i>s</i>, is present and any of the
+     *         following conditions is met:
+     *
+     *         <ul>
+     *
+     *         <li> the caller's class loader is not the same as the
+     *         class loader of this class and invocation of
+     *         {@link SecurityManager#checkPermission
+     *         s.checkPermission} method with
+     *         {@code RuntimePermission("accessDeclaredMembers")}
+     *         denies access to the declared classes within this class
+     *
+     *         <li> the caller's class loader is not the same as or an
+     *         ancestor of the class loader for the current class and
+     *         invocation of {@link SecurityManager#checkPackageAccess
+     *         s.checkPackageAccess()} denies access to the package
+     *         of this class
+     *
+     *         </ul>
      *
      * @since 1.1
      * @jls 8.5 Member Class and Interface Declarations
      */
     @CallerSensitive
-    public Class<?>[] getDeclaredClasses() {
+    public Class<?>[] getDeclaredClasses() throws SecurityException {
         @SuppressWarnings("removal")
         SecurityManager sm = System.getSecurityManager();
         if (sm != null) {
@@ -2420,13 +2575,33 @@ public final class Class<T> implements java.io.Serializable,
      *
      * @return  the array of {@code Field} objects representing all the
      *          declared fields of this class
+     * @throws  SecurityException
+     *          If a security manager, <i>s</i>, is present and any of the
+     *          following conditions is met:
+     *
+     *          <ul>
+     *
+     *          <li> the caller's class loader is not the same as the
+     *          class loader of this class and invocation of
+     *          {@link SecurityManager#checkPermission
+     *          s.checkPermission} method with
+     *          {@code RuntimePermission("accessDeclaredMembers")}
+     *          denies access to the declared fields within this class
+     *
+     *          <li> the caller's class loader is not the same as or an
+     *          ancestor of the class loader for the current class and
+     *          invocation of {@link SecurityManager#checkPackageAccess
+     *          s.checkPackageAccess()} denies access to the package
+     *          of this class
+     *
+     *          </ul>
      *
      * @since 1.1
      * @jls 8.2 Class Members
      * @jls 8.3 Field Declarations
      */
     @CallerSensitive
-    public Field[] getDeclaredFields() {
+    public Field[] getDeclaredFields() throws SecurityException {
         @SuppressWarnings("removal")
         SecurityManager sm = System.getSecurityManager();
         if (sm != null) {
@@ -2463,6 +2638,26 @@ public final class Class<T> implements java.io.Serializable,
      * @return  An array of {@code RecordComponent} objects representing all the
      *          record components of this record class, or {@code null} if this
      *          class is not a record class
+     * @throws  SecurityException
+     *          If a security manager, <i>s</i>, is present and any of the
+     *          following conditions is met:
+     *
+     *          <ul>
+     *
+     *          <li> the caller's class loader is not the same as the
+     *          class loader of this class and invocation of
+     *          {@link SecurityManager#checkPermission
+     *          s.checkPermission} method with
+     *          {@code RuntimePermission("accessDeclaredMembers")}
+     *          denies access to the declared methods within this class
+     *
+     *          <li> the caller's class loader is not the same as or an
+     *          ancestor of the class loader for the current class and
+     *          invocation of {@link SecurityManager#checkPackageAccess
+     *          s.checkPackageAccess()} denies access to the package
+     *          of this class
+     *
+     *          </ul>
      *
      * @jls 8.10 Record Classes
      * @since 16
@@ -2511,6 +2706,26 @@ public final class Class<T> implements java.io.Serializable,
      *
      * @return  the array of {@code Method} objects representing all the
      *          declared methods of this class
+     * @throws  SecurityException
+     *          If a security manager, <i>s</i>, is present and any of the
+     *          following conditions is met:
+     *
+     *          <ul>
+     *
+     *          <li> the caller's class loader is not the same as the
+     *          class loader of this class and invocation of
+     *          {@link SecurityManager#checkPermission
+     *          s.checkPermission} method with
+     *          {@code RuntimePermission("accessDeclaredMembers")}
+     *          denies access to the declared methods within this class
+     *
+     *          <li> the caller's class loader is not the same as or an
+     *          ancestor of the class loader for the current class and
+     *          invocation of {@link SecurityManager#checkPackageAccess
+     *          s.checkPackageAccess()} denies access to the package
+     *          of this class
+     *
+     *          </ul>
      *
      * @jls 8.2 Class Members
      * @jls 8.4 Method Declarations
@@ -2520,7 +2735,7 @@ public final class Class<T> implements java.io.Serializable,
      * @since 1.1
      */
     @CallerSensitive
-    public Method[] getDeclaredMethods() {
+    public Method[] getDeclaredMethods() throws SecurityException {
         @SuppressWarnings("removal")
         SecurityManager sm = System.getSecurityManager();
         if (sm != null) {
@@ -2545,13 +2760,33 @@ public final class Class<T> implements java.io.Serializable,
      *
      * @return  the array of {@code Constructor} objects representing all the
      *          declared constructors of this class
+     * @throws  SecurityException
+     *          If a security manager, <i>s</i>, is present and any of the
+     *          following conditions is met:
+     *
+     *          <ul>
+     *
+     *          <li> the caller's class loader is not the same as the
+     *          class loader of this class and invocation of
+     *          {@link SecurityManager#checkPermission
+     *          s.checkPermission} method with
+     *          {@code RuntimePermission("accessDeclaredMembers")}
+     *          denies access to the declared constructors within this class
+     *
+     *          <li> the caller's class loader is not the same as or an
+     *          ancestor of the class loader for the current class and
+     *          invocation of {@link SecurityManager#checkPackageAccess
+     *          s.checkPackageAccess()} denies access to the package
+     *          of this class
+     *
+     *          </ul>
      *
      * @since 1.1
      * @see #getConstructors()
      * @jls 8.8 Constructor Declarations
      */
     @CallerSensitive
-    public Constructor<?>[] getDeclaredConstructors() {
+    public Constructor<?>[] getDeclaredConstructors() throws SecurityException {
         @SuppressWarnings("removal")
         SecurityManager sm = System.getSecurityManager();
         if (sm != null) {
@@ -2576,13 +2811,34 @@ public final class Class<T> implements java.io.Serializable,
      * @throws  NoSuchFieldException if a field with the specified name is
      *          not found.
      * @throws  NullPointerException if {@code name} is {@code null}
+     * @throws  SecurityException
+     *          If a security manager, <i>s</i>, is present and any of the
+     *          following conditions is met:
+     *
+     *          <ul>
+     *
+     *          <li> the caller's class loader is not the same as the
+     *          class loader of this class and invocation of
+     *          {@link SecurityManager#checkPermission
+     *          s.checkPermission} method with
+     *          {@code RuntimePermission("accessDeclaredMembers")}
+     *          denies access to the declared field
+     *
+     *          <li> the caller's class loader is not the same as or an
+     *          ancestor of the class loader for the current class and
+     *          invocation of {@link SecurityManager#checkPackageAccess
+     *          s.checkPackageAccess()} denies access to the package
+     *          of this class
+     *
+     *          </ul>
      *
      * @since 1.1
      * @jls 8.2 Class Members
      * @jls 8.3 Field Declarations
      */
     @CallerSensitive
-    public Field getDeclaredField(String name) throws NoSuchFieldException {
+    public Field getDeclaredField(String name)
+        throws NoSuchFieldException, SecurityException {
         Objects.requireNonNull(name);
         @SuppressWarnings("removal")
         SecurityManager sm = System.getSecurityManager();
@@ -2621,6 +2877,26 @@ public final class Class<T> implements java.io.Serializable,
      *          matching the specified name and parameters
      * @throws  NoSuchMethodException if a matching method is not found.
      * @throws  NullPointerException if {@code name} is {@code null}
+     * @throws  SecurityException
+     *          If a security manager, <i>s</i>, is present and any of the
+     *          following conditions is met:
+     *
+     *          <ul>
+     *
+     *          <li> the caller's class loader is not the same as the
+     *          class loader of this class and invocation of
+     *          {@link SecurityManager#checkPermission
+     *          s.checkPermission} method with
+     *          {@code RuntimePermission("accessDeclaredMembers")}
+     *          denies access to the declared method
+     *
+     *          <li> the caller's class loader is not the same as or an
+     *          ancestor of the class loader for the current class and
+     *          invocation of {@link SecurityManager#checkPackageAccess
+     *          s.checkPackageAccess()} denies access to the package
+     *          of this class
+     *
+     *          </ul>
      *
      * @jls 8.2 Class Members
      * @jls 8.4 Method Declarations
@@ -2628,7 +2904,7 @@ public final class Class<T> implements java.io.Serializable,
      */
     @CallerSensitive
     public Method getDeclaredMethod(String name, Class<?>... parameterTypes)
-            throws NoSuchMethodException {
+        throws NoSuchMethodException, SecurityException {
         Objects.requireNonNull(name);
         @SuppressWarnings("removal")
         SecurityManager sm = System.getSecurityManager();
@@ -2699,13 +2975,34 @@ public final class Class<T> implements java.io.Serializable,
      * @throws  NoSuchMethodException if a matching constructor is not found,
      *          including when this {@code Class} object represents
      *          an interface, a primitive type, an array class, or void.
+     * @throws  SecurityException
+     *          If a security manager, <i>s</i>, is present and any of the
+     *          following conditions is met:
      *
-     * @see #getConstructor(Class[])
+     *          <ul>
+     *
+     *          <li> the caller's class loader is not the same as the
+     *          class loader of this class and invocation of
+     *          {@link SecurityManager#checkPermission
+     *          s.checkPermission} method with
+     *          {@code RuntimePermission("accessDeclaredMembers")}
+     *          denies access to the declared constructor
+     *
+     *          <li> the caller's class loader is not the same as or an
+     *          ancestor of the class loader for the current class and
+     *          invocation of {@link SecurityManager#checkPackageAccess
+     *          s.checkPackageAccess()} denies access to the package
+     *          of this class
+     *
+     *          </ul>
+     *
+     * @see #getConstructor(Class<?>[])
      * @since 1.1
      */
     @CallerSensitive
     public Constructor<T> getDeclaredConstructor(Class<?>... parameterTypes)
-            throws NoSuchMethodException {
+        throws NoSuchMethodException, SecurityException
+    {
         @SuppressWarnings("removal")
         SecurityManager sm = System.getSecurityManager();
         if (sm != null) {
@@ -2761,9 +3058,10 @@ public final class Class<T> implements java.io.Serializable,
      *
      * @param  name name of the desired resource
      * @return  A {@link java.io.InputStream} object; {@code null} if no
-     *          resource with this name is found, or the resource is in a package
+     *          resource with this name is found, the resource is in a package
      *          that is not {@linkplain Module#isOpen(String, Module) open} to at
-     *          least the caller module.
+     *          least the caller module, or access to the resource is denied
+     *          by the security manager.
      * @throws  NullPointerException If {@code name} is {@code null}
      *
      * @see Module#getResourceAsStream(String)
@@ -2856,10 +3154,11 @@ public final class Class<T> implements java.io.Serializable,
      *
      * @param  name name of the desired resource
      * @return A {@link java.net.URL} object; {@code null} if no resource with
-     *         this name is found, the resource cannot be located by a URL, or the
+     *         this name is found, the resource cannot be located by a URL, the
      *         resource is in a package that is not
      *         {@linkplain Module#isOpen(String, Module) open} to at least the caller
-     *         module.
+     *         module, or access to the resource is denied by the security
+     *         manager.
      * @throws NullPointerException If {@code name} is {@code null}
      * @since  1.1
      */
@@ -2925,11 +3224,23 @@ public final class Class<T> implements java.io.Serializable,
     }
 
     /**
-     * Returns the {@code ProtectionDomain} of this class.
+     * Returns the {@code ProtectionDomain} of this class.  If there is a
+     * security manager installed, this method first calls the security
+     * manager's {@code checkPermission} method with a
+     * {@code RuntimePermission("getProtectionDomain")} permission to
+     * ensure it's ok to get the
+     * {@code ProtectionDomain}.
      *
      * @return the ProtectionDomain of this class
      *
+     * @throws SecurityException
+     *        if a security manager exists and its
+     *        {@code checkPermission} method doesn't allow
+     *        getting the ProtectionDomain.
+     *
      * @see java.security.ProtectionDomain
+     * @see SecurityManager#checkPermission
+     * @see java.lang.RuntimePermission
      * @since 1.2
      */
     public ProtectionDomain getProtectionDomain() {
@@ -4155,6 +4466,13 @@ public final class Class<T> implements java.io.Serializable,
      *
      * @return the nest host of this class or interface
      *
+     * @throws SecurityException
+     *         If the returned class is not the current class, and
+     *         if a security manager, <i>s</i>, is present and the caller's
+     *         class loader is not the same as or an ancestor of the class
+     *         loader for the returned class and invocation of {@link
+     *         SecurityManager#checkPackageAccess s.checkPackageAccess()}
+     *         denies access to the package of the returned class
      * @since 11
      * @jvms 4.7.28 The {@code NestHost} Attribute
      * @jvms 4.7.29 The {@code NestMembers} Attribute
@@ -4238,6 +4556,14 @@ public final class Class<T> implements java.io.Serializable,
      *
      * @return an array of all classes and interfaces in the same nest as
      * this class or interface
+     *
+     * @throws SecurityException
+     * If any returned class is not the current class, and
+     * if a security manager, <i>s</i>, is present and the caller's
+     * class loader is not the same as or an ancestor of the class
+     * loader for that returned class and invocation of {@link
+     * SecurityManager#checkPackageAccess s.checkPackageAccess()}
+     * denies access to the package of that returned class
      *
      * @since 11
      * @see #getNestHost()
@@ -4425,8 +4751,15 @@ public final class Class<T> implements java.io.Serializable,
      * cannot be obtained, it is silently ignored, and not included in the result
      * array.
      *
-     * @return an array of {@code Class} objects of the permitted subclasses of this class
-     *         or interface, or {@code null} if this class or interface is not sealed.
+     * @return an array of {@code Class} objects of the permitted subclasses of this class or interface,
+     *         or {@code null} if this class or interface is not sealed.
+     *
+     * @throws SecurityException
+     *         If a security manager, <i>s</i>, is present and the caller's
+     *         class loader is not the same as or an ancestor of the class
+     *         loader for that returned class and invocation of {@link
+     *         SecurityManager#checkPackageAccess s.checkPackageAccess()}
+     *         denies access to the package of any class in the returned array.
      *
      * @jls 8.1 Class Declarations
      * @jls 9.1 Interface Declarations

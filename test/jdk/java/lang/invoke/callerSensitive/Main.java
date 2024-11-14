@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2021, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -27,7 +27,8 @@
  * @library src
  * @modules java.base/jdk.internal.reflect
  * @build java.base/java.util.CSM csm/*
- * @run main/othervm csm/jdk.test.MethodInvokeTest
+ * @run main/othervm -Djava.security.manager=allow csm/jdk.test.MethodInvokeTest
+ * @run main/othervm -Djava.security.manager=allow csm/jdk.test.MethodInvokeTest sm
  * @summary Test proper caller class is bound to method handle for caller-sensitive method
  */
 public class Main {

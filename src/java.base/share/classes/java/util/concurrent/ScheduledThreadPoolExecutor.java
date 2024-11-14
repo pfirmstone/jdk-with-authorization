@@ -822,6 +822,8 @@ public class ScheduledThreadPoolExecutor
      * ContinueExistingPeriodicTasksAfterShutdownPolicy} has been set
      * {@code true}, future executions of existing periodic tasks will
      * be cancelled.
+     *
+     * @throws SecurityException {@inheritDoc}
      */
     public void shutdown() {
         super.shutdown();
@@ -849,6 +851,7 @@ public class ScheduledThreadPoolExecutor
      *         {@code ScheduledFuture}.  For tasks submitted using
      *         {@link #execute execute}, the element will be a
      *         zero-delay {@code ScheduledFuture}.
+     * @throws SecurityException {@inheritDoc}
      */
     public List<Runnable> shutdownNow() {
         return super.shutdownNow();

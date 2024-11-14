@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2015, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2015, 2016, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -26,6 +26,9 @@ import java.lang.management.LockInfo;
 import java.lang.management.ManagementFactory;
 import java.lang.management.MonitorInfo;
 import java.lang.management.ThreadInfo;
+import java.security.Permission;
+import java.security.Policy;
+import java.security.ProtectionDomain;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicLong;
@@ -45,7 +48,7 @@ import java.util.logging.Logger;
  *       todo: add at randomness
  * @modules java.logging
  *          java.management
- * @run main/othervm TestConfigurationLock
+ * @run main/othervm -Djava.security.manager=allow TestConfigurationLock
  * @author danielfuchs
  */
 // This test is a best effort to try & detect issues. The test itself will run
@@ -88,6 +91,8 @@ public class TestConfigurationLock {
 
 
      /**
+     * This test will run both with and without a security manager.
+     *
      * The test starts a number of threads that will call
      *     LogManager.reset() concurrently (ResetConf), and a number of threads
      *     that will call readConfiguration() (ReadConf), and then starts a
@@ -98,7 +103,11 @@ public class TestConfigurationLock {
      * If after 4secs no deadlock was detected and no exception was thrown
      * then the test is considered a success and passes.
      *
-     * Note that 4sec may not be enough to detect issues if there are some.
+     * This procedure is done twice: once without a security manager and once
+     * again with a security manager - which means the test takes ~8secs to
+     * run.
+     *
+     * Note that 8sec may not be enough to detect issues if there are some.
      * This is a best effort test.
      *
      * @param args the command line arguments
@@ -112,6 +121,21 @@ public class TestConfigurationLock {
             throw new IOException("Can't read config file: " + conf.getAbsolutePath());
         }
         System.setProperty("java.util.logging.config.file", conf.getAbsolutePath());
+        // test without security
+        System.out.println("No security");
+        test();
+
+        // test with security
+        System.out.println("\nWith security");
+        Policy.setPolicy(new Policy() {
+            @Override
+            public boolean implies(ProtectionDomain domain, Permission permission) {
+                if (super.implies(domain, permission)) return true;
+                // System.out.println("Granting " + permission);
+                return true; // all permissions
+            }
+        });
+        System.setSecurityManager(new SecurityManager());
         test();
     }
 

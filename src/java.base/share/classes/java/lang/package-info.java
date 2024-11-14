@@ -53,10 +53,12 @@
  * StringBuilder} similarly provide commonly used operations on
  * character strings.
  *
- * <p>Classes {@link ClassLoader}, {@link Process}, {@link ProcessBuilder},
- * {@link Runtime}, and {@link System} provide "system operations" that
- * manage the dynamic loading of classes, creation of external processes,
- * and host environment inquiries such as the time of day.
+ * <p>Classes {@link ClassLoader}, {@link Process}, {@link
+ * ProcessBuilder}, {@link Runtime}, {@link SecurityManager}, and
+ * {@link System} provide "system operations" that manage the dynamic
+ * loading of classes, creation of external processes, host
+ * environment inquiries such as the time of day, and enforcement of
+ * security policies.
  *
  * <p>Class {@link Throwable} encompasses objects that may be thrown
  * by the {@code throw} statement. Subclasses of {@code Throwable}

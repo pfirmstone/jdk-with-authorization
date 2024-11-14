@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2017, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -61,6 +61,16 @@ public class CharsetProviderBasicTest {
         "US-ASCII", "8859_1", "iso-ir-6", "UTF-16", "windows-1252", "!BAR", "cp1252"
     );
 
+    private static final List MINIMAL_POLICY = List.of(
+        "-Djava.security.manager",
+        "-Djava.security.policy=" + TEST_SRC + File.separator + "default-pol"
+    );
+
+    private static final List CP_POLICY = List.of(
+        "-Djava.security.manager",
+        "-Djava.security.policy=" + TEST_SRC + File.separator + "charsetProvider.sp"
+    );
+
     private static boolean checkSupports(String locale) throws Throwable {
         return ProcessTools.executeProcess("sh", "-c", "LC_ALL=" + locale + " && "
                                            + "locale -a | grep " + locale)
@@ -72,12 +82,16 @@ public class CharsetProviderBasicTest {
     @DataProvider
     public static Iterator<Object[]> testCases() {
         return Stream.of("", "ja_JP.eucJP", "tr_TR")
-                     .map(locale -> new Object[]{locale, "FOO"})
+                     .flatMap(locale -> Stream.of(
+                             new Object[]{locale, List.of(""), "FOO"},
+                             new Object[]{locale, MINIMAL_POLICY, "!FOO"},
+                             new Object[]{locale, CP_POLICY, "FOO"}
+                     ))
                      .iterator();
     }
 
     @Test(dataProvider = "testCases")
-    public void testDefaultCharset(String locale, String css) throws Throwable {
+    public void testDefaultCharset(String locale, List opts, String css) throws Throwable {
         if ((System.getProperty("os.name").startsWith("Windows") || !checkSupports(locale))
                 && (!locale.isEmpty())) {
             System.out.println(locale + ": Locale not supported, skipping...");
@@ -89,6 +103,7 @@ public class CharsetProviderBasicTest {
         args.addAll(asList(Utils.getTestJavaOpts()));
         args.add("-cp");
         args.add(System.getProperty("test.class.path") + File.pathSeparator + "test.jar");
+        args.addAll(opts);
         args.add(CharsetTest.class.getName());
         args.addAll(DEFAULT_CSS);
         args.add(css);

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2005, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2005, 2018, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -26,22 +26,14 @@
  * @key headful
  * @bug 6240507 6662642
  * @summary verify that isFullScreenSupported and getFullScreenWindow work
- * correctly. Note that the test may fail on older Gnome versions (see bug 6500686).
- * @run main FSFrame
- * @run main/othervm -Dsun.java2d.noddraw=true FSFrame
+ * correctly with and without a SecurityManager. Note that the test may fail
+ * on older Gnome versions (see bug 6500686).
+ * @run main/othervm -Djava.security.manager=allow FSFrame
+ * @run main/othervm -Djava.security.manager=allow -Dsun.java2d.noddraw=true FSFrame
  */
 
-import java.awt.Color;
-import java.awt.EventQueue;
-import java.awt.Frame;
-import java.awt.Graphics;
-import java.awt.GraphicsConfiguration;
-import java.awt.GraphicsDevice;
-import java.awt.Insets;
-import java.awt.Rectangle;
-import java.awt.Robot;
-import java.awt.Toolkit;
-import java.awt.image.BufferedImage;
+import java.awt.*;
+import java.awt.image.*;
 import java.io.File;
 import java.io.IOException;
 import java.lang.reflect.InvocationTargetException;
@@ -129,8 +121,12 @@ public class FSFrame extends Frame implements Runnable {
         }
     }
 
-    void checkFSFunctionality() {
+    void checkFSFunctionality(boolean withSecurity) {
         GraphicsDevice gd = getGraphicsConfiguration().getDevice();
+        if (withSecurity) {
+            SecurityManager sm = new SecurityManager();
+            System.setSecurityManager(sm);
+        }
         try {
             // None of these should throw an exception
             final boolean fs = gd.isFullScreenSupported();
@@ -141,16 +137,20 @@ public class FSFrame extends Frame implements Runnable {
                 // properly
                 Thread.sleep(2000);
             } catch (Exception e) {}
+            if (!withSecurity) {
                 // See if FS window got displayed correctly
-            try {
-                EventQueue.invokeAndWait(new Runnable() {
-                    public void run() {
-                        repaint();
-                        checkFSDisplay(fs);
-                    }
-                });
-            } catch (InvocationTargetException | InterruptedException ex) {
-                ex.printStackTrace();
+                try {
+                    EventQueue.invokeAndWait(new Runnable() {
+                        public void run() {
+                            repaint();
+                            checkFSDisplay(fs);
+                        }
+                    });
+                } catch (InvocationTargetException ex) {
+                    ex.printStackTrace();
+                } catch (InterruptedException ex) {
+                    ex.printStackTrace();
+                }
             }
             // reset window
             gd.setFullScreenWindow(null);
@@ -170,7 +170,8 @@ public class FSFrame extends Frame implements Runnable {
         boolean firstTime = true;
         while (!done) {
             if (visible) {
-                checkFSFunctionality();
+                checkFSFunctionality(false);
+                checkFSFunctionality(true);
                 done = true;
             } else {
                 // sleep while we wait

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2016, 2018, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -23,12 +23,14 @@
 
 import java.io.PrintWriter;
 import java.io.StringWriter;
+import java.security.AccessControlException;
 import java.util.spi.ToolProvider;
 
 /*
  * @test
  * @modules jdk.jlink
- * @run main JLinkToolProviderTest
+ * @build JLinkToolProviderTest
+ * @run main/othervm/java.security.policy=toolprovider.policy JLinkToolProviderTest
  */
 public class JLinkToolProviderTest {
     static final ToolProvider JLINK_TOOL = ToolProvider.findFirst("jlink")
@@ -39,7 +41,15 @@ public class JLinkToolProviderTest {
     private static void checkJlinkOptions(String... options) {
         StringWriter writer = new StringWriter();
         PrintWriter pw = new PrintWriter(writer);
-        JLINK_TOOL.run(pw, pw, options);
+
+        try {
+            JLINK_TOOL.run(pw, pw, options);
+            throw new AssertionError("SecurityException should have been thrown!");
+        } catch (AccessControlException ace) {
+            if (! ace.getPermission().getClass().getName().contains("JlinkPermission")) {
+                throw new AssertionError("expected JlinkPermission check failure");
+            }
+        }
     }
 
     public static void main(String[] args) throws Exception {

@@ -67,6 +67,7 @@ public class ForkJoinPool9Test extends JSR166TestCase {
             MethodHandles.privateLookupIn(Thread.class, MethodHandles.lookup())
             .findVarHandle(Thread.class, "contextClassLoader", ClassLoader.class);
         ClassLoader systemClassLoader = ClassLoader.getSystemClassLoader();
+        boolean haveSecurityManager = (System.getSecurityManager() != null);
         CountDownLatch runInCommonPoolStarted = new CountDownLatch(1);
         ClassLoader classLoaderDistinctFromSystemClassLoader
             = ClassLoader.getPlatformClassLoader();
@@ -91,9 +92,22 @@ public class ForkJoinPool9Test extends JSR166TestCase {
                       (ClassLoader) CCL.get(currentThread))
             .forEach(cl -> assertTrue(cl == systemClassLoader || cl == null));
 
-            currentThread.setContextClassLoader(classLoaderDistinctFromSystemClassLoader);
-            assertSame(currentThread.getContextClassLoader(), classLoaderDistinctFromSystemClassLoader);
-            currentThread.setContextClassLoader(preexistingContextClassLoader);
+            if (haveSecurityManager)
+                assertThrows(
+                    SecurityException.class,
+                    () -> System.getProperty("foo"),
+                    () -> currentThread.setContextClassLoader(
+                        classLoaderDistinctFromSystemClassLoader));
+            else {
+                currentThread.setContextClassLoader(classLoaderDistinctFromSystemClassLoader);
+                assertSame(currentThread.getContextClassLoader(), classLoaderDistinctFromSystemClassLoader);
+                currentThread.setContextClassLoader(preexistingContextClassLoader);
+            }
+            // TODO ?
+//          if (haveSecurityManager
+//              && Thread.currentThread().getClass().getSimpleName()
+//                 .equals("InnocuousForkJoinWorkerThread"))
+//              assertThrows(SecurityException.class, /* ?? */);
         };
         Future<?> f = ForkJoinPool.commonPool().submit(runInCommonPool);
         // Ensure runInCommonPool is truly running in the common pool,

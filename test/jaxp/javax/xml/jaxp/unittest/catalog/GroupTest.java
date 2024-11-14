@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2019, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -31,6 +31,7 @@ import javax.xml.transform.Source;
 import org.testng.Assert;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.DataProvider;
+import org.testng.annotations.Listeners;
 import org.testng.annotations.Test;
 
 /*
@@ -40,6 +41,7 @@ import org.testng.annotations.Test;
  * @run testng catalog.GroupTest
  * @summary Tests catalog with Group entries.
  */
+@Listeners({jaxp.library.FilePolicy.class})
 public class GroupTest extends CatalogSupportBase {
 
     String catalogGroup;

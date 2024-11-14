@@ -103,6 +103,9 @@ public class FileOutputStream extends OutputStream
      * A new {@code FileDescriptor} object is
      * created to represent this file connection.
      * <p>
+     * First, if there is a security manager, its {@code checkWrite}
+     * method is called with {@code name} as its argument.
+     * <p>
      * If the file exists but is a directory rather than a regular file, does
      * not exist but cannot be created, or cannot be opened for any other
      * reason then a {@code FileNotFoundException} is thrown.
@@ -115,6 +118,10 @@ public class FileOutputStream extends OutputStream
      * @throws     FileNotFoundException  if the file exists but is a directory
      *                   rather than a regular file, does not exist but cannot
      *                   be created, or cannot be opened for any other reason
+     * @throws     SecurityException  if a security manager exists and its
+     *               {@code checkWrite} method denies write access
+     *               to the file.
+     * @see        java.lang.SecurityManager#checkWrite(java.lang.String)
      */
     public FileOutputStream(String name) throws FileNotFoundException {
         this(name != null ? new File(name) : null, false);
@@ -130,6 +137,9 @@ public class FileOutputStream extends OutputStream
      * A new {@code FileDescriptor} object is created to represent this
      * file connection.
      * <p>
+     * First, if there is a security manager, its {@code checkWrite}
+     * method is called with {@code name} as its argument.
+     * <p>
      * If the file exists but is a directory rather than a regular file, does
      * not exist but cannot be created, or cannot be opened for any other
      * reason then a {@code FileNotFoundException} is thrown.
@@ -140,6 +150,10 @@ public class FileOutputStream extends OutputStream
      * @throws     FileNotFoundException  if the file exists but is a directory
      *                   rather than a regular file, does not exist but cannot
      *                   be created, or cannot be opened for any other reason.
+     * @throws     SecurityException  if a security manager exists and its
+     *               {@code checkWrite} method denies write access
+     *               to the file.
+     * @see        java.lang.SecurityManager#checkWrite(java.lang.String)
      * @since     1.1
      */
     public FileOutputStream(String name, boolean append)
@@ -157,6 +171,10 @@ public class FileOutputStream extends OutputStream
      * A new {@code FileDescriptor} object is
      * created to represent this file connection.
      * <p>
+     * First, if there is a security manager, its {@code checkWrite}
+     * method is called with the path represented by the {@code file}
+     * argument as its argument.
+     * <p>
      * If the file exists but is a directory rather than a regular file, does
      * not exist but cannot be created, or cannot be opened for any other
      * reason then a {@code FileNotFoundException} is thrown.
@@ -165,7 +183,12 @@ public class FileOutputStream extends OutputStream
      * @throws     FileNotFoundException  if the file exists but is a directory
      *                   rather than a regular file, does not exist but cannot
      *                   be created, or cannot be opened for any other reason
+     * @throws     SecurityException  if a security manager exists and its
+     *               {@code checkWrite} method denies write access
+     *               to the file.
      * @see        java.io.File#getPath()
+     * @see        java.lang.SecurityException
+     * @see        java.lang.SecurityManager#checkWrite(java.lang.String)
      */
     public FileOutputStream(File file) throws FileNotFoundException {
         this(file, false);
@@ -182,6 +205,10 @@ public class FileOutputStream extends OutputStream
      * A new {@code FileDescriptor} object is created to represent this
      * file connection.
      * <p>
+     * First, if there is a security manager, its {@code checkWrite}
+     * method is called with the path represented by the {@code file}
+     * argument as its argument.
+     * <p>
      * If the file exists but is a directory rather than a regular file, does
      * not exist but cannot be created, or cannot be opened for any other
      * reason then a {@code FileNotFoundException} is thrown.
@@ -192,7 +219,12 @@ public class FileOutputStream extends OutputStream
      * @throws     FileNotFoundException  if the file exists but is a directory
      *                   rather than a regular file, does not exist but cannot
      *                   be created, or cannot be opened for any other reason
+     * @throws     SecurityException  if a security manager exists and its
+     *               {@code checkWrite} method denies write access
+     *               to the file.
      * @see        java.io.File#getPath()
+     * @see        java.lang.SecurityException
+     * @see        java.lang.SecurityManager#checkWrite(java.lang.String)
      * @since 1.4
      */
     @SuppressWarnings("this-escape")
@@ -224,6 +256,10 @@ public class FileOutputStream extends OutputStream
      * descriptor, which represents an existing connection to an actual
      * file in the file system.
      * <p>
+     * First, if there is a security manager, its {@code checkWrite}
+     * method is called with the file descriptor {@code fdObj}
+     * argument as its argument.
+     * <p>
      * If {@code fdObj} is null then a {@code NullPointerException}
      * is thrown.
      * <p>
@@ -233,6 +269,10 @@ public class FileOutputStream extends OutputStream
      * I/O on the stream, an {@code IOException} is thrown.
      *
      * @param      fdObj   the file descriptor to be opened for writing
+     * @throws     SecurityException  if a security manager exists and its
+     *               {@code checkWrite} method denies
+     *               write access to the file descriptor
+     * @see        java.lang.SecurityManager#checkWrite(java.io.FileDescriptor)
      */
     @SuppressWarnings("this-escape")
     public FileOutputStream(FileDescriptor fdObj) {

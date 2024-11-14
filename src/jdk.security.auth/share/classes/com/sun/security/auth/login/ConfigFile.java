@@ -135,6 +135,9 @@ public class ConfigFile extends Configuration {
     /**
      * Refresh and reload the {@code Configuration} by re-reading all of the
      * login configurations.
+     *
+     * @throws SecurityException if the caller does not have permission
+     *                           to refresh the {@code Configuration}
      */
     @Override
     public void refresh() {

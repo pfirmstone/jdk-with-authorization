@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2003, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2003, 2019, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -429,6 +429,10 @@ public interface MemoryPoolMXBean extends PlatformManagedObject {
     /**
      * Resets the peak memory usage statistic of this memory pool
      * to the current memory usage.
+     *
+     * @throws java.lang.SecurityException if a security manager
+     *         exists and the caller does not have
+     *         ManagementPermission("control").
      */
     public void resetPeakUsage();
 
@@ -483,6 +487,10 @@ public interface MemoryPoolMXBean extends PlatformManagedObject {
      *
      * @throws UnsupportedOperationException if this memory pool
      *         does not support a usage threshold.
+     *
+     * @throws java.lang.SecurityException if a security manager
+     *         exists and the caller does not have
+     *         ManagementPermission("control").
      *
      * @see #isUsageThresholdSupported
      * @see <a href="#UsageThreshold">Usage threshold</a>
@@ -558,6 +566,10 @@ public interface MemoryPoolMXBean extends PlatformManagedObject {
      *
      * @throws UnsupportedOperationException if this memory pool
      *         does not support a collection usage threshold.
+     *
+     * @throws java.lang.SecurityException if a security manager
+     *         exists and the caller does not have
+     *         ManagementPermission("control").
      *
      * @see #isCollectionUsageThresholdSupported
      * @see <a href="#CollectionThreshold">Collection usage threshold</a>

@@ -33,7 +33,7 @@
  *    . 'list' lists the token aliases
  *    . 'basic' does not run with activcard,
  * @library /test/lib ..
- * @run testng/othervm Basic
+ * @run testng/othervm -Djava.security.manager=allow Basic
  */
 
 import java.io.*;
@@ -114,8 +114,9 @@ public class Basic extends PKCS11Test {
 
     @Test
     public void testBasic() throws Exception {
+        String[] args = {"sm", "Basic.policy"};
         try {
-            main(new Basic(), new String[0]);
+            main(new Basic(), args);
         } catch (SkippedException se) {
             throw new SkipException("One or more tests are skipped");
         }

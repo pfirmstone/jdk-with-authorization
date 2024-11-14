@@ -39,6 +39,10 @@ public interface ExtendedGSSContext extends GSSContext {
     /**
      * Return the mechanism-specific attribute associated with {@code type}.
      * <p>
+     * If there is a security manager, an {@link InquireSecContextPermission}
+     * with the name {@code type.mech} must be granted. Otherwise, this could
+     * result in a {@link SecurityException}.
+     * <p>
      * Example:
      * <pre>
      *      GSSContext ctxt = m.createContext(...)
@@ -66,6 +70,9 @@ public interface ExtendedGSSContext extends GSSContext {
      *   security context is invalid,
      *   {@link GSSException#FAILURE GSSException.FAILURE} for other
      *   unspecified failures.
+     * @throws SecurityException if a security manager exists and a proper
+     *   {@link InquireSecContextPermission} is not granted.
+     * @see InquireSecContextPermission
      * @see InquireType
      */
     public Object inquireSecContext(InquireType type)

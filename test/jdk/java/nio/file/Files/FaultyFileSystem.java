@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2013, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -214,6 +214,10 @@ class FaultyFileSystem extends FileSystem {
                 return;
             }
 
+            if (filename.equals("SecurityException")) {
+                throw new SecurityException("FaultyFS", new FaultyException());
+            }
+
             if (filename.equals("IOException")) {
                 throw new FaultyException();
             }
@@ -398,6 +402,10 @@ class FaultyFileSystem extends FileSystem {
                                     triggerEx(next, "DirectoryIteratorException");
                                 } catch (IOException ioe) {
                                     throw new DirectoryIteratorException(ioe);
+                                } catch (SecurityException se) {
+                                    // ??? Does DS throw SecurityException during iteration?
+                                    next = null;
+                                    return hasNext();
                                 }
                             }
                             return (next != null);

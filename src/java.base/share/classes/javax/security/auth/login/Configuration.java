@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 1998, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 1998, 2022, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -217,6 +217,9 @@ public abstract class Configuration {
      *          then that object is returned.  Otherwise, a default
      *          Configuration object is returned.
      *
+     * @exception SecurityException if the caller does not have permission
+     *                          to retrieve the Configuration.
+     *
      * @see #setConfiguration
      */
     @SuppressWarnings("removal")
@@ -288,6 +291,9 @@ public abstract class Configuration {
      *
      * @param configuration the new {@code Configuration}
      *
+     * @exception SecurityException if the current thread does not have
+     *                  Permission to set the {@code Configuration}.
+     *
      * @see #getConfiguration
      */
     public static void setConfiguration(Configuration configuration) {
@@ -336,6 +342,9 @@ public abstract class Configuration {
      *         {@code ConfigurationSpi} implementation for the specified type
      *
      * @throws NullPointerException if {@code type} is {@code null}
+     *
+     * @throws SecurityException if the caller does not have permission
+     *         to get a {@code Configuration} instance for the specified type
      *
      * @see Provider
      *
@@ -399,6 +408,9 @@ public abstract class Configuration {
      *
      * @throws NullPointerException if {@code type} is {@code null}
      *
+     * @throws SecurityException if the caller does not have permission
+     *         to get a {@code Configuration} instance for the specified type
+     *
      * @see Provider
      * @since 1.6
      */
@@ -459,6 +471,9 @@ public abstract class Configuration {
      *         for the specified type
      *
      * @throws NullPointerException if {@code type} is {@code null}
+     *
+     * @throws SecurityException if the caller does not have permission
+     *         to get a {@code Configuration} instance for the specified type
      *
      * @see Provider
      * @since 1.6
@@ -568,6 +583,9 @@ public abstract class Configuration {
      * <p> The default implementation of this method does nothing.
      * This method should be overridden if a refresh operation is supported
      * by the implementation.
+     *
+     * @exception SecurityException if the caller does not have permission
+     *                          to refresh its Configuration.
      */
     public void refresh() { }
 

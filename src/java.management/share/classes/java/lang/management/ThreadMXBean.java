@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2003, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2003, 2023, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -169,6 +169,10 @@ public interface ThreadMXBean extends PlatformManagedObject {
      * may have been terminated when this method returns.
      *
      * @return an array of {@code long}, each is a thread ID.
+     *
+     * @throws SecurityException if a security manager
+     *         exists and the caller does not have
+     *         ManagementPermission("monitor").
      */
     public long[] getAllThreadIds();
 
@@ -205,6 +209,9 @@ public interface ThreadMXBean extends PlatformManagedObject {
      * is not alive, or it does not exist.
      *
      * @throws IllegalArgumentException if {@code id <= 0}.
+     * @throws SecurityException if a security manager
+     *         exists and the caller does not have
+     *         ManagementPermission("monitor").
      */
     public ThreadInfo getThreadInfo(long id);
 
@@ -240,6 +247,9 @@ public interface ThreadMXBean extends PlatformManagedObject {
      *
      * @throws IllegalArgumentException if any element in the input array
      *         {@code ids} is {@code <= 0}.
+     * @throws SecurityException if a security manager
+     *         exists and the caller does not have
+     *         ManagementPermission("monitor").
      */
     public ThreadInfo[] getThreadInfo(long[] ids);
 
@@ -284,6 +294,10 @@ public interface ThreadMXBean extends PlatformManagedObject {
      *
      * @throws IllegalArgumentException if {@code id <= 0}.
      * @throws IllegalArgumentException if {@code maxDepth is negative}.
+     * @throws SecurityException if a security manager
+     *         exists and the caller does not have
+     *         ManagementPermission("monitor").
+     *
      */
     public ThreadInfo getThreadInfo(long id, int maxDepth);
 
@@ -333,6 +347,10 @@ public interface ThreadMXBean extends PlatformManagedObject {
      * @throws IllegalArgumentException if {@code maxDepth is negative}.
      * @throws IllegalArgumentException if any element in the input array
      *      {@code ids} is {@code <= 0}.
+     * @throws SecurityException if a security manager
+     *         exists and the caller does not have
+     *         ManagementPermission("monitor").
+     *
      */
     public ThreadInfo[] getThreadInfo(long[] ids, int maxDepth);
 
@@ -368,6 +386,10 @@ public interface ThreadMXBean extends PlatformManagedObject {
      *
      * @throws UnsupportedOperationException if the Java
      * virtual machine does not support thread contention monitoring.
+     *
+     * @throws SecurityException if a security manager
+     *         exists and the caller does not have
+     *         ManagementPermission("control").
      *
      * @see #isThreadContentionMonitoringSupported
      */
@@ -560,6 +582,10 @@ public interface ThreadMXBean extends PlatformManagedObject {
      * virtual machine does not support CPU time measurement for
      * any threads nor for the current thread.
      *
+     * @throws SecurityException if a security manager
+     *         exists and the caller does not have
+     *         ManagementPermission("control").
+     *
      * @see #isThreadCpuTimeSupported
      * @see #isCurrentThreadCpuTimeSupported
      */
@@ -592,6 +618,10 @@ public interface ThreadMXBean extends PlatformManagedObject {
      * @return an array of IDs of the platform threads that are monitor
      * deadlocked, if any; {@code null} otherwise.
      *
+     * @throws SecurityException if a security manager
+     *         exists and the caller does not have
+     *         ManagementPermission("monitor").
+     *
      * @see #findDeadlockedThreads
      */
     public long[] findMonitorDeadlockedThreads();
@@ -599,6 +629,10 @@ public interface ThreadMXBean extends PlatformManagedObject {
     /**
      * Resets the peak thread count to the current number of
      * live platform threads.
+     *
+     * @throws SecurityException if a security manager
+     *         exists and the caller does not have
+     *         ManagementPermission("control").
      *
      * @see #getPeakThreadCount
      * @see #getThreadCount
@@ -621,6 +655,9 @@ public interface ThreadMXBean extends PlatformManagedObject {
      * deadlocked waiting for object monitors or ownable synchronizers, if any;
      * {@code null} otherwise.
      *
+     * @throws SecurityException if a security manager
+     *         exists and the caller does not have
+     *         ManagementPermission("monitor").
      * @throws UnsupportedOperationException if the Java virtual
      * machine does not support monitoring of ownable synchronizer usage.
      *
@@ -680,6 +717,9 @@ public interface ThreadMXBean extends PlatformManagedObject {
      * information about a thread whose ID is in the corresponding
      * element of the input array of IDs.
      *
+     * @throws SecurityException if a security manager
+     *         exists and the caller does not have
+     *         ManagementPermission("monitor").
      * @throws UnsupportedOperationException
      *         <ul>
      *           <li>if {@code lockedMonitors} is {@code true} but
@@ -767,6 +807,9 @@ public interface ThreadMXBean extends PlatformManagedObject {
      * element of the input array of IDs.
      *
      * @throws IllegalArgumentException if {@code maxDepth} is negative.
+     * @throws SecurityException if a security manager
+     *         exists and the caller does not have
+     *         ManagementPermission("monitor").
      * @throws UnsupportedOperationException
      *         <ul>
      *           <li>if {@code lockedMonitors} is {@code true} but
@@ -806,6 +849,9 @@ public interface ThreadMXBean extends PlatformManagedObject {
      *
      * @return an array of {@link ThreadInfo} for all live platform threads.
      *
+     * @throws SecurityException if a security manager
+     *         exists and the caller does not have
+     *         ManagementPermission("monitor").
      * @throws UnsupportedOperationException
      *         <ul>
      *           <li>if {@code lockedMonitors} is {@code true} but
@@ -853,6 +899,9 @@ public interface ThreadMXBean extends PlatformManagedObject {
      * @return an array of {@link ThreadInfo} for all live platform threads.
      *
      * @throws IllegalArgumentException if {@code maxDepth} is negative.
+     * @throws SecurityException if a security manager
+     *         exists and the caller does not have
+     *         ManagementPermission("monitor").
      * @throws UnsupportedOperationException
      *         <ul>
      *           <li>if {@code lockedMonitors} is {@code true} but

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 1999, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 1999, 2016, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -23,14 +23,19 @@
 
 package javax.xml.parsers.ptests;
 
+import static javax.xml.parsers.ptests.ParserTestConst.XML_DIR;
+import static jaxp.library.JAXPTestUtilities.tryRunWithTmpPermission;
+
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.util.PropertyPermission;
+
 import javax.xml.parsers.SAXParser;
 import javax.xml.parsers.SAXParserFactory;
-import static javax.xml.parsers.ptests.ParserTestConst.XML_DIR;
+
 import org.testng.annotations.DataProvider;
+import org.testng.annotations.Listeners;
 import org.testng.annotations.Test;
 import org.xml.sax.HandlerBase;
 import org.xml.sax.InputSource;
@@ -43,8 +48,10 @@ import org.xml.sax.helpers.DefaultHandler;
 /*
  * @test
  * @library /javax/xml/jaxp/libs
+ * @run testng/othervm -DrunSecMngr=true -Djava.security.manager=allow javax.xml.parsers.ptests.SAXParserTest
  * @run testng/othervm javax.xml.parsers.ptests.SAXParserTest
  */
+@Listeners({jaxp.library.FilePolicy.class})
 public class SAXParserTest {
     /**
      * Provide SAXParser.
@@ -122,7 +129,7 @@ public class SAXParserTest {
      */
     @Test(expectedExceptions = SAXException.class, dataProvider = "parser-provider")
     public void testParse05(SAXParser saxparser) throws Exception {
-        saxparser.parse(new File(""), new HandlerBase());
+        tryRunWithTmpPermission(() -> saxparser.parse(new File(""), new HandlerBase()), new PropertyPermission("user.dir", "read"));
     }
 
     /**
@@ -191,7 +198,7 @@ public class SAXParserTest {
     @Test(expectedExceptions = SAXException.class, dataProvider = "parser-provider")
     public void testParse10(SAXParser saxparser) throws Exception {
         File file = new File("");
-        saxparser.parse(file, new DefaultHandler());
+        tryRunWithTmpPermission(() -> saxparser.parse(file, new DefaultHandler()), new PropertyPermission("user.dir", "read"));
     }
 
     /**

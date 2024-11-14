@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2016, 2021, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -30,12 +30,8 @@ import java.lang.invoke.MethodHandles.Lookup;
 import java.util.Objects;
 
 /**
- * Encapsulates a {@code MethodHandles.Lookup} object.
- *
- * @apiNote
- * SecureLookupSupplier provided a way in older JDK releases to guard access to
- * a {@code MethodHandles.Lookup} object when running with a security manager set.
- *
+ * Provides security-checked access to a {@code MethodHandles.Lookup} object.
+ * See {@link #getLookup()} for details.
  * @since 9
  */
 public class SecureLookupSupplier {
@@ -50,7 +46,7 @@ public class SecureLookupSupplier {
     private final MethodHandles.Lookup lookup;
 
     /**
-     * Creates a new secure lookup supplier for the given lookup.
+     * Creates a new secure lookup supplier, securing the passed lookup.
      * @param lookup the lookup to secure. Can not be null.
      * @throws NullPointerException if null is passed.
      */
@@ -61,6 +57,9 @@ public class SecureLookupSupplier {
     /**
      * Returns the lookup secured by this {@code SecureLookupSupplier}.
      * @return the lookup secured by this {@code SecureLookupSupplier}.
+     * @throws SecurityException if the secured lookup isn't the
+     * {@link MethodHandles#publicLookup()}, and a security manager is present,
+     * and a check for {@code RuntimePermission("dynalink.getLookup")} fails.
      */
     public final Lookup getLookup() {
         @SuppressWarnings("removal")
@@ -72,7 +71,8 @@ public class SecureLookupSupplier {
     }
 
     /**
-     * Returns the lookup secured by this {@code SecureLookupSupplier}.
+     * Returns the value of {@link #getLookup()} without a security check. Can
+     * be used by subclasses to access the lookup quickly.
      * @return same as returned value of {@link #getLookup()}.
      */
     protected final Lookup getLookupPrivileged() {

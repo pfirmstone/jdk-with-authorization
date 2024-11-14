@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2013, 2019, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -36,6 +36,7 @@ import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.nio.file.attribute.PosixFilePermission;
 import java.util.Arrays;
+import java.util.PropertyPermission;
 import java.util.Set;
 
 import jdk.test.lib.Asserts;
@@ -43,6 +44,8 @@ import jdk.test.lib.Platform;
 import jdk.test.lib.process.Proc;
 import org.ietf.jgss.Oid;
 import sun.security.krb5.Config;
+
+import javax.security.auth.PrivateCredentialPermission;
 
 /**
  * Run this test automatically and test Java GSS with embedded KDC.
@@ -214,8 +217,18 @@ public class BasicProc {
 
         Proc pc = proc(lc)
                 .args("client", lc == null ? "j" : "n")
+                .perm(new javax.security.auth.kerberos.ServicePermission(
+                        "krbtgt/" + REALM + "@" + REALM, "initiate"))
+                .perm(new javax.security.auth.kerberos.ServicePermission(
+                        SERVER + "@" + REALM, "initiate"))
+                .perm(new javax.security.auth.kerberos.DelegationPermission(
+                        "\"" + SERVER + "@" + REALM + "\" " +
+                                "\"krbtgt/" + REALM + "@" + REALM + "\""))
                 .debug(label + "-C");
-        if (lc != null) {
+        if (lc == null) {
+            // for Krb5LoginModule::promptForName
+            pc.perm(new PropertyPermission("user.name", "read"));
+        } else {
             Files.copy(Paths.get("base.ccache"), Paths.get(label + ".ccache"));
             if (!Platform.isWindows()) {
                 Files.setPosixFilePermissions(Paths.get(label + ".ccache"),
@@ -230,16 +243,30 @@ public class BasicProc {
 
         Proc ps = proc(ls)
                 .args("server", ls == null ? "j" : "n")
+                .perm(new javax.security.auth.kerberos.ServicePermission(
+                        SERVER + "@" + REALM, "accept"))
+                .perm(new javax.security.auth.kerberos.ServicePermission(
+                        BACKEND + "@" + REALM, "initiate"))
                 .debug(label + "-S");
-        if (ls != null) {
+        if (ls == null) {
+            ps.perm(new PrivateCredentialPermission(
+                    "javax.security.auth.kerberos.KeyTab * \"*\"", "read"))
+                .perm(new java.io.FilePermission(KTAB_S, "read"));
+        } else {
             ps.env("KRB5_KTNAME", KTAB_S);
         }
         ps.start();
 
         Proc pb = proc(lb)
                 .args("backend", lb == null ? "j" : "n")
+                .perm(new javax.security.auth.kerberos.ServicePermission(
+                        BACKEND + "@" + REALM, "accept"))
                 .debug(label + "-B");
-        if (lb != null) {
+        if (lb == null) {
+            pb.perm(new PrivateCredentialPermission(
+                    "javax.security.auth.kerberos.KeyTab * \"*\"", "read"))
+                .perm(new java.io.FilePermission(KTAB_B, "read"));
+        } else {
             pb.env("KRB5_KTNAME", KTAB_B);
         }
         pb.start();
@@ -269,7 +296,9 @@ public class BasicProc {
      */
     private static Proc proc(String lib) throws Exception {
         Proc p = Proc.create("BasicProc")
-                .inheritProp("jdk.net.hosts.file");
+                .inheritProp("jdk.net.hosts.file")
+                .prop("java.security.manager", "")
+                .perm(new javax.security.auth.AuthPermission("doAs"));
         if (lib != null) {
             p.env("KRB5_CONFIG", CONF)
                     .env("KRB5_TRACE", Platform.isWindows() ? "CON" : "/dev/stderr")
@@ -282,7 +311,14 @@ public class BasicProc {
                 p.env(Platform.sharedLibraryPathVariableName(), lib.substring(0, pos));
             }
         } else {
-            p.prop("sun.security.krb5.debug", "true")
+            p.perm(new java.util.PropertyPermission(
+                            "sun.security.krb5.principal", "read"))
+                            // For Krb5LoginModule::login.
+                    .perm(new javax.security.auth.AuthPermission(
+                            "modifyPrincipals"))
+                    .perm(new javax.security.auth.AuthPermission(
+                            "modifyPrivateCredentials"))
+                    .prop("sun.security.krb5.debug", "true")
                     .prop("java.security.krb5.conf", CONF);
         }
         return p;

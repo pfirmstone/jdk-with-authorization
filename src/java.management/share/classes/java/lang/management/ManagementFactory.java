@@ -465,6 +465,10 @@ public class ManagementFactory {
      *         MXBeans are registered into the platform {@code MBeanServer}
      *         at the first time this method is called.
      *
+     * @throws SecurityException if there is a security manager
+     * and the caller does not have the permission required by
+     * {@link javax.management.MBeanServerFactory#createMBeanServer}.
+     *
      * @see javax.management.MBeanServerFactory
      * @see javax.management.MBeanServerFactory#createMBeanServer
      */

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 1995, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 1995, 2020, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -25,12 +25,9 @@
 package java.lang;
 
 /**
- * Thrown to indicate a security violation.
+ * Thrown by the security manager to indicate a security violation.
  *
- * <p> This exception was originally specified for use with a SecurityManager when
- * an operation was denied. This feature no longer exists. This exception may be
- * deprecated in a future release.
- *
+ * @see     java.lang.SecurityManager
  * @since   1.0
  */
 public class SecurityException extends RuntimeException {

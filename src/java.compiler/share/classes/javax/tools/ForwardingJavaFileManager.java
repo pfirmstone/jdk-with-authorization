@@ -60,6 +60,7 @@ public class ForwardingJavaFileManager<M extends JavaFileManager> implements Jav
     }
 
     /**
+     * @throws SecurityException {@inheritDoc}
      * @throws IllegalStateException {@inheritDoc}
      */
     @Override

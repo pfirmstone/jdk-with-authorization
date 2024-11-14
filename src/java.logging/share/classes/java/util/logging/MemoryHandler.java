@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2000, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2000, 2023, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -253,9 +253,12 @@ public class MemoryHandler extends Handler {
     /**
      * Close the {@code Handler} and free all associated resources.
      * This will also close the target {@code Handler}.
+     *
+     * @throws  SecurityException  if a security manager exists and if
+     *             the caller does not have {@code LoggingPermission("control")}.
      */
     @Override
-    public void close() {
+    public void close() throws SecurityException {
         target.close();
         setLevel(Level.OFF);
     }
@@ -266,8 +269,10 @@ public class MemoryHandler extends Handler {
      * the {@code pushLevel}, then {@code push} will be called.
      *
      * @param newLevel the new value of the {@code pushLevel}
+     * @throws  SecurityException  if a security manager exists and if
+     *             the caller does not have {@code LoggingPermission("control")}.
      */
-    public void setPushLevel(Level newLevel) {
+    public void setPushLevel(Level newLevel) throws SecurityException {
         if (tryUseLock()) {
             try {
                 setPushLevel0(newLevel);

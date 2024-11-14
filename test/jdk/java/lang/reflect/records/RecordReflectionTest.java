@@ -28,6 +28,7 @@
  * @build R10
  * @compile RecordReflectionTest.java
  * @run testng/othervm RecordReflectionTest
+ * @run testng/othervm/java.security.policy=allPermissions.policy RecordReflectionTest
  */
 
 import java.lang.annotation.*;

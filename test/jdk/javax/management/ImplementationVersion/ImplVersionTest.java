@@ -25,7 +25,9 @@
  * @test
  * @bug 4842196
  * @summary Test that there is no difference between the JMX version and the
- * JDK version.
+ * JDK version when the application is run with a security manager and the
+ * test codebase has the java permission to read the "java.runtime.version"
+ * system property.
  * @author Luis-Miguel Alventosa
  *
  * @library /test/lib
@@ -51,6 +53,8 @@ public class ImplVersionTest {
         // Get boot class path
         //
         String[] command = new String[] {
+            "-Djava.security.manager",
+            "-Djava.security.policy==" + testSrc + File.separator + "policy",
             "-Dtest.classes=" + testClasses,
             "ImplVersionCommand",
             System.getProperty("java.runtime.version")

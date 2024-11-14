@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 1997, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 1997, 2023, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -34,11 +34,8 @@ import java.util.function.Function;
 
 /**
  * This class extends {@code ClassLoader} with additional support for defining
- * classes with an associated code source and permissions.
- *
- * @apiNote
- * Permissions cannot be used for controlling access to resources
- * as the Security Manager is no longer supported.
+ * classes with an associated code source and permissions which are
+ * retrieved by the system policy by default.
  *
  * @author  Li Gong
  * @author  Roland Schemers
@@ -66,7 +63,15 @@ public class SecureClassLoader extends ClassLoader {
      * Creates a new {@code SecureClassLoader} using the specified parent
      * class loader for delegation.
      *
+     * <p>If there is a security manager, this method first
+     * calls the security manager's {@code checkCreateClassLoader}
+     * method  to ensure creation of a class loader is allowed.
+     *
      * @param parent the parent ClassLoader
+     * @throws     SecurityException  if a security manager exists and its
+     *             {@code checkCreateClassLoader} method doesn't allow
+     *             creation of a class loader.
+     * @see SecurityManager#checkCreateClassLoader
      */
     protected SecureClassLoader(ClassLoader parent) {
         super(parent);
@@ -75,6 +80,15 @@ public class SecureClassLoader extends ClassLoader {
     /**
      * Creates a new {@code SecureClassLoader} using the default parent class
      * loader for delegation.
+     *
+     * <p>If there is a security manager, this method first
+     * calls the security manager's {@code checkCreateClassLoader}
+     * method  to ensure creation of a class loader is allowed.
+     *
+     * @throws     SecurityException  if a security manager exists and its
+     *             {@code checkCreateClassLoader} method doesn't allow
+     *             creation of a class loader.
+     * @see SecurityManager#checkCreateClassLoader
      */
     protected SecureClassLoader() {
         super();
@@ -88,6 +102,10 @@ public class SecureClassLoader extends ClassLoader {
      * @param parent the parent class loader
      *
      * @throws IllegalArgumentException if the given name is empty.
+     *
+     * @throws SecurityException  if a security manager exists and its
+     *         {@link SecurityManager#checkCreateClassLoader()} method
+     *         doesn't allow creation of a class loader.
      *
      * @since 9
      */
@@ -173,7 +191,7 @@ public class SecureClassLoader extends ClassLoader {
      *
      * @param codesource the codesource.
      *
-     * @return the permissions for the codesource.
+     * @return the permissions granted to the codesource.
      *
      */
     protected PermissionCollection getPermissions(CodeSource codesource)

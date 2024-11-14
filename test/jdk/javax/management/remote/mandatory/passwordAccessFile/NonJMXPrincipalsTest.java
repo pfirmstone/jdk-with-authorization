@@ -31,6 +31,7 @@
  * @run clean NonJMXPrincipalsTest SimpleStandard SimpleStandardMBean
  * @run build NonJMXPrincipalsTest SimpleStandard SimpleStandardMBean
  * @run main/othervm NonJMXPrincipalsTest
+ * @run main/othervm -Djava.security.manager=allow NonJMXPrincipalsTest
  */
 
 import java.io.File;

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2013, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -21,24 +21,43 @@
  * questions.
  */
 
-import javax.xml.stream.XMLOutputFactory;
-import org.testng.annotations.Test;
-
 /**
  * @test
  * @bug 8020430
  * @summary test that setProperty for XMLOutputFactory works properly
- * @run testng JAXP15RegTest
+ * @run main/othervm JAXP15RegTest
  */
-public class JAXP15RegTest {
+import java.security.Policy;
+import javax.xml.stream.XMLOutputFactory;
+
+/**
+ * @author huizhe.wang@oracle.com
+ */
+public class JAXP15RegTest extends TestBase {
+
+    public JAXP15RegTest(String name) {
+        super(name);
+    }
+
+    private boolean hasSM;
+    private Policy _orig;
+
 
     /**
-     * Verifies no Exception is thrown with the setProperty method.
-     * @throws Exception if the test fails
+     * @param args the command line arguments
      */
-    @Test
-    public void testXMLOutputFactory() throws Exception {
+    public static void main(String[] args) {
+        JAXP15RegTest test = new JAXP15RegTest("JAXP 1.5 regression");
+        test.setUp();
+        test.testXMLOutputFactory();
+        test.tearDown();
+    }
+
+
+    public void testXMLOutputFactory() {
         XMLOutputFactory factory = XMLOutputFactory.newInstance();
         factory.setProperty(XMLOutputFactory.IS_REPAIRING_NAMESPACES, true);
+        success("testXMLOutputFactory passed");
     }
+
 }
