@@ -179,7 +179,7 @@ class ThreadBuilders {
         public Thread unstarted(Runnable task) {
             Objects.requireNonNull(task);
             String name = nextThreadName();
-            var thread = new Thread(group, name, characteristics(), task, stackSize);
+            var thread = new Thread(group, name, characteristics(), task, stackSize, null);
             if (daemonChanged)
                 thread.daemon(daemon);
             if (priority != 0)
@@ -353,7 +353,7 @@ class ThreadBuilders {
         public Thread newThread(Runnable task) {
             Objects.requireNonNull(task);
             String name = nextThreadName();
-            Thread thread = new Thread(group, name, characteristics(), task, stackSize);
+            Thread thread = new Thread(group, name, characteristics(), task, stackSize, null);
             if (daemonChanged)
                 thread.daemon(daemon);
             if (priority != 0)

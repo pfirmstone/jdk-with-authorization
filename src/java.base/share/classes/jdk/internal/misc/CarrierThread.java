@@ -25,6 +25,8 @@
 
 package jdk.internal.misc;
 
+import java.security.AccessController;
+import java.security.PrivilegedAction;
 import java.util.concurrent.ForkJoinPool;
 import java.util.concurrent.ForkJoinWorkerThread;
 import jdk.internal.access.JavaLangAccess;
@@ -112,12 +114,17 @@ public class CarrierThread extends ForkJoinWorkerThread {
     /**
      * The thread group for the carrier threads.
      */
+    @SuppressWarnings("removal")
     private static ThreadGroup carrierThreadGroup() {
-        ThreadGroup group = JLA.currentCarrierThread().getThreadGroup();
-        for (ThreadGroup p; (p = group.getParent()) != null; )
-            group = p;
-        var carrierThreadsGroup = new ThreadGroup(group, "CarrierThreads");
-        return carrierThreadsGroup;
+        return AccessController.doPrivileged(new PrivilegedAction<ThreadGroup>() {
+            public ThreadGroup run() {
+                ThreadGroup group = JLA.currentCarrierThread().getThreadGroup();
+                for (ThreadGroup p; (p = group.getParent()) != null; )
+                    group = p;
+                var carrierThreadsGroup = new ThreadGroup(group, "CarrierThreads");
+                return carrierThreadsGroup;
+            }
+        });
     }
 
     /**

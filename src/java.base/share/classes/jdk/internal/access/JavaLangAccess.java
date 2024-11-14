@@ -145,6 +145,12 @@ public interface JavaLangAccess {
     void registerShutdownHook(int slot, boolean registerShutdownInProgress, Runnable hook);
 
     /**
+     * Returns a new Thread with the given Runnable and an
+     * inherited AccessControlContext.
+     */
+    Thread newThreadWithAcc(Runnable target, @SuppressWarnings("removal") AccessControlContext acc);
+
+    /**
      * Invokes the finalize method of the given object.
      */
     void invokeFinalize(Object o) throws Throwable;
