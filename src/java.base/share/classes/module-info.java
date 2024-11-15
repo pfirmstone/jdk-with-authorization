@@ -378,6 +378,8 @@ module java.base {
         java.prefs;
     exports sun.util.resources to
         jdk.localedata;
+    exports au.zeus.jdk.authorization.spi to
+        jdk.security.authorization;
 
     // the service types defined by the APIs in this module
 
@@ -419,6 +421,7 @@ module java.base {
     uses sun.util.locale.provider.LocaleDataMetaInfo;
     uses sun.util.resources.LocaleData.CommonResourceBundleProvider;
     uses sun.util.resources.LocaleData.SupplementaryResourceBundleProvider;
+    uses au.zeus.jdk.authorization.spi.GuardServiceFactory;
 
     // Built-in service providers that are located via ServiceLoader
 
