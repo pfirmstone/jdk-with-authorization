@@ -43,7 +43,8 @@ jtreg/LICENSE
 jtreg/README
 jtreg/release
 /.vs/jdk-with-authorization/FileContentIndex
-/.vs/jdk-with-authorization/v17
 .vs/CMakeWorkspaceSettings.json
+/.vs/jdk-with-authorization/v17
 .vs/ProjectSettings.json
 .vs/slnx.sqlite
+.vs/VSWorkspaceState.json
