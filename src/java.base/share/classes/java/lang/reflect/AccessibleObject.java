@@ -82,14 +82,10 @@ public class AccessibleObject implements AnnotatedElement {
     }
 
     static void checkPermission() {
-        @SuppressWarnings("removal")
-        SecurityManager sm = System.getSecurityManager();
-        if (sm != null) {
-            // SecurityConstants.ACCESS_PERMISSION is used to check
-            // whether a client has sufficient privilege to defeat Java
-            // language access control checks.
-            sm.checkPermission(SecurityConstants.ACCESS_PERMISSION);
-        }
+        // SecurityConstants.ACCESS_PERMISSION is used to check
+        // whether a client has sufficient privilege to defeat Java
+        // language access control checks.
+        SecurityConstants.ACCESS_PERMISSION.checkGuard(null);
     }
 
     /**

@@ -248,10 +248,7 @@ public class MethodHandles {
         if (caller.allowedModes == Lookup.TRUSTED) {
             return new Lookup(targetClass);
         }
-
-        @SuppressWarnings("removal")
-        SecurityManager sm = System.getSecurityManager();
-        if (sm != null) sm.checkPermission(SecurityConstants.ACCESS_PERMISSION);
+        SecurityConstants.ACCESS_PERMISSION.checkGuard(null);
         if (targetClass.isPrimitive())
             throw new IllegalArgumentException(targetClass + " is a primitive class");
         if (targetClass.isArray())
@@ -473,9 +470,7 @@ public class MethodHandles {
      * @since 1.8
      */
     public static <T extends Member> T reflectAs(Class<T> expected, MethodHandle target) {
-        @SuppressWarnings("removal")
-        SecurityManager smgr = System.getSecurityManager();
-        if (smgr != null)  smgr.checkPermission(SecurityConstants.ACCESS_PERMISSION);
+        SecurityConstants.ACCESS_PERMISSION.checkGuard(null);
         Lookup lookup = Lookup.IMPL_LOOKUP;  // use maximally privileged lookup
         return lookup.revealDirect(target).reflectAs(expected, lookup);
     }
