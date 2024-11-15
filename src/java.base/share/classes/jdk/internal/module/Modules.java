@@ -32,6 +32,8 @@ import java.lang.module.ModuleFinder;
 import java.lang.module.ModuleReference;
 import java.lang.module.ResolvedModule;
 import java.net.URI;
+import java.security.AccessController;
+import java.security.PrivilegedAction;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
@@ -153,7 +155,10 @@ public class Modules {
     public static void addProvides(Module m, Class<?> service, Class<?> impl) {
         ModuleLayer layer = m.getLayer();
 
-        ClassLoader loader = m.getClassLoader();
+        PrivilegedAction<ClassLoader> pa = m::getClassLoader;
+        @SuppressWarnings("removal")
+        ClassLoader loader = AccessController.doPrivileged(pa);
+
         ClassLoader platformClassLoader = ClassLoaders.platformClassLoader();
         if (layer == null || loader == null || loader == platformClassLoader) {
             // update ClassLoader catalog
