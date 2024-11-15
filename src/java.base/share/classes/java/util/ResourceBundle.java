@@ -1600,13 +1600,7 @@ public abstract class ResourceBundle {
                                                       Control control) {
         Objects.requireNonNull(module);
         Module callerModule = getCallerModule(caller);
-        if (callerModule != module) {
-            @SuppressWarnings("removal")
-            SecurityManager sm = System.getSecurityManager();
-            if (sm != null) {
-                sm.checkPermission(GET_CLASSLOADER_PERMISSION);
-            }
-        }
+        if (callerModule != module) GET_CLASSLOADER_PERMISSION.checkGuard(null);
         return getBundleImpl(callerModule, module, baseName, locale, control);
     }
 

@@ -3249,11 +3249,7 @@ public final class Class<T> implements java.io.Serializable,
      * @since 1.2
      */
     public ProtectionDomain getProtectionDomain() {
-        @SuppressWarnings("removal")
-        SecurityManager sm = System.getSecurityManager();
-        if (sm != null) {
-            sm.checkPermission(SecurityConstants.GET_PD_PERMISSION);
-        }
+        SecurityConstants.GET_PD_PERMISSION.checkGuard(null);
         return protectionDomain();
     }
 

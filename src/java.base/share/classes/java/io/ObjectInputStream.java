@@ -434,11 +434,7 @@ public class ObjectInputStream
      * @see java.io.SerializablePermission
      */
     protected ObjectInputStream() throws IOException, SecurityException {
-        @SuppressWarnings("removal")
-        SecurityManager sm = System.getSecurityManager();
-        if (sm != null) {
-            sm.checkPermission(SUBCLASS_IMPLEMENTATION_PERMISSION);
-        }
+        SUBCLASS_IMPLEMENTATION_PERMISSION.checkGuard(null);
         bin = null;
         handles = null;
         vlist = null;

@@ -287,11 +287,7 @@ public class ObjectOutputStream
      * @see java.io.SerializablePermission
      */
     protected ObjectOutputStream() throws IOException, SecurityException {
-        @SuppressWarnings("removal")
-        SecurityManager sm = System.getSecurityManager();
-        if (sm != null) {
-            sm.checkPermission(SUBCLASS_IMPLEMENTATION_PERMISSION);
-        }
+        SUBCLASS_IMPLEMENTATION_PERMISSION.checkGuard(null);
         bout = null;
         handles = null;
         subs = null;
