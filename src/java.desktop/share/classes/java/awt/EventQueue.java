@@ -32,6 +32,9 @@ import java.awt.peer.ComponentPeer;
 import java.lang.ref.WeakReference;
 import java.lang.reflect.InvocationTargetException;
 
+import java.security.AccessController;
+import java.security.PrivilegedAction;
+
 import java.util.EmptyStackException;
 
 import sun.awt.*;
@@ -41,6 +44,11 @@ import sun.util.logging.PlatformLogger;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.atomic.AtomicInteger;
+
+import java.security.AccessControlContext;
+
+import jdk.internal.access.SharedSecrets;
+import jdk.internal.access.JavaSecurityAccess;
 
 /**
  * {@code EventQueue} is a platform-independent class
@@ -221,8 +229,13 @@ public class EventQueue {
             });
     }
 
+    @SuppressWarnings("removal")
     private static boolean fxAppThreadIsDispatchThread =
-            "true".equals(System.getProperty("javafx.embed.singleThread"));
+            AccessController.doPrivileged(new PrivilegedAction<Boolean>() {
+                public Boolean run() {
+                    return "true".equals(System.getProperty("javafx.embed.singleThread"));
+                }
+            });
 
     /**
      * Initializes a new instance of {@code EventQueue}.
@@ -655,6 +668,9 @@ public class EventQueue {
         return null;
     }
 
+    private static final JavaSecurityAccess javaSecurityAccess =
+        SharedSecrets.getJavaSecurityAccess();
+
     /**
      * Dispatches an event. The manner in which the event is
      * dispatched depends upon the type of the event and the
@@ -695,25 +711,59 @@ public class EventQueue {
      */
     protected void dispatchEvent(final AWTEvent event) {
         final Object src = event.getSource();
-        // In case fwDispatcher is installed and we're already on the
-        // dispatch thread (e.g. performing DefaultKeyboardFocusManager.sendMessage),
-        // dispatch the event straight away.
-        if (fwDispatcher == null || isDispatchThreadImpl()) {
-            dispatchEventImpl(event, src);
-        } else {
-            fwDispatcher.scheduleDispatch(new Runnable() {
-                @Override
-                public void run() {
-                    if (dispatchThread.filterAndCheckEvent(event)) {
-                        dispatchEventImpl(event, src);
-                    }
+        final PrivilegedAction<Void> action = new PrivilegedAction<Void>() {
+            public Void run() {
+                // In case fwDispatcher is installed and we're already on the
+                // dispatch thread (e.g. performing DefaultKeyboardFocusManager.sendMessage),
+                // dispatch the event straight away.
+                if (fwDispatcher == null || isDispatchThreadImpl()) {
+                    dispatchEventImpl(event, src);
+                } else {
+                    fwDispatcher.scheduleDispatch(new Runnable() {
+                        @Override
+                        public void run() {
+                            if (dispatchThread.filterAndCheckEvent(event)) {
+                                dispatchEventImpl(event, src);
+                            }
+                        }
+                    });
                 }
-            });
+                return null;
+            }
+        };
+
+        @SuppressWarnings("removal")
+        final AccessControlContext stack = AccessController.getContext();
+        @SuppressWarnings("removal")
+        final AccessControlContext srcAcc = getAccessControlContextFrom(src);
+        @SuppressWarnings("removal")
+        final AccessControlContext eventAcc = event.getAccessControlContext();
+        if (srcAcc == null) {
+            javaSecurityAccess.doIntersectionPrivilege(action, stack, eventAcc);
+        } else {
+            javaSecurityAccess.doIntersectionPrivilege(
+                new PrivilegedAction<Void>() {
+                    public Void run() {
+                        javaSecurityAccess.doIntersectionPrivilege(action, eventAcc);
+                        return null;
+                    }
+                }, stack, srcAcc);
         }
     }
 
+    @SuppressWarnings("removal")
+    private static AccessControlContext getAccessControlContextFrom(Object src) {
+        return src instanceof Component ?
+            ((Component)src).getAccessControlContext() :
+            src instanceof MenuComponent ?
+                ((MenuComponent)src).getAccessControlContext() :
+                src instanceof TrayIcon ?
+                    ((TrayIcon)src).getAccessControlContext() :
+                    null;
+    }
+
     /**
-     * Called from dispatchEvent()
+     * Called from dispatchEvent() under a correct AccessControlContext
      */
     private void dispatchEventImpl(final AWTEvent event, final Object src) {
         event.isPosted = true;
@@ -1063,12 +1113,21 @@ public class EventQueue {
         pushPopLock.lock();
         try {
             if (dispatchThread == null && !threadGroup.isDestroyed() && !appContext.isDisposed()) {
-                EventDispatchThread t = new EventDispatchThread(threadGroup, name, EventQueue.this);
-                t.setContextClassLoader(classLoader);
-                t.setPriority(Thread.NORM_PRIORITY + 1);
-                t.setDaemon(false);
-                AWTAutoShutdown.getInstance().notifyThreadBusy(t);
-                dispatchThread = t;
+                dispatchThread = AccessController.doPrivileged(
+                    new PrivilegedAction<EventDispatchThread>() {
+                        public EventDispatchThread run() {
+                            EventDispatchThread t =
+                                new EventDispatchThread(threadGroup,
+                                                        name,
+                                                        EventQueue.this);
+                            t.setContextClassLoader(classLoader);
+                            t.setPriority(Thread.NORM_PRIORITY + 1);
+                            t.setDaemon(false);
+                            AWTAutoShutdown.getInstance().notifyThreadBusy(t);
+                            return t;
+                        }
+                    }
+                );
                 dispatchThread.start();
             }
         } finally {

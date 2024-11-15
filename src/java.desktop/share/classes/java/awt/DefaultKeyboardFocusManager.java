@@ -32,6 +32,8 @@ import java.awt.peer.ComponentPeer;
 import java.awt.peer.LightweightPeer;
 import java.io.Serial;
 import java.lang.ref.WeakReference;
+import java.security.AccessController;
+import java.security.PrivilegedAction;
 import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.ListIterator;
@@ -84,14 +86,21 @@ public class DefaultKeyboardFocusManager extends KeyboardFocusManager {
         initStatic();
     }
 
+    @SuppressWarnings("removal")
     private static void initStatic() {
         AWTAccessor.setDefaultKeyboardFocusManagerAccessor(
             new AWTAccessor.DefaultKeyboardFocusManagerAccessor() {
                 public void consumeNextKeyTyped(DefaultKeyboardFocusManager dkfm, KeyEvent e) {
                     dkfm.consumeNextKeyTyped(e);
-               }
+                }
             });
-        fxAppThreadIsDispatchThread = "true".equals(System.getProperty("javafx.embed.singleThread"));
+        AccessController.doPrivileged(new PrivilegedAction<Object>() {
+            public Object run() {
+                fxAppThreadIsDispatchThread =
+                        "true".equals(System.getProperty("javafx.embed.singleThread"));
+                return null;
+            }
+        });
     }
 
     /**

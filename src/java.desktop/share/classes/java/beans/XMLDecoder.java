@@ -29,6 +29,9 @@ import com.sun.beans.decoder.DocumentHandler;
 import java.io.Closeable;
 import java.io.InputStream;
 import java.io.IOException;
+import java.security.AccessControlContext;
+import java.security.AccessController;
+import java.security.PrivilegedAction;
 
 import org.xml.sax.InputSource;
 import org.xml.sax.helpers.DefaultHandler;
@@ -61,6 +64,8 @@ import org.xml.sax.helpers.DefaultHandler;
  * @author Philip Milne
  */
 public class XMLDecoder implements AutoCloseable {
+    @SuppressWarnings("removal")
+    private final AccessControlContext acc = AccessController.getContext();
     private final DocumentHandler handler = new DocumentHandler();
     private final InputSource input;
     private Object owner;
@@ -184,12 +189,21 @@ public class XMLDecoder implements AutoCloseable {
         }
     }
 
+    @SuppressWarnings("removal")
     private boolean parsingComplete() {
         if (this.input == null) {
             return false;
         }
         if (this.array == null) {
-            XMLDecoder.this.handler.parse(XMLDecoder.this.input);
+            if ((this.acc == null) && (null != System.getSecurityManager())) {
+                throw new SecurityException("AccessControlContext is not set");
+            }
+            AccessController.doPrivileged(new PrivilegedAction<Void>() {
+                public Void run() {
+                    XMLDecoder.this.handler.parse(XMLDecoder.this.input);
+                    return null;
+                }
+            }, this.acc);
             this.array = this.handler.getObjects();
         }
         return true;

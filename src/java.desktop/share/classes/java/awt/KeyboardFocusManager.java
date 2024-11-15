@@ -40,6 +40,9 @@ import java.beans.VetoableChangeSupport;
 
 import java.lang.ref.WeakReference;
 
+import java.security.AccessController;
+import java.security.PrivilegedAction;
+
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.Iterator;
@@ -631,8 +634,14 @@ public abstract class KeyboardFocusManager
         peer.clearGlobalFocusOwner(activeWindow);
     }
 
+    @SuppressWarnings("removal")
     void clearGlobalFocusOwnerPriv() {
-        clearGlobalFocusOwner();
+        AccessController.doPrivileged(new PrivilegedAction<Void>() {
+            public Void run() {
+                clearGlobalFocusOwner();
+                return null;
+            }
+        });
     }
 
     Component getNativeFocusOwner() {
@@ -1265,8 +1274,14 @@ public abstract class KeyboardFocusManager
                            newFocusCycleRoot);
     }
 
+    @SuppressWarnings("removal")
     void setGlobalCurrentFocusCycleRootPriv(final Container newFocusCycleRoot) {
-        setGlobalCurrentFocusCycleRoot(newFocusCycleRoot);
+        AccessController.doPrivileged(new PrivilegedAction<Void>() {
+            public Void run() {
+                setGlobalCurrentFocusCycleRoot(newFocusCycleRoot);
+                return null;
+            }
+        });
     }
 
     /**

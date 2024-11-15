@@ -26,6 +26,8 @@
 package java.awt;
 
 import java.io.Serial;
+import java.security.AccessController;
+import java.security.PrivilegedAction;
 import java.util.LinkedList;
 
 import sun.awt.AWTAccessor;
@@ -78,7 +80,13 @@ class SequencedEvent extends AWTEvent implements ActiveEvent {
                 return new SequencedEvent(event);
             }
         });
-        fxAppThreadIsDispatchThread = "true".equals(System.getProperty("javafx.embed.singleThread"));
+        AccessController.doPrivileged(new PrivilegedAction<Object>() {
+            public Object run() {
+                fxAppThreadIsDispatchThread =
+                        "true".equals(System.getProperty("javafx.embed.singleThread"));
+                return null;
+            }
+        });
     }
 
     private static final class SequencedEventsFilter implements EventFilter {

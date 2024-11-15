@@ -1576,8 +1576,10 @@ public class Container extends Component {
     }
 
     // Don't lazy-read because every app uses invalidate()
-    private static final boolean isJavaAwtSmartInvalidate =
-        Boolean.getBoolean("java.awt.smartInvalidate");
+    @SuppressWarnings("removal")
+    private static final boolean isJavaAwtSmartInvalidate
+            = AccessController.doPrivileged(
+                new GetBooleanAction("java.awt.smartInvalidate"));
 
     /**
      * Invalidates the parent of the container unless the container
@@ -2630,7 +2632,14 @@ public class Container extends Component {
         if (GraphicsEnvironment.isHeadless()) {
             throw new HeadlessException();
         }
-        PointerInfo pi = MouseInfo.getPointerInfo();
+        @SuppressWarnings("removal")
+        PointerInfo pi = java.security.AccessController.doPrivileged(
+            new java.security.PrivilegedAction<PointerInfo>() {
+                public PointerInfo run() {
+                    return MouseInfo.getPointerInfo();
+                }
+            }
+        );
         synchronized (getTreeLock()) {
             Component inTheSameWindow = findUnderMouseInWindow(pi);
             if (isSameOrAncestorOf(inTheSameWindow, allowChildren)) {
@@ -4729,17 +4738,33 @@ class LightweightDispatcher implements java.io.Serializable, AWTEventListener {
      * from other heavyweight containers will generate enter/exit
      * events in this container
      */
+    @SuppressWarnings("removal")
     private void startListeningForOtherDrags() {
         //System.out.println("Adding AWTEventListener");
-        nativeContainer.getToolkit().addAWTEventListener(
-            LightweightDispatcher.this,
-            AWTEvent.MOUSE_EVENT_MASK |
-            AWTEvent.MOUSE_MOTION_EVENT_MASK);
+        java.security.AccessController.doPrivileged(
+            new java.security.PrivilegedAction<Object>() {
+                public Object run() {
+                    nativeContainer.getToolkit().addAWTEventListener(
+                        LightweightDispatcher.this,
+                        AWTEvent.MOUSE_EVENT_MASK |
+                        AWTEvent.MOUSE_MOTION_EVENT_MASK);
+                    return null;
+                }
+            }
+        );
     }
 
+    @SuppressWarnings("removal")
     private void stopListeningForOtherDrags() {
         //System.out.println("Removing AWTEventListener");
-        nativeContainer.getToolkit().removeAWTEventListener(LightweightDispatcher.this);
+        java.security.AccessController.doPrivileged(
+            new java.security.PrivilegedAction<Object>() {
+                public Object run() {
+                    nativeContainer.getToolkit().removeAWTEventListener(LightweightDispatcher.this);
+                    return null;
+                }
+            }
+        );
     }
 
     /*

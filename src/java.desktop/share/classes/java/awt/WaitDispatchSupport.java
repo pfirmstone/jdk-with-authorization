@@ -29,6 +29,9 @@ import java.util.Timer;
 import java.util.TimerTask;
 import java.util.concurrent.atomic.AtomicBoolean;
 
+import java.security.PrivilegedAction;
+import java.security.AccessController;
+
 import sun.awt.PeerEvent;
 
 import sun.util.logging.PlatformLogger;
@@ -227,7 +230,13 @@ class WaitDispatchSupport implements SecondaryLoop {
                 // The event will be handled after the new event pump
                 // starts. Thus, the enter() method will not hang.
                 //
-                run.run();
+                // Event pump should be privileged. See 6300270.
+                AccessController.doPrivileged(new PrivilegedAction<Void>() {
+                    public Void run() {
+                        run.run();
+                        return null;
+                    }
+                });
             } else {
                 if (log.isLoggable(PlatformLogger.Level.FINEST)) {
                     log.finest("On non-dispatch thread: " + currentThread);

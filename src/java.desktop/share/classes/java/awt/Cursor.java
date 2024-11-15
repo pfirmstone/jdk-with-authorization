@@ -29,6 +29,8 @@ import java.beans.ConstructorProperties;
 import java.io.InputStream;
 import java.io.Serial;
 import java.security.AccessController;
+import java.security.PrivilegedAction;
+import java.security.PrivilegedExceptionAction;
 import java.util.Hashtable;
 import java.util.Properties;
 import java.util.StringTokenizer;
@@ -330,7 +332,11 @@ public class Cursor implements java.io.Serializable {
             }
             final Toolkit toolkit = Toolkit.getDefaultToolkit();
             final String file = RESOURCE_PREFIX + fileName;
-            final InputStream in = Cursor.class.getResourceAsStream(file);
+            @SuppressWarnings("removal")
+            final InputStream in = AccessController.doPrivileged(
+                    (PrivilegedAction<InputStream>) () -> {
+                        return Cursor.class.getResourceAsStream(file);
+                    });
             try (in) {
                 Image image = toolkit.createImage(in.readAllBytes());
                 cursor = toolkit.createCustomCursor(image, hotPoint, localized);
@@ -422,6 +428,7 @@ public class Cursor implements java.io.Serializable {
     /*
      * load the cursor.properties file
      */
+    @SuppressWarnings("removal")
     private static void loadSystemCustomCursorProperties() throws AWTException {
         synchronized (systemCustomCursors) {
             if (systemCustomCursorProperties != null) {
@@ -430,8 +437,14 @@ public class Cursor implements java.io.Serializable {
             systemCustomCursorProperties = new Properties();
 
             try {
-                InputStream is = Cursor.class.getResourceAsStream(PROPERTIES_FILE);
-                systemCustomCursorProperties.load(is);
+                AccessController.doPrivileged(
+                        (PrivilegedExceptionAction<Object>) () -> {
+                            try (InputStream is = Cursor.class
+                                    .getResourceAsStream(PROPERTIES_FILE)) {
+                                systemCustomCursorProperties.load(is);
+                            }
+                            return null;
+                        });
             } catch (Exception e) {
                 systemCustomCursorProperties = null;
                  throw new AWTException("Exception: " + e.getClass() + " " +

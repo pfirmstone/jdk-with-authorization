@@ -28,6 +28,9 @@ import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Proxy;
 import java.lang.reflect.Method;
+import java.security.AccessControlContext;
+import java.security.AccessController;
+import java.security.PrivilegedAction;
 
 import sun.reflect.misc.MethodUtil;
 import sun.reflect.misc.ReflectUtil;
@@ -278,6 +281,8 @@ public class EventHandler implements InvocationHandler {
     private String action;
     private final String eventPropertyName;
     private final String listenerMethodName;
+    @SuppressWarnings("removal")
+    private final AccessControlContext acc = AccessController.getContext();
 
     /**
      * Creates a new {@code EventHandler} object;
@@ -416,7 +421,20 @@ public class EventHandler implements InvocationHandler {
      *
      * @see EventHandler
      */
+    @SuppressWarnings("removal")
     public Object invoke(final Object proxy, final Method method, final Object[] arguments) {
+        AccessControlContext acc = this.acc;
+        if ((acc == null) && (System.getSecurityManager() != null)) {
+            throw new SecurityException("AccessControlContext is not set");
+        }
+        return AccessController.doPrivileged(new PrivilegedAction<Object>() {
+            public Object run() {
+                return invokeInternal(proxy, method, arguments);
+            }
+        }, acc);
+    }
+
+    private Object invokeInternal(Object proxy, Method method, Object[] arguments) {
         String methodName = method.getName();
         if (method.getDeclaringClass() == Object.class)  {
             // Handle the Object public methods.
@@ -671,7 +689,7 @@ public class EventHandler implements InvocationHandler {
      * @see EventHandler
      * @see Proxy#newProxyInstance
      */
-    @SuppressWarnings("unchecked")
+    @SuppressWarnings("removal")
     public static <T> T create(Class<T> listenerInterface,
                                Object target, String action,
                                String eventPropertyName,
@@ -687,7 +705,12 @@ public class EventHandler implements InvocationHandler {
         }
         final ClassLoader loader = getClassLoader(listenerInterface);
         final Class<?>[] interfaces = {listenerInterface};
-        return (T) Proxy.newProxyInstance(loader, interfaces, handler);
+        return AccessController.doPrivileged(new PrivilegedAction<T>() {
+            @SuppressWarnings("unchecked")
+            public T run() {
+                return (T) Proxy.newProxyInstance(loader, interfaces, handler);
+            }
+        });
     }
 
     private static ClassLoader getClassLoader(Class<?> type) {

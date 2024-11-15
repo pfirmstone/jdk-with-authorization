@@ -627,10 +627,14 @@ public abstract class Component implements ImageObserver, MenuContainer,
             initIDs();
         }
 
-        String s = System.getProperty("awt.image.incrementaldraw");
+        @SuppressWarnings("removal")
+        String s = java.security.AccessController.doPrivileged(
+                                                               new GetPropertyAction("awt.image.incrementaldraw"));
         isInc = (s == null || s.equals("true"));
 
-        String s2 = System.getProperty("awt.image.redrawrate");
+        @SuppressWarnings("removal")
+        String s2 = java.security.AccessController.doPrivileged(
+                                                        new GetPropertyAction("awt.image.redrawrate"));
         incRate = (s2 != null) ? Integer.parseInt(s2) : 100;
     }
 
@@ -1427,7 +1431,15 @@ public abstract class Component implements ImageObserver, MenuContainer,
             throw new HeadlessException();
         }
 
-        PointerInfo pi = MouseInfo.getPointerInfo();
+        @SuppressWarnings("removal")
+        PointerInfo pi = java.security.AccessController.doPrivileged(
+                                                                     new java.security.PrivilegedAction<PointerInfo>() {
+                                                                         public PointerInfo run() {
+                                                                             return MouseInfo.getPointerInfo();
+                                                                         }
+                                                                     }
+                                                                     );
+
         synchronized (getTreeLock()) {
             Component inTheSameWindow = findUnderMouseInWindow(pi);
             if (!isSameOrAncestorOf(inTheSameWindow, true)) {
@@ -6241,7 +6253,14 @@ public abstract class Component implements ImageObserver, MenuContainer,
              }
 
              // Need to check non-bootstraps.
-             Boolean enabled = isCoalesceEventsOverriden(clazz);
+             @SuppressWarnings("removal")
+             Boolean enabled = java.security.AccessController.doPrivileged(
+                 new java.security.PrivilegedAction<Boolean>() {
+                     public Boolean run() {
+                         return isCoalesceEventsOverriden(clazz);
+                     }
+                 }
+                 );
              coalesceMap.put(clazz, enabled);
              return enabled;
          }

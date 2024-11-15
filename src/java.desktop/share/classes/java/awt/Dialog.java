@@ -34,6 +34,8 @@ import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.io.Serial;
 import java.security.AccessControlException;
+import java.security.AccessController;
+import java.security.PrivilegedAction;
 import java.util.Iterator;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -1070,7 +1072,9 @@ public class Dialog extends Window {
 
                     modalityPushed();
                     try {
-                        EventQueue eventQueue = Toolkit.getDefaultToolkit().getSystemEventQueue();
+                        @SuppressWarnings("removal")
+                        final EventQueue eventQueue = AccessController.doPrivileged(
+                                (PrivilegedAction<EventQueue>) Toolkit.getDefaultToolkit()::getSystemEventQueue);
                         secondaryLoop = eventQueue.createSecondaryLoop(() -> true, modalFilter, 0);
                         if (!secondaryLoop.enter()) {
                             secondaryLoop = null;
