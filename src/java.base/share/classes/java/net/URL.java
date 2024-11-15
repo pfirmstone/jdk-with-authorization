@@ -498,12 +498,8 @@ public final class URL implements java.io.Serializable {
     public URL(String protocol, String host, int port, String file,
                URLStreamHandler handler) throws MalformedURLException {
         if (handler != null) {
-            @SuppressWarnings("removal")
-            SecurityManager sm = System.getSecurityManager();
-            if (sm != null) {
-                // check for permission to specify a handler
-                checkSpecifyHandler(sm);
-            }
+            // REMIND: use static method to check prior to super
+            SecurityConstants.SPECIFY_HANDLER_PERMISSION.checkGuard(null);
         }
 
         protocol = lowerCaseProtocol(protocol);
@@ -701,11 +697,8 @@ public final class URL implements java.io.Serializable {
 
         // Check for permission to specify a handler
         if (handler != null) {
-            @SuppressWarnings("removal")
-            SecurityManager sm = System.getSecurityManager();
-            if (sm != null) {
-                checkSpecifyHandler(sm);
-            }
+            // Remind: Perform in a static method before super is called.
+            SecurityConstants.SPECIFY_HANDLER_PERMISSION.checkGuard(null);
         }
 
         try {
@@ -931,13 +924,6 @@ public final class URL implements java.io.Serializable {
             }
         }
         return true;
-    }
-
-    /*
-     * Checks for permission to specify a stream handler.
-     */
-    private void checkSpecifyHandler(@SuppressWarnings("removal") SecurityManager sm) {
-        sm.checkPermission(SecurityConstants.SPECIFY_HANDLER_PERMISSION);
     }
 
     /**

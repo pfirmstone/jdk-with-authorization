@@ -2374,11 +2374,7 @@ public class Thread implements Runnable {
     public StackTraceElement[] getStackTrace() {
         if (this != Thread.currentThread()) {
             // check for getStackTrace permission
-            @SuppressWarnings("removal")
-            SecurityManager security = System.getSecurityManager();
-            if (security != null) {
-                security.checkPermission(SecurityConstants.GET_STACK_TRACE_PERMISSION);
-            }
+            SecurityConstants.GET_STACK_TRACE_PERMISSION.checkGuard(null);
             // optimization so we do not call into the vm for threads that
             // have not yet started or have terminated
             if (!isAlive()) {

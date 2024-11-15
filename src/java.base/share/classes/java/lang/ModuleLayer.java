@@ -725,17 +725,11 @@ public final class ModuleLayer {
     }
 
     private static void checkCreateClassLoaderPermission() {
-        @SuppressWarnings("removal")
-        SecurityManager sm = System.getSecurityManager();
-        if (sm != null)
-            sm.checkPermission(SecurityConstants.CREATE_CLASSLOADER_PERMISSION);
+        SecurityConstants.CREATE_CLASSLOADER_PERMISSION.checkGuard(null);
     }
 
     private static void checkGetClassLoaderPermission() {
-        @SuppressWarnings("removal")
-        SecurityManager sm = System.getSecurityManager();
-        if (sm != null)
-            sm.checkPermission(SecurityConstants.GET_CLASSLOADER_PERMISSION);
+        SecurityConstants.GET_CLASSLOADER_PERMISSION.checkGuard(null);
     }
 
     /**
