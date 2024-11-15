@@ -42,6 +42,7 @@ import java.security.PrivilegedExceptionAction;
 import java.util.Arrays;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.Callable;
 
 import jdk.internal.access.JavaLangAccess;
 import jdk.internal.access.SharedSecrets;
@@ -942,13 +943,7 @@ public class ObjectInputStream
         if (enable == enableResolve) {
             return enable;
         }
-        if (enable) {
-            @SuppressWarnings("removal")
-            SecurityManager sm = System.getSecurityManager();
-            if (sm != null) {
-                sm.checkPermission(SUBSTITUTION_PERMISSION);
-            }
-        }
+        if (enable) SUBSTITUTION_PERMISSION.checkGuard(null);
         enableResolve = enable;
         return !enableResolve;
     }
@@ -1346,11 +1341,7 @@ public class ObjectInputStream
      * @since 9
      */
     public final void setObjectInputFilter(ObjectInputFilter filter) {
-        @SuppressWarnings("removal")
-        SecurityManager sm = System.getSecurityManager();
-        if (sm != null) {
-            sm.checkPermission(ObjectStreamConstants.SERIAL_FILTER_PERMISSION);
-        }
+        ObjectStreamConstants.SERIAL_FILTER_PERMISSION.checkGuard(null);
         if (totalObjectRefs > 0 && !Caches.SET_FILTER_AFTER_READ) {
             throw new IllegalStateException(
                     "filter can not be set after an object has been read");
@@ -1619,15 +1610,7 @@ public class ObjectInputStream
         if (cl == ObjectInputStream.class) {
             return;
         }
-        @SuppressWarnings("removal")
-        SecurityManager sm = System.getSecurityManager();
-        if (sm == null) {
-            return;
-        }
-        boolean result = Caches.subclassAudits.get(cl);
-        if (!result) {
-            sm.checkPermission(SUBCLASS_IMPLEMENTATION_PERMISSION);
-        }
+        SUBCLASS_IMPLEMENTATION_PERMISSION.checkIf(() -> Caches.subclassAudits.get(cl));
     }
 
     /**

@@ -630,13 +630,7 @@ public class ObjectOutputStream
         if (enable == enableReplace) {
             return enable;
         }
-        if (enable) {
-            @SuppressWarnings("removal")
-            SecurityManager sm = System.getSecurityManager();
-            if (sm != null) {
-                sm.checkPermission(SUBSTITUTION_PERMISSION);
-            }
-        }
+        if (enable) SUBSTITUTION_PERMISSION.checkGuard(null);
         enableReplace = enable;
         return !enableReplace;
     }
@@ -1068,15 +1062,7 @@ public class ObjectOutputStream
         if (cl == ObjectOutputStream.class) {
             return;
         }
-        @SuppressWarnings("removal")
-        SecurityManager sm = System.getSecurityManager();
-        if (sm == null) {
-            return;
-        }
-        boolean result = Caches.subclassAudits.get(cl);
-        if (!result) {
-            sm.checkPermission(SUBCLASS_IMPLEMENTATION_PERMISSION);
-        }
+        SUBCLASS_IMPLEMENTATION_PERMISSION.checkIf(()->Caches.subclassAudits.get(cl));
     }
 
     /**
