@@ -30,6 +30,7 @@ import java.lang.ref.WeakReference;
 import java.net.ConnectException;
 import java.net.http.HttpConnectTimeoutException;
 import java.time.Duration;
+import java.security.AccessControlContext;
 import java.util.List;
 import java.util.ListIterator;
 import java.util.Objects;
@@ -78,6 +79,8 @@ class MultiExchange<T> implements Cancelable {
     private final HttpRequest userRequest; // the user request
     private final HttpRequestImpl request; // a copy of the user request
     private final ConnectTimeoutTracker connectTimeout; // null if no timeout
+    @SuppressWarnings("removal")
+    final AccessControlContext acc;
     final HttpClientImpl client;
     final HttpResponse.BodyHandler<T> responseHandler;
     final HttpClientImpl.DelegatingExecutor executor;
@@ -152,7 +155,8 @@ class MultiExchange<T> implements Cancelable {
                   HttpRequestImpl requestImpl,
                   HttpClientImpl client,
                   HttpResponse.BodyHandler<T> responseHandler,
-                  PushPromiseHandler<T> pushPromiseHandler) {
+                  PushPromiseHandler<T> pushPromiseHandler,
+                  @SuppressWarnings("removal") AccessControlContext acc) {
         this.previous = null;
         this.userRequest = userRequest;
         this.request = requestImpl;
@@ -160,11 +164,15 @@ class MultiExchange<T> implements Cancelable {
         this.previousreq = null;
         this.client = client;
         this.filters = client.filterChain();
+        this.acc = acc;
         this.executor = client.theExecutor();
         this.responseHandler = responseHandler;
 
         if (pushPromiseHandler != null) {
-            Executor executor = this.executor::ensureExecutedAsync;
+            Executor ensureExecutedAsync = this.executor::ensureExecutedAsync;
+            Executor executor = acc == null
+                    ? ensureExecutedAsync
+                    : new PrivilegedExecutor(ensureExecutedAsync, acc);
             this.pushGroup = new PushGroup<>(pushPromiseHandler, request, executor);
         } else {
             pushGroup = null;
@@ -462,7 +470,7 @@ class MultiExchange<T> implements Cancelable {
                                 previousreq = currentreq;
                                 currentreq = newrequest;
                                 retriedOnce = false;
-                                setExchange(new Exchange<>(currentreq, this));
+                                setExchange(new Exchange<>(currentreq, this, acc));
                                 return responseAsyncImpl();
                             }).thenCompose(Function.identity());
                         } })

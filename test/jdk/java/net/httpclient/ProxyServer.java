@@ -27,8 +27,10 @@ import java.nio.ByteBuffer;
 import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
 import java.util.*;
+import java.security.*;
 import java.util.concurrent.CopyOnWriteArrayList;
 
+import static java.nio.charset.StandardCharsets.US_ASCII;
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static java.nio.charset.StandardCharsets.ISO_8859_1;
 import static java.util.Arrays.asList;
@@ -47,9 +49,9 @@ public class ProxyServer extends Thread implements Closeable {
     // build it. Let's keep it simple.
     static final boolean IS_WINDOWS;
     static {
-        // Parses os.name directly in order to avoid depending on test
-        // libraries in an auxiliary test class
-        String osName = System.getProperty("os.name", "unknown");
+        PrivilegedAction<String> action =
+                () -> System.getProperty("os.name", "unknown");
+        String osName = AccessController.doPrivileged(action);
         IS_WINDOWS = osName.toLowerCase(Locale.ROOT).startsWith("win");
     }
 
@@ -149,6 +151,20 @@ public class ProxyServer extends Thread implements Closeable {
     volatile boolean done;
 
     public void run() {
+        if (System.getSecurityManager() == null) {
+            execute();
+        } else {
+            // so calling domain does not need to have socket permission
+            AccessController.doPrivileged(new PrivilegedAction<Void>() {
+                public Void run() {
+                    execute();
+                    return null;
+                }
+            });
+        }
+    }
+
+    public void execute() {
         int id = 0;
         try {
             while (!done) {

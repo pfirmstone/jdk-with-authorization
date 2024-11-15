@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2015, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2015, 2023, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -32,6 +32,9 @@ import java.net.StandardSocketOptions;
 import java.nio.channels.SelectableChannel;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.SocketChannel;
+import java.security.AccessController;
+import java.security.PrivilegedActionException;
+import java.security.PrivilegedExceptionAction;
 import java.time.Duration;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.locks.ReentrantLock;
@@ -164,6 +167,7 @@ class PlainHttpConnection extends HttpConnection {
         }
     }
 
+    @SuppressWarnings("removal")
     @Override
     public CompletableFuture<Void> connectAsync(Exchange<?> exchange) {
         CompletableFuture<ConnectState> cf = new MinimalFuture<>();
@@ -187,12 +191,14 @@ class PlainHttpConnection extends HttpConnection {
                     debug.log("binding to configured local address " + localAddr);
                 }
                 var sockAddr = new InetSocketAddress(localAddr, 0);
+                PrivilegedExceptionAction<SocketChannel> pa = () -> chan.bind(sockAddr);
                 try {
-                    chan.bind(sockAddr);
+                    AccessController.doPrivileged(pa);
                     if (debug.on()) {
                         debug.log("bind completed " + localAddr);
                     }
-                } catch (IOException cause) {
+                } catch (PrivilegedActionException e) {
+                    var cause = e.getCause();
                     if (debug.on()) {
                         debug.log("bind to " + localAddr + " failed: " + cause.getMessage());
                     }
@@ -200,7 +206,13 @@ class PlainHttpConnection extends HttpConnection {
                 }
             }
 
-            finished = chan.connect(Utils.resolveAddress(address));
+            PrivilegedExceptionAction<Boolean> pa =
+                    () -> chan.connect(Utils.resolveAddress(address));
+            try {
+                 finished = AccessController.doPrivileged(pa);
+            } catch (PrivilegedActionException e) {
+               throw e.getCause();
+            }
             if (finished) {
                 if (debug.on()) debug.log("connect finished without blocking");
                 if (connectionOpened()) {
