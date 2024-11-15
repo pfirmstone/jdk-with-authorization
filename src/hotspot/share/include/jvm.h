@@ -419,7 +419,7 @@ JVM_FindPrimitiveClass(JNIEnv *env, const char *utf);
 
 
 /*
- * Find a class from a boot class loader. Returns NULL if class not found.
+ * Find a class from a boot class loader. Returns null if class not found.
  */
 JNIEXPORT jclass JNICALL
 JVM_FindClassFromBootLoader(JNIEnv *env, const char *name);
@@ -1145,6 +1145,12 @@ JVM_VirtualThreadUnmount(JNIEnv* env, jobject vthread, jboolean hide);
 JNIEXPORT void JNICALL
 JVM_VirtualThreadDisableSuspend(JNIEnv* env, jclass clazz, jboolean enter);
 
+JNIEXPORT void JNICALL
+JVM_VirtualThreadPinnedEvent(JNIEnv* env, jclass clazz, jstring op);
+
+JNIEXPORT jobject JNICALL
+JVM_TakeVirtualThreadListToUnblock(JNIEnv* env, jclass ignored);
+
 /*
  * Core reflection support.
  */
@@ -1156,6 +1162,13 @@ JVM_GetClassFileVersion(JNIEnv *env, jclass current);
  */
 JNIEXPORT jboolean JNICALL
 JVM_PrintWarningAtDynamicAgentLoad(void);
+
+#define JNI_ONLOAD_SYMBOLS   {"JNI_OnLoad"}
+#define JNI_ONUNLOAD_SYMBOLS {"JNI_OnUnload"}
+#define JVM_ONLOAD_SYMBOLS      {"JVM_OnLoad"}
+#define AGENT_ONLOAD_SYMBOLS    {"Agent_OnLoad"}
+#define AGENT_ONUNLOAD_SYMBOLS  {"Agent_OnUnload"}
+#define AGENT_ONATTACH_SYMBOLS  {"Agent_OnAttach"}
 
 /*
  * This structure is used by the launcher to get the default thread
