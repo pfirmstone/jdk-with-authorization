@@ -55,6 +55,7 @@ import jdk.internal.ref.CleanerFactory;
 import jdk.internal.vm.annotation.Stable;
 import sun.nio.cs.UTF_8;
 import sun.nio.fs.DefaultFileSystemProvider;
+import sun.security.action.GetPropertyAction;
 import sun.security.util.SignatureFileVerifier;
 
 import static java.util.zip.ZipConstants64.*;
@@ -222,6 +223,14 @@ public class ZipFile implements ZipConstants, Closeable {
         }
         String name = file.getPath();
         file = new File(name);
+        @SuppressWarnings("removal")
+        SecurityManager sm = System.getSecurityManager();
+        if (sm != null) {
+            sm.checkRead(name);
+            if ((mode & OPEN_DELETE) != 0) {
+                sm.checkDelete(name);
+            }
+        }
         Objects.requireNonNull(charset, "charset");
 
         this.filePath = name;
@@ -1089,7 +1098,8 @@ public class ZipFile implements ZipConstants, Closeable {
      */
     static boolean getDisableZip64ExtraFieldValidation() {
         boolean result;
-        String value = System.getProperty("jdk.util.zip.disableZip64ExtraFieldValidation");
+        String value = GetPropertyAction.privilegedGetProperty(
+                "jdk.util.zip.disableZip64ExtraFieldValidation");
         if (value == null) {
             result = false;
         } else {
