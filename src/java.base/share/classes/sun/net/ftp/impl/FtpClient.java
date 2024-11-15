@@ -44,6 +44,9 @@ import java.net.Proxy;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.SocketAddress;
+import java.security.AccessController;
+import java.security.PrivilegedAction;
+import java.security.PrivilegedExceptionAction;
 import java.text.DateFormat;
 import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
@@ -130,17 +133,31 @@ public class FtpClient extends sun.net.ftp.FtpClient {
     private DateFormat df = DateFormat.getDateInstance(DateFormat.MEDIUM, java.util.Locale.US);
     private static final boolean acceptPasvAddressVal;
     static {
-        defaultSoTimeout = Integer.getInteger("sun.net.client.defaultReadTimeout", 300_000).intValue();
-        if (defaultSoTimeout == 0) {
+        final int vals[] = {0, 0};
+        final String acceptPasvAddress[] = {null};
+        @SuppressWarnings("removal")
+        final String enc = AccessController.doPrivileged(
+                new PrivilegedAction<String>() {
+                    public String run() {
+                        acceptPasvAddress[0] = System.getProperty("jdk.net.ftp.trustPasvAddress", "false");
+                        vals[0] = Integer.getInteger("sun.net.client.defaultReadTimeout", 300_000).intValue();
+                        vals[1] = Integer.getInteger("sun.net.client.defaultConnectTimeout", 300_000).intValue();
+                        return System.getProperty("file.encoding", "ISO8859_1");
+                    }
+                });
+        if (vals[0] == 0) {
             defaultSoTimeout = -1;
+        } else {
+            defaultSoTimeout = vals[0];
         }
 
-        defaultConnectTimeout = Integer.getInteger("sun.net.client.defaultConnectTimeout", 300_000).intValue();
-        if (defaultConnectTimeout == 0) {
+        if (vals[1] == 0) {
             defaultConnectTimeout = -1;
+        } else {
+            defaultConnectTimeout = vals[1];
         }
 
-        encoding = System.getProperty("file.encoding", "ISO8859_1");
+        encoding = enc;
         try {
             if (!isASCIISuperset(encoding)) {
                 encoding = "ISO8859_1";
@@ -154,7 +171,7 @@ public class FtpClient extends sun.net.ftp.FtpClient {
             patterns[i] = Pattern.compile(patStrings[i]);
         }
 
-        acceptPasvAddressVal = Boolean.getBoolean("jdk.net.ftp.trustPasvAddress");
+        acceptPasvAddressVal = Boolean.parseBoolean(acceptPasvAddress[0]);
     }
 
     /**
@@ -645,7 +662,10 @@ public class FtpClient extends sun.net.ftp.FtpClient {
         Socket s;
         if (proxy != null) {
             if (proxy.type() == Proxy.Type.SOCKS) {
-                s = new Socket(proxy);
+                PrivilegedAction<Socket> pa = () -> new Socket(proxy);
+                @SuppressWarnings("removal")
+                var tmp = AccessController.doPrivileged(pa);
+                s = tmp;
             } else {
                 s = new Socket(Proxy.NO_PROXY);
             }
@@ -653,7 +673,9 @@ public class FtpClient extends sun.net.ftp.FtpClient {
             s = new Socket();
         }
 
-        InetAddress serverAddress = server.getLocalAddress();
+        PrivilegedAction<InetAddress> pa = () -> server.getLocalAddress();
+        @SuppressWarnings("removal")
+        InetAddress serverAddress = AccessController.doPrivileged(pa);
 
         // Bind the socket to the same address as the control channel. This
         // is needed in case of multi-homed systems.
@@ -739,8 +761,11 @@ public class FtpClient extends sun.net.ftp.FtpClient {
     }
 
     private static InetAddress privilegedLocalHost() throws FtpProtocolException {
+        PrivilegedExceptionAction<InetAddress> action = InetAddress::getLocalHost;
         try {
-            return InetAddress.getLocalHost();
+            @SuppressWarnings("removal")
+            var tmp = AccessController.doPrivileged(action);
+            return tmp;
         } catch (Exception e) {
             var ftpEx = new FtpProtocolException(ERROR_MSG);
             ftpEx.initCause(e);
@@ -749,8 +774,11 @@ public class FtpClient extends sun.net.ftp.FtpClient {
     }
 
     private static InetAddress[] privilegedGetAllByName(String hostName) throws FtpProtocolException {
+        PrivilegedExceptionAction<InetAddress[]> pAction = () -> InetAddress.getAllByName(hostName);
         try {
-            return InetAddress.getAllByName(hostName);
+            @SuppressWarnings("removal")
+            var tmp =AccessController.doPrivileged(pAction);
+            return tmp;
         } catch (Exception e) {
             var ftpEx = new FtpProtocolException(ERROR_MSG);
             ftpEx.initCause(e);
@@ -993,7 +1021,10 @@ public class FtpClient extends sun.net.ftp.FtpClient {
         Socket s;
         if (proxy != null) {
             if (proxy.type() == Proxy.Type.SOCKS) {
-                s = new Socket(proxy);
+                PrivilegedAction<Socket> pa = () -> new Socket(proxy);
+                @SuppressWarnings("removal")
+                var tmp = AccessController.doPrivileged(pa);
+                s = tmp;
             } else {
                 s = new Socket(Proxy.NO_PROXY);
             }
