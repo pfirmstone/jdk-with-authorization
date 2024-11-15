@@ -317,6 +317,7 @@ module java.base {
         java.desktop;
     exports sun.reflect.misc to
         java.desktop,
+        java.datatransfer,
         java.management,
         java.management.rmi,
         java.rmi,
