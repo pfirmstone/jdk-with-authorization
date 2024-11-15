@@ -29,6 +29,10 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.file.*;
 import java.nio.file.attribute.*;
+import java.security.AccessController;
+import java.security.PrivilegedAction;
+import java.security.PrivilegedActionException;
+import java.security.PrivilegedExceptionAction;
 import java.time.Instant;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -215,28 +219,35 @@ public class TestPosix {
 
     private static String expectedDefaultOwner(Path zf) {
         try {
-            return Files.getOwner(zf).getName();
-        } catch (UnsupportedOperationException e) {
-            // if we can't get the owner of the file, we fall back to system property user.name
-            return System.getProperty("user.name");
-        } catch (IOException e) {
+            try {
+                PrivilegedExceptionAction<String> pa = ()->Files.getOwner(zf).getName();
+                return AccessController.doPrivileged(pa);
+            } catch (UnsupportedOperationException e) {
+                // if we can't get the owner of the file, we fall back to system property user.name
+                PrivilegedAction<String> pa = ()->System.getProperty("user.name");
+                return AccessController.doPrivileged(pa);
+            }
+        } catch (PrivilegedActionException | SecurityException e) {
             System.out.println("Caught " + e.getClass().getName() + "(" + e.getMessage() +
-                    ") when getting the default owner.");
+                ") when running a privileged operation to get the default owner.");
             return null;
         }
     }
 
     private static String expectedDefaultGroup(Path zf, String defaultOwner) {
         try {
-            PosixFileAttributeView zfpv = Files.getFileAttributeView(zf, PosixFileAttributeView.class);
-            if (zfpv == null) {
+            try {
+                PosixFileAttributeView zfpv = Files.getFileAttributeView(zf, PosixFileAttributeView.class);
+                if (zfpv == null) {
+                    return defaultOwner;
+                }
+                PrivilegedExceptionAction<String> pa = ()->zfpv.readAttributes().group().getName();
+                return AccessController.doPrivileged(pa);
+            } catch (UnsupportedOperationException e) {
                 return defaultOwner;
             }
-            return zfpv.readAttributes().group().getName();
-        } catch (UnsupportedOperationException e) {
-            return defaultOwner;
-        } catch (IOException e) {
-            System.out.println("Caught an exception when getting the default group.");
+        } catch (PrivilegedActionException | SecurityException e) {
+            System.out.println("Caught an exception when running a privileged operation to get the default group.");
             e.printStackTrace();
             return null;
         }
