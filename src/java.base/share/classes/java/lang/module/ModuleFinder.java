@@ -26,9 +26,6 @@
 package java.lang.module;
 
 import java.nio.file.Path;
-import java.security.AccessController;
-import java.security.Permission;
-import java.security.PrivilegedAction;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -145,16 +142,8 @@ public interface ModuleFinder {
      * @throws SecurityException
      *         If denied by the security manager
      */
-    @SuppressWarnings("removal")
     static ModuleFinder ofSystem() {
-        SecurityManager sm = System.getSecurityManager();
-        if (sm != null) {
-            sm.checkPermission(new RuntimePermission("accessSystemModules"));
-            PrivilegedAction<ModuleFinder> pa = SystemModuleFinders::ofSystem;
-            return AccessController.doPrivileged(pa);
-        } else {
-            return SystemModuleFinders.ofSystem();
-        }
+        return SystemModuleFinders.ofSystem();
     }
 
     /**

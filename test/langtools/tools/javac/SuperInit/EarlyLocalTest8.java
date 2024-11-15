@@ -1,12 +1,10 @@
 /*
- * Copyright (c) 2020, 2022, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2024, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License version 2 only, as
- * published by the Free Software Foundation.  Oracle designates this
- * particular file as subject to the "Classpath" exception as provided
- * by Oracle in the LICENSE file that accompanied this code.
+ * published by the Free Software Foundation.
  *
  * This code is distributed in the hope that it will be useful, but WITHOUT
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
@@ -22,10 +20,30 @@
  * or visit www.oracle.com if you need additional information or have any
  * questions.
  */
-package jdk.internal.access;
+/*
+ * @test
+ * @bug 8333313
+ * @summary Verify references to local classes declared in early construction contexts
+ * @enablePreview
+ */
+import java.util.concurrent.atomic.AtomicReference;
 
-import java.io.PrintStream;
+public class EarlyLocalTest8 {
 
-public interface JavaIOPrintStreamAccess {
-    Object lock(PrintStream ps);
+    class Test extends AtomicReference<Runnable> {
+        Test(int x) {
+            super(
+                switch (x) {
+                    case 0 -> null;
+                    default -> {
+                        class InnerLocal { }
+                        yield () -> new InnerLocal() { { System.out.println(EarlyLocalTest8.this); } };
+                    }
+                });
+        }
+    }
+
+    public static void main(String[] args) {
+        new EarlyLocalTest8().new Test(42);
+    }
 }
