@@ -985,8 +985,11 @@ public final class Arrays {
      * circular dependencies. To be removed in a future release.
      */
     static final class LegacyMergeSort {
+        @SuppressWarnings("removal")
         private static final boolean userRequested =
-                Boolean.getBoolean("java.util.Arrays.useLegacyMergeSort");
+            java.security.AccessController.doPrivileged(
+                new sun.security.action.GetBooleanAction(
+                    "java.util.Arrays.useLegacyMergeSort")).booleanValue();
     }
 
     /**

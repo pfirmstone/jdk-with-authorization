@@ -42,6 +42,7 @@ package java.util;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.UncheckedIOException;
 import java.lang.ref.Reference;
 import java.lang.ref.ReferenceQueue;
 import java.lang.ref.SoftReference;
@@ -52,6 +53,10 @@ import java.lang.reflect.Modifier;
 import java.net.JarURLConnection;
 import java.net.URL;
 import java.net.URLConnection;
+import java.security.AccessController;
+import java.security.PrivilegedAction;
+import java.security.PrivilegedActionException;
+import java.security.PrivilegedExceptionAction;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.jar.JarEntry;
@@ -65,8 +70,11 @@ import jdk.internal.access.SharedSecrets;
 import jdk.internal.reflect.CallerSensitive;
 import jdk.internal.reflect.Reflection;
 import jdk.internal.util.ReferencedKeyMap;
+import sun.security.action.GetPropertyAction;
 import sun.util.locale.BaseLocale;
 import sun.util.resources.Bundles;
+
+import static sun.security.util.SecurityConstants.GET_CLASSLOADER_PERMISSION;
 
 
 /**
@@ -573,8 +581,10 @@ public abstract class ResourceBundle {
         return locale;
     }
 
+    @SuppressWarnings("removal")
     private static ClassLoader getLoader(Module module) {
-        return module.getClassLoader();
+        PrivilegedAction<ClassLoader> pa = module::getClassLoader;
+        return AccessController.doPrivileged(pa);
     }
 
     /**
@@ -1502,12 +1512,15 @@ public abstract class ResourceBundle {
     }
 
     private static class ResourceBundleControlProviderHolder {
+        private static final PrivilegedAction<List<ResourceBundleControlProvider>> pa =
+            () -> ServiceLoader.load(ResourceBundleControlProvider.class,
+                                   ClassLoader.getSystemClassLoader()).stream()
+                             .map(ServiceLoader.Provider::get)
+                             .toList();
 
+        @SuppressWarnings("removal")
         private static final List<ResourceBundleControlProvider> CONTROL_PROVIDERS =
-                ServiceLoader.load(ResourceBundleControlProvider.class,
-                                ClassLoader.getSystemClassLoader()).stream()
-                        .map(ServiceLoader.Provider::get)
-                        .toList();
+            AccessController.doPrivileged(pa);
 
         private static Control getControl(String baseName) {
             return CONTROL_PROVIDERS.isEmpty() ?
@@ -1587,6 +1600,13 @@ public abstract class ResourceBundle {
                                                       Control control) {
         Objects.requireNonNull(module);
         Module callerModule = getCallerModule(caller);
+        if (callerModule != module) {
+            @SuppressWarnings("removal")
+            SecurityManager sm = System.getSecurityManager();
+            if (sm != null) {
+                sm.checkPermission(GET_CLASSLOADER_PERMISSION);
+            }
+        }
         return getBundleImpl(callerModule, module, baseName, locale, control);
     }
 
@@ -1871,6 +1891,7 @@ public abstract class ResourceBundle {
      * Returns the service type of the given baseName that is visible
      * to the given class loader
      */
+    @SuppressWarnings("removal")
     private static Class<ResourceBundleProvider>
             getResourceBundleProviderType(String baseName, ClassLoader loader)
     {
@@ -1885,20 +1906,27 @@ public abstract class ResourceBundle {
 
         // Use the class loader of the getBundle caller so that the caller's
         // visibility of the provider type is checked.
-        try {
-            Class<?> c = Class.forName(providerName, false, loader);
-            if (ResourceBundleProvider.class.isAssignableFrom(c)) {
-                @SuppressWarnings("unchecked")
-                Class<ResourceBundleProvider> s = (Class<ResourceBundleProvider>) c;
-                return s;
-            }
-        } catch (ClassNotFoundException _) {}
-        return null;
+        return AccessController.doPrivileged(
+            new PrivilegedAction<>() {
+                @Override
+                public Class<ResourceBundleProvider> run() {
+                    try {
+                        Class<?> c = Class.forName(providerName, false, loader);
+                        if (ResourceBundleProvider.class.isAssignableFrom(c)) {
+                            @SuppressWarnings("unchecked")
+                            Class<ResourceBundleProvider> s = (Class<ResourceBundleProvider>) c;
+                            return s;
+                        }
+                    } catch (ClassNotFoundException e) {}
+                    return null;
+                }
+            });
     }
 
     /**
      * Loads ResourceBundle from service providers.
      */
+    @SuppressWarnings("removal")
     private static ResourceBundle loadBundleFromProviders(String baseName,
                                                           Locale locale,
                                                           ServiceLoader<ResourceBundleProvider> providers,
@@ -1906,28 +1934,34 @@ public abstract class ResourceBundle {
     {
         if (providers == null) return null;
 
-        for (Iterator<ResourceBundleProvider> itr = providers.iterator(); itr.hasNext(); ) {
-            try {
-                ResourceBundleProvider provider = itr.next();
-                if (cacheKey != null && cacheKey.callerHasProvider == null
-                        && cacheKey.getModule() == provider.getClass().getModule()) {
-                    cacheKey.callerHasProvider = Boolean.TRUE;
-                }
-                ResourceBundle bundle = provider.getBundle(baseName, locale);
-                trace("provider %s %s locale: %s bundle: %s%n", provider, baseName, locale, bundle);
-                if (bundle != null) {
-                    return bundle;
-                }
-            } catch (ServiceConfigurationError e) {
-                if (cacheKey != null) {
-                    cacheKey.setCause(e);
-                }
-            }
-        }
-        if (cacheKey != null && cacheKey.callerHasProvider == null) {
-            cacheKey.callerHasProvider = Boolean.FALSE;
-        }
-        return null;
+        return AccessController.doPrivileged(
+                new PrivilegedAction<>() {
+                    public ResourceBundle run() {
+                        for (Iterator<ResourceBundleProvider> itr = providers.iterator(); itr.hasNext(); ) {
+                            try {
+                                ResourceBundleProvider provider = itr.next();
+                                if (cacheKey != null && cacheKey.callerHasProvider == null
+                                        && cacheKey.getModule() == provider.getClass().getModule()) {
+                                    cacheKey.callerHasProvider = Boolean.TRUE;
+                                }
+                                ResourceBundle bundle = provider.getBundle(baseName, locale);
+                                trace("provider %s %s locale: %s bundle: %s%n", provider, baseName, locale, bundle);
+                                if (bundle != null) {
+                                    return bundle;
+                                }
+                            } catch (ServiceConfigurationError | SecurityException e) {
+                                if (cacheKey != null) {
+                                    cacheKey.setCause(e);
+                                }
+                            }
+                        }
+                        if (cacheKey != null && cacheKey.callerHasProvider == null) {
+                            cacheKey.callerHasProvider = Boolean.FALSE;
+                        }
+                        return null;
+                    }
+                });
+
     }
 
     /*
@@ -3129,6 +3163,7 @@ public abstract class ResourceBundle {
             return bundle;
         }
 
+        @SuppressWarnings("removal")
         private ResourceBundle newBundle0(String bundleName, String format,
                     ClassLoader loader, boolean reload)
                     throws IllegalAccessException, InstantiationException, IOException {
@@ -3152,20 +3187,28 @@ public abstract class ResourceBundle {
                                 bundleClass.getName() + " in " + m.toString());
                         }
                         try {
-                            Constructor<ResourceBundle> ctor = bundleClass.getDeclaredConstructor();
+                            Constructor<ResourceBundle> ctor = AccessController.doPrivileged(
+                                new PrivilegedExceptionAction<>() {
+                                    @Override
+                                    public Constructor<ResourceBundle> run() throws NoSuchMethodException {
+                                        return bundleClass.getDeclaredConstructor();
+                                    }
+                                });
                             if (!Modifier.isPublic(ctor.getModifiers())) {
                                 throw new IllegalAccessException("no-arg constructor in " +
                                     bundleClass.getName() + " is not publicly accessible.");
                             }
 
                             // java.base may not be able to read the bundleClass's module.
-                            ctor.setAccessible(true);
+                            PrivilegedAction<Void> pa1 = () -> { ctor.setAccessible(true); return null; };
+                            AccessController.doPrivileged(pa1);
                             bundle = ctor.newInstance((Object[]) null);
                         } catch (InvocationTargetException e) {
                             uncheckedThrow(e);
-                        } catch (NoSuchMethodException e) {
+                        } catch (PrivilegedActionException e) {
+                            assert e.getCause() instanceof NoSuchMethodException;
                             throw new InstantiationException("public no-arg constructor " +
-                                    "does not exist in " + bundleClass.getName());
+                                "does not exist in " + bundleClass.getName());
                         }
                     } else {
                         throw new ClassCastException(c.getName()
@@ -3179,16 +3222,27 @@ public abstract class ResourceBundle {
                     return bundle;
                 }
 
-                URL url = loader.getResource(resourceName);
-                if (url == null) return null;
+                final boolean reloadFlag = reload;
+                InputStream stream = null;
+                try {
+                    stream = AccessController.doPrivileged(
+                        new PrivilegedExceptionAction<>() {
+                            public InputStream run() throws IOException {
+                                URL url = loader.getResource(resourceName);
+                                if (url == null) return null;
 
-                URLConnection connection = url.openConnection();
-                if (reload) {
-                    // Disable caches to get fresh data for
-                    // reloading.
-                    connection.setUseCaches(false);
+                                URLConnection connection = url.openConnection();
+                                if (reloadFlag) {
+                                    // Disable caches to get fresh data for
+                                    // reloading.
+                                    connection.setUseCaches(false);
+                                }
+                                return connection.getInputStream();
+                            }
+                        });
+                } catch (PrivilegedActionException e) {
+                    throw (IOException) e.getCause();
                 }
-                InputStream stream = connection.getInputStream();
                 if (stream != null) {
                     try {
                         bundle = new PropertyResourceBundle(stream);
@@ -3519,6 +3573,7 @@ public abstract class ResourceBundle {
         /**
          * Returns a new ResourceBundle instance of the given bundleClass
          */
+        @SuppressWarnings("removal")
         static ResourceBundle newResourceBundle(Class<? extends ResourceBundle> bundleClass) {
             try {
                 @SuppressWarnings("unchecked")
@@ -3528,7 +3583,8 @@ public abstract class ResourceBundle {
                     return null;
                 }
                 // java.base may not be able to read the bundleClass's module.
-                ctor.setAccessible(true);
+                PrivilegedAction<Void> pa = () -> { ctor.setAccessible(true); return null;};
+                AccessController.doPrivileged(pa);
                 try {
                     return ctor.newInstance((Object[]) null);
                 } catch (InvocationTargetException e) {
@@ -3556,7 +3612,9 @@ public abstract class ResourceBundle {
         {
             String bundleName = Control.INSTANCE.toBundleName(baseName, locale);
             try {
-                Class<?> c = Class.forName(module, bundleName);
+                PrivilegedAction<Class<?>> pa = () -> Class.forName(module, bundleName);
+                @SuppressWarnings("removal")
+                Class<?> c = AccessController.doPrivileged(pa, null, GET_CLASSLOADER_PERMISSION);
                 trace("local in %s %s caller %s: %s%n", module, bundleName, callerModule, c);
 
                 if (c == null) {
@@ -3614,46 +3672,56 @@ public abstract class ResourceBundle {
         {
             String bundleName = Control.INSTANCE.toBundleName(baseName, locale);
 
-            String resourceName = Control.INSTANCE
-                .toResourceName0(bundleName, "properties");
-            if (resourceName == null) {
-                return null;
-            }
-            trace("local in %s %s caller %s%n", module, resourceName, callerModule);
-
-
-            // if the package is in the given module but not opened
-            // locate it from the given module first.
-            String pn = toPackageName(bundleName);
-            trace("   %s/%s is accessible to %s : %s%n",
-                    module.getName(), pn, callerModule,
-                    isAccessible(callerModule, module, pn));
-            if (isAccessible(callerModule, module, pn)) {
-                InputStream in = module.getResourceAsStream(resourceName);
-                if (in != null) {
-                    return new PropertyResourceBundle(in);
-                }
-            }
-            ClassLoader loader = module.getClassLoader();
-            trace("loader for %s %s caller %s%n", module, resourceName, callerModule);
-
-            try {
-                InputStream stream = null;
-                if (loader != null) {
-                    stream = loader.getResourceAsStream(resourceName);
-                } else {
-                    URL url = BootLoader.findResource(resourceName);
-                    if (url != null) {
-                        stream = url.openStream();
+            PrivilegedAction<InputStream> pa = () -> {
+                try {
+                    String resourceName = Control.INSTANCE
+                        .toResourceName0(bundleName, "properties");
+                    if (resourceName == null) {
+                        return null;
                     }
+                    trace("local in %s %s caller %s%n", module, resourceName, callerModule);
+
+                    // if the package is in the given module but not opened
+                    // locate it from the given module first.
+                    String pn = toPackageName(bundleName);
+                    trace("   %s/%s is accessible to %s : %s%n",
+                            module.getName(), pn, callerModule,
+                            isAccessible(callerModule, module, pn));
+                    if (isAccessible(callerModule, module, pn)) {
+                        InputStream in = module.getResourceAsStream(resourceName);
+                        if (in != null) {
+                            return in;
+                        }
+                    }
+
+                    ClassLoader loader = module.getClassLoader();
+                    trace("loader for %s %s caller %s%n", module, resourceName, callerModule);
+
+                    try {
+                        if (loader != null) {
+                            return loader.getResourceAsStream(resourceName);
+                        } else {
+                            URL url = BootLoader.findResource(resourceName);
+                            if (url != null) {
+                                return url.openStream();
+                            }
+                        }
+                    } catch (Exception e) {}
+                    return null;
+
+                } catch (IOException e) {
+                    throw new UncheckedIOException(e);
                 }
+            };
+
+            try (@SuppressWarnings("removal") InputStream stream = AccessController.doPrivileged(pa)) {
                 if (stream != null) {
                     return new PropertyResourceBundle(stream);
                 } else {
                     return null;
                 }
-            } catch (Exception e) {
-                return null;
+            } catch (UncheckedIOException e) {
+                throw e.getCause();
             }
         }
 
@@ -3664,8 +3732,8 @@ public abstract class ResourceBundle {
 
     }
 
-    private static final boolean TRACE_ON = Boolean.getBoolean(
-        System.getProperty("resource.bundle.debug", "false"));
+    private static final boolean TRACE_ON = Boolean.parseBoolean(
+        GetPropertyAction.privilegedGetProperty("resource.bundle.debug", "false"));
 
     private static void trace(String format, Object... params) {
         if (TRACE_ON)

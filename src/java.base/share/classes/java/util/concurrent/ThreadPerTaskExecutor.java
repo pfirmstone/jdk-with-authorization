@@ -26,6 +26,7 @@ package java.util.concurrent;
 
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.VarHandle;
+import java.security.Permission;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Iterator;
@@ -47,6 +48,7 @@ import jdk.internal.vm.ThreadContainers;
  */
 class ThreadPerTaskExecutor extends ThreadContainer implements ExecutorService {
     private static final JavaLangAccess JLA = SharedSecrets.getJavaLangAccess();
+    private static final Permission MODIFY_THREAD = new RuntimePermission("modifyThread");
     private static final VarHandle STATE = MhUtil.findVarHandle(
             MethodHandles.lookup(), "state", int.class);
 
@@ -76,6 +78,18 @@ class ThreadPerTaskExecutor extends ThreadContainer implements ExecutorService {
         // register it to allow discovery by serviceability tools
         executor.key = ThreadContainers.registerContainer(executor);
         return executor;
+    }
+
+    /**
+     * Throws SecurityException if there is a security manager set and it denies
+     * RuntimePermission("modifyThread").
+     */
+    @SuppressWarnings("removal")
+    private void checkPermission() {
+        SecurityManager sm = System.getSecurityManager();
+        if (sm != null) {
+            sm.checkPermission(MODIFY_THREAD);
+        }
     }
 
     /**
@@ -129,12 +143,14 @@ class ThreadPerTaskExecutor extends ThreadContainer implements ExecutorService {
 
     @Override
     public void shutdown() {
+        checkPermission();
         if (!isShutdown())
             tryShutdownAndTerminate(false);
     }
 
     @Override
     public List<Runnable> shutdownNow() {
+        checkPermission();
         if (!isTerminated())
             tryShutdownAndTerminate(true);
         return List.of();
@@ -186,6 +202,7 @@ class ThreadPerTaskExecutor extends ThreadContainer implements ExecutorService {
 
     @Override
     public void close() {
+        checkPermission();
         awaitTermination();
     }
 

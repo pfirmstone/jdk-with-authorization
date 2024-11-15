@@ -37,12 +37,17 @@ package java.util.concurrent;
 
 import static java.lang.ref.Reference.reachabilityFence;
 import java.lang.ref.Cleaner.Cleanable;
+import java.security.AccessControlContext;
+import java.security.AccessControlException;
+import java.security.AccessController;
 import java.security.PrivilegedAction;
+import java.security.PrivilegedActionException;
 import java.security.PrivilegedExceptionAction;
 import java.util.Collection;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 import jdk.internal.ref.CleanerFactory;
+import sun.security.util.SecurityConstants;
 
 /**
  * Factory and utility methods for {@link Executor}, {@link
@@ -577,13 +582,27 @@ public class Executors {
      */
     private static final class PrivilegedCallable<T> implements Callable<T> {
         final Callable<T> task;
+        @SuppressWarnings("removal")
+        final AccessControlContext acc;
 
+        @SuppressWarnings("removal")
         PrivilegedCallable(Callable<T> task) {
             this.task = task;
+            this.acc = AccessController.getContext();
         }
 
+        @SuppressWarnings("removal")
         public T call() throws Exception {
-            return task.call();
+            try {
+                return AccessController.doPrivileged(
+                    new PrivilegedExceptionAction<T>() {
+                        public T run() throws Exception {
+                            return task.call();
+                        }
+                    }, acc);
+            } catch (PrivilegedActionException e) {
+                throw e.getException();
+            }
         }
 
         public String toString() {
@@ -599,26 +618,49 @@ public class Executors {
             implements Callable<T> {
         final Callable<T> task;
         @SuppressWarnings("removal")
+        final AccessControlContext acc;
         final ClassLoader ccl;
 
         @SuppressWarnings("removal")
         PrivilegedCallableUsingCurrentClassLoader(Callable<T> task) {
+            SecurityManager sm = System.getSecurityManager();
+            if (sm != null) {
+                // Calls to getContextClassLoader from this class
+                // never trigger a security check, but we check
+                // whether our callers have this permission anyways.
+                sm.checkPermission(SecurityConstants.GET_CLASSLOADER_PERMISSION);
+
+                // Whether setContextClassLoader turns out to be necessary
+                // or not, we fail fast if permission is not available.
+                sm.checkPermission(new RuntimePermission("setContextClassLoader"));
+            }
             this.task = task;
+            this.acc = AccessController.getContext();
             this.ccl = Thread.currentThread().getContextClassLoader();
         }
 
+        @SuppressWarnings("removal")
         public T call() throws Exception {
-            Thread t = Thread.currentThread();
-            ClassLoader cl = t.getContextClassLoader();
-            if (ccl == cl) {
-                return task.call();
-            } else {
-                t.setContextClassLoader(ccl);
-                try {
-                    return task.call();
-                } finally {
-                    t.setContextClassLoader(cl);
-                }
+            try {
+                return AccessController.doPrivileged(
+                    new PrivilegedExceptionAction<T>() {
+                        public T run() throws Exception {
+                            Thread t = Thread.currentThread();
+                            ClassLoader cl = t.getContextClassLoader();
+                            if (ccl == cl) {
+                                return task.call();
+                            } else {
+                                t.setContextClassLoader(ccl);
+                                try {
+                                    return task.call();
+                                } finally {
+                                    t.setContextClassLoader(cl);
+                                }
+                            }
+                        }
+                    }, acc);
+            } catch (PrivilegedActionException e) {
+                throw e.getException();
             }
         }
 
@@ -637,7 +679,10 @@ public class Executors {
         private final String namePrefix;
 
         DefaultThreadFactory() {
-            group = Thread.currentThread().getThreadGroup();
+            @SuppressWarnings("removal")
+            SecurityManager s = System.getSecurityManager();
+            group = (s != null) ? s.getThreadGroup() :
+                                  Thread.currentThread().getThreadGroup();
             namePrefix = "pool-" +
                           poolNumber.getAndIncrement() +
                          "-thread-";
@@ -656,14 +701,27 @@ public class Executors {
     }
 
     /**
-     * Thread factory capturing the current class loader.
+     * Thread factory capturing access control context and class loader.
      */
     private static class PrivilegedThreadFactory extends DefaultThreadFactory {
         @SuppressWarnings("removal")
+        final AccessControlContext acc;
         final ClassLoader ccl;
 
+        @SuppressWarnings("removal")
         PrivilegedThreadFactory() {
             super();
+            SecurityManager sm = System.getSecurityManager();
+            if (sm != null) {
+                // Calls to getContextClassLoader from this class
+                // never trigger a security check, but we check
+                // whether our callers have this permission anyways.
+                sm.checkPermission(SecurityConstants.GET_CLASSLOADER_PERMISSION);
+
+                // Fail fast
+                sm.checkPermission(new RuntimePermission("setContextClassLoader"));
+            }
+            this.acc = AccessController.getContext();
             this.ccl = Thread.currentThread().getContextClassLoader();
         }
 
@@ -671,8 +729,13 @@ public class Executors {
             return super.newThread(new Runnable() {
                 @SuppressWarnings("removal")
                 public void run() {
-                    Thread.currentThread().setContextClassLoader(ccl);
-                    r.run();
+                    AccessController.doPrivileged(new PrivilegedAction<>() {
+                        public Void run() {
+                            Thread.currentThread().setContextClassLoader(ccl);
+                            r.run();
+                            return null;
+                        }
+                    }, acc);
                 }
             });
         }
@@ -771,7 +834,9 @@ public class Executors {
             super(executor);
             Runnable action = () -> {
                 if (!executor.isShutdown()) {
-                    executor.shutdown();
+                    PrivilegedAction<Void> pa = () -> { executor.shutdown(); return null; };
+                    @SuppressWarnings("removal")
+                    var ignore = AccessController.doPrivileged(pa);
                 }
             };
             cleanable = CleanerFactory.cleaner().register(this, action);
