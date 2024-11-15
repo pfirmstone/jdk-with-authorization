@@ -25,10 +25,13 @@
 
 package java.security;
 
+import au.zeus.jdk.authorization.spi.GuardServiceFactory;
+import java.util.Iterator;
 import sun.security.util.Debug;
 
 import java.util.Map;
 import java.util.Objects;
+import java.util.ServiceLoader;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
 
@@ -43,7 +46,20 @@ import java.util.function.Function;
  */
 public class SecureClassLoader extends ClassLoader {
     
-    private static final Permission LOAD_CLASS_ALLOW = new LoadClassPermission();
+    private static final Permission LOAD_CLASS_ALLOW;
+    
+    static {
+        Guard guard = null;
+        ServiceLoader<GuardServiceFactory> guards = ServiceLoader.load(GuardServiceFactory.class);
+        Iterator<GuardServiceFactory> it = guards.iterator();
+        while (it.hasNext()){
+            GuardServiceFactory factory = it.next();
+            if (factory != null) {
+                guard = factory.newInstance("au.zeus.jdk.authorization.LoadClassPermission");
+            }
+        } 
+        LOAD_CLASS_ALLOW = (Permission) guard;
+    }
 
     /*
      * Map that maps the CodeSource to a ProtectionDomain. The key is a

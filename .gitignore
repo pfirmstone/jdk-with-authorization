@@ -48,3 +48,5 @@ jtreg/release
 .vs/ProjectSettings.json
 .vs/slnx.sqlite
 .vs/VSWorkspaceState.json
+/src/jdk.security.authorization/JavaModularApplication1/nbproject/private/
+/src/jdk.security.authorization/JavaModularApplication1/build/
