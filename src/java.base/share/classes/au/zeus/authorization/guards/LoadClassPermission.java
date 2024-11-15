@@ -22,9 +22,10 @@
  * or visit www.oracle.com if you need additional information or have any
  * questions.
  */
-package java.security;
+package au.zeus.authorization.guards;
 
 import java.net.URL;
+import java.security.BasicPermission;
 
 /**
  * When a {@link java.lang.SecurityManager} is in force, this {@link Permission}

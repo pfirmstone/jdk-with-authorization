@@ -45,19 +45,24 @@ public final class PermissionFactory implements GuardServiceFactory{
     
     public Guard newInstance(String permission, String name){
         switch (permission){
-            case "au.zeus.jdk.authorization.guards.ReadObjectPermission" : return new ReadObjectPermission(name);
+            case "au.zeus.jdk.authorization.guards.SerialObjectPermission" : return new SerialObjectPermission(name);
         }
         return NULL_GUARD;
     }
     
     public Guard newInstance(String permission){
-        switch (permission){
-            case "au.zeus.jdk.authorization.LoadClassPermission" : return new LoadClassPermission();
-        }
+//        switch (permission){
+//            case "au.zeus.jdk.authorization.guards.LoadClassPermission" : return new LoadClassPermission();
+//        }
         return NULL_GUARD;
     }
     
     private static final class NullGuard extends Permission {
+        private static final long serialVersionUID = 1L;
+
+        public NullGuard() {
+            super("NULL");
+        }
 
         @Override
         public boolean implies(Permission permission) {
