@@ -22,7 +22,7 @@
  * or visit www.oracle.com if you need additional information or have any
  * questions.
  */
-package au.zeus.authorization.guards;
+package au.zeus.jdk.authorization.guards;
 
 import java.net.URL;
 import java.security.BasicPermission;

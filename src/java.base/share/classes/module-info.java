@@ -377,7 +377,7 @@ module java.base {
     exports sun.util.resources to
         jdk.localedata;
     exports au.zeus.jdk.authorization.spi to
-        jdk.security.authorization;
+        jdk.authorization;
 
     // the service types defined by the APIs in this module
 
