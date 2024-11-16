@@ -36,6 +36,7 @@ import java.lang.reflect.Proxy;
 import java.nio.charset.StandardCharsets;
 import java.security.AccessControlContext;
 import java.security.AccessController;
+import java.security.Guard;
 import java.security.PrivilegedAction;
 import java.security.PrivilegedActionException;
 import java.security.PrivilegedExceptionAction;
@@ -420,14 +421,12 @@ public class ObjectInputStream
      * When the filter factory {@code apply} method is invoked it may throw a runtime exception
      * preventing the {@code ObjectInputStream} from being constructed.
      *
-     * <p>If there is a security manager installed, this method first calls the
-     * security manager's {@code checkPermission} method with the
+     * <p>This method is guarded by
      * {@code SerializablePermission("enableSubclassImplementation")}
      * permission to ensure it's ok to enable subclassing.
      *
-     * @throws  SecurityException if a security manager exists and its
-     *          {@code checkPermission} method denies enabling
-     *          subclassing.
+     * @throws  SecurityException if {@code SerializablePermission("enableSubclassImplementation")}
+     * is actively guarding and caller doesn't have permission.
      * @throws  IOException if an I/O error occurs while creating this stream
      * @throws  IllegalStateException if the initialization of {@link ObjectInputFilter.Config}
      *      fails due to invalid serial filter or serial filter factory properties.
@@ -921,20 +920,18 @@ public class ObjectInputStream
      * deserialized.
      *
      * <p>If object replacement is currently not enabled, and
-     * {@code enable} is true, and there is a security manager installed,
-     * this method first calls the security manager's
-     * {@code checkPermission} method with the
-     * {@code SerializablePermission("enableSubstitution")} permission to
-     * ensure that the caller is permitted to enable the stream to do replacement
-     * of objects read from the stream.
+     * {@code enable} is true, and the {@code Guard} 
+     * {@code SerializablePermission("enableSubstitution")} is activated, this 
+     * method ensures that the caller is permitted to enable the stream to do
+     * replacement of objects read from the stream.
      *
      * @param   enable true for enabling use of {@code resolveObject} for
      *          every object being deserialized
      * @return  the previous setting before this method was invoked
-     * @throws  SecurityException if a security manager exists and its
-     *          {@code checkPermission} method denies enabling the stream
-     *          to do replacement of objects read from the stream.
-     * @see SecurityManager#checkPermission
+     * @throws  SecurityException if {@code Guard} 
+     *          {@code SerializablePermission("enableSubstitution")} is active and denies
+     *          enabling the stream to do replacement of objects read from the stream.
+     * @see java.security.Guard#checkGuard(java.lang.Object) 
      * @see java.io.SerializablePermission
      */
     protected boolean enableResolveObject(boolean enable)

@@ -41,6 +41,8 @@ import java.util.Set;
 import jdk.internal.module.ModulePath;
 import jdk.internal.module.SystemModuleFinders;
 
+import sun.security.util.SecurityConstants;
+
 /**
  * A finder of modules. A {@code ModuleFinder} is used to find modules during
  * <a href="package-summary.html#resolution">resolution</a> or
@@ -147,14 +149,12 @@ public interface ModuleFinder {
      */
     @SuppressWarnings("removal")
     static ModuleFinder ofSystem() {
-        SecurityManager sm = System.getSecurityManager();
-        if (sm != null) {
-            sm.checkPermission(new RuntimePermission("accessSystemModules"));
-            PrivilegedAction<ModuleFinder> pa = SystemModuleFinders::ofSystem;
-            return AccessController.doPrivileged(pa);
-        } else {
-            return SystemModuleFinders.ofSystem();
-        }
+        return SecurityConstants.ACCESS_SYSTEM_MODULES.conditionActionElse(
+            ()->Boolean.TRUE, 
+            ()->AccessController.doPrivileged(
+                    (PrivilegedAction<ModuleFinder>) SystemModuleFinders::ofSystem), 
+            ()->SystemModuleFinders.ofSystem()
+        );
     }
 
     /**
