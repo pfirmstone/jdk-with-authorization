@@ -25,8 +25,7 @@
 
 package java.security;
 
-//import au.zeus.jdk.authorization.spi.GuardServiceFactory;
-import au.zeus.authorization.guards.LoadClassPermission;
+import au.zeus.jdk.authorization.guards.LoadClassPermission;
 import sun.security.util.Debug;
 
 import java.util.Map;

@@ -22,7 +22,7 @@
  * or visit www.oracle.com if you need additional information or have any
  * questions.
  */
-package au.zeus.jdk.authorization.guards;
+package au.zeus.jdk.authorize.guards;
 
 import au.zeus.jdk.authorization.spi.GuardServiceFactory;
 import java.security.Guard;

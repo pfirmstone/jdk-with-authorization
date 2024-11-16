@@ -27,17 +27,17 @@
  * Provides implementations of the {@code au.zeus.jdk.authorization.spi.GuardServiceFactory}
  * interface and various authorization factories.
  *
- * @provides au.zeus.jdk.authorization.guards.ReadObjectPermissionFactory
+ * @provides au.zeus.jdk.authorize.guards.PermissionFactory
  * @moduleGraph
  * @since 24
  */
-module jdk.security.authorization {
+module jdk.authorization {
 
     requires java.base;
     
-    exports au.zeus.jdk.authorization.guards to
+    exports au.zeus.jdk.authorize.guards to
             java.base;
 
     provides au.zeus.jdk.authorization.spi.GuardServiceFactory with
-        au.zeus.jdk.authorization.guards.PermissionFactory;
+        au.zeus.jdk.authorize.guards.PermissionFactory;
 }
