@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2014, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2014, 2022, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -30,11 +30,15 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.net.MalformedURLException;
 import java.net.URL;
+import java.security.AccessController;
+import java.security.Permission;
+import java.security.PrivilegedAction;
 
 import jdk.internal.jimage.ImageLocation;
 import jdk.internal.jimage.ImageReader;
 import jdk.internal.jimage.ImageReaderFactory;
 
+import jdk.internal.loader.URLClassPath;
 import jdk.internal.loader.Resource;
 import sun.net.www.ParseUtil;
 import sun.net.www.URLConnection;
@@ -43,10 +47,15 @@ import sun.net.www.URLConnection;
  * URLConnection implementation that can be used to connect to resources
  * contained in the runtime image.
  */
+@SuppressWarnings("removal")
 public class JavaRuntimeURLConnection extends URLConnection {
 
     // ImageReader to access resources in jimage
-    private static final ImageReader reader = ImageReaderFactory.getImageReader();
+    private static final ImageReader reader;
+    static {
+        PrivilegedAction<ImageReader> pa = ImageReaderFactory::getImageReader;
+        reader = AccessController.doPrivileged(pa);
+    }
 
     // the module and resource name in the URL
     private final String module;
@@ -83,7 +92,7 @@ public class JavaRuntimeURLConnection extends URLConnection {
         if (reader != null) {
             URL url = toJrtURL(module, name);
             ImageLocation location = reader.findLocation(module, name);
-            if (location != null) {
+            if (location != null && URLClassPath.checkURL(url) != null) {
                 return new Resource() {
                     @Override
                     public String getName() {
@@ -147,6 +156,11 @@ public class JavaRuntimeURLConnection extends URLConnection {
     public int getContentLength() {
         long len = getContentLengthLong();
         return len > Integer.MAX_VALUE ? -1 : (int)len;
+    }
+
+    @Override
+    public Permission getPermission() {
+        return new RuntimePermission("accessSystemModules");
     }
 
     /**
