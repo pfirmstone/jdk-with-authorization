@@ -67,6 +67,7 @@ import jdk.internal.reflect.CallerSensitive;
 import jdk.internal.reflect.CallerSensitiveAdapter;
 import jdk.internal.reflect.Reflection;
 import jdk.internal.util.StaticProperty;
+import sun.reflect.misc.ReflectUtil;
 import sun.security.util.SecurityConstants;
 
 /**
