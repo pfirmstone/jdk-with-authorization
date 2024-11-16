@@ -360,9 +360,24 @@ public class SecurityManager {
      * currently executing method, the element at index {@code 1} is
      * the class of that method's caller, and so on.
      *
+     * @apiNote The {@code StackWalker} class can be used as a replacement
+     * for this method.
+     *
      * @return  the execution stack.
      */
-    protected native Class<?>[] getClassContext();
+    protected Class<?>[] getClassContext() {
+        return StackWalkerHolder.STACK_WALKER
+                .walk(s -> s.map(StackWalker.StackFrame::getDeclaringClass)
+                        .skip(1L)
+                        .toArray(Class[]::new));
+    }
+
+    private static class StackWalkerHolder {
+        static final StackWalker STACK_WALKER =
+            StackWalker.getInstance(
+                Set.of(StackWalker.Option.RETAIN_CLASS_REFERENCE,
+                       StackWalker.Option.DROP_METHOD_INFO));
+    }
 
     /**
      * Creates an object that encapsulates the current execution
