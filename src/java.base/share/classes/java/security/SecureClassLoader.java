@@ -235,7 +235,7 @@ public class SecureClassLoader extends ClassLoader {
                 if (sm != null){
                     if (!pd.implies(LOAD_CLASS_ALLOW)){
                         throw new SecurityException(
-                            "java.lang.LoadClassPermission hasn't been granted to this CodeSource: " 
+                            "LoadClassPermission hasn't been granted to this CodeSource: " 
                                     + key.cs().toString()
                         );
                     }
