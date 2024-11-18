@@ -137,14 +137,15 @@ public class ClassLoaders {
         sb.append("jrt:/jdk.unsupported.desktop").append(pathSeparator);
         sb.append("jrt:/jdk.xml.dom").append(pathSeparator);
         sb.append("jrt:/jdk.zipfs");
+        URLClassPath platformUcp = new URLClassPath(sb.toString(), false);
+        sb.delete(0, sb.length());
         // See vmClassMacros.hpp for bootstrap classes loaded prior to java code.
         ArchivedClassLoaders archivedClassLoaders = ArchivedClassLoaders.get();
         // -Xbootclasspath/a or -javaagent with Boot-Class-Path attribute
         String append = VM.getSavedProperty("jdk.boot.class.path.append");
-        URLClassPath bootUcp = (append != null && !append.isEmpty())
-                ? new URLClassPath(append, true)
-                : null;
-        URLClassPath platformUcp = new URLClassPath(sb.toString(), false);
+        sb.append("jrt:/java.base");
+        if (append!=null && append.isBlank())sb.append(pathSeparator).append(append);
+        URLClassPath bootUcp = new URLClassPath(sb.toString(), true);
         if (archivedClassLoaders != null) {
             BOOT_LOADER = (BootClassLoader) archivedClassLoaders.bootLoader();
             BOOT_LOADER.setClassPath(bootUcp);

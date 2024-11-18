@@ -35,9 +35,10 @@ module jdk.authorization {
 
     requires java.base;
     
-    exports au.zeus.jdk.authorize.guards to
+    exports au.zeus.jdk.authorize.guards;
+    exports au.zeus.jdk.authorize.service to
             java.base;
 
     provides au.zeus.jdk.authorization.spi.GuardServiceFactory with
-        au.zeus.jdk.authorize.guards.PermissionFactory;
+        au.zeus.jdk.authorize.service.PermissionFactory;
 }

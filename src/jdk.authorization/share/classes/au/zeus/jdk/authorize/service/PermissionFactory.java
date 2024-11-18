@@ -22,11 +22,12 @@
  * or visit www.oracle.com if you need additional information or have any
  * questions.
  */
-package au.zeus.jdk.authorize.guards;
+package au.zeus.jdk.authorize.service;
 
 import au.zeus.jdk.authorization.spi.GuardServiceFactory;
 import java.security.Guard;
 import java.security.Permission;
+import au.zeus.jdk.authorize.guards.SerialObjectPermission;
 
 /**
  * Permission required to read an object from ObjectInputStream.
