@@ -35,6 +35,7 @@ This project's objectives are to maintain a community fork of OpenJDK that retai
 - Add httpmd URL handler to allow SHA256+ algorithms to be used to check jar file integrity. 
 - Reduce the size of the trusted platform. ✔
 - Add PolicyWriter tool from JGDMS, to simplify deployment using principles of least privilege. ✔
+- Add policy tests from JGDMS.
 - Add strict RFC3986 RFC6874 and RFC5952 URI support and Remove DNS lookups from CodeSource.
 - Remove DNS lookups from SecureClassLoader, use RFC3986 URI instead.
 - Add LoadClassPermission to SecureClassLoader, to allow httmpd and jar file signers to control which code can be loaded by policy. ✔
