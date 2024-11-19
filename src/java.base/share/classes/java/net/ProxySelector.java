@@ -28,6 +28,8 @@ package java.net;
 import java.io.IOException;
 import java.util.List;
 
+import sun.security.util.SecurityConstants;
+
 /**
  * Selects the proxy server to use, if any, when connecting to the
  * network resource referenced by a URL. A proxy selector is a
@@ -95,6 +97,11 @@ public abstract class ProxySelector {
      * @since   1.5
      */
     public static ProxySelector getDefault() {
+        @SuppressWarnings("removal")
+        SecurityManager sm = System.getSecurityManager();
+        if (sm != null) {
+            sm.checkPermission(SecurityConstants.GET_PROXYSELECTOR_PERMISSION);
+        }
         return theProxySelector;
     }
 
@@ -114,6 +121,11 @@ public abstract class ProxySelector {
      * @since 1.5
      */
     public static void setDefault(ProxySelector ps) {
+        @SuppressWarnings("removal")
+        SecurityManager sm = System.getSecurityManager();
+        if (sm != null) {
+            sm.checkPermission(SecurityConstants.SET_PROXYSELECTOR_PERMISSION);
+        }
         theProxySelector = ps;
     }
 

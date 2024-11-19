@@ -197,10 +197,10 @@ public class LookupTest {
 
 <<<<<<< HEAD
         LookupTestPolicy() throws Exception {
-            perms.add(new NetPermission("setProxySelector"));
 =======
         LookupTestPermisions(int port) {
->>>>>>> 5cb0d438231383d491b2fcca455d09af7f2ee016
+>>>>>>> parent of a91d4c022f1 (8344233: Remove calls to SecurityManager and doPrivileged in java.net.ProxySelector and sun.net.spi.DefaultProxySelector after JEP 486 integration)
+            perms.add(new NetPermission("setProxySelector"));
             perms.add(new SocketPermission("localhost:1024-", "resolve,accept"));
             perms.add(new URLPermission("http://allowedAndFound.com:" + port + "/-", "*:*"));
             perms.add(new URLPermission("http://allowedButNotfound.com:" + port + "/-", "*:*"));

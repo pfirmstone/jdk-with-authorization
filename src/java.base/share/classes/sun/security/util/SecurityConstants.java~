@@ -72,7 +72,6 @@ public final class SecurityConstants {
     public static final NetPermission SPECIFY_HANDLER_PERMISSION =
        new NetPermission("specifyStreamHandler");
 
-<<<<<<< HEAD
     // java.net.ProxySelector
     public static final NetPermission SET_PROXYSELECTOR_PERMISSION =
        new NetPermission("setProxySelector");
@@ -81,6 +80,7 @@ public final class SecurityConstants {
     public static final NetPermission GET_PROXYSELECTOR_PERMISSION =
        new NetPermission("getProxySelector");
 
+<<<<<<< HEAD
     // java.net.CookieHandler
     public static final NetPermission SET_COOKIEHANDLER_PERMISSION =
        new NetPermission("setCookieHandler");
@@ -98,7 +98,7 @@ public final class SecurityConstants {
        new NetPermission("getResponseCache");
 
 =======
->>>>>>> 5cb0d438231383d491b2fcca455d09af7f2ee016
+>>>>>>> parent of a91d4c022f1 (8344233: Remove calls to SecurityManager and doPrivileged in java.net.ProxySelector and sun.net.spi.DefaultProxySelector after JEP 486 integration)
     // java.net.ServerSocket, java.net.Socket
     public static final NetPermission SET_SOCKETIMPL_PERMISSION =
         new NetPermission("setSocketImpl");
