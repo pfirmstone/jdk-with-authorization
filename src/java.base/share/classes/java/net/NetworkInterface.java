@@ -27,7 +27,6 @@ package java.net;
 
 import java.util.Arrays;
 import java.util.Enumeration;
-import java.util.List;
 import java.util.NoSuchElementException;
 import java.util.Objects;
 import java.util.Spliterator;
@@ -80,9 +79,9 @@ public final class NetworkInterface {
     private String name;
     private String displayName;
     private int index;
-    private InetAddress[] addrs;
-    private InterfaceAddress[] bindings;
-    private NetworkInterface[] childs;
+    private InetAddress addrs[];
+    private InterfaceAddress bindings[];
+    private NetworkInterface childs[];
     private NetworkInterface parent = null;
     private boolean virtual = false;
     private static final NetworkInterface defaultInterface;
@@ -130,16 +129,16 @@ public final class NetworkInterface {
      * InetAddresses are returned.
      *
      * @implNote
-     * The returned enumeration contains the InetAddresses that were bound to
-     * the interface at the time the {@linkplain #getNetworkInterfaces()
+     * The returned enumeration contains all, or a subset, of the InetAddresses that were
+     * bound to the interface at the time the {@linkplain #getNetworkInterfaces()
      * interface configuration was read}
      *
-     * @return an Enumeration object with the InetAddresses bound to this
-     * network interface
+     * @return an Enumeration object with all, or a subset, of the InetAddresses
+     * bound to this network interface
      * @see #inetAddresses()
      */
     public Enumeration<InetAddress> getInetAddresses() {
-        return enumerationFromArray(addrs);
+        return enumerationFromArray(getCheckedInetAddresses());
     }
 
     /**
@@ -154,15 +153,41 @@ public final class NetworkInterface {
      * InetAddresses are returned.
      *
      * @implNote
-     * The stream contains the InetAddresses that were bound to the
-     * interface at the time the {@linkplain #getNetworkInterfaces()
+     * The stream contains all, or a subset, of the InetAddresses that were
+     * bound to the interface at the time the {@linkplain #getNetworkInterfaces()
      * interface configuration was read}
      *
-     * @return a Stream object with the InetAddresses bound to this network interface
+     * @return a Stream object with all, or a subset, of the InetAddresses
+     * bound to this network interface
      * @since 9
      */
     public Stream<InetAddress> inetAddresses() {
-        return streamFromArray(addrs);
+        return streamFromArray(getCheckedInetAddresses());
+    }
+
+    private InetAddress[] getCheckedInetAddresses() {
+        InetAddress[] local_addrs = new InetAddress[addrs.length];
+        boolean trusted = true;
+
+        @SuppressWarnings("removal")
+        SecurityManager sec = System.getSecurityManager();
+        if (sec != null) {
+            try {
+                sec.checkPermission(new NetPermission("getNetworkInformation"));
+            } catch (SecurityException e) {
+                trusted = false;
+            }
+        }
+        int i = 0;
+        for (int j = 0; j < addrs.length; j++) {
+            try {
+                if (!trusted) {
+                    sec.checkConnect(addrs[j].getHostAddress(), -1);
+                }
+                local_addrs[i++] = addrs[j];
+            } catch (SecurityException e) { }
+        }
+        return Arrays.copyOf(local_addrs, i);
     }
 
     /**
@@ -177,10 +202,25 @@ public final class NetworkInterface {
      * @return a {@code List} object with the InterfaceAddress of this
      * network interface
      *
+     * @return a {@code List} object with all, or a subset, of the
+     *         InterfaceAddress of this network interface
      * @since 1.6
      */
-    public List<InterfaceAddress> getInterfaceAddresses() {
-        return bindings == null ? List.of() : List.of(bindings);
+    public java.util.List<InterfaceAddress> getInterfaceAddresses() {
+        java.util.List<InterfaceAddress> lst = new java.util.ArrayList<>(1);
+        if (bindings != null) {
+            @SuppressWarnings("removal")
+            SecurityManager sec = System.getSecurityManager();
+            for (int j=0; j<bindings.length; j++) {
+                try {
+                    if (sec != null) {
+                        sec.checkConnect(bindings[j].getAddress().getHostAddress(), -1);
+                    }
+                    lst.add(bindings[j]);
+                } catch (SecurityException e) { }
+            }
+        }
+        return lst;
     }
 
     /**
@@ -542,6 +582,18 @@ public final class NetworkInterface {
      * @since 1.6
      */
     public byte[] getHardwareAddress() throws SocketException {
+        @SuppressWarnings("removal")
+        SecurityManager sec = System.getSecurityManager();
+        if (sec != null) {
+            try {
+                sec.checkPermission(new NetPermission("getNetworkInformation"));
+            } catch (SecurityException e) {
+                if (!getInetAddresses().hasMoreElements()) {
+                    // don't have connect permission to any local address
+                    return null;
+                }
+            }
+        }
         if (isLoopback0(name, index)) {
             return null;
         }
