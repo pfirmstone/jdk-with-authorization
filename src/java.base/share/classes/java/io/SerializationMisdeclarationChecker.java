@@ -29,6 +29,8 @@ import java.lang.reflect.Field;
 import java.lang.reflect.Member;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
+import java.security.AccessController;
+import java.security.PrivilegedAction;
 import java.util.Arrays;
 
 import static jdk.internal.event.SerializationMisdeclarationEvent.*;
@@ -73,7 +75,7 @@ final class SerializationMisdeclarationChecker {
     }
 
     private static void checkSerialVersionUID(Class<?> cl) {
-        Field f = declaredField(cl, SUID_NAME);
+        Field f = privilegedDeclaredField(cl, SUID_NAME);
         if (f == null) {
             if (isOrdinaryClass(cl)) {
                 commitEvent(cl, SUID_NAME + " should be declared explicitly" +
@@ -99,7 +101,7 @@ final class SerializationMisdeclarationChecker {
     }
 
     private static void checkSerialPersistentFields(Class<?> cl) {
-        Field f = declaredField(cl, SERIAL_PERSISTENT_FIELDS_NAME);
+        Field f = privilegedDeclaredField(cl, SERIAL_PERSISTENT_FIELDS_NAME);
         if (f == null) {
             return;
         }
@@ -140,7 +142,7 @@ final class SerializationMisdeclarationChecker {
 
     private static void checkPrivateMethod(Class<?> cl,
             String name, Class<?>[] paramTypes, Class<?> retType) {
-        for (Method m : cl.getDeclaredMethods()) {
+        for (Method m : privilegedDeclaredMethods(cl)) {
             if (m.getName().equals(name)) {
                 checkPrivateMethod(cl, m, paramTypes, retType);
             }
@@ -171,7 +173,7 @@ final class SerializationMisdeclarationChecker {
     private static void checkAccessibleMethod(Class<?> cl,
             String name, Class<?>[] paramTypes, Class<?> retType) {
         for (Class<?> superCl = cl; superCl != null; superCl = superCl.getSuperclass()) {
-            for (Method m : superCl.getDeclaredMethods()) {
+            for (Method m : privilegedDeclaredMethods(superCl)) {
                 if (m.getName().equals(name)) {
                     checkAccessibleMethod(cl, superCl, m, paramTypes, retType);
                 }
@@ -234,6 +236,14 @@ final class SerializationMisdeclarationChecker {
         return (m.getModifiers() & STATIC) != 0;
     }
 
+    @SuppressWarnings("removal")
+    private static Field privilegedDeclaredField(Class<?> cl, String name) {
+        if (System.getSecurityManager() == null) {
+            return declaredField(cl, name);
+        }
+        return AccessController.doPrivileged((PrivilegedAction<Field>) () ->
+                declaredField(cl, name));
+    }
 
     private static Field declaredField(Class<?> cl, String name) {
         try {
@@ -243,6 +253,14 @@ final class SerializationMisdeclarationChecker {
         return null;
     }
 
+    @SuppressWarnings("removal")
+    private static Method[] privilegedDeclaredMethods(Class<?> cl) {
+        if (System.getSecurityManager() == null) {
+            return cl.getDeclaredMethods();
+        }
+        return AccessController.doPrivileged(
+                (PrivilegedAction<Method[]>) cl::getDeclaredMethods);
+    }
 
     private static Object objectFromStatic(Field f) {
         try {
