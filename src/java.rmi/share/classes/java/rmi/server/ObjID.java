@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 1996, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 1996, 2021, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -30,6 +30,8 @@ import java.io.IOException;
 import java.io.ObjectInput;
 import java.io.ObjectOutput;
 import java.io.Serializable;
+import java.security.AccessController;
+import java.security.PrivilegedAction;
 import java.security.SecureRandom;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -240,7 +242,9 @@ public final class ObjID implements Serializable {
     }
 
     private static boolean useRandomIDs() {
-        String value = System.getProperty("java.rmi.server.randomIDs");
+        @SuppressWarnings("removal")
+        String value = AccessController.doPrivileged(
+            (PrivilegedAction<String>) () -> System.getProperty("java.rmi.server.randomIDs"));
         return value == null ? true : Boolean.parseBoolean(value);
     }
 }

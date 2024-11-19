@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2005, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2005, 2021, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -25,6 +25,9 @@
 
 package sun.rmi.runtime;
 
+import java.security.AccessController;
+import java.security.Permission;
+import java.security.PrivilegedAction;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -34,7 +37,10 @@ import java.util.logging.Level;
  * RMI runtime implementation utilities.
  *
  * There is a single instance of this class, which can be obtained
- * with a getInstance() call.
+ * with a GetInstanceAction.  Getting the instance requires
+ * RuntimePermission("sun.rmi.runtime.RuntimeUtil.getInstance")
+ * because the public methods of this class expose security-sensitive
+ * capabilities.
  *
  * @author      Peter Jones
  **/
@@ -45,8 +51,14 @@ public final class RuntimeUtil {
         Log.getLog("sun.rmi.runtime", null, false);
 
     /** number of scheduler threads */
+    @SuppressWarnings("removal")
     private static final int schedulerThreads =         // default 1
-        Integer.getInteger("sun.rmi.runtime.schedulerThreads", 1);
+        AccessController.doPrivileged((PrivilegedAction<Integer>) () ->
+            Integer.getInteger("sun.rmi.runtime.schedulerThreads", 1));
+
+    /** permission required to get instance */
+    private static final Permission GET_INSTANCE_PERMISSION =
+        new RuntimePermission("sun.rmi.runtime.RuntimeUtil.getInstance");
 
     /** the singleton instance of this class */
     private static final RuntimeUtil instance = new RuntimeUtil();
@@ -59,11 +71,13 @@ public final class RuntimeUtil {
             schedulerThreads,
             new ThreadFactory() {
                 private final AtomicInteger count = new AtomicInteger();
+                @SuppressWarnings("removal")
                 public Thread newThread(Runnable runnable) {
                     try {
-                        return new NewThreadAction(runnable,
-                            "Scheduler(" + count.getAndIncrement() + ")",
-                            true).run();
+                        return AccessController.doPrivileged(
+                            new NewThreadAction(runnable,
+                                "Scheduler(" + count.getAndIncrement() + ")",
+                                true));
                     } catch (Throwable t) {
                         runtimeLog.log(Level.WARNING,
                                        "scheduler thread factory throws", t);
@@ -80,7 +94,29 @@ public final class RuntimeUtil {
         // stpe.allowCoreThreadTimeOut(true);
     }
 
-    public static RuntimeUtil getInstance() {
+    /**
+     * A PrivilegedAction for getting the RuntimeUtil instance.
+     **/
+    public static class GetInstanceAction
+        implements PrivilegedAction<RuntimeUtil>
+    {
+        /**
+         * Creates an action that returns the RuntimeUtil instance.
+         **/
+        public GetInstanceAction() {
+        }
+
+        public RuntimeUtil run() {
+            return getInstance();
+        }
+    }
+
+    private static RuntimeUtil getInstance() {
+        @SuppressWarnings("removal")
+        SecurityManager sm = System.getSecurityManager();
+        if (sm != null) {
+            sm.checkPermission(GET_INSTANCE_PERMISSION);
+        }
         return instance;
     }
 

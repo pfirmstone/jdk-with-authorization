@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 1996, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 1996, 2021, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -37,6 +37,8 @@ import java.rmi.MarshalException;
 import java.rmi.UnmarshalException;
 import java.rmi.server.ObjID;
 import java.rmi.server.RemoteCall;
+import java.security.AccessController;
+import java.security.PrivilegedAction;
 
 import sun.rmi.runtime.Log;
 import sun.rmi.server.UnicastRef;
@@ -137,13 +139,17 @@ public class StreamRemoteCall implements RemoteCall {
      * Get the InputStream the stub/skeleton should get results/arguments
      * from.
      */
+    @SuppressWarnings("removal")
     public ObjectInput getInputStream() throws IOException {
         if (in == null) {
             Transport.transportLog.log(Log.VERBOSE, "getting input stream");
 
             in = new ConnectionInputStream(conn.getInputStream());
             if (filter != null) {
-                in.setObjectInputFilter(filter);
+                AccessController.doPrivileged((PrivilegedAction<Void>) () -> {
+                    in.setObjectInputFilter(filter);
+                    return null;
+                });
             }
         }
         return in;

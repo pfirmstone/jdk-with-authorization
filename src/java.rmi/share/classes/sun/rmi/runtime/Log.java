@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2001, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2001, 2021, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -30,6 +30,7 @@ import java.io.PrintStream;
 import java.io.OutputStream;
 import java.lang.StackWalker.StackFrame;
 import java.rmi.server.LogStream;
+import java.security.PrivilegedAction;
 import java.util.Set;
 import java.util.logging.Handler;
 import java.util.logging.SimpleFormatter;
@@ -68,7 +69,9 @@ public abstract class Log {
     /* selects log implementation */
     private static final LogFactory logFactory;
     static {
-        boolean useOld = Boolean.getBoolean("sun.rmi.log.useOld");
+        @SuppressWarnings("removal")
+        boolean useOld = java.security.AccessController.doPrivileged(
+            (PrivilegedAction<Boolean>) () -> Boolean.getBoolean("sun.rmi.log.useOld"));
 
         /* set factory to select the logging facility to use */
         logFactory = (useOld ? (LogFactory) new LogStreamLogFactory() :
@@ -174,12 +177,17 @@ public abstract class Log {
     private static class LoggerLog extends Log {
 
         /* alternate console handler for RMI loggers */
-        private static final Handler alternateConsole;
-        static {
-            var alternate = new InternalStreamHandler(System.err);
-            alternate.setLevel(Level.ALL);
-            alternateConsole = alternate;
-        }
+        @SuppressWarnings("removal")
+        private static final Handler alternateConsole =
+                java.security.AccessController.doPrivileged(
+                new java.security.PrivilegedAction<Handler>() {
+                    public Handler run() {
+                            InternalStreamHandler alternate =
+                                new InternalStreamHandler(System.err);
+                            alternate.setLevel(Level.ALL);
+                            return alternate;
+                        }
+                });
 
         /** handler to which messages are copied */
         private InternalStreamHandler copyHandler = null;
@@ -191,14 +199,22 @@ public abstract class Log {
         private LoggerPrintStream loggerSandwich;
 
         /** creates a Log which will delegate to the given logger */
+        @SuppressWarnings("removal")
         private LoggerLog(final Logger logger, final Level level) {
             this.logger = logger;
 
-            if (level != null) {
-                if (!logger.isLoggable(level)) {
-                    logger.setLevel(level);
-                }
-                logger.addHandler(alternateConsole);
+            if (level != null){
+                java.security.AccessController.doPrivileged(
+                    new java.security.PrivilegedAction<Void>() {
+                        public Void run() {
+                            if (!logger.isLoggable(level)) {
+                                logger.setLevel(level);
+                            }
+                            logger.addHandler(alternateConsole);
+                            return null;
+                        }
+                    }
+                );
             }
         }
 
@@ -231,6 +247,8 @@ public abstract class Log {
         /**
          * Set the output stream associated with the RMI server call
          * logger.
+         *
+         * Calling code needs LoggingPermission "control".
          */
         public synchronized void setOutputStream(OutputStream out) {
             if (out != null) {

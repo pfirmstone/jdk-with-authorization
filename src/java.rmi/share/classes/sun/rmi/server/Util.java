@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 1996, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 1996, 2021, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -35,20 +35,28 @@ import java.lang.reflect.Method;
 import java.rmi.Remote;
 import java.rmi.RemoteException;
 import java.rmi.StubNotFoundException;
+import java.rmi.registry.Registry;
 import java.rmi.server.LogStream;
+import java.rmi.server.ObjID;
+import java.rmi.server.RMIClientSocketFactory;
 import java.rmi.server.RemoteObjectInvocationHandler;
 import java.rmi.server.RemoteRef;
 import java.rmi.server.RemoteStub;
 import java.rmi.server.Skeleton;
 import java.rmi.server.SkeletonNotFoundException;
+import java.security.AccessController;
 import java.security.MessageDigest;
 import java.security.DigestOutputStream;
 import java.security.NoSuchAlgorithmException;
+import java.security.PrivilegedAction;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Map;
 import java.util.WeakHashMap;
+import sun.rmi.registry.RegistryImpl;
 import sun.rmi.runtime.Log;
+import sun.rmi.transport.LiveRef;
+import sun.rmi.transport.tcp.TCPEndpoint;
 
 /**
  * A utility class with static methods for creating stubs/proxies and
@@ -58,15 +66,20 @@ import sun.rmi.runtime.Log;
 public final class Util {
 
     /** "server" package log level */
-    static final int logLevel = LogStream.parseLevel(System.getProperty("sun.rmi.server.logLevel"));
+    @SuppressWarnings("removal")
+    static final int logLevel = LogStream.parseLevel(
+        AccessController.doPrivileged(
+            (PrivilegedAction<String>) () -> System.getProperty("sun.rmi.server.logLevel")));
 
     /** server reference log */
     public static final Log serverRefLog =
         Log.getLog("sun.rmi.server.ref", "transport", Util.logLevel);
 
     /** cached value of property java.rmi.server.ignoreStubClasses */
+    @SuppressWarnings("removal")
     private static final boolean ignoreStubClasses =
-        Boolean.getBoolean("java.rmi.server.ignoreStubClasses");
+        AccessController.doPrivileged(
+            (PrivilegedAction<Boolean>) () -> Boolean.getBoolean("java.rmi.server.ignoreStubClasses"));
 
     /** cache of  impl classes that have no corresponding stub class */
     private static final Map<Class<?>, Void> withoutStubs =
@@ -107,6 +120,7 @@ public final class Util {
      * @throws StubNotFoundException if problem locating/creating stub or
      * creating the dynamic proxy instance
      **/
+    @SuppressWarnings("removal")
     public static Remote createProxy(Class<?> implClass,
                                      RemoteRef clientRef,
                                      boolean forceStubUse)
@@ -136,7 +150,12 @@ public final class Util {
         /* REMIND: private remote interfaces? */
 
         try {
-            return (Remote) Proxy.newProxyInstance(loader, interfaces, handler);
+            return AccessController.doPrivileged(new PrivilegedAction<Remote>() {
+                public Remote run() {
+                    return (Remote) Proxy.newProxyInstance(loader,
+                                                           interfaces,
+                                                           handler);
+                }});
         } catch (IllegalArgumentException e) {
             throw new StubNotFoundException("unable to create proxy", e);
         }

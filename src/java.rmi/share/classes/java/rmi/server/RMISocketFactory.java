@@ -137,6 +137,11 @@ public abstract class RMISocketFactory
         if (factory != null) {
             throw new SocketException("factory already defined");
         }
+        @SuppressWarnings("removal")
+        SecurityManager security = System.getSecurityManager();
+        if (security != null) {
+            security.checkSetFactory();
+        }
         factory = fac;
     }
 
@@ -190,6 +195,11 @@ public abstract class RMISocketFactory
      */
     public static synchronized void setFailureHandler(RMIFailureHandler fh)
     {
+        @SuppressWarnings("removal")
+        SecurityManager security = System.getSecurityManager();
+        if (security != null) {
+            security.checkSetFactory();
+        }
         handler = fh;
     }
 

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 1998, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 1998, 2022, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -25,6 +25,8 @@
 
 package sun.rmi.transport;
 
+import java.security.AccessController;
+import java.security.PrivilegedAction;
 import java.util.SortedSet;
 import java.util.TreeSet;
 import jdk.internal.misc.InnocuousThread;
@@ -37,7 +39,7 @@ import jdk.internal.misc.InnocuousThread;
  * @since    1.2
  */
 
-@SuppressWarnings("restricted")
+@SuppressWarnings({"removal", "restricted"})
 class GC {
 
     private GC() { }            /* To prevent instantiation */
@@ -83,7 +85,11 @@ class GC {
     public static native long maxObjectInspectionAge();
 
     static {
-        System.loadLibrary("rmi");
+        AccessController.doPrivileged(new PrivilegedAction<Void>() {
+            public Void run() {
+                System.loadLibrary("rmi");
+                return null;
+            }});
     }
 
     private static class Daemon implements Runnable {
@@ -128,12 +134,18 @@ class GC {
 
         /* Create a new daemon thread */
         public static void create() {
-            Thread t = InnocuousThread.newSystemThread("RMI GC Daemon", new Daemon());
-            assert t.getContextClassLoader() == null;
-            t.setDaemon(true);
-            t.setPriority(Thread.MIN_PRIORITY + 1);
-            t.start();
-            GC.daemon = t;
+            PrivilegedAction<Void> pa = new PrivilegedAction<Void>() {
+                public Void run() {
+                    Thread t = InnocuousThread.newSystemThread("RMI GC Daemon",
+                                                               new Daemon());
+                    assert t.getContextClassLoader() == null;
+                    t.setDaemon(true);
+                    t.setPriority(Thread.MIN_PRIORITY + 1);
+                    t.start();
+                    GC.daemon = t;
+                    return null;
+                }};
+            AccessController.doPrivileged(pa);
         }
 
     }
