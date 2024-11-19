@@ -346,7 +346,7 @@ public final class System {
     private static native void setErr0(PrintStream err);
 
 
-    private static URL codeSource(Class<?> clazz) {
+    static URL codeSource(Class<?> clazz) {
         PrivilegedAction<ProtectionDomain> pa = clazz::getProtectionDomain;
         @SuppressWarnings("removal")
         CodeSource cs = AccessController.doPrivileged(pa).getCodeSource();
