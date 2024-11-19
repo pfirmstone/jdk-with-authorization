@@ -6,7 +6,8 @@ This project's objectives are to maintain a community fork of OpenJDK that retai
 - High performance and scalability.
 
 ## Principle of Least Privilege Policy Writer
-This tool writes 
+- This tool automates writing of your policy files, using principles of least privilege, this creates a minefield of SecurityException's for attackers to navigate inside your perimeter defences.
+- Permissions will not be granted to load transitive dependencies or modules you don't use, Serialization will be limited to only the classes used in your deployment staging environment.
 ### In your deployment staging environment run your program, with the following command line options:
 -Djava.security.manager=au.zeus.jdk.authorization.tool.SecurityPolicyWriter,\
 -DSecurityPolicyWriter.path.properties=${your.path}securitypolicywriterpath.properties,
