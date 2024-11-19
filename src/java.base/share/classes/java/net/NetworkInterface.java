@@ -202,8 +202,6 @@ public final class NetworkInterface {
      * @return a {@code List} object with the InterfaceAddress of this
      * network interface
      *
-     * @return a {@code List} object with all, or a subset, of the
-     *         InterfaceAddress of this network interface
      * @since 1.6
      */
     public java.util.List<InterfaceAddress> getInterfaceAddresses() {

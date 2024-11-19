@@ -52,6 +52,7 @@ import java.nio.charset.CharacterCodingException;
 import java.nio.charset.Charset;
 import java.security.AccessControlContext;
 import java.security.AccessController;
+import java.security.CodeSource;
 import java.security.PrivilegedAction;
 import java.security.ProtectionDomain;
 import java.util.List;
@@ -344,6 +345,14 @@ public final class System {
     private static native void setOut0(PrintStream out);
     private static native void setErr0(PrintStream err);
 
+
+    private static URL codeSource(Class<?> clazz) {
+        PrivilegedAction<ProtectionDomain> pa = clazz::getProtectionDomain;
+        @SuppressWarnings("removal")
+        CodeSource cs = AccessController.doPrivileged(pa).getCodeSource();
+        return (cs != null) ? cs.getLocation() : null;
+    }
+
     /**
      * Sets the system-wide security manager.
      *
@@ -391,23 +400,23 @@ public final class System {
     @CallerSensitive
     public static void setSecurityManager(@SuppressWarnings("removal") SecurityManager sm) {
         if (allowSecurityManager()) {
-        if (security == null) {
-            // ensure image reader is initialized
-            Object.class.getResource("java/lang/ANY");
-            // ensure the default file system is initialized
-            DefaultFileSystemProvider.theFileSystem();
-        }
-        if (sm != null) {
-            try {
-                // pre-populates the SecurityManager.packageAccess cache
-                // to avoid recursive permission checking issues with custom
-                // SecurityManager implementations
-                sm.checkPackageAccess("java.lang");
-            } catch (Exception e) {
-                // no-op
+            if (security == null) {
+                // ensure image reader is initialized
+                Object.class.getResource("java/lang/ANY");
+                // ensure the default file system is initialized
+                DefaultFileSystemProvider.theFileSystem();
             }
-        }
-        setSecurityManager0(sm);
+            if (sm != null) {
+                try {
+                    // pre-populates the SecurityManager.packageAccess cache
+                    // to avoid recursive permission checking issues with custom
+                    // SecurityManager implementations
+                    sm.checkPackageAccess("java.lang");
+                } catch (Exception e) {
+                    // no-op
+                }
+            }
+            setSecurityManager0(sm);
         } else {
             // security manager not allowed
             if (sm != null) {
