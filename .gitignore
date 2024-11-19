@@ -43,7 +43,10 @@ jtreg/LICENSE
 jtreg/README
 jtreg/release
 /.vs/jdk-with-authorization/FileContentIndex
-.vs/CMakeWorkspaceSettings.json
 /.vs/jdk-with-authorization/v17
+.vs/CMakeWorkspaceSettings.json
 .vs/ProjectSettings.json
 .vs/slnx.sqlite
+.vs/VSWorkspaceState.json
+/src/jdk.security.authorization/JavaModularApplication1/nbproject/private/
+/src/jdk.security.authorization/JavaModularApplication1/build/

@@ -199,6 +199,9 @@ public final class NetworkInterface {
      * Only InterfaceAddresses where the {@code checkConnect} doesn't throw
      * a SecurityException will be returned in the List.
      *
+     * @return a {@code List} object with the InterfaceAddress of this
+     * network interface
+     *
      * @return a {@code List} object with all, or a subset, of the
      *         InterfaceAddress of this network interface
      * @since 1.6

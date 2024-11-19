@@ -128,11 +128,7 @@ public final class NewThreadAction implements PrivilegedAction<Thread> {
     }
 
     public Thread run() {
-        @SuppressWarnings("removal")
-        SecurityManager sm = System.getSecurityManager();
-        if (sm != null) {
-            sm.checkPermission(SecurityConstants.GET_CLASSLOADER_PERMISSION);
-        }
+        SecurityConstants.GET_CLASSLOADER_PERMISSION.checkGuard(null);
         Thread t = new Thread(group, runnable, "RMI " + name);
         t.setContextClassLoader(ClassLoader.getSystemClassLoader());
         t.setDaemon(daemon);

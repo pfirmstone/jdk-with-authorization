@@ -25,6 +25,7 @@
 
 package java.security;
 
+import au.zeus.jdk.authorization.guards.LoadClassPermission;
 import sun.security.util.Debug;
 
 import java.util.Map;
@@ -42,6 +43,8 @@ import java.util.function.Function;
  * @since 1.2
  */
 public class SecureClassLoader extends ClassLoader {
+    
+    private static final Permission LOAD_CLASS_ALLOW = new LoadClassPermission();
 
     /*
      * Map that maps the CodeSource to a ProtectionDomain. The key is a
@@ -209,6 +212,7 @@ public class SecureClassLoader extends ClassLoader {
     /*
      * Returned cached ProtectionDomain for the specified CodeSource.
      */
+    @SuppressWarnings("removal")
     private ProtectionDomain getProtectionDomain(CodeSource cs) {
         if (cs == null) {
             return null;
@@ -227,6 +231,11 @@ public class SecureClassLoader extends ClassLoader {
                         = SecureClassLoader.this.getPermissions(key.cs);
                 ProtectionDomain pd = new ProtectionDomain(
                         key.cs, perms, SecureClassLoader.this, null);
+                SecurityManager sm = System.getSecurityManager();
+                if (sm != null){
+                    sm.checkPermission(LOAD_CLASS_ALLOW,
+                            new AccessControlContext(new ProtectionDomain []{pd}));
+                }
                 if (DebugHolder.debug != null) {
                     DebugHolder.debug.println(" getPermissions " + pd);
                     DebugHolder.debug.println("");

@@ -37,7 +37,6 @@ import java.util.function.Function;
 import jdk.internal.loader.NativeLibrary;
 import jdk.internal.loader.RawNativeLibraries;
 import sun.security.action.GetPropertyAction;
-
 import static java.lang.foreign.ValueLayout.ADDRESS;
 
 public final class SystemLookup implements SymbolLookup {

@@ -113,11 +113,7 @@ public class ServerSocket implements java.io.Closeable {
     }
 
     private static Void checkPermission() {
-        @SuppressWarnings("removal")
-        SecurityManager sm = System.getSecurityManager();
-        if (sm != null) {
-            sm.checkPermission(SecurityConstants.SET_SOCKETIMPL_PERMISSION);
-        }
+        SecurityConstants.SET_SOCKETIMPL_PERMISSION.checkGuard(null);
         return null;
     }
 

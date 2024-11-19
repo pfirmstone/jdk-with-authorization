@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2006, 2023, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2006, 2024, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -25,6 +25,11 @@
 
 package java.io;
 
+import au.zeus.jdk.authorization.spi.GuardServiceFactory;
+import java.security.Guard;
+import java.util.Iterator;
+import java.util.ServiceLoader;
+
 /**
  * Context during upcalls from object stream to class-defined
  * readObject/writeObject methods.
@@ -37,6 +42,19 @@ package java.io;
  * If not set to the current thread, the getObj method throws NotActiveException.
  */
 final class SerialCallbackContext {
+    private static final GuardServiceFactory FACTORY;
+    
+    static {
+        GuardServiceFactory factory = null;
+        ServiceLoader<GuardServiceFactory> guards = ServiceLoader.load(GuardServiceFactory.class);
+        Iterator<GuardServiceFactory> it = guards.iterator();
+        while (it.hasNext()){
+            factory = it.next();
+            if (factory != null) break;
+        } 
+        FACTORY = factory;
+    }
+    
     private final Object obj;
     private final ObjectStreamClass desc;
     /**
@@ -44,11 +62,27 @@ final class SerialCallbackContext {
      * As this only works in one thread, we do not need to worry about thread-safety.
      */
     private Thread thread;
+    
+    private static boolean check(Guard guard) throws SecurityException {
+        guard.checkGuard(null);
+        return true;
+    }
+    
+    private static Guard getGuard(String className){
+        return FACTORY.newInstance(
+            "au.zeus.jdk.authorization.guards.SerialObjectPermission",
+            className
+        );
+    }
 
     SerialCallbackContext(Object obj, ObjectStreamClass desc) {
+        this(obj, desc, check(getGuard(desc.getName())), Thread.currentThread());
+    }
+    
+    SerialCallbackContext(Object obj, ObjectStreamClass desc, boolean check, Thread thread){
         this.obj = obj;
         this.desc = desc;
-        this.thread = Thread.currentThread();
+        this.thread = thread;
     }
 
     Object getObj() throws NotActiveException {

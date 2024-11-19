@@ -135,6 +135,7 @@ module java.base {
     exports javax.security.auth.spi;
     exports javax.security.auth.x500;
     exports javax.security.cert;
+    exports au.zeus.jdk.authorization.guards;
 
 
     // additional qualified exports may be inserted at build time
@@ -146,6 +147,8 @@ module java.base {
         jdk.compiler;
     exports com.sun.security.ntlm to
         java.security.sasl;
+    exports jdk.internal to
+        jdk.incubator.vector;
     // Note: all modules in the exported list participate in preview  features
     // and therefore if they use preview features they do not need to be
     // compiled with "--enable-preview".
@@ -154,6 +157,7 @@ module java.base {
     exports jdk.internal.javac to
         java.compiler,
         java.desktop, // for ScopedValue
+        java.se, // for ParticipatesInPreview
         jdk.compiler,
         jdk.incubator.vector, // participates in preview features
         jdk.jartool, // participates in preview features
@@ -375,6 +379,8 @@ module java.base {
         java.prefs;
     exports sun.util.resources to
         jdk.localedata;
+    exports au.zeus.jdk.authorization.spi to
+        jdk.authorization;
 
     // the service types defined by the APIs in this module
 
@@ -416,6 +422,7 @@ module java.base {
     uses sun.util.locale.provider.LocaleDataMetaInfo;
     uses sun.util.resources.LocaleData.CommonResourceBundleProvider;
     uses sun.util.resources.LocaleData.SupplementaryResourceBundleProvider;
+    uses au.zeus.jdk.authorization.spi.GuardServiceFactory;
 
     // Built-in service providers that are located via ServiceLoader
 

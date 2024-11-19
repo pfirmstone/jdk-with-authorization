@@ -131,6 +131,10 @@ public final class SecurityConstants {
     // java.lang.Thread
     public static final RuntimePermission SUBCLASS_IMPLEMENTATION_PERMISSION =
         new RuntimePermission("enableContextClassLoaderOverride");
+    
+    // java.lang.module.ModuleFinder
+    public static final RuntimePermission ACCESS_SYSTEM_MODULES = 
+            new RuntimePermission("accessSystemModules");
 
     // java.security.AccessControlContext
     public static final SecurityPermission CREATE_ACC_PERMISSION =
