@@ -28,6 +28,7 @@ package java.net;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.security.PrivilegedAction;
 import java.util.Hashtable;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.Date;
@@ -41,8 +42,10 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.List;
 import java.security.Permission;
+import java.security.AccessController;
 import sun.security.util.SecurityConstants;
 import sun.net.www.MessageHeader;
+import sun.security.action.GetPropertyAction;
 
 /**
  * The abstract class {@code URLConnection} is the superclass
@@ -333,6 +336,9 @@ public abstract class URLConnection {
      * @since 1.2
      */
     public static void setFileNameMap(FileNameMap map) {
+        @SuppressWarnings("removal")
+        SecurityManager sm = System.getSecurityManager();
+        if (sm != null) sm.checkSetFactory();
         fileNameMap = map;
     }
 
@@ -1295,6 +1301,11 @@ public abstract class URLConnection {
         if (factory != null) {
             throw new Error("factory already defined");
         }
+        @SuppressWarnings("removal")
+        SecurityManager security = System.getSecurityManager();
+        if (security != null) {
+            security.checkSetFactory();
+        }
         factory = fac;
     }
 
@@ -1406,22 +1417,35 @@ public abstract class URLConnection {
 
     @SuppressWarnings("removal")
     private ContentHandler lookupContentHandlerViaProvider(String contentType) {
+        return AccessController.doPrivileged(
+                new PrivilegedAction<>() {
+                    @Override
+                    public ContentHandler run() {
+                        ClassLoader cl = ClassLoader.getSystemClassLoader();
+                        ServiceLoader<ContentHandlerFactory> sl =
+                                ServiceLoader.load(ContentHandlerFactory.class, cl);
 
-        ClassLoader cl = ClassLoader.getSystemClassLoader();
-        ServiceLoader<ContentHandlerFactory> sl =
-                ServiceLoader.load(ContentHandlerFactory.class, cl);
+                        Iterator<ContentHandlerFactory> iterator = sl.iterator();
 
-        Iterator<ContentHandlerFactory> iterator = sl.iterator();
-
-        ContentHandler handler = null;
-        while (iterator.hasNext()) {
-            ContentHandlerFactory f = iterator.next();
-            handler = f.createContentHandler(contentType);
-            if (handler != null) {
-                break;
-            }
-        }
-        return handler;
+                        ContentHandler handler = null;
+                        while (iterator.hasNext()) {
+                            ContentHandlerFactory f;
+                            try {
+                                f = iterator.next();
+                            } catch (ServiceConfigurationError e) {
+                                if (e.getCause() instanceof SecurityException) {
+                                    continue;
+                                }
+                                throw e;
+                            }
+                            handler = f.createContentHandler(contentType);
+                            if (handler != null) {
+                                break;
+                            }
+                        }
+                        return handler;
+                    }
+                });
     }
 
     /**
@@ -1457,7 +1481,8 @@ public abstract class URLConnection {
      * is always the last one on the returned package list.
      */
     private String getContentHandlerPkgPrefixes() {
-        String packagePrefixList = System.getProperty(contentPathProp, "");
+        String packagePrefixList =
+                GetPropertyAction.privilegedGetProperty(contentPathProp, "");
 
         if (packagePrefixList != "") {
             packagePrefixList += "|";

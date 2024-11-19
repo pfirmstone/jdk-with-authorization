@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2005, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2005, 2023, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -26,6 +26,8 @@ package java.net;
 
 import java.io.InputStream;
 import java.io.IOException;
+import java.security.AccessController;
+import java.security.PrivilegedAction;
 
 import jdk.internal.icu.impl.Punycode;
 import jdk.internal.icu.text.StringPrep;
@@ -246,7 +248,14 @@ public final class IDN {
         StringPrep stringPrep = null;
         try {
             final String IDN_PROFILE = "/sun/net/idn/uidna.spp";
-            InputStream stream = StringPrep.class.getResourceAsStream(IDN_PROFILE);
+            @SuppressWarnings("removal")
+            InputStream stream = System.getSecurityManager() != null
+                    ? AccessController.doPrivileged(new PrivilegedAction<>() {
+                            public InputStream run() {
+                                return StringPrep.class.getResourceAsStream(IDN_PROFILE);
+                            }})
+                    : StringPrep.class.getResourceAsStream(IDN_PROFILE);
+
             stringPrep = new StringPrep(stream);
             stream.close();
         } catch (IOException e) {
