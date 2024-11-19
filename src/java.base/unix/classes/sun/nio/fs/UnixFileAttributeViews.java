@@ -25,11 +25,11 @@
 
 package sun.nio.fs;
 
-import java.io.IOException;
 import java.nio.file.*;
 import java.nio.file.attribute.*;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
+import java.io.IOException;
 
 import static sun.nio.fs.UnixConstants.*;
 import static sun.nio.fs.UnixNativeDispatcher.*;
@@ -47,6 +47,7 @@ class UnixFileAttributeViews {
 
         @Override
         public BasicFileAttributes readAttributes() throws IOException {
+            file.checkRead();
             try {
                  UnixFileAttributes attrs =
                      UnixFileAttributes.get(file, followLinks);
@@ -67,6 +68,9 @@ class UnixFileAttributeViews {
                 // no effect
                 return;
             }
+
+            // permission check
+            file.checkWrite();
 
             // use a file descriptor if possible to avoid a race due to
             // accessing a path more than once as the file at that path could
@@ -152,6 +156,24 @@ class UnixFileAttributeViews {
             super(file, followLinks);
         }
 
+        final void checkReadExtended() {
+            @SuppressWarnings("removal")
+            SecurityManager sm = System.getSecurityManager();
+            if (sm != null) {
+                file.checkRead();
+                sm.checkPermission(new RuntimePermission("accessUserInformation"));
+            }
+        }
+
+        final void checkWriteExtended() {
+            @SuppressWarnings("removal")
+            SecurityManager sm = System.getSecurityManager();
+            if (sm != null) {
+                file.checkWrite();
+                sm.checkPermission(new RuntimePermission("accessUserInformation"));
+            }
+        }
+
         @Override
         public String name() {
             return "posix";
@@ -206,6 +228,7 @@ class UnixFileAttributeViews {
 
         @Override
         public UnixFileAttributes readAttributes() throws IOException {
+            checkReadExtended();
             try {
                  return UnixFileAttributes.get(file, followLinks);
             } catch (UnixException x) {
@@ -216,6 +239,8 @@ class UnixFileAttributeViews {
 
         // chmod
         final void setMode(int mode) throws IOException {
+            checkWriteExtended();
+
             if (followLinks) {
                 try {
                     chmod(file, mode);
@@ -258,6 +283,7 @@ class UnixFileAttributeViews {
 
         // chown
         final void setOwners(int uid, int gid) throws IOException {
+            checkWriteExtended();
             try {
                 if (followLinks) {
                     chown(file, uid, gid);

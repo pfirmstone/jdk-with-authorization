@@ -45,6 +45,7 @@ import java.nio.file.FileSystemNotFoundException;
 import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
+import java.nio.file.LinkPermission;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.NotDirectoryException;
 import java.nio.file.NotLinkException;
@@ -67,6 +68,8 @@ import java.util.ServiceConfigurationError;
 import java.util.ServiceLoader;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
+import java.security.AccessController;
+import java.security.PrivilegedAction;
 
 import sun.nio.ch.FileChannelImpl;
 
@@ -196,7 +199,13 @@ public abstract class FileSystemProvider {
                     }
                     loadingProviders = true;
 
-                    List<FileSystemProvider> list = loadInstalledProviders();
+                    @SuppressWarnings("removal")
+                    List<FileSystemProvider> list = AccessController
+                        .doPrivileged(new PrivilegedAction<>() {
+                            @Override
+                            public List<FileSystemProvider> run() {
+                                return loadInstalledProviders();
+                        }});
 
                     // insert the default provider at the start of the list
                     list.add(0, defaultProvider);

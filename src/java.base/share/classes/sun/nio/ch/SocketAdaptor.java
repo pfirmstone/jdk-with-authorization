@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2000, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2000, 2022, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -36,6 +36,9 @@ import java.net.SocketException;
 import java.net.SocketOption;
 import java.net.StandardSocketOptions;
 import java.nio.channels.SocketChannel;
+import java.security.AccessController;
+import java.security.PrivilegedActionException;
+import java.security.PrivilegedExceptionAction;
 import java.util.Set;
 
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
@@ -60,10 +63,16 @@ class SocketAdaptor
         this.sc = sc;
     }
 
+    @SuppressWarnings("removal")
     static Socket create(SocketChannelImpl sc) {
         try {
-            return new SocketAdaptor(sc);
-        } catch (SocketException e) {
+            if (System.getSecurityManager() == null) {
+                return new SocketAdaptor(sc);
+            } else {
+                PrivilegedExceptionAction<Socket> pa = () -> new SocketAdaptor(sc);
+                return AccessController.doPrivileged(pa);
+            }
+        } catch (SocketException | PrivilegedActionException e) {
             throw new InternalError(e);
         }
     }
@@ -123,7 +132,7 @@ class SocketAdaptor
         if (sc.isOpen()) {
             InetSocketAddress local = localAddress();
             if (local != null) {
-                return local.getAddress();
+                return Net.getRevealedLocalAddress(local).getAddress();
             }
         }
         return new InetSocketAddress(0).getAddress();
@@ -156,7 +165,7 @@ class SocketAdaptor
 
     @Override
     public SocketAddress getLocalSocketAddress() {
-        return sc.localAddress();
+        return Net.getRevealedLocalAddress(sc.localAddress());
     }
 
     @Override

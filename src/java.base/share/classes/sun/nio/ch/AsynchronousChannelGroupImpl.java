@@ -34,6 +34,10 @@ import java.util.Queue;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.security.PrivilegedAction;
+import java.security.AccessController;
+import java.security.AccessControlContext;
+import sun.security.action.GetIntegerAction;
 
 /**
  * Base implementation of AsynchronousChannelGroup
@@ -44,8 +48,9 @@ abstract class AsynchronousChannelGroupImpl
 {
     // number of internal threads handling I/O events when using an unbounded
     // thread pool. Internal threads do not dispatch to completion handlers.
-    private static final int internalThreadCount =
-        Integer.getInteger("sun.nio.ch.internalThreadPoolSize", 1);
+    @SuppressWarnings("removal")
+    private static final int internalThreadCount = AccessController.doPrivileged(
+        new GetIntegerAction("sun.nio.ch.internalThreadPoolSize", 1));
 
     // associated thread pool
     private final ThreadPool pool;
@@ -110,10 +115,17 @@ abstract class AsynchronousChannelGroupImpl
         };
     }
 
+    @SuppressWarnings("removal")
     private void startInternalThread(final Runnable task) {
-        // internal threads should not be visible to application so
-        // cannot use user-supplied thread factory
-        ThreadPool.defaultThreadFactory().newThread(task).start();
+        AccessController.doPrivileged(new PrivilegedAction<>() {
+            @Override
+            public Void run() {
+                // internal threads should not be visible to application so
+                // cannot use user-supplied thread factory
+                ThreadPool.defaultThreadFactory().newThread(task).start();
+                return null;
+            }
+         });
     }
 
     protected final void startThreads(Runnable task) {
@@ -235,9 +247,18 @@ abstract class AsynchronousChannelGroupImpl
      */
     abstract void shutdownHandlerTasks();
 
+    @SuppressWarnings("removal")
     private void shutdownExecutors() {
-        pool.executor().shutdown();
-        timeoutExecutor.shutdown();
+        AccessController.doPrivileged(
+            new PrivilegedAction<>() {
+                public Void run() {
+                    pool.executor().shutdown();
+                    timeoutExecutor.shutdown();
+                    return null;
+                }
+            },
+            null,
+            new RuntimePermission("modifyThread"));
     }
 
     @Override
@@ -299,6 +320,28 @@ abstract class AsynchronousChannelGroupImpl
      */
     @Override
     public final void execute(Runnable task) {
+        @SuppressWarnings("removal")
+        SecurityManager sm = System.getSecurityManager();
+        if (sm != null) {
+            // when a security manager is installed then the user's task
+            // must be run with the current calling context
+            @SuppressWarnings("removal")
+            final AccessControlContext acc = AccessController.getContext();
+            final Runnable delegate = task;
+            task = new Runnable() {
+                @SuppressWarnings("removal")
+                @Override
+                public void run() {
+                    AccessController.doPrivileged(new PrivilegedAction<>() {
+                        @Override
+                        public Void run() {
+                            delegate.run();
+                            return null;
+                        }
+                    }, acc);
+                }
+            };
+        }
         executeOnPooledThread(task);
     }
 }

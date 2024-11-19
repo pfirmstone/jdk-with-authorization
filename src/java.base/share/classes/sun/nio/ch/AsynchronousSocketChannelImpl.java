@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2008, 2021, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -428,6 +428,11 @@ abstract class AsynchronousSocketChannelImpl
                     throw new AlreadyBoundException();
                 InetSocketAddress isa = (local == null) ?
                     new InetSocketAddress(0) : Net.checkAddress(local);
+                @SuppressWarnings("removal")
+                SecurityManager sm = System.getSecurityManager();
+                if (sm != null) {
+                    sm.checkListen(isa.getPort());
+                }
                 NetHooks.beforeTcpBind(fd, isa.getAddress(), isa.getPort());
                 Net.bind(fd, isa.getAddress(), isa.getPort());
                 localAddress = Net.localAddress(fd);
@@ -442,7 +447,7 @@ abstract class AsynchronousSocketChannelImpl
     public final SocketAddress getLocalAddress() throws IOException {
         if (!isOpen())
             throw new ClosedChannelException();
-         return localAddress;
+         return Net.getRevealedLocalAddress(localAddress);
     }
 
     @Override
@@ -586,7 +591,8 @@ abstract class AsynchronousSocketChannelImpl
                 }
                 if (localAddress != null) {
                     sb.append(" local=");
-                    sb.append(localAddress.toString());
+                    sb.append(
+                            Net.getRevealedLocalAddressAsString(localAddress));
                 }
                 if (remoteAddress != null) {
                     sb.append(" remote=");

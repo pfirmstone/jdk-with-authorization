@@ -25,9 +25,9 @@
 
 package sun.nio.fs;
 
-import java.io.IOException;
 import java.nio.file.*;
 import java.nio.ByteBuffer;
+import java.io.IOException;
 import java.util.*;
 
 import jdk.internal.access.JavaNioAccess;
@@ -114,8 +114,12 @@ abstract class UnixUserDefinedFileAttributeView
         }
     }
 
+    @SuppressWarnings("removal")
     @Override
     public List<String> list() throws IOException  {
+        if (System.getSecurityManager() != null)
+            checkAccess(file.getPathForPermissionCheck(), true, false);
+
         int fd = -1;
         try {
             fd = file.openForAttributeAccess(followLinks);
@@ -137,8 +141,12 @@ abstract class UnixUserDefinedFileAttributeView
         }
     }
 
+    @SuppressWarnings("removal")
     @Override
     public int size(String name) throws IOException  {
+        if (System.getSecurityManager() != null)
+            checkAccess(file.getPathForPermissionCheck(), true, false);
+
         int fd = -1;
         try {
             fd = file.openForAttributeAccess(followLinks);
@@ -157,8 +165,12 @@ abstract class UnixUserDefinedFileAttributeView
         }
     }
 
+    @SuppressWarnings("removal")
     @Override
     public int read(String name, ByteBuffer dst) throws IOException {
+        if (System.getSecurityManager() != null)
+            checkAccess(file.getPathForPermissionCheck(), true, false);
+
         if (dst.isReadOnly())
             throw new IllegalArgumentException("Read-only buffer");
         int pos = dst.position();
@@ -218,8 +230,12 @@ abstract class UnixUserDefinedFileAttributeView
         }
     }
 
+    @SuppressWarnings("removal")
     @Override
     public int write(String name, ByteBuffer src) throws IOException {
+        if (System.getSecurityManager() != null)
+            checkAccess(file.getPathForPermissionCheck(), false, true);
+
         int pos = src.position();
         int lim = src.limit();
         assert (pos <= lim);
@@ -277,8 +293,12 @@ abstract class UnixUserDefinedFileAttributeView
         }
     }
 
+    @SuppressWarnings("removal")
     @Override
     public void delete(String name) throws IOException {
+        if (System.getSecurityManager() != null)
+            checkAccess(file.getPathForPermissionCheck(), false, true);
+
         int fd = -1;
         try {
             fd = file.openForAttributeAccess(followLinks);

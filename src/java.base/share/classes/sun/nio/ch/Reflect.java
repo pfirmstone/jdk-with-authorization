@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2000, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2000, 2021, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -27,6 +27,8 @@ package sun.nio.ch;
 
 import java.io.*;
 import java.lang.reflect.*;
+import java.security.AccessController;
+import java.security.PrivilegedAction;
 
 
 class Reflect {                                 // package-private
@@ -41,13 +43,22 @@ class Reflect {                                 // package-private
         }
     }
 
+    @SuppressWarnings("removal")
+    private static void setAccessible(final AccessibleObject ao) {
+        AccessController.doPrivileged(new PrivilegedAction<Void>() {
+                public Void run() {
+                    ao.setAccessible(true);
+                    return null;
+                }});
+    }
+
     static Constructor<?> lookupConstructor(String className,
                                             Class<?>[] paramTypes)
     {
         try {
             Class<?> cl = Class.forName(className);
             Constructor<?> c = cl.getDeclaredConstructor(paramTypes);
-            c.setAccessible(true);
+            setAccessible(c);
             return c;
         } catch (ClassNotFoundException | NoSuchMethodException x) {
             throw new ReflectionError(x);
@@ -71,7 +82,7 @@ class Reflect {                                 // package-private
         try {
             Class<?> cl = Class.forName(className);
             Method m = cl.getDeclaredMethod(methodName, paramTypes);
-            m.setAccessible(true);
+            setAccessible(m);
             return m;
         } catch (ClassNotFoundException | NoSuchMethodException x) {
             throw new ReflectionError(x);
@@ -104,7 +115,7 @@ class Reflect {                                 // package-private
         try {
             Class<?> cl = Class.forName(className);
             Field f = cl.getDeclaredField(fieldName);
-            f.setAccessible(true);
+            setAccessible(f);
             return f;
         } catch (ClassNotFoundException | NoSuchFieldException x) {
             throw new ReflectionError(x);

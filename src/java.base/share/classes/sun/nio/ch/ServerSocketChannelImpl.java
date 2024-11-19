@@ -202,7 +202,11 @@ class ServerSocketChannelImpl
     public SocketAddress getLocalAddress() throws IOException {
         synchronized (stateLock) {
             ensureOpen();
-            return localAddress;
+            if (isUnixSocket()) {
+                return UnixDomainSockets.getRevealedLocalAddress(localAddress);
+            } else {
+                return Net.getRevealedLocalAddress(localAddress);
+            }
         }
     }
 
@@ -301,6 +305,7 @@ class ServerSocketChannelImpl
     }
 
     private SocketAddress unixBind(SocketAddress local, int backlog) throws IOException {
+        UnixDomainSockets.checkPermission();
         if (local == null) {
             // Attempt up to 10 times to find an unused name in temp directory.
             // If local address supplied then bind called only once
@@ -331,6 +336,10 @@ class ServerSocketChannelImpl
         } else {
             isa = Net.checkAddress(local, family);
         }
+        @SuppressWarnings("removal")
+        SecurityManager sm = System.getSecurityManager();
+        if (sm != null)
+            sm.checkListen(isa.getPort());
         NetHooks.beforeTcpBind(fd, isa.getAddress(), isa.getPort());
         Net.bind(family, fd, isa.getAddress(), isa.getPort());
         Net.listen(fd, backlog < 1 ? 50 : backlog);
@@ -414,6 +423,7 @@ class ServerSocketChannelImpl
         throws IOException
     {
         if (isUnixSocket()) {
+            UnixDomainSockets.checkPermission();
             String[] pa = new String[1];
             int n = UnixDomainSockets.accept(fd, newfd, pa);
             if (n > 0)
@@ -485,6 +495,16 @@ class ServerSocketChannelImpl
         try {
             // newly accepted socket is initially in blocking mode
             IOUtil.configureBlocking(newfd, true);
+
+            // check permitted to accept connections from the remote address
+            if (isNetSocket()) {
+                @SuppressWarnings("removal")
+                SecurityManager sm = System.getSecurityManager();
+                if (sm != null) {
+                    InetSocketAddress isa = (InetSocketAddress) sa;
+                    sm.checkAccept(isa.getAddress().getHostAddress(), isa.getPort());
+                }
+            }
             return new SocketChannelImpl(provider(), family, newfd, sa);
         } catch (Exception e) {
             nd.close(newfd);
@@ -729,7 +749,9 @@ class ServerSocketChannelImpl
                 if (addr == null) {
                     sb.append("unbound");
                 } else if (isUnixSocket()) {
-                    sb.append(addr);
+                    sb.append(UnixDomainSockets.getRevealedLocalAddressAsString(addr));
+                } else {
+                    sb.append(Net.getRevealedLocalAddressAsString(addr));
                 }
             }
         }

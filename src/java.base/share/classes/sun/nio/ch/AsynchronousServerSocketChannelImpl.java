@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2008, 2023, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -150,6 +150,10 @@ abstract class AsynchronousServerSocketChannelImpl
     {
         InetSocketAddress isa = (local == null) ? new InetSocketAddress(0) :
             Net.checkAddress(local);
+        @SuppressWarnings("removal")
+        SecurityManager sm = System.getSecurityManager();
+        if (sm != null)
+            sm.checkListen(isa.getPort());
 
         try {
             begin();
@@ -171,7 +175,7 @@ abstract class AsynchronousServerSocketChannelImpl
     public final SocketAddress getLocalAddress() throws IOException {
         if (!isOpen())
             throw new ClosedChannelException();
-        return localAddress;
+        return Net.getRevealedLocalAddress(localAddress);
     }
 
     @Override
@@ -253,7 +257,7 @@ abstract class AsynchronousServerSocketChannelImpl
             if (localAddress == null) {
                 sb.append("unbound");
             } else {
-                sb.append(localAddress.toString());
+                sb.append(Net.getRevealedLocalAddressAsString(localAddress));
             }
         }
         sb.append(']');

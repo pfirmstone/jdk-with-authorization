@@ -25,12 +25,20 @@
 
 package sun.nio.ch;
 
+import java.security.AccessController;
+import java.security.PrivilegedAction;
+
 /**
  * Creates this platform's default SelectorProvider
  */
 
+@SuppressWarnings("removal")
 public class DefaultSelectorProvider {
-    private static final SelectorProviderImpl INSTANCE = new KQueueSelectorProvider();
+    private static final SelectorProviderImpl INSTANCE;
+    static {
+        PrivilegedAction<SelectorProviderImpl> pa = KQueueSelectorProvider::new;
+        INSTANCE = AccessController.doPrivileged(pa);
+    }
 
     /**
      * Prevent instantiation.

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2000, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2000, 2023, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -34,12 +34,15 @@ import sun.nio.cs.ThreadLocalCoders;
 import java.nio.ByteBuffer;
 import java.nio.CharBuffer;
 import java.nio.charset.spi.CharsetProvider;
+import java.security.AccessController;
+import java.security.PrivilegedAction;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.Locale;
 import java.util.Map;
 import java.util.NoSuchElementException;
+import java.util.ServiceConfigurationError;
 import java.util.ServiceLoader;
 import java.util.Set;
 import java.util.SortedMap;
@@ -343,7 +346,9 @@ public abstract class Charset
         cache1 = new Object[] { charsetName, cs };
     }
 
-    // Creates an iterator that walks over the available providers
+    // Creates an iterator that walks over the available providers, ignoring
+    // those whose lookup or instantiation causes a security exception to be
+    // thrown.  Should be invoked with full privileges.
     //
     private static Iterator<CharsetProvider> providers() {
         return new Iterator<>() {
@@ -355,9 +360,17 @@ public abstract class Charset
 
                 private boolean getNext() {
                     while (next == null) {
-                        if (!i.hasNext())
-                            return false;
-                        next = i.next();
+                        try {
+                            if (!i.hasNext())
+                                return false;
+                            next = i.next();
+                        } catch (ServiceConfigurationError sce) {
+                            if (sce.getCause() instanceof SecurityException) {
+                                // Ignore security exceptions
+                                continue;
+                            }
+                            throw sce;
+                        }
                     }
                     return true;
                 }
@@ -393,6 +406,7 @@ public abstract class Charset
         ThreadTrackHolder.TRACKER.end(key);
     }
 
+    @SuppressWarnings("removal")
     private static Charset lookupViaProviders(final String charsetName) {
 
         // The runtime startup sequence looks up standard charsets as a
@@ -412,13 +426,20 @@ public abstract class Charset
             return null;
         }
         try {
-            for (Iterator<CharsetProvider> i = providers(); i.hasNext();) {
-                CharsetProvider cp = i.next();
-                Charset cs = cp.charsetForName(charsetName);
-                if (cs != null)
-                    return cs;
-            }
-            return null;
+            return AccessController.doPrivileged(
+                new PrivilegedAction<>() {
+                    public Charset run() {
+                        for (Iterator<CharsetProvider> i = providers();
+                             i.hasNext();) {
+                            CharsetProvider cp = i.next();
+                            Charset cs = cp.charsetForName(charsetName);
+                            if (cs != null)
+                                return cs;
+                        }
+                        return null;
+                    }
+                });
+
         } finally {
             endLookup(key);
         }
@@ -428,18 +449,22 @@ public abstract class Charset
     private static class ExtendedProviderHolder {
         static final CharsetProvider[] extendedProviders = extendedProviders();
         // returns ExtendedProvider, if installed
+        @SuppressWarnings("removal")
         private static CharsetProvider[] extendedProviders() {
-            CharsetProvider[] cps = new CharsetProvider[1];
-            int n = 0;
-            ServiceLoader<CharsetProvider> sl =
-                ServiceLoader.loadInstalled(CharsetProvider.class);
-            for (CharsetProvider cp : sl) {
-                if (n + 1 > cps.length) {
-                    cps = Arrays.copyOf(cps, cps.length << 1);
-                }
-                cps[n++] = cp;
-            }
-            return n == cps.length ? cps : Arrays.copyOf(cps, n);
+            return AccessController.doPrivileged(new PrivilegedAction<>() {
+                    public CharsetProvider[] run() {
+                        CharsetProvider[] cps = new CharsetProvider[1];
+                        int n = 0;
+                        ServiceLoader<CharsetProvider> sl =
+                            ServiceLoader.loadInstalled(CharsetProvider.class);
+                        for (CharsetProvider cp : sl) {
+                            if (n + 1 > cps.length) {
+                                cps = Arrays.copyOf(cps, cps.length << 1);
+                            }
+                            cps[n++] = cp;
+                        }
+                        return n == cps.length ? cps : Arrays.copyOf(cps, n);
+                    }});
         }
     }
 
@@ -603,20 +628,26 @@ public abstract class Charset
      * @return An immutable, case-insensitive map from canonical charset names
      *         to charset objects
      */
+    @SuppressWarnings("removal")
     public static SortedMap<String,Charset> availableCharsets() {
-        TreeMap<String,Charset> m =
-            new TreeMap<>(
-                String.CASE_INSENSITIVE_ORDER);
-        put(standardProvider.charsets(), m);
-        CharsetProvider[] ecps = ExtendedProviderHolder.extendedProviders;
-        for (CharsetProvider ecp :ecps) {
-            put(ecp.charsets(), m);
-        }
-        for (Iterator<CharsetProvider> i = providers(); i.hasNext();) {
-            CharsetProvider cp = i.next();
-            put(cp.charsets(), m);
-        }
-        return Collections.unmodifiableSortedMap(m);
+        return AccessController.doPrivileged(
+            new PrivilegedAction<>() {
+                public SortedMap<String,Charset> run() {
+                    TreeMap<String,Charset> m =
+                        new TreeMap<>(
+                            String.CASE_INSENSITIVE_ORDER);
+                    put(standardProvider.charsets(), m);
+                    CharsetProvider[] ecps = ExtendedProviderHolder.extendedProviders;
+                    for (CharsetProvider ecp :ecps) {
+                        put(ecp.charsets(), m);
+                    }
+                    for (Iterator<CharsetProvider> i = providers(); i.hasNext();) {
+                        CharsetProvider cp = i.next();
+                        put(cp.charsets(), m);
+                    }
+                    return Collections.unmodifiableSortedMap(m);
+                }
+            });
     }
 
     private @Stable static Charset defaultCharset;

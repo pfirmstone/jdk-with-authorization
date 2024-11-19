@@ -28,6 +28,8 @@ package sun.nio.fs;
 import java.nio.file.*;
 import java.io.IOException;
 import java.io.IOError;
+import java.security.AccessController;
+import java.security.PrivilegedAction;
 import jdk.internal.misc.Unsafe;
 
 import static sun.nio.fs.WindowsNativeDispatcher.*;
@@ -118,6 +120,7 @@ class WindowsLinkSupport {
      * Returns the final path of a given path as a String. This should be used
      * prior to calling Win32 system calls that do not follow links.
      */
+    @SuppressWarnings("removal")
     static String getFinalPath(WindowsPath input, boolean followLinks)
         throws IOException
     {
@@ -161,7 +164,12 @@ class WindowsLinkSupport {
             if (parent == null) {
                 // no parent so use parent of absolute path
                 final WindowsPath t = target;
-                target = t.toAbsolutePath();
+                target = AccessController
+                    .doPrivileged(new PrivilegedAction<WindowsPath>() {
+                        @Override
+                        public WindowsPath run() {
+                            return t.toAbsolutePath();
+                        }});
                 parent = target.getParent();
             }
             target = parent.resolve(link);

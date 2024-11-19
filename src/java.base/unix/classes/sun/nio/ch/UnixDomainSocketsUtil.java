@@ -26,6 +26,8 @@
 package sun.nio.ch;
 
 import java.nio.charset.Charset;
+import java.security.AccessController;
+import java.security.PrivilegedAction;
 import sun.net.NetProperties;
 import jdk.internal.util.StaticProperty;
 
@@ -49,12 +51,16 @@ class UnixDomainSocketsUtil {
      * 2. ${jdk.net.unixdomain.tmpdir} if set as net property
      * 3. ${java.io.tmpdir} system property
      */
+    @SuppressWarnings("removal")
     static String getTempDir() {
-        String s = NetProperties.get("jdk.net.unixdomain.tmpdir");
-        if (s != null && s.length() > 0) {
-            return s;
-        } else {
-            return StaticProperty.javaIoTmpDir();
-        }
+        PrivilegedAction<String> action = () -> {
+            String s = NetProperties.get("jdk.net.unixdomain.tmpdir");
+            if (s != null && s.length() > 0) {
+                return s;
+            } else {
+                return StaticProperty.javaIoTmpDir();
+            }
+        };
+        return AccessController.doPrivileged(action);
     }
 }

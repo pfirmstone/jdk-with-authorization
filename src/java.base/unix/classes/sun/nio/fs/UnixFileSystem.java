@@ -34,6 +34,7 @@ import java.nio.file.FileStore;
 import java.nio.file.FileSystem;
 import java.nio.file.FileSystemException;
 import java.nio.file.LinkOption;
+import java.nio.file.LinkPermission;
 import java.nio.file.Path;
 import java.nio.file.PathMatcher;
 import java.nio.file.StandardCopyOption;
@@ -53,6 +54,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.regex.Pattern;
 import sun.nio.ch.DirectBuffer;
 import sun.nio.ch.IOStatus;
+import sun.security.action.GetPropertyAction;
 import static sun.nio.fs.UnixConstants.*;
 import static sun.nio.fs.UnixNativeDispatcher.*;
 
@@ -85,7 +87,8 @@ abstract class UnixFileSystem
         // if process-wide chdir is allowed or default directory is not the
         // process working directory then paths must be resolved against the
         // default directory.
-        String propValue = System.getProperty("sun.nio.fs.chdirAllowed", "false");
+        String propValue = GetPropertyAction
+                .privilegedGetProperty("sun.nio.fs.chdirAllowed", "false");
         boolean chdirAllowed = propValue.isEmpty() ? true : Boolean.parseBoolean(propValue);
         if (chdirAllowed) {
             this.needToResolveAgainstDefaultDirectory = true;
@@ -176,7 +179,20 @@ abstract class UnixFileSystem
      */
     @Override
     public final Iterable<Path> getRootDirectories() {
-        return List.of(rootDirectory);
+        final List<Path> allowedList = List.of(rootDirectory);
+        return new Iterable<>() {
+            public Iterator<Path> iterator() {
+                try {
+                    @SuppressWarnings("removal")
+                    SecurityManager sm = System.getSecurityManager();
+                    if (sm != null)
+                        sm.checkRead(rootDirectory.toString());
+                    return allowedList.iterator();
+                } catch (SecurityException x) {
+                    return Collections.emptyIterator(); //disallowed
+                }
+            }
+        };
     }
 
     /**
@@ -212,6 +228,16 @@ abstract class UnixFileSystem
                 if (entry.isIgnored())
                     continue;
 
+                // check permission to read mount point
+                @SuppressWarnings("removal")
+                SecurityManager sm = System.getSecurityManager();
+                if (sm != null) {
+                    try {
+                        sm.checkRead(Util.toString(entry.dir()));
+                    } catch (SecurityException x) {
+                        continue;
+                    }
+                }
                 try {
                     return getFileStore(entry);
                 } catch (IOException ignore) {
@@ -249,7 +275,20 @@ abstract class UnixFileSystem
 
     @Override
     public final Iterable<FileStore> getFileStores() {
-        return FileStoreIterator::new;
+        @SuppressWarnings("removal")
+        SecurityManager sm = System.getSecurityManager();
+        if (sm != null) {
+            try {
+                sm.checkPermission(new RuntimePermission("getFileStoreAttributes"));
+            } catch (SecurityException se) {
+                return Collections.emptyList();
+            }
+        }
+        return new Iterable<>() {
+            public Iterator<FileStore> iterator() {
+                return new FileStoreIterator();
+            }
+        };
     }
 
     @Override
@@ -806,6 +845,14 @@ abstract class UnixFileSystem
     void move(UnixPath source, UnixPath target, CopyOption... options)
         throws IOException
     {
+        // permission check
+        @SuppressWarnings("removal")
+        SecurityManager sm = System.getSecurityManager();
+        if (sm != null) {
+            source.checkWrite();
+            target.checkWrite();
+        }
+
         // translate options into flags
         Flags flags = Flags.fromMoveOptions(options);
 
@@ -941,6 +988,14 @@ abstract class UnixFileSystem
               final UnixPath target,
               CopyOption... options) throws IOException
     {
+        // permission checks
+        @SuppressWarnings("removal")
+        SecurityManager sm = System.getSecurityManager();
+        if (sm != null) {
+            source.checkRead();
+            target.checkWrite();
+        }
+
         // translate options into flags
         final Flags flags = Flags.fromCopyOptions(options);
 
@@ -952,6 +1007,11 @@ abstract class UnixFileSystem
             sourceAttrs = UnixFileAttributes.get(source, flags.followLinks);
         } catch (UnixException x) {
             x.rethrowAsIOException(source);
+        }
+
+        // if source file is symbolic link then we must check LinkPermission
+        if (sm != null && sourceAttrs.isSymbolicLink()) {
+            sm.checkPermission(new LinkPermission("symbolic"));
         }
 
         // ensure source can be copied

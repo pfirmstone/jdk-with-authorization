@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2011, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2011, 2023, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -116,9 +116,13 @@ class CopyMoveHelper {
         // attributes of source file
         BasicFileAttributes sourceAttrs = null;
         if (sourcePosixView != null) {
-            sourceAttrs = Files.readAttributes(source,
-                                               PosixFileAttributes.class,
-                                               linkOptions);
+            try {
+                sourceAttrs = Files.readAttributes(source,
+                                                   PosixFileAttributes.class,
+                                                   linkOptions);
+            } catch (SecurityException ignored) {
+                // okay to continue if RuntimePermission("accessUserInformation") not granted
+            }
         }
         if (sourceAttrs == null)
             sourceAttrs = Files.readAttributes(source,
@@ -169,7 +173,11 @@ class CopyMoveHelper {
 
                 if (sourceAttrs instanceof PosixFileAttributes sourcePosixAttrs &&
                     targetView instanceof PosixFileAttributeView targetPosixView) {
-                    targetPosixView.setPermissions(sourcePosixAttrs.permissions());
+                    try {
+                        targetPosixView.setPermissions(sourcePosixAttrs.permissions());
+                    } catch (SecurityException ignored) {
+                        // okay to continue if RuntimePermission("accessUserInformation") not granted
+                    }
                 }
             } catch (Throwable x) {
                 // rollback

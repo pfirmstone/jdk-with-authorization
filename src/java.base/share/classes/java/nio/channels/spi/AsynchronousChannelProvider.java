@@ -31,6 +31,8 @@ import java.util.Iterator;
 import java.util.ServiceLoader;
 import java.util.ServiceConfigurationError;
 import java.util.concurrent.*;
+import java.security.AccessController;
+import java.security.PrivilegedAction;
 
 /**
  * Service-provider class for asynchronous channels.
@@ -73,15 +75,20 @@ public abstract class AsynchronousChannelProvider {
     private static class ProviderHolder {
         static final AsynchronousChannelProvider provider = load();
 
+        @SuppressWarnings("removal")
         private static AsynchronousChannelProvider load() {
-            AsynchronousChannelProvider p;
-            p = loadProviderFromProperty();
-            if (p != null)
-                return p;
-            p = loadProviderAsService();
-            if (p != null)
-                return p;
-            return sun.nio.ch.DefaultAsynchronousChannelProvider.create();
+            return AccessController
+                .doPrivileged(new PrivilegedAction<>() {
+                    public AsynchronousChannelProvider run() {
+                        AsynchronousChannelProvider p;
+                        p = loadProviderFromProperty();
+                        if (p != null)
+                            return p;
+                        p = loadProviderAsService();
+                        if (p != null)
+                            return p;
+                        return sun.nio.ch.DefaultAsynchronousChannelProvider.create();
+                    }});
         }
 
         private static AsynchronousChannelProvider loadProviderFromProperty() {
@@ -93,7 +100,7 @@ public abstract class AsynchronousChannelProvider {
                 Object tmp = Class.forName(cn, true,
                                            ClassLoader.getSystemClassLoader()).newInstance();
                 return (AsynchronousChannelProvider)tmp;
-            } catch (ClassNotFoundException |
+            } catch (ClassNotFoundException | SecurityException |
                      InstantiationException | IllegalAccessException x) {
                 throw new ServiceConfigurationError(null, x);
             }
@@ -104,7 +111,17 @@ public abstract class AsynchronousChannelProvider {
                 ServiceLoader.load(AsynchronousChannelProvider.class,
                                    ClassLoader.getSystemClassLoader());
             Iterator<AsynchronousChannelProvider> i = sl.iterator();
-            return sl.findFirst().orElse(null);
+            for (;;) {
+                try {
+                    return (i.hasNext()) ? i.next() : null;
+                } catch (ServiceConfigurationError sce) {
+                    if (sce.getCause() instanceof SecurityException) {
+                        // Ignore the security exception, try the next provider
+                        continue;
+                    }
+                    throw sce;
+                }
+            }
         }
     }
 
