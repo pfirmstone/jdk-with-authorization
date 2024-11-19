@@ -26,8 +26,7 @@
 package java.io;
 
 import java.nio.file.*;
-import java.security.Permission;
-import java.security.PermissionCollection;
+import java.security.*;
 import java.util.Enumeration;
 import java.util.Objects;
 import java.util.StringJoiner;
@@ -37,6 +36,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import jdk.internal.access.JavaIOFilePermissionAccess;
 import jdk.internal.access.SharedSecrets;
 import sun.nio.fs.DefaultFileSystemProvider;
+import sun.security.action.GetPropertyAction;
 import sun.security.util.FilePermCompat;
 import sun.security.util.SecurityConstants;
 
@@ -205,7 +205,8 @@ public final class FilePermission extends Permission implements Serializable {
     private static final java.nio.file.FileSystem builtInFS =
         DefaultFileSystemProvider.theFileSystem();
 
-    private static final Path here = builtInFS.getPath(jdk.internal.util.StaticProperty.userDir());
+    private static final Path here = builtInFS.getPath(
+            GetPropertyAction.privilegedGetProperty("user.dir"));
 
     private static final Path EMPTY_PATH = builtInFS.getPath("");
     private static final Path DASH_PATH = builtInFS.getPath("-");
@@ -384,20 +385,25 @@ public final class FilePermission extends Permission implements Serializable {
             }
 
             // store only the canonical cpath if possible
-            try {
-                String path = cpath;
-                if (cpath.endsWith("*")) {
-                    // call getCanonicalPath with a path with wildcard character
-                    // replaced to avoid calling it with paths that are
-                    // intended to match all entries in a directory
-                    path = path.substring(0, path.length() - 1) + "-";
-                    path = new File(path).getCanonicalPath();
-                    cpath = path.substring(0, path.length() - 1) + "*";
-                } else {
-                    cpath = new File(path).getCanonicalPath();
+            cpath = AccessController.doPrivileged(new PrivilegedAction<>() {
+                public String run() {
+                    try {
+                        String path = cpath;
+                        if (cpath.endsWith("*")) {
+                            // call getCanonicalPath with a path with wildcard character
+                            // replaced to avoid calling it with paths that are
+                            // intended to match all entries in a directory
+                            path = path.substring(0, path.length() - 1) + "-";
+                            path = new File(path).getCanonicalPath();
+                            return path.substring(0, path.length() - 1) + "*";
+                        } else {
+                            return new File(path).getCanonicalPath();
+                        }
+                    } catch (IOException ioe) {
+                        return cpath;
+                    }
                 }
-            } catch (IOException ignore) {
-            }
+            });
 
             int len = cpath.length();
             char last = ((len > 0) ? cpath.charAt(len - 1) : 0);

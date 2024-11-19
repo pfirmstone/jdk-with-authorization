@@ -27,6 +27,7 @@ package java.io;
 
 import java.util.Properties;
 import jdk.internal.util.StaticProperty;
+import sun.security.action.GetPropertyAction;
 
 final class UnixFileSystem extends FileSystem {
 
@@ -35,7 +36,7 @@ final class UnixFileSystem extends FileSystem {
     private final String userDir;
 
     UnixFileSystem() {
-        Properties props = System.getProperties();
+        Properties props = GetPropertyAction.privilegedGetProperties();
         slash = props.getProperty("file.separator").charAt(0);
         colon = props.getProperty("path.separator").charAt(0);
         userDir = StaticProperty.userDir();
@@ -149,6 +150,11 @@ final class UnixFileSystem extends FileSystem {
     @Override
     public String resolve(File f) {
         if (isAbsolute(f)) return f.getPath();
+        @SuppressWarnings("removal")
+        SecurityManager sm = System.getSecurityManager();
+        if (sm != null) {
+            sm.checkPropertyAccess("user.dir");
+        }
         return resolve(userDir, f.getPath());
     }
 
@@ -253,7 +259,16 @@ final class UnixFileSystem extends FileSystem {
 
     @Override
     public File[] listRoots() {
-        return new File[] { new File("/") };
+        try {
+            @SuppressWarnings("removal")
+            SecurityManager security = System.getSecurityManager();
+            if (security != null) {
+                security.checkRead("/");
+            }
+            return new File[] { new File("/") };
+        } catch (SecurityException x) {
+            return new File[0];
+        }
     }
 
     /* -- Disk usage -- */

@@ -147,13 +147,22 @@ public class FileInputStream extends InputStream
      */
     @SuppressWarnings("this-escape")
     public FileInputStream(File file) throws FileNotFoundException {
+        String name = (file != null ? file.getPath() : null);
+        @SuppressWarnings("removal")
+        SecurityManager security = System.getSecurityManager();
+        if (security != null) {
+            security.checkRead(name);
+        }
+        if (name == null) {
+            throw new NullPointerException();
+        }
         if (file.isInvalid()) {
             throw new FileNotFoundException("Invalid file path");
         }
-        path = file.getPath();
         fd = new FileDescriptor();
         fd.attach(this);
-        open(path);
+        path = name;
+        open(name);
         FileCleanable.register(fd);       // open set the fd, register the cleanup
     }
 
@@ -183,8 +192,13 @@ public class FileInputStream extends InputStream
      */
     @SuppressWarnings("this-escape")
     public FileInputStream(FileDescriptor fdObj) {
+        @SuppressWarnings("removal")
+        SecurityManager security = System.getSecurityManager();
         if (fdObj == null) {
             throw new NullPointerException();
+        }
+        if (security != null) {
+            security.checkRead(fdObj);
         }
         fd = fdObj;
         path = null;

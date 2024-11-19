@@ -30,6 +30,7 @@ import java.nio.file.Path;
 import java.util.BitSet;
 import java.util.Locale;
 import java.util.Properties;
+import sun.security.action.GetPropertyAction;
 
 /**
  * Unicode-aware FileSystem for Windows NT/2000.
@@ -52,7 +53,7 @@ final class WinNTFileSystem extends FileSystem {
     // only if the property is set, ignoring case, to the string "false".
     private static final boolean ENABLE_ADS;
     static {
-        String enableADS = System.getProperty("jdk.io.File.enableADS");
+        String enableADS = GetPropertyAction.privilegedGetProperty("jdk.io.File.enableADS");
         if (enableADS != null) {
             ENABLE_ADS = !enableADS.equalsIgnoreCase(Boolean.FALSE.toString());
         } else {
@@ -80,7 +81,7 @@ final class WinNTFileSystem extends FileSystem {
     }
 
     WinNTFileSystem() {
-        Properties props = System.getProperties();
+        Properties props = GetPropertyAction.privilegedGetProperties();
         slash = props.getProperty("file.separator").charAt(0);
         semicolon = props.getProperty("path.separator").charAt(0);
         altSlash = (this.slash == '\\') ? '/' : '\\';
@@ -393,15 +394,15 @@ final class WinNTFileSystem extends FileSystem {
         if (pl == 3)
             return path;                        /* Absolute local */
         if (pl == 0)
-            return userDir + slashify(path); /* Completely relative */
+            return getUserPath() + slashify(path); /* Completely relative */
         if (pl == 1) {                          /* Drive-relative */
-            String up = userDir;
+            String up = getUserPath();
             String ud = getDrive(up);
             if (ud != null) return ud + path;
             return up + path;                   /* User dir is a UNC path */
         }
         if (pl == 2) {                          /* Directory-relative */
-            String up = userDir;
+            String up = getUserPath();
             String ud = getDrive(up);
             if ((ud != null) && path.startsWith(ud))
                 return up + slashify(path.substring(2));
@@ -412,11 +413,30 @@ final class WinNTFileSystem extends FileSystem {
                    drive other than the current drive, insist that the caller
                    have read permission on the result */
                 String p = drive + (':' + dir + slashify(path.substring(2)));
+                @SuppressWarnings("removal")
+                SecurityManager security = System.getSecurityManager();
+                try {
+                    if (security != null) security.checkRead(p);
+                } catch (SecurityException x) {
+                    /* Don't disclose the drive's directory in the exception */
+                    throw new SecurityException("Cannot resolve path " + path);
+                }
                 return p;
             }
             return drive + ":" + slashify(path.substring(2)); /* fake it */
         }
         throw new InternalError("Unresolvable path: " + path);
+    }
+
+    private String getUserPath() {
+        /* For both compatibility and security,
+           we must look this up every time */
+        @SuppressWarnings("removal")
+        SecurityManager sm = System.getSecurityManager();
+        if (sm != null) {
+            sm.checkPropertyAccess("user.dir");
+        }
+        return userDir;
     }
 
     private String getDrive(String path) {
@@ -575,9 +595,21 @@ final class WinNTFileSystem extends FileSystem {
             .valueOf(new long[] {listRoots0()})
             .stream()
             .mapToObj(i -> new File((char)('A' + i) + ":" + slash))
+            .filter(f -> access(f.getPath()))
             .toArray(File[]::new);
     }
     private static native int listRoots0();
+
+    private boolean access(String path) {
+        try {
+            @SuppressWarnings("removal")
+            SecurityManager security = System.getSecurityManager();
+            if (security != null) security.checkRead(path);
+            return true;
+        } catch (SecurityException x) {
+            return false;
+        }
+    }
 
     /* -- Disk usage -- */
 

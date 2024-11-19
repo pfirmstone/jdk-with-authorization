@@ -25,7 +25,7 @@
 
 package java.io;
 
-import java.security.BasicPermission;
+import java.security.*;
 import java.util.Enumeration;
 import java.util.Hashtable;
 import java.util.StringTokenizer;
@@ -90,6 +90,7 @@ import java.util.StringTokenizer;
  * @see java.security.Permission
  * @see java.security.Permissions
  * @see java.security.PermissionCollection
+ * @see java.lang.SecurityManager
  *
  *
  * @author Joe Fialli
