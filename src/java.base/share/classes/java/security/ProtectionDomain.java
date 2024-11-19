@@ -44,13 +44,6 @@ import sun.security.util.SecurityConstants;
  * The {@code ProtectionDomain} class encapsulates the characteristics of a
  * domain, which encloses a set of classes whose instances are granted a set
  * of permissions when being executed on behalf of a given set of Principals.
- * <p>
- * A static set of permissions can be bound to a {@code ProtectionDomain}
- * when it is constructed; such permissions are granted to the domain
- * regardless of the policy in force. However, to support dynamic security
- * policies, a {@code ProtectionDomain} can also be constructed such that it
- * is dynamically mapped to a set of permissions by the current policy whenever
- * a permission is checked.
  *
  * @author Li Gong
  * @author Roland Schemers
@@ -149,10 +142,6 @@ public class ProtectionDomain {
     /* if the permissions object has AllPermission */
     private boolean hasAllPerm = false;
 
-    /* the PermissionCollection is static (pre 1.4 constructor)
-       or dynamic (via a policy refresh) */
-    private final boolean staticPermissions;
-
     /*
      * An object used as a key when the ProtectionDomain is stored in a Map.
      */
@@ -164,12 +153,10 @@ public class ProtectionDomain {
      * {@code setReadOnly()} will be called on the passed in
      * permissions.
      * <p>
-     * The permissions granted to this domain are static, i.e.
-     * invoking the {@link #staticPermissionsOnly()} method returns
-     * {@code true}.
-     * They contain only the ones passed to this constructor and
-     * the current policy will not be consulted.
-     *
+     * The permissions granted to this domain include both the permissions
+     * passed to this constructor, and any permissions granted to this domain
+     * by the current policy at the time a permission is checked.
+     * 
      * @param codesource the codesource associated with this domain
      * @param permissions the permissions granted to this domain
      */
@@ -186,7 +173,6 @@ public class ProtectionDomain {
         }
         this.classloader = null;
         this.principals = new Principal[0];
-        staticPermissions = true;
     }
 
     /**
@@ -195,12 +181,9 @@ public class ProtectionDomain {
      * of principals. If permissions is not {@code null}, then
      * {@code setReadOnly()} will be called on the passed in permissions.
      * <p>
-     * The permissions granted to this domain are dynamic, i.e.
-     * invoking the {@link #staticPermissionsOnly()} method returns
-     * {@code false}.
-     * They include both the static permissions passed to this constructor,
-     * and any permissions granted to this domain by the current policy at the
-     * time a permission is checked.
+     * The permissions granted to this domain include both the permissions
+     * passed to this constructor, and any permissions granted to this domain
+     * by the current policy at the time a permission is checked.
      * <p>
      * This constructor is typically used by
      * {@link SecureClassLoader ClassLoaders}
@@ -236,7 +219,6 @@ public class ProtectionDomain {
         this.classloader = classloader;
         this.principals = (principals != null ? principals.clone():
                            new Principal[0]);
-        staticPermissions = false;
     }
 
     /**
@@ -288,27 +270,19 @@ public class ProtectionDomain {
      * and does not check the current {@code Policy} at the time of
      * permission checking.
      *
-     * @return {@code true} if this domain contains only static permissions.
+     * @return {@code false} always returns false.
      *
      * @since 9
      */
     public final boolean staticPermissionsOnly() {
-        return this.staticPermissions;
+        return false;
     }
 
     /**
      * Check and see if this {@code ProtectionDomain} implies the permissions
      * expressed in the {@code Permission} object.
      * <p>
-     * The set of permissions evaluated is a function of whether the
-     * {@code ProtectionDomain} was constructed with a static set of permissions
-     * or it was bound to a dynamically mapped set of permissions.
-     * <p>
-     * If the {@link #staticPermissionsOnly()} method returns
-     * {@code true}, then the permission will only be checked against the
-     * {@code PermissionCollection} supplied at construction.
-     * <p>
-     * Otherwise, the permission will be checked against the combination
+     * The permission will be checked against the combination
      * of the {@code PermissionCollection} supplied at construction and
      * the current policy binding.
      *
@@ -361,25 +335,24 @@ public class ProtectionDomain {
 
         Permission p2 = null;
         boolean p2Calculated = false;
-
-        if (!staticPermissions) {
-            @SuppressWarnings("removal")
-            Policy policy = Policy.getPolicyNoCheck();
-            if (policy instanceof PolicyFile) {
-                // The PolicyFile implementation supports compatibility
-                // inside, and it also covers the static permissions.
-                return policy.implies(this, perm);
-            } else {
-                if (policy.implies(this, perm)) {
-                    return true;
-                }
-                p2 = FilePermCompat.newPermUsingAltPath(perm);
-                p2Calculated = true;
-                if (p2 != null && policy.implies(this, p2)) {
-                    return true;
-                }
+        
+        @SuppressWarnings("removal")
+        Policy policy = Policy.getPolicyNoCheck();
+        if (policy instanceof PolicyFile) {
+            // The PolicyFile implementation supports compatibility
+            // inside, and it also covers the static permissions.
+            return policy.implies(this, perm);
+        } else {
+            if (policy.implies(this, perm)) {
+                return true;
+            }
+            p2 = FilePermCompat.newPermUsingAltPath(perm);
+            p2Calculated = true;
+            if (p2 != null && policy.implies(this, p2)) {
+                return true;
             }
         }
+        
         if (permissions != null) {
             if (permissions.implies(perm)) {
                 return true;
@@ -473,90 +446,18 @@ public class ProtectionDomain {
         }
     }
 
+    @SuppressWarnings("removal")
     private PermissionCollection mergePermissions() {
-        if (staticPermissions)
-            return permissions;
-
-        @SuppressWarnings("removal")
+        // The use of lambda's could cause problems at bootstrap time?
         PermissionCollection perms =
             java.security.AccessController.doPrivileged
             ((PrivilegedAction<PermissionCollection>) () ->
                 Policy.getPolicyNoCheck().getPermissions(ProtectionDomain.this));
-
-        Permissions mergedPerms = new Permissions();
-        int swag = 32;
-        int vcap = 8;
-        Enumeration<Permission> e;
-        List<Permission> pdVector = new ArrayList<>(vcap);
-        List<Permission> plVector = new ArrayList<>(swag);
-
-        //
-        // Build a vector of domain permissions for subsequent merge
-        if (permissions != null) {
-            synchronized (permissions) {
-                e = permissions.elements();
-                while (e.hasMoreElements()) {
-                    pdVector.add(e.nextElement());
-                }
-            }
+        //Policy has responsiblity of merging permissions.
+        if (perms != null && perms != Policy.UNSUPPORTED_EMPTY_COLLECTION){
+            return perms;
         }
-
-        //
-        // Build a vector of Policy permissions for subsequent merge
-        if (perms != null) {
-            synchronized (perms) {
-                e = perms.elements();
-                while (e.hasMoreElements()) {
-                    plVector.add(e.nextElement());
-                    vcap++;
-                }
-            }
-        }
-
-        if (perms != null && permissions != null) {
-            //
-            // Weed out the duplicates from the policy. Unless a refresh
-            // has occurred since the pd was consed this should result in
-            // an empty vector.
-            synchronized (permissions) {
-                e = permissions.elements();   // domain vs policy
-                while (e.hasMoreElements()) {
-                    Permission pdp = e.nextElement();
-                    Class<?> pdpClass = pdp.getClass();
-                    String pdpActions = pdp.getActions();
-                    String pdpName = pdp.getName();
-                    for (int i = 0; i < plVector.size(); i++) {
-                        Permission pp = plVector.get(i);
-                        if (pdpClass.isInstance(pp)) {
-                            // The equals() method on some permissions
-                            // have some side effects so this manual
-                            // comparison is sufficient.
-                            if (pdpName.equals(pp.getName()) &&
-                                Objects.equals(pdpActions, pp.getActions())) {
-                                plVector.remove(i);
-                                break;
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        if (perms !=null) {
-            // the order of adding to merged perms and permissions
-            // needs to preserve the bugfix 4301064
-
-            for (int i = plVector.size()-1; i >= 0; i--) {
-                mergedPerms.add(plVector.get(i));
-            }
-        }
-        if (permissions != null) {
-            for (int i = pdVector.size()-1; i >= 0; i--) {
-                mergedPerms.add(pdVector.get(i));
-            }
-        }
-
-        return mergedPerms;
+        return permissions;
     }
 
     /**
