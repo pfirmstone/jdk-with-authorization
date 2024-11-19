@@ -44,6 +44,8 @@ import java.awt.event.WindowListener;
 import java.awt.im.InputMethodRequests;
 import java.awt.im.spi.InputMethod;
 import java.lang.Character.Subset;
+import java.security.AccessController;
+import java.security.PrivilegedAction;
 import java.text.MessageFormat;
 import java.util.Collection;
 import java.util.HashMap;
@@ -1034,16 +1036,22 @@ public class InputContext extends java.awt.im.InputContext
     /**
      * Initializes the input method selection key definition in preference trees
      */
+    @SuppressWarnings("removal")
     private void initializeInputMethodSelectionKey() {
-        // Look in user's tree
-        Preferences root = Preferences.userRoot();
-        inputMethodSelectionKey = getInputMethodSelectionKeyStroke(root);
+        AccessController.doPrivileged(new PrivilegedAction<Object>() {
+            public Object run() {
+                // Look in user's tree
+                Preferences root = Preferences.userRoot();
+                inputMethodSelectionKey = getInputMethodSelectionKeyStroke(root);
 
-        if (inputMethodSelectionKey == null) {
-            // Look in system's tree
-            root = Preferences.systemRoot();
-            inputMethodSelectionKey = getInputMethodSelectionKeyStroke(root);
-        }
+                if (inputMethodSelectionKey == null) {
+                    // Look in system's tree
+                    root = Preferences.systemRoot();
+                    inputMethodSelectionKey = getInputMethodSelectionKeyStroke(root);
+                }
+                return null;
+            }
+        });
     }
 
     private AWTKeyStroke getInputMethodSelectionKeyStroke(Preferences root) {

@@ -108,11 +108,18 @@ public final class DebugSettings {
      * Load debug properties from file, then override
      * with any command line specified properties
      */
+    @SuppressWarnings("removal")
     private synchronized void loadProperties() {
         // setup initial properties
-        loadDefaultProperties();
-        loadFileProperties();
-        loadSystemProperties();
+        java.security.AccessController.doPrivileged(
+            new java.security.PrivilegedAction<Void>() {
+                public Void run() {
+                    loadDefaultProperties();
+                    loadFileProperties();
+                    loadSystemProperties();
+                    return null;
+                }
+            });
 
         // echo the initial property settings to stdout
         if (log.isLoggable(PlatformLogger.Level.FINE)) {

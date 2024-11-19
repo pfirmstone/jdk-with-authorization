@@ -35,6 +35,8 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.charset.Charset;
 import java.nio.charset.CharsetEncoder;
+import java.security.AccessController;
+import java.security.PrivilegedAction;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -118,7 +120,7 @@ public abstract class FontConfiguration {
         this.preferPropFonts = preferPropFonts;
         /* fontConfig should be initialised by default constructor, and
          * its data tables can be shared, since readFontConfigFile doesn't
-         * update any other state.
+         * update any other state. Also avoid a doPrivileged block.
          */
         initFontConfig();
     }
@@ -154,8 +156,20 @@ public abstract class FontConfiguration {
         short fontNameID = compFontNameIDs[0][0][0];
         short fileNameID = getComponentFileID(fontNameID);
         final String fileName = mapFileName(getComponentFileName(fileNameID));
-        File f = new File(fileName);
-        return f.exists();
+        @SuppressWarnings("removal")
+        Boolean exists = java.security.AccessController.doPrivileged(
+            new java.security.PrivilegedAction<Boolean>() {
+                 public Boolean run() {
+                     try {
+                         File f = new File(fileName);
+                         return Boolean.valueOf(f.exists());
+                     }
+                     catch (Exception e) {
+                         return Boolean.FALSE;
+                     }
+                 }
+                });
+        return exists.booleanValue();
     }
 
     private void findFontConfigFile() {
@@ -946,11 +960,18 @@ public abstract class FontConfiguration {
             !charsetName.startsWith("sun.font.")) {
             fc = Charset.forName(charsetName);
         } else {
-            Class<?> fcc = null;
-            try {
-                fcc = Class.forName(charsetName, true, ClassLoader.getSystemClassLoader());
-            } catch (ClassNotFoundException e) {
-            }
+            @SuppressWarnings("removal")
+            Class<?> fcc = AccessController.doPrivileged(new PrivilegedAction<Class<?>>() {
+                    public Class<?> run() {
+                        try {
+                            return Class.forName(charsetName, true,
+                                                 ClassLoader.getSystemClassLoader());
+                        } catch (ClassNotFoundException e) {
+                        }
+                        return null;
+                    }
+                });
+
             if (fcc != null) {
                 try {
                     fc = (Charset) fcc.getDeclaredConstructor().newInstance();

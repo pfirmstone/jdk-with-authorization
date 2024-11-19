@@ -120,7 +120,10 @@ public class FontDescriptor implements Cloneable {
     }
     static boolean isLE;
     static {
-        String enc = System.getProperty("sun.io.unicode.encoding", "UnicodeBig");
+        @SuppressWarnings("removal")
+        String enc = java.security.AccessController.doPrivileged(
+           new sun.security.action.GetPropertyAction("sun.io.unicode.encoding",
+                                                          "UnicodeBig"));
         isLE = !"UnicodeBig".equals(enc);
     }
 }

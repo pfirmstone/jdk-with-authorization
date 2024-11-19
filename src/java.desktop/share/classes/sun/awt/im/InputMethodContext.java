@@ -37,6 +37,7 @@ import java.awt.event.InputMethodEvent;
 import java.awt.font.TextHitInfo;
 import java.awt.im.InputMethodRequests;
 import java.awt.im.spi.InputMethod;
+import java.security.AccessController;
 import java.text.AttributedCharacterIterator;
 import java.text.AttributedCharacterIterator.Attribute;
 import java.text.AttributedString;
@@ -71,7 +72,9 @@ public class InputMethodContext
     static {
         // check whether we should use below-the-spot input
         // get property from command line
-        String inputStyle = System.getProperty("java.awt.im.style");
+        @SuppressWarnings("removal")
+        String inputStyle = AccessController.doPrivileged
+                (new GetPropertyAction("java.awt.im.style", null));
         // get property from awt.properties file
         if (inputStyle == null) {
             inputStyle = Toolkit.getProperty("java.awt.im.style", null);

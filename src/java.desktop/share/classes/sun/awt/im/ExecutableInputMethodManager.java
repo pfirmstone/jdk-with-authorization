@@ -41,6 +41,10 @@ import java.awt.event.ActionListener;
 import java.awt.event.InvocationEvent;
 import java.awt.im.spi.InputMethodDescriptor;
 import java.lang.reflect.InvocationTargetException;
+import java.security.AccessController;
+import java.security.PrivilegedAction;
+import java.security.PrivilegedActionException;
+import java.security.PrivilegedExceptionAction;
 import java.util.Hashtable;
 import java.util.Iterator;
 import java.util.Locale;
@@ -248,14 +252,24 @@ class ExecutableInputMethodManager extends InputMethodManager
      * initializes the input method locator list for all
      * installed input method descriptors.
      */
+    @SuppressWarnings("removal")
     private void initializeInputMethodLocatorList() {
         synchronized (javaInputMethodLocatorList) {
             javaInputMethodLocatorList.clear();
-            for (InputMethodDescriptor descriptor :
-                ServiceLoader.load(InputMethodDescriptor.class,
-                                   ClassLoader.getSystemClassLoader())) {
-                ClassLoader cl = descriptor.getClass().getClassLoader();
-                javaInputMethodLocatorList.add(new InputMethodLocator(descriptor, cl, null));
+            try {
+                AccessController.doPrivileged(new PrivilegedExceptionAction<Object>() {
+                    public Object run() {
+                        for (InputMethodDescriptor descriptor :
+                            ServiceLoader.load(InputMethodDescriptor.class,
+                                               ClassLoader.getSystemClassLoader())) {
+                            ClassLoader cl = descriptor.getClass().getClassLoader();
+                            javaInputMethodLocatorList.add(new InputMethodLocator(descriptor, cl, null));
+                        }
+                        return null;
+                    }
+                });
+            }  catch (PrivilegedActionException e) {
+                e.printStackTrace();
             }
             javaInputMethodCount = javaInputMethodLocatorList.size();
         }
@@ -580,8 +594,13 @@ class ExecutableInputMethodManager extends InputMethodManager
         }
     }
 
+    @SuppressWarnings("removal")
     private Preferences getUserRoot() {
-        return Preferences.userRoot();
+        return AccessController.doPrivileged(new PrivilegedAction<Preferences>() {
+            public Preferences run() {
+                return Preferences.userRoot();
+            }
+        });
     }
 
     private Locale getAdvertisedLocale(InputMethodLocator locator, Locale locale) {
