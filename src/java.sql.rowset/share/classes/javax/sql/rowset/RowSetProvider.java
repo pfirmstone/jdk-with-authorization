@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2010, 2021, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -25,9 +25,13 @@
 
 package javax.sql.rowset;
 
+import java.security.AccessController;
+import java.security.PrivilegedAction;
 import java.sql.SQLException;
+import java.util.PropertyPermission;
 import java.util.ServiceConfigurationError;
 import java.util.ServiceLoader;
+import sun.reflect.misc.ReflectUtil;
 
 /**
  * A factory API that enables applications to obtain a
@@ -64,7 +68,7 @@ public class RowSetProvider {
 
     static {
         // Check to see if the debug property is set
-        String val = System.getProperty(ROWSET_DEBUG_PROPERTY);
+        String val = getSystemProperty(ROWSET_DEBUG_PROPERTY);
         // Allow simply setting the prop to turn on debug
         debug = val != null && !"false".equals(val);
     }
@@ -124,8 +128,7 @@ public class RowSetProvider {
         String factoryClassName = null;
         try {
             trace("Checking for Rowset System Property...");
-
-            factoryClassName = System.getProperty(ROWSET_FACTORY_NAME);
+            factoryClassName = getSystemProperty(ROWSET_FACTORY_NAME);
             if (factoryClassName != null) {
                 trace("Found system property, value=" + factoryClassName);
                 if (factoryClassName.equals(ROWSET_FACTORY_IMPL)) {
@@ -190,6 +193,11 @@ public class RowSetProvider {
         if(factoryClassName == null) {
             throw new SQLException("Error: factoryClassName cannot be null");
         }
+        try {
+            ReflectUtil.checkPackageAccess(factoryClassName);
+        } catch (@SuppressWarnings("removal") java.security.AccessControlException e) {
+            throw new SQLException("Access Exception",e);
+        }
 
         try {
             // getFactoryClass takes care of adding the read edge if
@@ -217,14 +225,22 @@ public class RowSetProvider {
      * @return The ClassLoader to use.
      *
      */
-    private static ClassLoader getContextClassLoader() {
-        ClassLoader cl = Thread.currentThread().getContextClassLoader();
+    @SuppressWarnings("removal")
+    private static ClassLoader getContextClassLoader() throws SecurityException {
+        return AccessController.doPrivileged(new PrivilegedAction<ClassLoader>() {
 
-        if (cl == null) {
-            cl = ClassLoader.getSystemClassLoader();
-        }
+            public ClassLoader run() {
+                ClassLoader cl = null;
 
-        return cl;
+                cl = Thread.currentThread().getContextClassLoader();
+
+                if (cl == null) {
+                    cl = ClassLoader.getSystemClassLoader();
+                }
+
+                return cl;
+            }
+        });
     }
 
     /**
@@ -260,6 +276,7 @@ public class RowSetProvider {
             }
         }
 
+        ReflectUtil.checkPackageAccess(factoryClass);
         return factoryClass;
     }
 
@@ -283,6 +300,32 @@ public class RowSetProvider {
         }
         return theFactory;
 
+    }
+
+    /**
+     * Returns the requested System Property.  If a {@code SecurityException}
+     * occurs, just return NULL
+     * @param propName - System property to retrieve
+     * @return The System property value or NULL if the property does not exist
+     * or a {@code SecurityException} occurs.
+     */
+    @SuppressWarnings("removal")
+    private static String getSystemProperty(final String propName) {
+        String property = null;
+        try {
+            property = AccessController.doPrivileged(new PrivilegedAction<String>() {
+
+                public String run() {
+                    return System.getProperty(propName);
+                }
+            }, null, new PropertyPermission(propName, "read"));
+        } catch (SecurityException se) {
+            trace("error getting " + propName + ":  "+ se);
+            if (debug) {
+                se.printStackTrace();
+            }
+        }
+        return property;
     }
 
     /**
