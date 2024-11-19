@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2005, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2005, 2021, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -25,6 +25,7 @@
 
 package javax.script;
 import java.util.*;
+import java.security.*;
 import java.util.ServiceLoader;
 import java.util.ServiceConfigurationError;
 import java.util.function.Function;
@@ -86,7 +87,10 @@ public class ScriptEngineManager  {
     private void initEngines(final ClassLoader loader) {
         Iterator<ScriptEngineFactory> itr;
         try {
-            itr = getServiceLoader(loader).iterator();
+            @SuppressWarnings("removal")
+            var sl = AccessController.doPrivileged(
+                (PrivilegedAction<ServiceLoader<ScriptEngineFactory>>)() -> getServiceLoader(loader));
+            itr = sl.iterator();
         } catch (ServiceConfigurationError err) {
             reportException("Can't find ScriptEngineFactory providers: ", err);
             // do not throw any exception here. user may want to
