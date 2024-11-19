@@ -612,7 +612,8 @@ void ClassListParser::resolve_indy_impl(Symbol* class_name_symbol, TRAPS) {
   // resolve the CP entry for the invokedynamic instruction, which may result in
   // generation of LambdaForm classes.
   Handle class_loader(THREAD, SystemDictionary::java_system_loader());
-  Klass* klass = SystemDictionary::resolve_or_fail(class_name_symbol, class_loader, true, CHECK);
+  Handle protection_domain;
+  Klass* klass = SystemDictionary::resolve_or_fail(class_name_symbol, class_loader, protection_domain, true, CHECK);
   if (klass->is_instance_klass()) {
     InstanceKlass* ik = InstanceKlass::cast(klass);
     MetaspaceShared::try_link_class(THREAD, ik);
@@ -780,7 +781,8 @@ InstanceKlass* ClassListParser::lookup_interface_for_current_class(Symbol* inter
 
 InstanceKlass* ClassListParser::find_builtin_class_helper(JavaThread* current, Symbol* class_name_symbol, oop class_loader_oop) {
   Handle class_loader(current, class_loader_oop);
-  return SystemDictionary::find_instance_klass(current, class_name_symbol, class_loader);
+  Handle protection_domain;
+  return SystemDictionary::find_instance_klass(current, class_name_symbol, class_loader, protection_domain);
 }
 
 InstanceKlass* ClassListParser::find_builtin_class(JavaThread* current, const char* class_name) {

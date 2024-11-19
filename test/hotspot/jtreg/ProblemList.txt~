@@ -115,8 +115,11 @@ runtime/ErrorHandling/MachCodeFramesInErrorFile.java 8313315 linux-ppc64le
 runtime/cds/appcds/customLoader/HelloCustom_JFR.java 8241075 linux-all,windows-x64
 <<<<<<< HEAD
 =======
+runtime/Dictionary/CleanProtectionDomain.java 8341916 generic-all
+runtime/Dictionary/ProtectionDomainCacheTest.java 8341916 generic-all
+runtime/logging/ProtectionDomainVerificationTest.java 8341916 generic-all
 runtime/NMT/VirtualAllocCommitMerge.java 8309698 linux-s390x
->>>>>>> 5cb0d438231383d491b2fcca455d09af7f2ee016
+>>>>>>> parent of dfddbcaab88 (8341916: Remove ProtectionDomain related hotspot code and tests)
 
 # Fails with +UseCompactObjectHeaders on aarch64
 runtime/cds/appcds/SharedBaseAddress.java 8340212 linux-aarch64,macosx-aarch64

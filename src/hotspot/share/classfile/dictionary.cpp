@@ -26,14 +26,26 @@
 #include "cds/cdsConfig.hpp"
 #include "classfile/classLoaderData.inline.hpp"
 #include "classfile/dictionary.hpp"
+#include "classfile/javaClasses.hpp"
+#include "classfile/protectionDomainCache.hpp"
+#include "classfile/systemDictionary.hpp"
+#include "classfile/vmSymbols.hpp"
 #include "logging/log.hpp"
 #include "logging/logStream.hpp"
 #include "memory/iterator.hpp"
 #include "memory/metaspaceClosure.hpp"
 #include "memory/resourceArea.hpp"
-#include "oops/instanceKlass.hpp"
+#include "memory/universe.hpp"
+#include "oops/klass.inline.hpp"
+#include "oops/method.hpp"
+#include "oops/oop.inline.hpp"
+#include "oops/oopHandle.inline.hpp"
+#include "runtime/handles.inline.hpp"
+#include "runtime/javaCalls.hpp"
+#include "runtime/mutexLocker.hpp"
+#include "runtime/safepointVerifiers.hpp"
 #include "utilities/concurrentHashTable.inline.hpp"
-#include "utilities/ostream.hpp"
+#include "utilities/growableArray.hpp"
 #include "utilities/tableStatistics.hpp"
 
 // 2^24 is max size, like StringTable.
@@ -57,7 +69,7 @@ Dictionary::~Dictionary() {
 }
 
 uintx Dictionary::Config::get_hash(Value const& value, bool* is_dead) {
-  return value->name()->identity_hash();
+  return value->instance_klass()->name()->identity_hash();
 }
 
 void* Dictionary::Config::allocate_node(void* context, size_t size, Value const& value) {
@@ -65,7 +77,24 @@ void* Dictionary::Config::allocate_node(void* context, size_t size, Value const&
 }
 
 void Dictionary::Config::free_node(void* context, void* memory, Value const& value) {
+  delete value; // Call DictionaryEntry destructor
   FreeHeap(memory);
+}
+
+DictionaryEntry::DictionaryEntry(InstanceKlass* klass) : _instance_klass(klass) {
+  release_set_package_access_cache(nullptr);
+}
+
+DictionaryEntry::~DictionaryEntry() {
+  // avoid recursion when deleting linked list
+  // package_access_cache is accessed during a safepoint.
+  // This doesn't require a lock because nothing is reading this
+  // entry anymore.  The ClassLoader is dead.
+  while (package_access_cache_acquire() != nullptr) {
+    ProtectionDomainEntry* to_delete = package_access_cache_acquire();
+    release_set_package_access_cache(to_delete->next_acquire());
+    delete to_delete;
+  }
 }
 
 const int _resize_load_trigger = 5;       // load factor that will trigger the resize
@@ -79,10 +108,86 @@ bool Dictionary::check_if_needs_resize() {
          !_table->is_max_size_reached());
 }
 
+bool DictionaryEntry::has_package_access_been_granted(Handle protection_domain) {
+  return protection_domain() == nullptr || !java_lang_System::allow_security_manager()
+        ? true
+        : is_in_package_access_cache(protection_domain());
+}
+
+// Reading the package_access_cache on each DictionaryEntry is lock free and cannot safepoint.
+// Adding and deleting entries is under the SystemDictionary_lock
+// Deleting unloaded entries on ClassLoaderData for dictionaries that are not unloaded
+// is a three step process:
+//     moving the entries to a separate list, handshake to wait for
+//     readers to complete (see NSV here), and then actually deleting the entries.
+// Deleting entries is done by the ServiceThread when triggered by class unloading.
+
+bool DictionaryEntry::is_in_package_access_cache(oop protection_domain) const {
+  assert(Thread::current()->is_Java_thread() || SafepointSynchronize::is_at_safepoint(),
+         "can only be called by a JavaThread or at safepoint");
+  // This cannot safepoint while reading the protection domain set.
+  NoSafepointVerifier nsv;
+#ifdef ASSERT
+  if (protection_domain == instance_klass()->protection_domain()) {
+    // Ensure this doesn't show up in the package_access_cache (invariant)
+    bool in_package_access_cache = false;
+    for (ProtectionDomainEntry* current = package_access_cache_acquire();
+                                current != nullptr;
+                                current = current->next_acquire()) {
+      if (current->object_no_keepalive() == protection_domain) {
+        in_package_access_cache = true;
+        break;
+      }
+    }
+    if (in_package_access_cache) {
+      assert(false, "A klass's protection domain should not show up "
+                    "in its sys. dict. PD set");
+    }
+  }
+#endif /* ASSERT */
+
+  if (protection_domain == instance_klass()->protection_domain()) {
+    // Succeeds trivially
+    return true;
+  }
+
+  for (ProtectionDomainEntry* current = package_access_cache_acquire();
+                              current != nullptr;
+                              current = current->next_acquire()) {
+    if (current->object_no_keepalive() == protection_domain) {
+      return true;
+    }
+  }
+  return false;
+}
+
+void DictionaryEntry::add_to_package_access_cache(ClassLoaderData* loader_data, Handle protection_domain) {
+  assert_lock_strong(SystemDictionary_lock);
+  if (!is_in_package_access_cache(protection_domain())) {
+    WeakHandle obj = ProtectionDomainCacheTable::add_if_absent(protection_domain);
+    // Additions and deletions hold the SystemDictionary_lock, readers are lock-free
+    ProtectionDomainEntry* new_head = new ProtectionDomainEntry(obj, _package_access_cache);
+    release_set_package_access_cache(new_head);
+  }
+  LogTarget(Trace, protectiondomain) lt;
+  if (lt.is_enabled()) {
+    ResourceMark rm;
+    LogStream ls(lt);
+    ls.print("adding protection domain that can access class %s", instance_klass()->name()->as_C_string());
+    ls.print(" class loader: ");
+    loader_data->class_loader()->print_value_on(&ls);
+    ls.print(" protection domain: ");
+    protection_domain->print_value_on(&ls);
+    ls.print(" ");
+    print_count(&ls);
+    ls.cr();
+  }
+}
+
 //   Just the classes from defining class loaders
 void Dictionary::classes_do(void f(InstanceKlass*)) {
-  auto doit = [&] (InstanceKlass** value) {
-    InstanceKlass* k = (*value);
+  auto doit = [&] (DictionaryEntry** value) {
+    InstanceKlass* k = (*value)->instance_klass();
     if (loader_data() == k->class_loader_data()) {
       f(k);
     }
@@ -94,8 +199,8 @@ void Dictionary::classes_do(void f(InstanceKlass*)) {
 
 // All classes, and their class loaders, including initiating class loaders
 void Dictionary::all_entries_do(KlassClosure* closure) {
-  auto all_doit = [&] (InstanceKlass** value) {
-    InstanceKlass* k = (*value);
+  auto all_doit = [&] (DictionaryEntry** value) {
+    InstanceKlass* k = (*value)->instance_klass();
     closure->do_klass(k);
     return true;
   };
@@ -107,8 +212,9 @@ void Dictionary::all_entries_do(KlassClosure* closure) {
 void Dictionary::classes_do(MetaspaceClosure* it) {
   assert(CDSConfig::is_dumping_archive(), "sanity");
 
-  auto push = [&] (InstanceKlass** value) {
-    it->push(value);
+  auto push = [&] (DictionaryEntry** value) {
+    InstanceKlass** k = (*value)->instance_klass_addr();
+    it->push(k);
     return true;
   };
   _table->do_scan(Thread::current(), push);
@@ -122,25 +228,26 @@ public:
   uintx get_hash() const {
     return _name->identity_hash();
   }
-  bool equals(InstanceKlass** value) {
-    InstanceKlass* entry = *value;
-    return (entry->name() == _name);
+  bool equals(DictionaryEntry** value) {
+    DictionaryEntry *entry = *value;
+    return (entry->instance_klass()->name() == _name);
   }
-  bool is_dead(InstanceKlass** value) {
+  bool is_dead(DictionaryEntry** value) {
     return false;
   }
 };
 
 // Add a loaded class to the dictionary.
 void Dictionary::add_klass(JavaThread* current, Symbol* class_name,
-                           InstanceKlass* klass) {
+                           InstanceKlass* obj) {
   assert_locked_or_safepoint(SystemDictionary_lock); // doesn't matter now
-  assert(klass != nullptr, "adding nullptr obj");
-  assert(klass->name() == class_name, "sanity check on name");
+  assert(obj != nullptr, "adding nullptr obj");
+  assert(obj->name() == class_name, "sanity check on name");
 
+  DictionaryEntry* entry = new DictionaryEntry(obj);
   DictionaryLookup lookup(class_name);
   bool needs_rehashing, clean_hint;
-  bool created = _table->insert(current, lookup, klass, &needs_rehashing, &clean_hint);
+  bool created = _table->insert(current, lookup, entry, &needs_rehashing, &clean_hint);
   assert(created, "should be because we have a lock");
   assert (!needs_rehashing, "should never need rehashing");
   assert(!clean_hint, "no class should be unloaded");
@@ -170,10 +277,11 @@ void Dictionary::add_klass(JavaThread* current, Symbol* class_name,
 // Callers should be aware that an entry could be added just after
 // the table is read here, so the caller will not see the new entry.
 // The entry may be accessed by the VM thread in verification.
-InstanceKlass* Dictionary::find_class(Thread* current, Symbol* class_name) {
+DictionaryEntry* Dictionary::get_entry(Thread* current,
+                                       Symbol* class_name) {
   DictionaryLookup lookup(class_name);
-  InstanceKlass* result = nullptr;
-  auto get = [&] (InstanceKlass** value) {
+  DictionaryEntry* result = nullptr;
+  auto get = [&] (DictionaryEntry** value) {
     // function called if value is found so is never null
     result = (*value);
   };
@@ -389,8 +497,9 @@ void Dictionary::print_on(outputStream* st) const {
   print_size(st);
   st->print_cr("^ indicates that initiating loader is different from defining loader");
 
-  auto printer = [&] (InstanceKlass** entry) {
-    InstanceKlass* e = *entry;
+  auto printer = [&] (DictionaryEntry** entry) {
+    DictionaryEntry* probe = *entry;
+    Klass* e = probe->instance_klass();
     bool is_defining_class =
        (_loader_data == e->class_loader_data());
     st->print(" %s%s", is_defining_class ? " " : "^", e->external_name());
@@ -401,6 +510,7 @@ void Dictionary::print_on(outputStream* st) const {
       st->print(", ");
       cld->print_value_on(st);
       st->print(", ");
+      probe->print_count(st);
     }
     st->cr();
     return true;
@@ -414,6 +524,14 @@ void Dictionary::print_on(outputStream* st) const {
   tty->cr();
 }
 
+void DictionaryEntry::verify() {
+  Klass* e = instance_klass();
+  guarantee(e->is_instance_klass(),
+                          "Verify of dictionary failed");
+  e->verify();
+  verify_package_access_cache();
+}
+
 void Dictionary::verify() {
   guarantee(_number_of_entries >= 0, "Verify of dictionary failed");
 
@@ -424,7 +542,7 @@ void Dictionary::verify() {
             (cld->is_the_null_class_loader_data() || cld->class_loader_no_keepalive()->is_instance()),
             "checking type of class_loader");
 
-  auto verifier = [&] (InstanceKlass** val) {
+  auto verifier = [&] (DictionaryEntry** val) {
     (*val)->verify();
     return true;
   };
@@ -434,7 +552,7 @@ void Dictionary::verify() {
 
 void Dictionary::print_table_statistics(outputStream* st, const char* table_name) {
   static TableStatistics ts;
-  auto sz = [&] (InstanceKlass** val) {
+  auto sz = [&] (DictionaryEntry** val) {
     return sizeof(**val);
   };
   ts = _table->statistics_get(Thread::current(), sz, ts);
