@@ -325,16 +325,7 @@ public class ProtectionDomain {
             // no need to go to policy
             return true;
         }
-
-        if (!staticPermissions &&
-            Policy.getPolicyNoCheck().implies(this, perm)) {
-            return true;
-        }
-        if (permissions != null) {
-            return permissions.implies(perm);
-        }
-
-        return false;
+        return Policy.getPolicyNoCheck().implies(this, perm);
     }
 
     /**
