@@ -57,7 +57,7 @@ public class Messages {
         ResourceBundle rb = null;
         try {
             rb = setLocale(Locale.getDefault(),
-                    "au.zeus.jdk.authentication.impl.messages"); //$NON-NLS-1$
+                    "sun.util.resources.messages"); //$NON-NLS-1$
         } catch (Throwable e) {
             System.err.println(e);
         }

@@ -425,7 +425,7 @@ extends SecurityManager implements CachingSecurityManager {
              * has no such issue, unless using CodeSource based PermissionGrant's,
              * which have been deprecated.
              */
-            int l = assignedDomains.length;
+            int l = assignedDomains != null ? assignedDomains.length : 0;
             List<ProtectionDomain> list = new ArrayList<ProtectionDomain>(l);
             for (int i = 0; i < l ; i++){
                 if (assignedDomains[i] != privilegedDomain){

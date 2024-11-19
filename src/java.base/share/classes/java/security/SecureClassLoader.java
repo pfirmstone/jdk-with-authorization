@@ -212,6 +212,7 @@ public class SecureClassLoader extends ClassLoader {
     /*
      * Returned cached ProtectionDomain for the specified CodeSource.
      */
+    @SuppressWarnings("removal")
     private ProtectionDomain getProtectionDomain(CodeSource cs) {
         if (cs == null) {
             return null;
@@ -230,15 +231,10 @@ public class SecureClassLoader extends ClassLoader {
                         = SecureClassLoader.this.getPermissions(key.cs);
                 ProtectionDomain pd = new ProtectionDomain(
                         key.cs, perms, SecureClassLoader.this, null);
-                @SuppressWarnings("removal")
                 SecurityManager sm = System.getSecurityManager();
                 if (sm != null){
-                    if (!pd.implies(LOAD_CLASS_ALLOW)){
-                        throw new SecurityException(
-                            "LoadClassPermission hasn't been granted to this CodeSource: " 
-                                    + key.cs().toString()
-                        );
-                    }
+                    sm.checkPermission(LOAD_CLASS_ALLOW,
+                            new AccessControlContext(new ProtectionDomain []{pd}));
                 }
                 if (DebugHolder.debug != null) {
                     DebugHolder.debug.println(" getPermissions " + pd);
