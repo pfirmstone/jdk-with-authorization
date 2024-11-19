@@ -32,11 +32,14 @@ import java.util.Properties;
  * Read-only access to System property values initialized during Phase 1
  * are cached.  Setting, clearing, or modifying the value using
  * {@link System#setProperty} or {@link System#getProperties()} is ignored.
+ * <strong>{@link SecurityManager#checkPropertyAccess} is NOT checked
+ * in these access methods. The caller of these methods should take care to ensure
+ * that the returned property is not made accessible to untrusted code.</strong>
  */
 public final class StaticProperty {
 
     // The class static initialization is triggered to initialize these final
-    // fields during init Phase 1.
+    // fields during init Phase 1 and before a security manager is set.
     private static final String JAVA_HOME;
     private static final String USER_HOME;
     private static final String USER_DIR;
@@ -140,6 +143,10 @@ public final class StaticProperty {
 
     /**
      * {@return the {@code java.home} system property}
+     *
+     * <strong>{@link SecurityManager#checkPropertyAccess} is NOT checked
+     * in this method. The caller of this method should take care to ensure
+     * that the returned property is not made accessible to untrusted code.</strong>
      */
     public static String javaHome() {
         return JAVA_HOME;
@@ -147,6 +154,10 @@ public final class StaticProperty {
 
     /**
      * {@return the {@code user.home} system property}
+     *
+     * <strong>{@link SecurityManager#checkPropertyAccess} is NOT checked
+     * in this method. The caller of this method should take care to ensure
+     * that the returned property is not made accessible to untrusted code.</strong>
      */
     public static String userHome() {
         return USER_HOME;
@@ -154,6 +165,10 @@ public final class StaticProperty {
 
     /**
      * {@return the {@code user.dir} system property}
+     *
+     * <strong>{@link SecurityManager#checkPropertyAccess} is NOT checked
+     * in this method. The caller of this method should take care to ensure
+     * that the returned property is not made accessible to untrusted code.</strong>
      */
     public static String userDir() {
         return USER_DIR;
@@ -161,6 +176,10 @@ public final class StaticProperty {
 
     /**
      * {@return the {@code user.name} system property}
+     *
+     * <strong>{@link SecurityManager#checkPropertyAccess} is NOT checked
+     * in this method. The caller of this method should take care to ensure
+     * that the returned property is not made accessible to untrusted code.</strong>
      */
     public static String userName() {
         return USER_NAME;
@@ -168,6 +187,10 @@ public final class StaticProperty {
 
     /**
      * {@return the {@code java.library.path} system property}
+     *
+     * <strong>{@link SecurityManager#checkPropertyAccess} is NOT checked
+     * in this method. The caller of this method should take care to ensure
+     * that the returned property is not made accessible to untrusted code.</strong>
      */
     public static String javaLibraryPath() {
         return JAVA_LIBRARY_PATH;
@@ -175,6 +198,10 @@ public final class StaticProperty {
 
     /**
      * {@return the {@code java.io.tmpdir} system property}
+     *
+     * <strong>{@link SecurityManager#checkPropertyAccess} is NOT checked
+     * in this method. The caller of this method should take care to ensure
+     * that the returned property is not made accessible to untrusted code.</strong>
      */
     public static String javaIoTmpDir() {
         return JAVA_IO_TMPDIR;
@@ -182,6 +209,10 @@ public final class StaticProperty {
 
     /**
      * {@return the {@code sun.boot.library.path} system property}
+     *
+     * <strong>{@link SecurityManager#checkPropertyAccess} is NOT checked
+     * in this method. The caller of this method should take care to ensure
+     * that the returned property is not made accessible to untrusted code.</strong>
      */
     public static String sunBootLibraryPath() {
         return SUN_BOOT_LIBRARY_PATH;
@@ -190,6 +221,10 @@ public final class StaticProperty {
 
     /**
      * {@return the {@code jdk.serialFilter} system property}
+     *
+     * <strong>{@link SecurityManager#checkPropertyAccess} is NOT checked
+     * in this method. The caller of this method should take care to ensure
+     * that the returned property is not made accessible to untrusted code.</strong>
      */
     public static String jdkSerialFilter() {
         return JDK_SERIAL_FILTER;
@@ -198,6 +233,10 @@ public final class StaticProperty {
 
     /**
      * {@return the {@code jdk.serialFilterFactory} system property}
+     *
+     * <strong>{@link SecurityManager#checkPropertyAccess} is NOT checked
+     * in this method. The caller of this method should take care to ensure
+     * that the returned property is not made accessible to untrusted code.</strong>
      */
     public static String jdkSerialFilterFactory() {
         return JDK_SERIAL_FILTER_FACTORY;
@@ -205,6 +244,10 @@ public final class StaticProperty {
 
     /**
      * {@return the {@code native.encoding} system property}
+     *
+     * <strong>{@link SecurityManager#checkPropertyAccess} is NOT checked
+     * in this method. The caller of this method should take care to ensure
+     * that the returned property is not made accessible to untrusted code.</strong>
      */
     public static String nativeEncoding() {
         return NATIVE_ENCODING;
@@ -212,6 +255,10 @@ public final class StaticProperty {
 
     /**
      * {@return the {@code file.encoding} system property}
+     *
+     * <strong>{@link SecurityManager#checkPropertyAccess} is NOT checked
+     * in this method. The caller of this method should take care to ensure
+     * that the returned property is not made accessible to untrusted code.</strong>
      */
     public static String fileEncoding() {
         return FILE_ENCODING;
@@ -219,6 +266,9 @@ public final class StaticProperty {
 
     /**
      * {@return the {@code java.properties.date} system property}
+     *
+     * <strong>{@link SecurityManager#checkPropertyAccess} is NOT checked
+     * in this method.</strong>
      */
     public static String javaPropertiesDate() {
         return JAVA_PROPERTIES_DATE;
@@ -226,6 +276,10 @@ public final class StaticProperty {
 
     /**
      * {@return the {@code sun.jnu.encoding} system property}
+     *
+     * <strong>{@link SecurityManager#checkPropertyAccess} is NOT checked
+     * in this method. The caller of this method should take care to ensure
+     * that the returned property is not made accessible to untrusted code.</strong>
      */
     public static String jnuEncoding() {
         return SUN_JNU_ENCODING;
@@ -233,6 +287,10 @@ public final class StaticProperty {
 
     /**
      * {@return the {@code java.locale.useOldISOCodes} system property}
+     *
+     * <strong>{@link SecurityManager#checkPropertyAccess} is NOT checked
+     * in this method. The caller of this method should take care to ensure
+     * that the returned property is not made accessible to untrusted code.</strong>
      */
     public static String javaLocaleUseOldISOCodes() {
         return JAVA_LOCALE_USE_OLD_ISO_CODES;
@@ -240,6 +298,8 @@ public final class StaticProperty {
 
      /**
       * {@return the {@code os.name} system property}
+      * <strong>{@link SecurityManager#checkPropertyAccess} is NOT checked
+      * in this method. This property is not considered security sensitive.</strong>
       */
      public static String osName() {
          return OS_NAME;
@@ -247,6 +307,8 @@ public final class StaticProperty {
 
      /**
       * {@return the {@code os.arch} system property}
+      * <strong>{@link SecurityManager#checkPropertyAccess} is NOT checked
+      * in this method. This property is not considered security sensitive.</strong>
       */
      public static String osArch() {
          return OS_ARCH;
@@ -254,6 +316,8 @@ public final class StaticProperty {
 
      /**
       * {@return the {@code os.version} system property}
+      * <strong>{@link SecurityManager#checkPropertyAccess} is NOT checked
+      * in this method. This property is not considered security sensitive.</strong>
       */
      public static String osVersion() {
          return OS_VERSION;

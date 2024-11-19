@@ -29,6 +29,8 @@ import jdk.internal.misc.VM;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.security.AccessController;
+import java.security.PrivilegedAction;
 import java.util.HexFormat;
 import java.util.Objects;
 import java.util.Set;
@@ -77,6 +79,10 @@ public final class ClassFileDumper {
     private final AtomicInteger counter = new AtomicInteger();
 
     private ClassFileDumper(String key, String path) {
+        /*
+         * GetPropertyAction.privilegedGetProperty cannot be used here, Using VM.getSavedProperty to avoid a bootstrap
+         * circularity issue in the java/lang/String/concat/WithSecurityManager.java test
+         */
         String value = VM.getSavedProperty(key);
         this.key = key;
         boolean enabled = value != null && value.isEmpty() ? true : Boolean.parseBoolean(value);
@@ -126,39 +132,50 @@ public final class ClassFileDumper {
         write(pathname(name + ".failed-" + counter.incrementAndGet()), bytes);
     }
 
+    @SuppressWarnings("removal")
     private void write(Path path, byte[] bytes) {
-        try {
-            Files.createDirectories(path.getParent());
-            Files.write(path, bytes);
-        } catch (Exception ex) {
-            if (VM.isModuleSystemInited()) {
-                // log only when lambda is ready to use
-                System.getLogger(ClassFileDumper.class.getName())
-                        .log(System.Logger.Level.WARNING, "Exception writing to " +
-                                path + " " + ex.getMessage());
-            }
-            // simply don't care if this operation failed
-        }
+        AccessController.doPrivileged(new PrivilegedAction<>() {
+            @Override public Void run() {
+                try {
+                    Files.createDirectories(path.getParent());
+                    Files.write(path, bytes);
+                } catch (Exception ex) {
+                    if (VM.isModuleSystemInited()) {
+                        // log only when lambda is ready to use
+                        System.getLogger(ClassFileDumper.class.getName())
+                              .log(System.Logger.Level.WARNING, "Exception writing to " +
+                                        path + " " + ex.getMessage());
+                    }
+                    // simply don't care if this operation failed
+                }
+                return null;
+            }});
     }
 
     /*
      * Validate if the given dir is a writeable directory if exists.
      */
+    @SuppressWarnings("removal")
     private static Path validateDumpDir(String dir) {
-        Path path = Path.of(dir);
-        if (Files.notExists(path)) {
-            try {
-                Files.createDirectories(path);
-            } catch (IOException ex) {
-                throw new IllegalArgumentException("Fail to create " + path, ex);
+        return AccessController.doPrivileged(new PrivilegedAction<>() {
+            @Override
+            public Path run() {
+                Path path = Path.of(dir);
+                if (Files.notExists(path)) {
+                    try {
+                        Files.createDirectories(path);
+                    } catch (IOException ex) {
+                        throw new IllegalArgumentException("Fail to create " + path, ex);
+                    }
+                }
+                if (!Files.isDirectory(path)) {
+                    throw new IllegalArgumentException("Path " + path + " is not a directory");
+                } else if (!Files.isWritable(path)) {
+                    throw new IllegalArgumentException("Directory " + path + " is not writable");
+                }
+                return path;
             }
-        }
-        if (!Files.isDirectory(path)) {
-            throw new IllegalArgumentException("Path " + path + " is not a directory");
-        } else if (!Files.isWritable(path)) {
-            throw new IllegalArgumentException("Directory " + path + " is not writable");
-        }
-        return path;
+        });
     }
 
     private static final HexFormat HEX = HexFormat.of().withUpperCase();
