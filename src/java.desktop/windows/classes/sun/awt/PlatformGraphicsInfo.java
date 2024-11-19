@@ -39,9 +39,15 @@ public class PlatformGraphicsInfo {
         hasDisplays = hasDisplays0();
     }
 
-    @SuppressWarnings("restricted")
+    @SuppressWarnings({"removal", "restricted"})
     private static void loadAWTLibrary() {
-        System.loadLibrary("awt");
+        java.security.AccessController.doPrivileged(
+            new java.security.PrivilegedAction<Void>() {
+                public Void run() {
+                    System.loadLibrary("awt");
+                    return null;
+                }
+            });
     }
 
     private static native boolean hasDisplays0();

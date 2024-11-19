@@ -32,8 +32,11 @@ import java.awt.peer.ComponentPeer;
 import java.awt.image.*;
 
 import sun.awt.image.ByteInterleavedRaster;
+import sun.security.action.GetPropertyAction;
 
 import java.awt.peer.FramePeer;
+import java.security.PrivilegedAction;
+import  java.security.AccessController;
 
 @SuppressWarnings("serial") // JDK-implementation class
 public class WEmbeddedFrame extends EmbeddedFrame {
@@ -57,7 +60,9 @@ public class WEmbeddedFrame extends EmbeddedFrame {
      */
     private boolean isEmbeddedInIE = false;
 
-    private static String printScale = System.getProperty("sun.java2d.print.pluginscalefactor");
+    @SuppressWarnings("removal")
+    private static String printScale = AccessController.doPrivileged(
+        new GetPropertyAction("sun.java2d.print.pluginscalefactor"));
 
     public WEmbeddedFrame() {
         this((long)0);
@@ -176,6 +181,7 @@ public class WEmbeddedFrame extends EmbeddedFrame {
         }
     }
 
+    @SuppressWarnings("removal")
     protected static int getPrintScaleFactor() {
         // check if value is already cached
         if (pScale != 0)
@@ -183,7 +189,13 @@ public class WEmbeddedFrame extends EmbeddedFrame {
         if (printScale == null) {
             // if no system property is specified,
             // check for environment setting
-            printScale = System.getenv("JAVA2D_PLUGIN_PRINT_SCALE");
+            printScale = AccessController.doPrivileged(
+                new PrivilegedAction<String>() {
+                    public String run() {
+                        return System.getenv("JAVA2D_PLUGIN_PRINT_SCALE");
+                    }
+                }
+            );
         }
         int default_printDC_scale = 4;
         int scale = default_printDC_scale;

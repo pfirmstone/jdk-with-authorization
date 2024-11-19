@@ -112,6 +112,8 @@ import java.awt.peer.TrayIconPeer;
 import java.awt.peer.WindowPeer;
 import java.beans.PropertyChangeListener;
 import java.lang.ref.WeakReference;
+import java.security.AccessController;
+import java.security.PrivilegedAction;
 import java.util.Hashtable;
 import java.util.Locale;
 import java.util.Map;
@@ -166,11 +168,17 @@ public final class WToolkit extends SunToolkit implements Runnable {
      */
     private static native void initIDs();
     private static boolean loaded = false;
-
-    @SuppressWarnings("restricted")
+    @SuppressWarnings({"removal", "restricted"})
     public static void loadLibraries() {
         if (!loaded) {
-            System.loadLibrary("awt");
+            java.security.AccessController.doPrivileged(
+                new java.security.PrivilegedAction<Void>() {
+                    @Override
+                    public Void run() {
+                        System.loadLibrary("awt");
+                        return null;
+                    }
+                });
             loaded = true;
         }
     }
@@ -200,6 +208,7 @@ public final class WToolkit extends SunToolkit implements Runnable {
 
     private static native boolean startToolkitThread(Runnable thread, ThreadGroup rootThreadGroup);
 
+    @SuppressWarnings("removal")
     public WToolkit() {
         // Startup toolkit threads
         if (PerformanceLogger.loggingEnabled()) {
@@ -216,12 +225,16 @@ public final class WToolkit extends SunToolkit implements Runnable {
         AWTAutoShutdown.notifyToolkitThreadBusy();
 
         // Find a root TG and attach toolkit thread to it
-        ThreadGroup rootTG = ThreadGroupUtils.getRootThreadGroup();
+        ThreadGroup rootTG = AccessController.doPrivileged(
+                (PrivilegedAction<ThreadGroup>) ThreadGroupUtils::getRootThreadGroup);
         if (!startToolkitThread(this, rootTG)) {
             final String name = "AWT-Windows";
-            Thread toolkitThread = new Thread(rootTG, this, name, 0, false);
-            toolkitThread.setDaemon(true);
-            toolkitThread.start();
+            AccessController.doPrivileged((PrivilegedAction<Void>) () -> {
+                Thread toolkitThread = new Thread(rootTG, this, name, 0, false);
+                toolkitThread.setDaemon(true);
+                toolkitThread.start();
+                return null;
+            });
         }
 
         try {
@@ -238,25 +251,36 @@ public final class WToolkit extends SunToolkit implements Runnable {
         // by the native system though.
         setDynamicLayout(true);
         final String extraButtons = "sun.awt.enableExtraMouseButtons";
-        areExtraMouseButtonsEnabled =
-             Boolean.parseBoolean(System.getProperty(extraButtons, "true"));
-        //set system property if not yet assigned
-        System.setProperty(extraButtons, ""+areExtraMouseButtonsEnabled);
+        AccessController.doPrivileged((PrivilegedAction<Void>) () -> {
+            areExtraMouseButtonsEnabled =
+                 Boolean.parseBoolean(System.getProperty(extraButtons, "true"));
+            //set system property if not yet assigned
+            System.setProperty(extraButtons, ""+areExtraMouseButtonsEnabled);
+            return null;
+        });
         setExtraMouseButtonsEnabledNative(areExtraMouseButtonsEnabled);
     }
 
+    @SuppressWarnings("removal")
     private void registerShutdownHook() {
-        Thread shutdown = new Thread(
-                ThreadGroupUtils.getRootThreadGroup(), this::shutdown,
-                "ToolkitShutdown", 0, false);
-        shutdown.setContextClassLoader(null);
-        Runtime.getRuntime().addShutdownHook(shutdown);
-    }
+        AccessController.doPrivileged((PrivilegedAction<Void>) () -> {
+            Thread shutdown = new Thread(
+                    ThreadGroupUtils.getRootThreadGroup(), this::shutdown,
+                    "ToolkitShutdown", 0, false);
+            shutdown.setContextClassLoader(null);
+            Runtime.getRuntime().addShutdownHook(shutdown);
+            return null;
+        });
+     }
 
+    @SuppressWarnings("removal")
     @Override
     public void run() {
-        Thread.currentThread().setContextClassLoader(null);
-        Thread.currentThread().setPriority(Thread.NORM_PRIORITY + 1);
+        AccessController.doPrivileged((PrivilegedAction<Void>) () -> {
+            Thread.currentThread().setContextClassLoader(null);
+            Thread.currentThread().setPriority(Thread.NORM_PRIORITY + 1);
+            return null;
+        });
 
         boolean startPump = init();
 
