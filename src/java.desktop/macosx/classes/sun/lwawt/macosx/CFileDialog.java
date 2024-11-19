@@ -51,10 +51,12 @@ import java.awt.peer.ContainerPeer;
 import java.awt.peer.FileDialogPeer;
 import java.io.File;
 import java.io.FilenameFilter;
+import java.security.AccessController;
 import java.util.List;
 
 import sun.awt.AWTAccessor;
 import sun.java2d.pipe.Region;
+import sun.security.action.GetBooleanAction;
 
 class CFileDialog implements FileDialogPeer {
 
@@ -63,8 +65,12 @@ class CFileDialog implements FileDialogPeer {
         @Override
         public void run() {
             try {
-                boolean navigateApps = !Boolean.getBoolean("apple.awt.use-file-dialog-packages");
-                boolean chooseDirectories = Boolean.getBoolean("apple.awt.fileDialogForDirectories");
+                @SuppressWarnings("removal")
+                boolean navigateApps = !AccessController.doPrivileged(
+                        new GetBooleanAction("apple.awt.use-file-dialog-packages"));
+                @SuppressWarnings("removal")
+                boolean chooseDirectories = AccessController.doPrivileged(
+                        new GetBooleanAction("apple.awt.fileDialogForDirectories"));
 
                 int dialogMode = target.getMode();
                 String title = target.getTitle();

@@ -27,12 +27,17 @@ package sun.awt;
 
 import java.awt.GraphicsEnvironment;
 import java.awt.Toolkit;
+import java.security.AccessController;
+import java.security.PrivilegedAction;
 
-@SuppressWarnings({"restricted"})
+@SuppressWarnings({"removal", "restricted"})
 public class PlatformGraphicsInfo {
 
     static {
+        AccessController.doPrivileged((PrivilegedAction<Void>) () -> {
             System.loadLibrary("awt");
+            return null;
+        });
     }
 
     public static GraphicsEnvironment createGE() {

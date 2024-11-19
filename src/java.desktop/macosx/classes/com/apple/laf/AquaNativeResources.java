@@ -32,10 +32,16 @@ import javax.swing.plaf.UIResource;
 
 import com.apple.laf.AquaUtils.RecyclableSingleton;
 
-@SuppressWarnings("restricted")
+@SuppressWarnings({"removal", "restricted"})
 public class AquaNativeResources {
     static {
-        System.loadLibrary("osxui");
+        java.security.AccessController.doPrivileged(
+            new java.security.PrivilegedAction<Void>() {
+                public Void run() {
+                    System.loadLibrary("osxui");
+                    return null;
+                }
+            });
     }
 
     // TODO: removing CColorPaint for now

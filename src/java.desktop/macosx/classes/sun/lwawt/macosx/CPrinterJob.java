@@ -31,6 +31,8 @@ import java.awt.geom.Rectangle2D;
 import java.awt.image.BufferedImage;
 import java.awt.print.*;
 import java.net.URI;
+import java.security.AccessController;
+import java.security.PrivilegedAction;
 import java.util.concurrent.atomic.AtomicReference;
 
 import javax.print.*;
@@ -282,6 +284,7 @@ public final class CPrinterJob extends RasterPrinterJob {
         return destinationAttr;
     }
 
+    @SuppressWarnings("removal")
     @Override
     public void print(PrintRequestAttributeSet attributes) throws PrinterException {
         // NOTE: Some of this code is copied from RasterPrinterJob.
@@ -341,7 +344,14 @@ public final class CPrinterJob extends RasterPrinterJob {
 
                     onEventThread = true;
 
-                    printingLoop =  Toolkit.getDefaultToolkit().getSystemEventQueue().createSecondaryLoop();
+                    printingLoop = AccessController.doPrivileged(new PrivilegedAction<SecondaryLoop>() {
+                        @Override
+                        public SecondaryLoop run() {
+                            return Toolkit.getDefaultToolkit()
+                                    .getSystemEventQueue()
+                                    .createSecondaryLoop();
+                        }
+                    });
 
                     try {
                         // Fire off the print rendering loop on the AppKit thread, and don't have

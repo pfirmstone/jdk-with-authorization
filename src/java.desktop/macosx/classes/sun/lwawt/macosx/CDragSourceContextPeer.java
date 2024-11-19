@@ -59,7 +59,8 @@ public final class CDragSourceContextPeer extends SunDragSourceContextPeer {
     private static double fMaxImageSize = 128.0;
 
     static {
-        String propValue = System.getProperty("apple.awt.dnd.defaultDragImageSize");
+        @SuppressWarnings("removal")
+        String propValue = java.security.AccessController.doPrivileged(new sun.security.action.GetPropertyAction("apple.awt.dnd.defaultDragImageSize"));
         if (propValue != null) {
             try {
                 double value = Double.parseDouble(propValue);

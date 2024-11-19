@@ -27,6 +27,8 @@ package sun.font;
 
 import java.awt.*;
 import java.io.File;
+import java.security.AccessController;
+import java.security.PrivilegedAction;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Hashtable;
@@ -145,7 +147,10 @@ public final class CFontManager extends SunFontManager {
     protected void registerFontsInDir(final String dirName, boolean useJavaRasterizer,
                                       int fontRank, boolean defer, boolean resolveSymLinks) {
 
-        String[] files = new File(dirName).list(getTrueTypeFilter());
+        @SuppressWarnings("removal")
+        String[] files = AccessController.doPrivileged((PrivilegedAction<String[]>) () -> {
+            return new File(dirName).list(getTrueTypeFilter());
+        });
 
         if (files == null) {
            return;
@@ -200,17 +205,24 @@ public final class CFontManager extends SunFontManager {
     Object waitForFontsToBeLoaded  = new Object();
     private boolean loadedAllFonts = false;
 
-
+    @SuppressWarnings("removal")
     public void loadFonts()
     {
         synchronized(waitForFontsToBeLoaded)
         {
             super.loadFonts();
-            if (!loadedAllFonts) {
-                loadNativeFonts();
-                registerItalicDerived();
-                loadedAllFonts = true;
-            }
+            java.security.AccessController.doPrivileged(
+                new java.security.PrivilegedAction<Object>() {
+                    public Object run() {
+                        if (!loadedAllFonts) {
+                           loadNativeFonts();
+                           registerItalicDerived();
+                           loadedAllFonts = true;
+                        }
+                        return null;
+                    }
+                }
+            );
 
             String defaultFont = "Lucida Grande";
             String defaultFallback = "Lucida Grande";

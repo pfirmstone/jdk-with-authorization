@@ -58,9 +58,15 @@ public class FileManager {
         loadOSXLibrary();
     }
 
-    @SuppressWarnings("restricted")
+    @SuppressWarnings({"removal", "restricted"})
     private static void loadOSXLibrary() {
-        System.loadLibrary("osx");
+        java.security.AccessController.doPrivileged(
+            new java.security.PrivilegedAction<Void>() {
+                public Void run() {
+                    System.loadLibrary("osx");
+                    return null;
+                }
+            });
     }
 
     /**

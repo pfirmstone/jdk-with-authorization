@@ -65,9 +65,15 @@ class AquaFileView extends FileView {
         loadOSXUILibrary();
     }
 
-    @SuppressWarnings("restricted")
+    @SuppressWarnings({"removal", "restricted"})
     private static void loadOSXUILibrary() {
-        System.loadLibrary("osxui");
+        java.security.AccessController.doPrivileged(
+            new java.security.PrivilegedAction<Void>() {
+                public Void run() {
+                    System.loadLibrary("osxui");
+                    return null;
+                }
+            });
     }
 
     // TODO: Un-comment this out when the native version exists

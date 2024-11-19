@@ -29,6 +29,9 @@ import sun.awt.util.ThreadGroupUtils;
 import sun.java2d.pipe.RenderBuffer;
 import sun.java2d.pipe.RenderQueue;
 
+import java.security.AccessController;
+import java.security.PrivilegedAction;
+
 import static sun.java2d.pipe.BufferedOpCodes.DISPOSE_CONFIG;
 import static sun.java2d.pipe.BufferedOpCodes.SYNC;
 
@@ -43,12 +46,13 @@ public class MTLRenderQueue extends RenderQueue {
     private static MTLRenderQueue theInstance;
     private final QueueFlusher flusher;
 
+    @SuppressWarnings("removal")
     private MTLRenderQueue() {
         /*
          * The thread must be a member of a thread group
          * which will not get GCed before VM exit.
          */
-        flusher = new QueueFlusher();
+        flusher = AccessController.doPrivileged((PrivilegedAction<QueueFlusher>) QueueFlusher::new);
     }
 
     /**

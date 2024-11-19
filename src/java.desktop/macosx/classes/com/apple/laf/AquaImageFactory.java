@@ -27,11 +27,11 @@ package com.apple.laf;
 
 import java.awt.*;
 import java.awt.image.BufferedImage;
+import java.security.PrivilegedAction;
 
 import javax.swing.*;
 import javax.swing.plaf.*;
 
-import com.apple.eawt.Application;
 import sun.lwawt.macosx.LWCToolkit;
 import apple.laf.JRSUIConstants.AlignmentHorizontal;
 import apple.laf.JRSUIConstants.AlignmentVertical;
@@ -82,12 +82,22 @@ public class AquaImageFactory {
         return getAppIconCompositedOn(lockIcon);
     }
 
+    @SuppressWarnings("removal")
     static Image getGenericJavaIcon() {
-        return Application.getApplication().getDockIconImage();
+        return java.security.AccessController.doPrivileged(new PrivilegedAction<Image>() {
+            public Image run() {
+                return com.apple.eawt.Application.getApplication().getDockIconImage();
+            }
+        });
     }
 
+    @SuppressWarnings("removal")
     static String getPathToThisApplication() {
-        return FileManager.getPathToApplicationBundle();
+        return java.security.AccessController.doPrivileged(new PrivilegedAction<String>() {
+            public String run() {
+                return FileManager.getPathToApplicationBundle();
+            }
+        });
     }
 
     static IconUIResource getAppIconCompositedOn(final SystemIcon systemIcon) {
