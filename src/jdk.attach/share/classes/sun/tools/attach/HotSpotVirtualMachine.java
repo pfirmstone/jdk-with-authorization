@@ -37,6 +37,7 @@ import java.io.BufferedReader;
 import java.io.InputStream;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.security.AccessController;
 import java.security.PrivilegedAction;
 import java.util.Properties;
 import java.util.stream.Collectors;
@@ -53,7 +54,8 @@ public abstract class HotSpotVirtualMachine extends VirtualMachine {
 
     @SuppressWarnings("removal")
     private static long pid() {
-        return ProcessHandle.current().pid();
+        PrivilegedAction<ProcessHandle> pa = () -> ProcessHandle.current();
+        return AccessController.doPrivileged(pa).pid();
     }
 
     private static final boolean ALLOW_ATTACH_SELF;
@@ -359,7 +361,12 @@ public abstract class HotSpotVirtualMachine extends VirtualMachine {
      */
     protected boolean isAPIv2Enabled() {
         // if "jdk.attach.compat" property is set, only v1 is enabled.
-        return !Boolean.getBoolean("jdk.attach.compat");
+        try {
+            String value = System.getProperty("jdk.attach.compat");
+            return !("true".equalsIgnoreCase(value));
+        } catch (SecurityException se) {
+        }
+        return true;
     }
 
     /*
@@ -556,6 +563,7 @@ public abstract class HotSpotVirtualMachine extends VirtualMachine {
                         String s =
                             System.getProperty("sun.tools.attach.attachTimeout");
                         attachTimeout = Long.parseLong(s);
+                    } catch (SecurityException se) {
                     } catch (NumberFormatException ne) {
                     }
                     if (attachTimeout <= 0) {
