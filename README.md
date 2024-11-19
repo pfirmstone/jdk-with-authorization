@@ -1,12 +1,44 @@
-# Plans / Research to Security Harden VM:
-- Replace default policy provider with concurrent policy provider from JGDMS
-- Add httpmd URL handler to allow SHA256+ algorithms to be used to check jar file integrity.
-- Reduce the size of the trusted platform.
-- Add PolicyWriter tool from JGDMS, to simplify deployment using principles of least privilege.
+# OpenJDK with Authorization (SecurityManager)
+This project's objectives are to maintain a community fork of OpenJDK that retains Authorization functionality, no attempt will be made to sandbox untrusted code, instead, the goals of the project are:
+- Prevent loading of untrusted code.
+- Maintain guard hooks throughout OpenJDK for permission checks and add additional where necessary.
+- Research improvements to Authorization.
+- High performance and scalability.
+
+## Principle of Least Privilege Policy Writer
+This tool writes 
+### In your deployment staging environment run your program, with the following command line options:
+-Djava.security.manager=au.zeus.jdk.authorization.tool.SecurityPolicyWriter,\
+-DSecurityPolicyWriter.path.properties=${your.path}securitypolicywriterpath.properties,
+
+### Other system properties you should set:
+- java.security.policy
+- javax.net.ssl.trustStore
+- javax.net.ssl.trustStoreType
+- javax.net.ssl.trustStorePassword
+
+### Auditing
+- Audit your policy file for possible security issues.
+- Deploy using your automatically generated and audity policy files.
+
+### Deploy with high scaling, efficient implementations of SecurityManager and Policy.
+-Djava.security.manager=au.zeus.jdk.authorization.sm.CombinerSecurityManager,\
+-Dpolicy.provider=au.zeus.jdk.authorization.policy.ConcurrentPolicyFile,
+
+## Development
+- The master branch is a fork of OpenJDK master, retaining SecurityManager functionality, this is not intended for use, we use this for merging or rebasing our trunk branch and testing the impact of upstream changes.
+- The trunk branch is where our development occurs, we branch off and rebase to trunk in our development branches.
+
+## Plans / Research to Security Harden VM:
+- Replace default policy provider with concurrent policy provider from JGDMS ✔
+- Add httpmd URL handler to allow SHA256+ algorithms to be used to check jar file integrity. 
+- Reduce the size of the trusted platform. ✔
+- Add PolicyWriter tool from JGDMS, to simplify deployment using principles of least privilege. ✔
 - Add strict RFC3986 RFC6874 and RFC5952 URI support and Remove DNS lookups from CodeSource.
 - Remove DNS lookups from SecureClassLoader, use RFC3986 URI instead.
-- Add LoadClassPermission to SecureClassLoader, to allow httmpd and jar file signers to control which code can be loaded by policy.
-- Add ParsePermission for XML and Serialization implementations, remove their implementations from trusted code, to allow authorization decisions to be made on authenticated users instead.
+- Add LoadClassPermission to SecureClassLoader, to allow httmpd and jar file signers to control which code can be loaded by policy. ✔
+- Add SerialObjectPermission for Java Serialization, automating class whitelisting. ✔
+- Remove XML parsing from trusted code, to allow authorization decisions to be made on authenticated users instead. - This can be performed now by either preventing loading using LoadClassPermission, or since the xml modules are no longer part of the trusted code, can be assigned permissions. ✔
 - Add netmask wild cards to SocketPermission.
 - Follow and review OpenJDK changes.
 - Maintain Authorization and Authentication API's.
