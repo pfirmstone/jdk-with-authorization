@@ -97,7 +97,7 @@ import sun.reflect.annotation.AnnotationType;
 import sun.nio.ch.Interruptible;
 import sun.nio.cs.UTF_8;
 import sun.security.util.SecurityConstants;
-import au.zeus.jdk.authorization.tool.SecurePolicyWriter;
+import au.zeus.jdk.authorization.tool.SecurityPolicyWriter;
 import au.zeus.jdk.authorization.sm.CombinerSecurityManager;
 
 /**
@@ -2330,7 +2330,7 @@ public final class System {
                     setSecurityManager(new CombinerSecurityManager());
                     break;
                 case "polpAudit":
-                    setSecurityManager(new SecurePolicyWriter());
+                    setSecurityManager(new SecurityPolicyWriter());
                     break;
                 default:
                     try {
@@ -2742,7 +2742,7 @@ public final class System {
 
             @Override
             public boolean allowSecurityManager() {
-                return System.allowSecurityManager();
+                return true;
             }
         });
     }
