@@ -193,6 +193,12 @@ public final class System {
     private static @Stable InputStream initialIn;
     private static @Stable PrintStream initialErr;
 
+    // indicates if a security manager is possible
+    // These three names are in the SymbolTable, they remain for compatiblity.
+    private static final int NEVER = 1;
+    private static final int MAYBE = 2;
+    private static @Stable int allowSecurityManager = MAYBE;
+
     // current security manager
     @SuppressWarnings("removal")
     private static volatile SecurityManager security;   // read by VM
