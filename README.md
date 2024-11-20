@@ -9,8 +9,8 @@ This project's objectives are to maintain a community fork of OpenJDK that retai
 - This tool automates writing of your policy files, using principles of least privilege, this creates a minefield of SecurityException's for attackers to navigate inside your perimeter defences.
 - Permissions will not be granted to load transitive dependencies or modules you don't use, Serialization will be limited to only the classes used in your deployment staging environment.
 ### In your deployment staging environment run your program, with the following command line options:
--Djava.security.manager=au.zeus.jdk.authorization.tool.SecurityPolicyWriter,\
--DSecurityPolicyWriter.path.properties=${your.path}securitypolicywriterpath.properties,
+-Djava.security.manager=polpAudit,\
+-DpolpAudit.path.properties=${your.path}audit.properties,
 
 ### Other system properties you should set:
 - java.security.policy
@@ -23,8 +23,7 @@ This project's objectives are to maintain a community fork of OpenJDK that retai
 - Deploy using your automatically generated and audity policy files.
 
 ### Deploy with high scaling, efficient implementations of SecurityManager and Policy.
--Djava.security.manager=au.zeus.jdk.authorization.sm.CombinerSecurityManager,\
--Dpolicy.provider=au.zeus.jdk.authorization.policy.ConcurrentPolicyFile,
+-Djava.security.manager=default,
 
 ## Development
 - The master branch is a fork of OpenJDK master, retaining SecurityManager functionality, this is not intended for use, we use this for merging or rebasing our trunk branch and testing the impact of upstream changes.
