@@ -45,7 +45,6 @@ import sun.awt.SunToolkit;
  *
  * @author David Mendenhall
  */
-@SuppressWarnings("removal")
 class SequencedEvent extends AWTEvent implements ActiveEvent {
 
     /**
