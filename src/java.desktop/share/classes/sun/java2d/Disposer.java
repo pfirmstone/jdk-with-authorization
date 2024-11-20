@@ -31,6 +31,8 @@ import java.lang.ref.Reference;
 import java.lang.ref.ReferenceQueue;
 import java.lang.ref.PhantomReference;
 import java.lang.ref.WeakReference;
+import java.security.AccessController;
+import java.security.PrivilegedAction;
 import java.util.Hashtable;
 import java.util.concurrent.ConcurrentLinkedDeque;
 
@@ -48,7 +50,7 @@ import java.util.concurrent.ConcurrentLinkedDeque;
  *
  * @see DisposerRecord
  */
-@SuppressWarnings("restricted")
+@SuppressWarnings({"removal", "restricted"})
 public class Disposer implements Runnable {
     private static final ReferenceQueue<Object> queue = new ReferenceQueue<>();
     private static final Hashtable<java.lang.ref.Reference<Object>, DisposerRecord> records =
@@ -60,9 +62,16 @@ public class Disposer implements Runnable {
     public static int refType = PHANTOM;
 
     static {
-        System.loadLibrary("awt");
+        java.security.AccessController.doPrivileged(
+            new java.security.PrivilegedAction<Void>() {
+                public Void run() {
+                    System.loadLibrary("awt");
+                    return null;
+                }
+            });
         initIDs();
-        String type = System.getProperty("sun.java2d.reftype");
+        String type = java.security.AccessController.doPrivileged(
+                new sun.security.action.GetPropertyAction("sun.java2d.reftype"));
         if (type != null) {
             if (type.equals("weak")) {
                 refType = WEAK;
@@ -73,13 +82,16 @@ public class Disposer implements Runnable {
             }
         }
         disposerInstance = new Disposer();
-        String name = "Java2D Disposer";
-        ThreadGroup rootTG = ThreadGroupUtils.getRootThreadGroup();
-        Thread t = new Thread(rootTG, disposerInstance, name, 0, false);
-        t.setContextClassLoader(null);
-        t.setDaemon(true);
-        t.setPriority(Thread.MAX_PRIORITY);
-        t.start();
+        AccessController.doPrivileged((PrivilegedAction<Void>) () -> {
+            String name = "Java2D Disposer";
+            ThreadGroup rootTG = ThreadGroupUtils.getRootThreadGroup();
+            Thread t = new Thread(rootTG, disposerInstance, name, 0, false);
+            t.setContextClassLoader(null);
+            t.setDaemon(true);
+            t.setPriority(Thread.MAX_PRIORITY);
+            t.start();
+            return null;
+        });
     }
 
     /**

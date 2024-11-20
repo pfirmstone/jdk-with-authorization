@@ -30,6 +30,7 @@ import java.awt.Shape;
 import java.awt.geom.AffineTransform;
 import java.awt.geom.Path2D;
 import java.awt.geom.PathIterator;
+import java.security.AccessController;
 import java.util.Arrays;
 import sun.awt.geom.PathConsumer2D;
 import static sun.java2d.marlin.MarlinUtils.logInfo;
@@ -39,6 +40,7 @@ import sun.java2d.ReentrantContextProviderTL;
 import sun.java2d.pipe.AATileGenerator;
 import sun.java2d.pipe.Region;
 import sun.java2d.pipe.RenderingEngine;
+import sun.security.action.GetPropertyAction;
 
 /**
  * Marlin RendererEngine implementation (derived from Pisces)
@@ -1117,8 +1119,10 @@ public final class DMarlinRenderingEngine extends RenderingEngine
         USE_THREAD_LOCAL = MarlinProperties.isUseThreadLocal();
 
         // Soft reference by default:
-        final String refType = System.getProperty("sun.java2d.renderer.useRef",
-                            "soft");
+        @SuppressWarnings("removal")
+        final String refType = AccessController.doPrivileged(
+                            new GetPropertyAction("sun.java2d.renderer.useRef",
+                            "soft"));
         switch (refType) {
             default:
             case "soft":

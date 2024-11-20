@@ -30,6 +30,9 @@ import java.awt.BasicStroke;
 import java.awt.geom.PathIterator;
 import java.awt.geom.AffineTransform;
 
+import java.security.AccessController;
+import sun.security.action.GetPropertyAction;
+
 import sun.awt.geom.PathConsumer2D;
 
 /**
@@ -117,7 +120,10 @@ public abstract class RenderingEngine {
         /* Look first for an app-override renderer,
          * if not specified or present, then look for marlin.
          */
-        String reClass = System.getProperty("sun.java2d.renderer");
+        GetPropertyAction gpa =
+            new GetPropertyAction("sun.java2d.renderer");
+        @SuppressWarnings("removal")
+        String reClass = AccessController.doPrivileged(gpa);
         if (reClass != null) {
             try {
                 Class<?> cls = Class.forName(reClass);
@@ -138,12 +144,16 @@ public abstract class RenderingEngine {
             throw new InternalError("No RenderingEngine module found");
         }
 
-        String verbose = System.getProperty("sun.java2d.renderer.verbose");
+        gpa = new GetPropertyAction("sun.java2d.renderer.verbose");
+        @SuppressWarnings("removal")
+        String verbose = AccessController.doPrivileged(gpa);
         if (verbose != null && verbose.startsWith("t")) {
             System.out.println("RenderingEngine = "+reImpl);
         }
 
-        String reTrace = System.getProperty("sun.java2d.renderer.trace");
+        gpa = new GetPropertyAction("sun.java2d.renderer.trace");
+        @SuppressWarnings("removal")
+        String reTrace = AccessController.doPrivileged(gpa);
         if (reTrace != null) {
             reImpl = new Tracer(reImpl);
         }

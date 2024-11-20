@@ -448,13 +448,21 @@ public class ServiceDialog extends JDialog implements ActionListener {
     /**
      * Initialize ResourceBundle
      */
+    @SuppressWarnings("removal")
     public static void initResource() {
-        try {
-            messageRB = ResourceBundle.getBundle(strBundle);
-        } catch (java.util.MissingResourceException e) {
-            throw new Error("Fatal: Resource for ServiceUI " +
-                            "is missing");
-        }
+        java.security.AccessController.doPrivileged(
+            new java.security.PrivilegedAction<Object>() {
+                public Object run() {
+                    try {
+                        messageRB = ResourceBundle.getBundle(strBundle);
+                        return null;
+                    } catch (java.util.MissingResourceException e) {
+                        throw new Error("Fatal: Resource for ServiceUI " +
+                                        "is missing");
+                    }
+                }
+            }
+        );
     }
 
     /**
@@ -534,7 +542,15 @@ public class ServiceDialog extends JDialog implements ActionListener {
      * Returns URL for image resource
      */
     private static URL getImageResource(final String key) {
-        URL url = ServiceDialog.class.getResource("resources/" + key);
+        @SuppressWarnings("removal")
+        URL url = java.security.AccessController.doPrivileged(
+                       new java.security.PrivilegedAction<URL>() {
+                public URL run() {
+                    URL url = ServiceDialog.class.getResource(
+                                                  "resources/" + key);
+                    return url;
+                }
+        });
 
         if (url == null) {
             throw new Error("Fatal: Resource for ServiceUI is broken; " +
@@ -2927,7 +2943,14 @@ public class ServiceDialog extends JDialog implements ActionListener {
         {
             super(new FlowLayout(FlowLayout.LEADING));
             final URL imgURL = getImageResource(img);
-            Icon icon = new ImageIcon(imgURL);
+            @SuppressWarnings("removal")
+            Icon icon = java.security.AccessController.doPrivileged(
+                                 new java.security.PrivilegedAction<Icon>() {
+                public Icon run() {
+                    Icon icon = new ImageIcon(imgURL);
+                    return icon;
+                }
+            });
             lbl = new JLabel(icon);
             add(lbl);
 

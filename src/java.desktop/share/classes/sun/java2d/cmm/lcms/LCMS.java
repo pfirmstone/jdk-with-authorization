@@ -143,17 +143,23 @@ final class LCMS implements PCMM {
 
     private static LCMS theLcms = null;
 
-    @SuppressWarnings("restricted")
+    @SuppressWarnings({"removal", "restricted"})
     static synchronized PCMM getModule() {
         if (theLcms != null) {
             return theLcms;
         }
 
-        /* We need to load awt here because of usage trace and
-         * disposer frameworks
-         */
-        System.loadLibrary("awt");
-        System.loadLibrary("lcms");
+        java.security.AccessController.doPrivileged(
+                new java.security.PrivilegedAction<Object>() {
+                    public Object run() {
+                        /* We need to load awt here because of usage trace and
+                         * disposer frameworks
+                         */
+                        System.loadLibrary("awt");
+                        System.loadLibrary("lcms");
+                        return null;
+                    }
+                });
 
         theLcms = new LCMS();
 

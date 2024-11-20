@@ -52,8 +52,14 @@ class NativeLibLoader {
      * For now, we know it's done by the implementation, and we assume
      * that the name of the library is "awt".  -br.
      */
-    @SuppressWarnings("restricted")
+    @SuppressWarnings({"removal", "restricted"})
     static void loadLibraries() {
-        System.loadLibrary("awt");
+        java.security.AccessController.doPrivileged(
+            new java.security.PrivilegedAction<Void>() {
+                public Void run() {
+                    System.loadLibrary("awt");
+                    return null;
+                }
+            });
     }
 }

@@ -37,6 +37,8 @@ import java.awt.image.LookupTable;
 import java.awt.image.RasterOp;
 import java.awt.image.Raster;
 import java.awt.image.WritableRaster;
+import java.security.AccessController;
+import java.security.PrivilegedAction;
 
 /**
  * This class provides a hook to access platform-specific
@@ -49,7 +51,7 @@ import java.awt.image.WritableRaster;
  * (in which case our java code will be executed) or may throw
  * an exception.
  */
-@SuppressWarnings("restricted")
+@SuppressWarnings({"removal", "restricted"})
 public class ImagingLib {
 
     static boolean useLib = true;
@@ -88,14 +90,20 @@ public class ImagingLib {
 
     static {
 
-        boolean success = false;
-        try {
-            System.loadLibrary("mlib_image");
-            success = init();
-        } catch (UnsatisfiedLinkError e) {
-        }
+        PrivilegedAction<Boolean> doMlibInitialization =
+            new PrivilegedAction<Boolean>() {
+                public Boolean run() {
+                    try {
+                        System.loadLibrary("mlib_image");
+                    } catch (UnsatisfiedLinkError e) {
+                        return Boolean.FALSE;
+                    }
+                    boolean success = init();
+                    return Boolean.valueOf(success);
+                }
+            };
 
-        useLib = success;
+        useLib = AccessController.doPrivileged(doMlibInitialization);
 
         //
         // Cache the class references of the operations we know about
