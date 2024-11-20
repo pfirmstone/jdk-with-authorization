@@ -322,7 +322,7 @@ public class BuiltinClassLoader
             if (module.loader() == this) {
                 URL url;
                 try {
-                    url = findResource(module.name(), name); // checks URL
+                    url = findResource(module.name(), name);
                 } catch (IOException ioe) {
                     return null;
                 }
@@ -363,7 +363,7 @@ public class BuiltinClassLoader
      */
     @Override
     public Enumeration<URL> findResources(String name) throws IOException {
-        List<URL> checked = new ArrayList<>();  // list of checked URLs
+        List<URL> resources = new ArrayList<>();  // list of resource URLs
 
         String pn = Resources.toPackageName(name);
         LoadedModule module = packageToModule.get(pn);
@@ -371,12 +371,12 @@ public class BuiltinClassLoader
 
             // resource is in a package of a module defined to this loader
             if (module.loader() == this) {
-                URL url = findResource(module.name(), name); // checks URL
+                URL url = findResource(module.name(), name);
                 if (url != null
                     && (name.endsWith(".class")
                         || url.toString().endsWith("/")
                         || isOpen(module.mref(), pn))) {
-                    checked.add(url);
+                    resources.add(url);
                 }
             }
 
@@ -385,17 +385,17 @@ public class BuiltinClassLoader
             for (URL url : findMiscResource(name)) {
                 url = checkURL(url);
                 if (url != null) {
-                    checked.add(url);
+                    resources.add(url);
                 }
             }
         }
 
-        // class path (not checked)
+        // class path
         Enumeration<URL> e = findResourcesOnClassPath(name);
 
-        // concat the checked URLs and the (not checked) class path
+        // concat the URLs of the resource in the modules and the class path
         return new Enumeration<>() {
-            final Iterator<URL> iterator = checked.iterator();
+            final Iterator<URL> iterator = resources.iterator();
             URL next;
             private boolean hasNext() {
                 if (next != null) {
@@ -404,7 +404,6 @@ public class BuiltinClassLoader
                     next = iterator.next();
                     return true;
                 } else {
-                    // need to check each URL
                     while (e.hasMoreElements() && next == null) {
                         next = checkURL(e.nextElement());
                     }
