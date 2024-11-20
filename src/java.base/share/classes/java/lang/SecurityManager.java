@@ -308,12 +308,13 @@ import sun.security.util.SecurityConstants;
  * @see     java.security.ProtectionDomain
  *
  * @since   1.0
- * @deprecated The Security Manager is deprecated and subject to removal in a
+ */ 
+ /* @deprecated The Security Manager is deprecated and subject to removal in a
  *       future release. There is no replacement for the Security Manager.
  *       See <a href="https://openjdk.org/jeps/411">JEP 411</a> for
  *       discussion and alternatives.
  */
-@Deprecated(since="17", forRemoval=true)
+//@Deprecated(since="17", forRemoval=true)
 public class SecurityManager {
 
     /*
