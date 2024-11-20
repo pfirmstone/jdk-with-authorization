@@ -176,7 +176,7 @@ public class SecurityPolicyWriter extends CombinerSecurityManager{
         domainPermissions = map;
         aliases = new ConcurrentHashMap<Certificate,String>();
         certFunc = new Cert();
-        String securityPolicyWriterPropLocation = System.getProperty("SecurityPolicyWriter.path.properties");
+        String securityPolicyWriterPropLocation = System.getProperty("polpAudit.path.properties");
         hostname = System.getProperty("HOST");
         Properties p = new Properties();
         if (securityPolicyWriterPropLocation != null){
