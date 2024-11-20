@@ -97,6 +97,8 @@ import sun.reflect.annotation.AnnotationType;
 import sun.nio.ch.Interruptible;
 import sun.nio.cs.UTF_8;
 import sun.security.util.SecurityConstants;
+import au.zeus.jdk.authorization.tool.SecurePolicyWriter;
+import au.zeus.jdk.authorization.sm.CombinerSecurityManager;
 
 /**
  * The {@code System} class contains several useful class fields
@@ -191,11 +193,6 @@ public final class System {
     private static @Stable InputStream initialIn;
     private static @Stable PrintStream initialErr;
 
-    // indicates if a security manager is possible
-    private static final int NEVER = 1;
-    private static final int MAYBE = 2;
-    private static @Stable int allowSecurityManager;
-
     // current security manager
     @SuppressWarnings("removal")
     private static volatile SecurityManager security;   // read by VM
@@ -204,11 +201,6 @@ public final class System {
     // It is initialized in `initPhase1()` before any charset providers
     // are initialized.
     private static String notSupportedJnuEncoding;
-
-    // return true if a security manager is allowed
-    private static boolean allowSecurityManager() {
-        return (allowSecurityManager != NEVER);
-    }
 
     /**
      * Reassigns the "standard" input stream.
@@ -399,31 +391,23 @@ public final class System {
 //    @Deprecated(since="17", forRemoval=true)
     @CallerSensitive
     public static void setSecurityManager(@SuppressWarnings("removal") SecurityManager sm) {
-        if (allowSecurityManager()) {
-            if (security == null) {
-                // ensure image reader is initialized
-                Object.class.getResource("java/lang/ANY");
-                // ensure the default file system is initialized
-                DefaultFileSystemProvider.theFileSystem();
-            }
-            if (sm != null) {
-                try {
-                    // pre-populates the SecurityManager.packageAccess cache
-                    // to avoid recursive permission checking issues with custom
-                    // SecurityManager implementations
-                    sm.checkPackageAccess("java.lang");
-                } catch (Exception e) {
-                    // no-op
-                }
-            }
-            setSecurityManager0(sm);
-        } else {
-            // security manager not allowed
-            if (sm != null) {
-                throw new UnsupportedOperationException(
-                    "Runtime configured to disallow security manager");
-    }
+        if (security == null) {
+            // ensure image reader is initialized
+            Object.class.getResource("java/lang/ANY");
+            // ensure the default file system is initialized
+            DefaultFileSystemProvider.theFileSystem();
         }
+        if (sm != null) {
+            try {
+                // pre-populates the SecurityManager.packageAccess cache
+                // to avoid recursive permission checking issues with custom
+                // SecurityManager implementations
+                sm.checkPackageAccess("java.lang");
+            } catch (Exception e) {
+                // no-op
+            }
+        }
+        setSecurityManager0(sm);
     }
 
     @SuppressWarnings("removal")
@@ -478,11 +462,7 @@ public final class System {
     @SuppressWarnings("removal")
 //    @Deprecated(since="17", forRemoval=true)
     public static SecurityManager getSecurityManager() {
-        if (allowSecurityManager()) {
-            return security;
-        } else {
-            return null;
-        }
+        return security;
     }
 
     /**
@@ -2340,17 +2320,17 @@ public final class System {
 
         String smProp = System.getProperty("java.security.manager");
         if (smProp != null) {
-            switch (smProp) {
+            switch (smProp) {               
                 case "disallow":
-                    allowSecurityManager = NEVER;
-                    break;
+                    throw new Error("This JVM doesn't support disallowing SecurityManager");
                 case "allow":
-                    allowSecurityManager = MAYBE;
                     break;
                 case "":
                 case "default":
-                    setSecurityManager(new SecurityManager());
-                    allowSecurityManager = MAYBE;
+                    setSecurityManager(new CombinerSecurityManager());
+                    break;
+                case "polpAudit":
+                    setSecurityManager(new SecurePolicyWriter());
                     break;
                 default:
                     try {
@@ -2372,10 +2352,7 @@ public final class System {
                     } catch (Exception e) {
                         throw new InternalError("Could not create SecurityManager", e);
                     }
-                    allowSecurityManager = MAYBE;
             }
-        } else {
-            allowSecurityManager = MAYBE;
         }
 
         // Emit a warning if `sun.jnu.encoding` is not supported.
