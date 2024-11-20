@@ -45,8 +45,6 @@ import javax.tools.JavaFileObject;
 import javax.tools.StandardJavaFileManager;
 import javax.tools.StandardLocation;
 import javax.tools.ToolProvider;
-
-import jdk.test.lib.process.ProcessTools;
 import jdk.test.lib.util.FileUtils;
 import jdk.test.lib.JDKToolFinder;
 import static java.lang.String.format;
@@ -85,17 +83,9 @@ public class Basic {
         viaBadProvider("jerry", SCE);
     }
 
-    static final String SECURITY_MANAGER_DEPRECATED
-            = "WARNING: The Security Manager is deprecated and will be removed in a future release."
-                    + System.getProperty("line.separator");
-
-    private static String withoutWarning(String in) {
-        return in.lines().filter(s -> !s.startsWith("WARNING:")).collect(Collectors.joining());
-    }
-
     static final Consumer<Result> KNOWN = r -> {
-        if (r.exitValue != 0 || !withoutWarning(r.output).isEmpty())
-            throw new RuntimeException("[" + r.output + "]");
+        if (r.exitValue != 0 || !r.output.isEmpty())
+            throw new RuntimeException(r.output);
     };
     static final Consumer<Result> UNKNOWN = r -> {
         if (r.exitValue == 0 ||
