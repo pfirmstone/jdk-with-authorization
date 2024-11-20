@@ -36,6 +36,7 @@ import java.util.concurrent.locks.ReentrantLock;
 import sun.net.www.HeaderParser;
 import static sun.net.www.protocol.http.AuthScheme.NEGOTIATE;
 import static sun.net.www.protocol.http.AuthScheme.KERBEROS;
+import sun.security.action.GetPropertyAction;
 
 /**
  * NegotiateAuthentication:
@@ -44,7 +45,10 @@ import static sun.net.www.protocol.http.AuthScheme.KERBEROS;
  * @since 1.6
  */
 
-final class NegotiateAuthentication extends AuthenticationInfo {
+class NegotiateAuthentication extends AuthenticationInfo {
+
+    @java.io.Serial
+    private static final long serialVersionUID = 100L;
 
     private final HttpCallerInfo hci;
 
@@ -56,6 +60,14 @@ final class NegotiateAuthentication extends AuthenticationInfo {
     static HashMap <String, Boolean> supported = null;
     static ThreadLocal <HashMap <String, Negotiator>> cache = null;
     private static final ReentrantLock negotiateLock = new ReentrantLock();
+
+    /* Whether cache is enabled for Negotiate/Kerberos */
+    private static final boolean cacheSPNEGO;
+    static {
+        String spnegoCacheProp =
+            GetPropertyAction.privilegedGetProperty("jdk.spnego.cache", "true");
+        cacheSPNEGO = Boolean.parseBoolean(spnegoCacheProp);
+    }
 
     // The HTTP Negotiate Helper
     private Negotiator negotiator = null;

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2002, 2023, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -32,6 +32,7 @@ import java.util.HashMap;
 import java.util.Set;
 
 import sun.net.www.*;
+import sun.security.action.GetPropertyAction;
 
 /**
  * This class is used to parse the information in WWW-Authenticate: and Proxy-Authenticate:
@@ -97,7 +98,7 @@ public class AuthenticationHeader {
     }
 
     static {
-        String pref = System.getProperty("http.auth.preference");
+        String pref = GetPropertyAction.privilegedGetProperty("http.auth.preference");
 
         // http.auth.preference can be set to SPNEGO or Kerberos.
         // In fact they means "Negotiate with SPNEGO" and "Negotiate with

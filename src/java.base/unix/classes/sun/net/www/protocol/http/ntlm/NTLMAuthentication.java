@@ -35,6 +35,7 @@ import java.net.URL;
 import java.security.GeneralSecurityException;
 import java.util.Base64;
 import java.util.Locale;
+import java.util.Objects;
 import java.util.Properties;
 
 import sun.net.www.HeaderParser;
@@ -69,7 +70,8 @@ import sun.security.action.GetPropertyAction;
  *    through a proxy, rather between client and proxy, or between client and server (with no proxy)
  */
 
-public final class NTLMAuthentication extends AuthenticationInfo {
+public class NTLMAuthentication extends AuthenticationInfo {
+    private static final long serialVersionUID = 170L;
 
     private static final NTLMAuthenticationCallback NTLMAuthCallback =
         NTLMAuthenticationCallback.getNTLMAuthenticationCallback();
