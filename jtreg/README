@@ -1,0 +1,64 @@
+The Regression Test Harness for the OpenJDK platform: jtreg
+
+
+Introduction
+
+jtreg is designed to run test programs written according to the JDK Test 
+Framework: Tag Language Specification, on a wide-variety of Java™ platforms, 
+and specifically those platforms supported by JDK.
+
+This README contains basic information about this version of jtreg. 
+Please see the doc/ directory for more information.
+
+
+Release Notes.
+
+This is jtreg, version 4.2. jtreg is to designed as a set of extensions to
+Oracle's JavaTest harness, which is also available under an open source license
+under the name JT Harness.
+
+
+System Requirements
+
+The following sections provide the recommended system requirements for running 
+jtreg.
+
+- Java platform
+    A platform equivalent to JDK 1.8.0 or later is required.
+
+- Memory
+    It is recommended that you run jtreg on a computer having at least 256M of 
+    physical memory.
+ 
+
+Running tests
+
+You can either execute the jtreg.jar file directly, or you can use of the
+the wrapper scripts provided in one of the platform-specific bin directories.
+
+To run the JDK regression tests, it is common to set your current directory
+to the root of your repository, and execute a command
+of the form:
+    
+    > jtreg -jdk:<build-image> <tests>
+ 
+where <build-image> represents the path for where you have built JDK, and <tests>
+specifies one or more tests or folders of tests in the repository's test/ directory.
+
+Your repository may also provide a NetBeans project that provides Ant targets
+to run some or all of the tests in your repository. See the documentation for
+your repository for more details.
+
+
+Files and Directories
+
+Name 	        Description
+README	        This file
+COPYRIGHT 	Copyright information
+LICENSE         License file
+doc/            Documentation files
+legal/          Copyright and license files for JavaTest or JT Harness
+lib/     	Directory containing the JAR files needed to run jtreg
+bin/ 		Miscellaneous utility script for use on Linux, Solaris
+		and for Cygwin on Microsoft Windows platforms
+

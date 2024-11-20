@@ -1,0 +1,451 @@
+Usage:
+         jtreg options... tests...
+
+Tests can be given as files or folders containing test files, or by means of
+test groups. Long lists of options and tests may be encapsulated in "at-files".
+
+
+Verbose Options
+                These options control the amount of output written to the
+                console while running tests
+
+    -v | --v:<value> | -verbose | --verbose:<value>
+                    Increase the amount of output written to the console. A
+                    value, or selected combinations of values separated by
+                    commas, may be given to select the type of output desired.
+        default         Three lines of output per test: start, end, status
+        summary         One line of output per test: status, test name
+        all             Selected contents of JTR file for all tests (includes
+                        stdout/stderr)
+        pass            Selected contents of JTR file for passed tests
+        fail            Selected contents of JTR file for failed tests
+        error           Selected contents of JTR file for errored tests
+        nopass          Suppress output for tests that passed
+        time            Elapsed time per action
+        multirun        Updates for each testsuite when tests from more than one
+                        are being executed.
+    -v1             Short for -verbose:summary
+    -va             Short for -verbose:all
+    -ve             Short for -verbose:error
+    -vf             Short for -verbose:fail
+    -vp             Short for -verbose:pass
+    -vt             Short for -verbose:time
+
+Documentation Options
+                Options for additional documentation
+
+    --help [words...] | -h [words...] | -help [words...] | -usage [words...]
+                    Command line help. Give words to see help info containing
+                    those or use "-help all" to see all available help.
+    -n | -relnote   Release notes
+    -t | -tagspec   Tag specification supported by this implementation
+    -version        Give information about the version of jtreg in use.
+
+General Options
+
+    -allowSetSecurityManager | --allowSetSecurityManager:<boolean-value>
+                    Allow agentVM tests to set a security manager. Default is
+                    "yes" if option not given or no value given for option.
+        yes             Allow agentVM tests to set a security manager
+        no              Do not allow agentVM tests to set a security manager
+        on              Allow agentVM tests to set a security manager
+        off             Do not allow agentVM tests to set a security manager
+        true            Allow agentVM tests to set a security manager
+        false           Do not allow agentVM tests to set a security manager
+    -c | -check     Verify correctness of test descriptions. Does NOT run tests.
+    -conc:<factor> | -concurrency:<factor>
+                    concurrency factor
+    -cygwin         (Windows only) Use Cygwin to run shell tests
+    -dir:<dir>      Specify a base directory for test files and directories
+    -e:name[=value][,name[=value]...]
+                    Specify additional environment variables to be passed to
+                    each test. If a value is not given for a name, the current
+                    value of the environment variable will be used. Standard
+                    environment variables, like DISPLAY, LANG, windir,
+                    SystemRoot, etc, will automatically be given to each test,
+                    if they are set in the current environment.
+    -g | -gui       Access regression extensions via the standard JavaTest
+                    harness gui
+    -i | --verify-exclude
+                    Validate contents of exclude files
+    -ignore:<value>
+                    Specify how to handle tests containing an @ignore tag.
+        quiet           Completely ignore such tests.
+        error           (Default.) Execute the actions up to the @ignore tag,
+                        then give an "Error" result.
+        run             Run the test, as though the @ignore tag were not
+                        present.
+    -l | -listtests
+                    List the tests that would be executed instead of executing
+                    them.
+    -lock:<file>    Lock file to use for tests in "exclusive access" directories
+                    when running tests in multiple concurrent instances of
+                    jtreg.
+    -nativepath:<path>
+                    Path to location of native libraries and programs needed by
+                    the tests.
+    -noignore       suppress the effect of any @ignore tags, allowing the test
+                    to proceed as if the @ignore tags were not present.
+                    Deprecated: see the -ignore option.
+    -nr | -noreport
+                    Do not generate a final report.
+    -o:<classname> | -observer:<classname>
+                    Specifies the class to observe the progress of a test suite;
+                    the class must implement a specific interface; contact a
+                    developer for details. For example,
+                    -o:SampleRegressionObserver
+    -od:<path> | -observerDir:<path> | -op:<path> | -observerPath:<path>
+                    Specifies the pathname of a directory or .jar file in which
+                    the observer class is located. The given pathname is simply
+                    appended to the CLASSPATH used for the tests, thus care
+                    should be taken when naming an observer not to collide with
+                    the names of classes internal to the JavaTest harness or the
+                    JRE. For example, put the observer class in its own named
+                    package.
+    -r:<directory> | -reportDir:<directory>
+                    All report files placed here; "./JTreport" is default
+    -report:<value>
+                    Configure the report generated after tests are run.
+        none            Do not generate a report; equivalent to -noreport.
+        executed        Include tests executed in the latest run
+        files           Include all tests specified by groups and paths on the
+                        command line, ignoring filters like status, exclude
+                        lists, and keywords.
+        all-executed    Include all tests that have been executed in current
+                        work directory
+        all             Include all tests that are present in the test suite,
+                        whether they have been executed
+    -retain | --retain:<none,lastRun,pass,fail,error,all,file-pattern>,...
+                    Specify files to be retained after each test completes
+                    executing. If -retain is not specified or is specified with
+                    lastRun, only the files from the last test executed will be
+                    retained, in the test's scratch directory. For all other
+                    uses of -retain, files will be retained in a test-specific
+                    directory in the work-directory. If -retain is specified
+                    with no argument, all files will be retained. Otherwise, the
+                    files may be described by one or more of the following
+                    values:
+        none            Do not retain any of the files generated by each test
+        lastRun         Retain files generated by the last test that was run
+                        (default)
+        pass            Retain files generated by tests that pass
+        fail            Retain files generated by tests that fail
+        error           Retain files generated by tests that caused an error
+        all             Retain all files generated by each test
+        file-pattern    Retain files that match a specific filename. The name
+                        may contain '*' to match any sequence of characters. For
+                        example, result.* or *.err.
+    -ro | -reportOnly
+                    Generate report for previously executed tests. This does not
+                    re-run any tests. A work directory containing the results of
+                    the executed tests must be provided. The default location is
+                    "./JTwork". To specify an alternate directory, use -workDir.
+    -show:[<section-name>/]<stream-name>
+                    Show the contents of a stream in a specific section or in
+                    all sections of the results file for a test. The content is
+                    shown as originally written to the stream: that is, without
+                    the escape encoding used in the .jtr file. If no section
+                    name is given, the output for the named stream in all
+                    sections is shown.
+                    For example, -show:rerun -show:main/System.out
+    -showGroups     Show the expansion (to files and directories) of the groups
+                    given on the command line. To see the expansion of all the
+                    groups in a test suite, specify the name of the test suite.
+    -startHttpd     Start the http server to view test results
+    -ttf:<classname> | -testThreadFactory:<classname>
+                    Specifies the class to create thread factory for test
+                    execution. The class should implement the
+                    java.util.concurrent.ThreadFactory interface.
+    -ttfp:<path> | -testThreadFactoryPath:<path>
+                    Specifies classspath for custom test thread factory
+                    implementation. The classes from this classpath are loaded
+                    by tested JDK only using URLClassLoader.
+    -w:<directory> | -workDir:<directory>
+                    Location for .class files, .jtr files, etc. "./JTwork" is
+                    default
+    -wsl            (Windows only) Use the Windows Subsystem for Linux (WSL) to
+                    run shell tests
+    -xml | --xml:verify
+                    Create ant/junit xml files into the workDir. Optionally
+                    verify if the file is well-formed.
+
+Timeout Options
+                These options control the behavior when tests run longer than
+                their specified timeout value.
+    -th:<classname> | -timeoutHandler:<classname>
+                    Specifies the class to handle timeouts. The class must
+                    extend com.sun.javatest.regtest.TimeoutHandler. For example,
+                    -th:MyHandler
+    -thd:<path> | -timeoutHandlerDir:<path>
+                    Specifies the pathname of a directory or .jar file in which
+                    the timeout handler class is located. The given pathname is
+                    simply appended to the CLASSPATH used for the tests, thus
+                    care should be taken when naming a timeout handler not to
+                    collide with the names of classes internal to the JavaTest
+                    harness or the JRE. For example, put the timeout handler
+                    class in its own named package.
+    -thtimeout:<#seconds> | -timeoutHandlerTimeout:<#seconds>
+                    Specifies execution time limitation for the timeout handler.
+                    If the timeout handler does not finish its actions within
+                    the specified period of time, it will be interrupted.
+                    Non-positive values mean no limitation. The default value is
+                    5 minutes (300 seconds).
+    -timeout:<number> | -timeoutFactor:<number>
+                    A scaling factor to extend the default timeout of all tests.
+                    Typically used when running tests on slow systems or systems
+                    with slow file systems.
+    -tl:<#seconds> | -timelimit:<#seconds>
+                    Do not run tests which specify a timeout longer than a given
+                    value. The comparison is done against any values specified
+                    in the test, before any timeout factor is applied.
+
+Agent Pool Options
+                Options to configure the size of the pool of VMs used to execute
+                tests in agent mode.
+    --agent-attempts <number>
+                    The number of attempts jtreg will make to access an agent
+                    with the desired characteristics, either by creating a new
+                    one, or obtaining one from the pool of reusable VMs. The
+                    minimum value, and the default value, is 1.
+    --max-pool-size <number>
+                    The maximum number of VMs to keep available in the agent
+                    pool. The default is either 2x the concurrency.
+    --pool-idle-timeout <number>
+                    The time, in seconds, before an idle VM in the pool is
+                    automatically closed.
+
+Test Selection Options
+                These options can be used to refine the set of tests to be
+                executed.
+
+    -a | -automatic | -automagic
+                    Any test with /manual will not be run
+    -bug:<bugid>    Run only those tests which apply to the given bugid.
+    -exclude:<file> | -Xexclude:<file>
+                    Provide a file specifying tests that should not be run
+    -k:<keywordExpr> | -keywords:<keywordExpr>
+                    A keyword boolean expression for test selection. The
+                    expression can contain keyword names, combined with & (and),
+                    | (or), ! (not) and parentheses.
+    -m | -manual    Only tests with /manual will be run
+    -match:<file>   Provide a file specifying tests that can be run (inverse of
+                    -exclude)
+    -noshell        Any tests which contain shell actions will not be run
+    -shell          Only tests which contain shell actions will be run
+    -status:<value>,...
+                    Select tests according to their result in an earlier run.
+                    The value can be one or more of the following values,
+                    separated by commas.
+        pass            Tests that passed
+        fail            Tests that failed
+        notRun          Tests that have not been run
+        error           Tests that could not be run because of errors, or tests
+                        that were ignored
+
+Test Mode Options
+                Each test consists of a series of steps, called actions. The
+                jtreg harness provides different modes, which determine the JVM
+                to use to execute each action. The default is to run each action
+                in a new JVM.
+
+    -avm | -agentvm | -s | -svm | -samevm
+                    Execute each action using a pool of reusable JVMs, except
+                    when an action specifies otherwise. It provides good
+                    performance, and reasonable isolation between actions: if a
+                    JVM can be reset to a standard state after it has been used,
+                    it will be returned to the pool for reuse; otherwise, it
+                    will be discarded and replaced if and when necessary. This
+                    mode is generally recommended for all use.
+                    The JDK to use can be specified with -testjdk or -jdk,
+                    except for @compile actions, which use -compilejdk or -jdk.
+                    If values are not provided, the environment variable
+                    JAVA_HOME is used.
+    -ovm | -othervm
+                    Execute every action in a new JVM. This is the default. It
+                    provides the maximum isolation between actions, at a
+                    significant cost in performance.
+                    The JDK to use can be specified with -testjdk or -jdk,
+                    except for @compile actions, which use -compilejdk or -jdk.
+                    If values are not provided, the environment variable
+                    JAVA_HOME is used.
+
+JDK-related Options
+                By default, tests will be run using the default JVM in the test
+                JDK. You can pass all applicable JVM options via using
+                -vmoption; in addition, many common JVM options are also
+                supported directly. For full details of any option, consult the
+                documentation for that version of the JDK, or try using "java
+                -help" or "java -X". If an option is not applicable to a
+                particular platform or JDK release, it will be rejected.
+
+    --add-modules <module>(,<module>)*
+                    root modules to resolve in addition to the initial module
+    -agentlib:<libname><[=<options>]
+                    Load native agent library
+    -agentpath:<pathname><[=<options>]
+                    Load native agent library by full pathname
+    -classic | -green | -native | -hotspot | -client | -server | -d32 | -d64
+                    VM Options
+    -compilejdk:<java.home>
+                    Compile all tests using specified JDK. If not specified,
+                    tests are compiled with the JDK used to run the tests. See
+                    also -jdk. For example,
+                    -jdk:/usr/local/java/jdk1.5/solaris-sparc
+    -cpa:<path> | -classpathappend:<path>
+                    Append the provided classPath to the CLASSPATH of every
+                    test. This is designed to be used primarily for tests which
+                    require non-core JDK functionality. For example, to test
+                    Swing, which is not part of core JDK1.1, the following
+                    addition to the CLASSPATH would be necessary:
+                    -cpa:/usr/local/java/swing-1.0.3/swingall.jar
+    -D<name>=<value>
+                    Define a system property
+    -debug:<option>...
+                    Use this to specify VM options to attach a debugger to a VM
+                    running a test. It is similar to -vmoptions except that it
+                    is not used when starting VMs used to query the properties
+                    of that VM. Any timeout for a test is automatically disabled
+                    when this option is used. See also -javaoptions and
+                    -vmoptions.
+    -enableassertions | --enableassertions:* | -ea | --ea:* | -disableassertions
+    | --disableassertions:* | -da | --da:*
+                    Enable or disable assertions
+    -enablesystemassertions | -esa | -disablesystemassertions | -dsa
+                    Enable or disable system assertions
+    -javaagent:<jarpath><[=<options>]
+                    Load Java programming language agent
+    -javacoption:<option>
+                    Additional compiler option. You can give this option
+                    multiple times. Any embedded filenames must be given with
+                    absolute paths.
+    -javacoptions:<option>...
+                    Additional compiler options. You can give this option
+                    multiple times, or give many values together, separated by
+                    spaces. If you give multiple values, you may need to enclose
+                    them in quotes, depending on the shell you use. Any embedded
+                    filenames must be given with absolute paths. Warning: do not
+                    use this form if any of the options has an argument such as
+                    a filename that might contain spaces. In that case, use one
+                    or more -javacoption options instead.
+    -javaoption:<option>
+                    Additional java option for running test classes. You can
+                    give this option multiple times. Any embedded filenames must
+                    be given with absolute paths. See also -vmoption.
+    -javaoptions:<option>...
+                    Additional java options for running test classes. You can
+                    give this option multiple times, or give many values
+                    together, separated by spaces. If you give multiple values,
+                    you may need to enclose them in quotes, depending on the
+                    shell you use. Any embedded filenames must be given with
+                    absolute paths. Warning: do not use this form if any of the
+                    options has an argument such as a filename that might
+                    contain spaces. In that case, use one or more -javaoption
+                    options instead. See also -vmoptions.
+    -jdk:<java.home> | -testjdk:<java.home>
+                    Run all tests using specified JDK. For example,
+                    -jdk:/usr/local/java/jdk1.5/solaris-sparc
+    -jit            Enable the JIT for the tests. The JIT is turned on by
+                    default.
+    --limit-modules <module>(,<module>)*
+                    limit the universe of observable modules
+    -nojit          Disable the JIT for the tests.
+    --patch-module <module>=<path>
+                    Specify classes to override module classes
+    -vmoption:<option>
+                    Any other VM option. You can give this option multiple
+                    times. Any embedded filenames must be given with absolute
+                    paths. This option will be used when compiling and running
+                    classes. See also -javaoption.
+    -vmoptions:<option>...
+                    Any other VM options. You can give this option multiple
+                    times, or give many values together, separated by spaces. If
+                    you give multiple values, you may need to enclose them in
+                    quotes, depending on the shell you use. Any embedded
+                    filenames must be given with absolute paths. Warning: do not
+                    use this form if any of the options has an argument such as
+                    a filename that might contain spaces. In that case, use one
+                    or more -vmption options instead. This option will be used
+                    when compiling and running classes. See also -javaoptions.
+    -X*             Non-standard VM Options.
+    -Xbootclasspath:<path>
+                    Set search path for bootstrap classes and resources
+    -Xbootclasspath/a:<path>
+                    Append to end of bootstrap class path
+    -Xbootclasspath/p:<path>
+                    Prepend in front of bootstrap class path
+    -Xint* | -Xmixed* | -Xcomp*
+                    Non-standard VM Options
+    -XX* | -Xms* | -Xmx*
+                    Non-standard VM Options
+
+Tests           Specifying collections of tests.
+
+    Tests           Specifying collections of tests.
+
+        at-files        Long lists of options and tests may be encapsulated in
+                        "at-files". Place the options and/or tests in a file and
+                        specify the name of the file on the command line with
+                        @file. Options or tests that include white space should
+                        be enclosed within either single or double quote
+                        characters. Comments may be included in the file by
+                        prefixing them with '#'. To specify an option beginning
+                        with '@' on the command line, use "@@" to avoid @file
+                        expansion.
+
+    Tests           Specifying collections of tests.
+
+        Groups          A test suite may define named groups of tests. To
+                        specify the name of a group of tests on the command
+                        line, use test-suite-dir:group-name, where
+                        test-suite-dir is a path to the root directory of the
+                        test suite (that is, the directory containing the
+                        TEST.ROOT file), and where group-name is the name of the
+                        group of tests defined in the test suite. If
+                        test-suite-dir is omitted it defaults to the value of
+                        the -dir option, if given, or to the current directory
+                        otherwise.
+                        (Note: on Windows, to avoid confusion with absolute path
+                        names including a drive specifier, the test-suite-dir
+                        must not be specified with a relative path consisting of
+                        a single letter.)
+
+                        Groups are defined in a test suite using one or more
+                        Java properties files. The names of these files must be
+                        listed in the "groups" entry in TEST.ROOT. If the
+                        filename is enclosed in square brackets, no error
+                        message will be given if the file cannot be found.
+                        Within the property files, each entry specifies items to
+                        be included or excluded from the group. To include a
+                        test or directory of tests, simply specify the name of
+                        the test or directory. To exclude a test or directory of
+                        tests, use '-' followed by the name of the test or
+                        directory. To include the contents of another group, use
+                        ':' followed by the name of the group. There must be no
+                        spaces between the "-" or ":" and the name that follows.
+    Summary         The following kinds of arguments can be used to specify
+                    tests to be executed.In these examples, square brackets are
+                    used to indicate optional parts.
+        directory       All tests found in and under the given directory.
+        file[#id][?string]
+                        Either all tests in the given file if no id is given, or
+                        the specified test if an id is given. A file contains
+                        multiple tests if there are multiple test descriptions,
+                        in separate comment blocks.
+                        If '?string' is specified, the string will be passed to
+                        the test so that it may filter the parts of the test to
+                        be executed. The string will typically be the name of a
+                        method to be executed.
+                        If conflicting values for the string are given for a
+                        specific test, the last one given will be used.
+        [path]:group-name
+                        A group of tests, as defined in the TEST.groups file in
+                        the testsuite root directory. If given, path specifies
+                        the testsuite root directory. If not given, it defaults
+                        to the one enclosing the current directory.
+        @file           A file containing values to be treated as if on the
+                        command-line.
+
+
+Copyright (c) 1999, 2022, Oracle and/or its affiliates. All rights reserved.
+Use is subject to license terms.
+

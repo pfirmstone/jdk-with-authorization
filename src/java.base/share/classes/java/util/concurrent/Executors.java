@@ -425,13 +425,13 @@ public class Executors {
      * context does not have permission to both get and set context
      * class loader
      */
-//     * @deprecated This method is only useful in conjunction with
-//     *       {@linkplain SecurityManager the Security Manager}, which is
-//     *       deprecated and subject to removal in a future release.
-//     *       Consequently, this method is also deprecated and subject to
-//     *       removal. There is no replacement for the Security Manager or this
-//     *       method.
-//     */
+     /* @deprecated This method is only useful in conjunction with
+     *       {@linkplain SecurityManager the Security Manager}, which is
+     *       deprecated and subject to removal in a future release.
+     *       Consequently, this method is also deprecated and subject to
+     *       removal. There is no replacement for the Security Manager or this
+     *       method.
+     */
 //    @Deprecated(since="17", forRemoval=true)
     public static ThreadFactory privilegedThreadFactory() {
         return new PrivilegedThreadFactory();
@@ -511,13 +511,13 @@ public class Executors {
      * @return a callable object
      * @throws NullPointerException if callable null
      */
-//     * @deprecated This method is only useful in conjunction with
-//     *       {@linkplain SecurityManager the Security Manager}, which is
-//     *       deprecated and subject to removal in a future release.
-//     *       Consequently, this method is also deprecated and subject to
-//     *       removal. There is no replacement for the Security Manager or this
-//     *       method.
-//     */
+     /* @deprecated This method is only useful in conjunction with
+     *       {@linkplain SecurityManager the Security Manager}, which is
+     *       deprecated and subject to removal in a future release.
+     *       Consequently, this method is also deprecated and subject to
+     *       removal. There is no replacement for the Security Manager or this
+     *       method.
+     */
 //    @Deprecated(since="17", forRemoval=true)
     public static <T> Callable<T> privilegedCallable(Callable<T> callable) {
         if (callable == null)
@@ -547,13 +547,13 @@ public class Executors {
      * context does not have permission to both set and get context
      * class loader
      */
-//     * @deprecated This method is only useful in conjunction with
-//     *       {@linkplain SecurityManager the Security Manager}, which is
-//     *       deprecated and subject to removal in a future release.
-//     *       Consequently, this method is also deprecated and subject to
-//     *       removal. There is no replacement for the Security Manager or this
-//     *       method.
-//     */
+     /* @deprecated This method is only useful in conjunction with
+     *       {@linkplain SecurityManager the Security Manager}, which is
+     *       deprecated and subject to removal in a future release.
+     *       Consequently, this method is also deprecated and subject to
+     *       removal. There is no replacement for the Security Manager or this
+     *       method.
+     */
 //    @Deprecated(since="17", forRemoval=true)
     public static <T> Callable<T> privilegedCallableUsingCurrentClassLoader(Callable<T> callable) {
         if (callable == null)

@@ -1,12 +1,46 @@
-# Plans / Research to Security Harden VM:
-- Replace default policy provider with concurrent policy provider from JGDMS
-- Add httpmd URL handler to allow SHA256+ algorithms to be used to check jar file integrity.
-- Reduce the size of the trusted platform.
-- Add PolicyWriter tool from JGDMS, to simplify deployment using principles of least privilege.
+# OpenJDK with Authorization (SecurityManager)
+This project's objectives are to maintain a community fork of OpenJDK that retains Authorization functionality, no attempt will be made to sandbox untrusted code, instead, the goals of the project are:
+- Prevent loading of untrusted code.
+- Maintain guard hooks throughout OpenJDK for permission checks and add additional where necessary.
+- Research improvements to Authorization.
+- High performance and scalability.
+
+## Principle of Least Privilege Policy Writer
+- This tool automates writing of your policy files, using principles of least privilege, this creates a minefield of SecurityException's for attackers to navigate inside your perimeter defences.
+- Permissions will not be granted to load transitive dependencies or modules you don't use, Serialization will be limited to only the classes used in your deployment staging environment.
+### In your deployment staging environment run your program, with the following command line options:
+-Djava.security.manager=au.zeus.jdk.authorization.tool.SecurityPolicyWriter,\
+-DSecurityPolicyWriter.path.properties=${your.path}securitypolicywriterpath.properties,
+
+### Other system properties you should set:
+- java.security.policy
+- javax.net.ssl.trustStore
+- javax.net.ssl.trustStoreType
+- javax.net.ssl.trustStorePassword
+
+### Auditing
+- Audit your policy file for possible security issues.
+- Deploy using your automatically generated and audity policy files.
+
+### Deploy with high scaling, efficient implementations of SecurityManager and Policy.
+-Djava.security.manager=au.zeus.jdk.authorization.sm.CombinerSecurityManager,\
+-Dpolicy.provider=au.zeus.jdk.authorization.policy.ConcurrentPolicyFile,
+
+## Development
+- The master branch is a fork of OpenJDK master, retaining SecurityManager functionality, this is not intended for use, we use this for merging or rebasing our trunk branch and testing the impact of upstream changes.
+- The trunk branch is where our development occurs, we branch off and rebase to trunk in our development branches.
+
+## Plans / Research to Security Harden VM:
+- Replace default policy provider with concurrent policy provider from JGDMS ✔
+- Add httpmd URL handler to allow SHA256+ algorithms to be used to check jar file integrity. 
+- Reduce the size of the trusted platform. ✔
+- Add PolicyWriter tool from JGDMS, to simplify deployment using principles of least privilege. ✔
+- Add policy tests from JGDMS.
 - Add strict RFC3986 RFC6874 and RFC5952 URI support and Remove DNS lookups from CodeSource.
 - Remove DNS lookups from SecureClassLoader, use RFC3986 URI instead.
-- Add LoadClassPermission to SecureClassLoader, to allow httmpd and jar file signers to control which code can be loaded by policy.
-- Add ParsePermission for XML and Serialization implementations, remove their implementations from trusted code, to allow authorization decisions to be made on authenticated users instead.
+- Add LoadClassPermission to SecureClassLoader, to allow httmpd and jar file signers to control which code can be loaded by policy. ✔
+- Add SerialObjectPermission for Java Serialization, automating class whitelisting. ✔
+- Remove XML parsing from trusted code, to allow authorization decisions to be made on authenticated users instead. - This can be performed now by either preventing loading using LoadClassPermission, or since the xml modules are no longer part of the trusted code, can be assigned permissions. ✔
 - Add netmask wild cards to SocketPermission.
 - Follow and review OpenJDK changes.
 - Maintain Authorization and Authentication API's.
@@ -16,7 +50,7 @@
 - https://www.youtube.com/watch?v=sIuVbVbjZcw
   
 ## Security Tooling:
-- It is not recommended to run unaudited, untrusted code in a deployed environment, but how many programs today are downloading code their developers haven't audited, is it even practical for small development teams to audit thousands of lines of code?   The PolicyWriter tool from JGDMS, allows administrators to test untrusted code (following static analysis), in a safe environment (eg a test machine) to determine the privileges code will access.
+- It is not recommended to run unaudited, untrusted code in a deployed environment, but how many programs today are downloading code their developers haven't audited, is it even practical for small development teams to audit hundreds of thousands, or millions of lines of code?   The PolicyWriter tool from JGDMS, allows administrators to test untrusted code (following static analysis), in a safe environment (eg a test machine) to determine the privileges code will access.
 - Following auditing with static analysis and PolicyWriter, code that is deemed safe to run, should be run using the principle of least privilege, using policy files generated with PolicyWriter, to limit the possiblity of exploits successfully leveraging flaws in code.
 - PolicyWriter generates policy files, editing is simple and the files are easily understood, while the existing SecurityManager Authorization infrastructure isn't perfect, until something better is designed, it's the best tool we have to audit third party code and establish a level of trust in that code prior to deployment, while also switching off unused or unwanted features which require privileges to operate, such as network communication, file system access, agents, parsing XML or reading secret keys, so that an attacker is unlikely to be able to leverage them.
 

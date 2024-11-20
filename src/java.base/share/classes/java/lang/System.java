@@ -389,13 +389,13 @@ public final class System {
      * @see SecurityManager#checkPermission
      * @see java.lang.RuntimePermission
      */ 
-//     * @deprecated This method is only useful in conjunction with
-//     *       {@linkplain SecurityManager the Security Manager}, which is
-//     *       deprecated and subject to removal in a future release.
-//     *       Consequently, this method is also deprecated and subject to
-//     *       removal. There is no replacement for the Security Manager or this
-//     *       method.
-//     */
+     /* @deprecated This method is only useful in conjunction with
+     *       {@linkplain SecurityManager the Security Manager}, which is
+     *       deprecated and subject to removal in a future release.
+     *       Consequently, this method is also deprecated and subject to
+     *       removal. There is no replacement for the Security Manager or this
+     *       method.
+     */
 //    @Deprecated(since="17", forRemoval=true)
     @CallerSensitive
     public static void setSecurityManager(@SuppressWarnings("removal") SecurityManager sm) {
@@ -468,15 +468,15 @@ public final class System {
      *          otherwise, {@code null} is returned.
      * @see     #setSecurityManager
      */ 
-//     * @deprecated This method is only useful in conjunction with
-//     *       {@linkplain SecurityManager the Security Manager}, which is
-//     *       deprecated and subject to removal in a future release.
-//     *       Consequently, this method is also deprecated and subject to
-//     *       removal. There is no replacement for the Security Manager or this
-//     *       method.
-//     */
+     /* @deprecated This method is only useful in conjunction with
+     *       {@linkplain SecurityManager the Security Manager}, which is
+     *       deprecated and subject to removal in a future release.
+     *       Consequently, this method is also deprecated and subject to
+     *       removal. There is no replacement for the Security Manager or this
+     *       method.
+     */
     @SuppressWarnings("removal")
-    //@Deprecated(since="17", forRemoval=true)
+//    @Deprecated(since="17", forRemoval=true)
     public static SecurityManager getSecurityManager() {
         if (allowSecurityManager()) {
             return security;

@@ -344,15 +344,14 @@ public class ThreadGroup implements Thread.UncaughtExceptionHandler {
      * @throws     SecurityException  if the current thread is not allowed to
      *               access this thread group.
      * @see        java.lang.SecurityManager#checkAccess(java.lang.ThreadGroup)
-     * 
      */ 
-//     * @deprecated This method is only useful in conjunction with
-//     *       {@linkplain SecurityManager the Security Manager}, which is
-//     *       deprecated and subject to removal in a future release.
-//     *       Consequently, this method is also deprecated and subject to
-//     *       removal. There is no replacement for the Security Manager or this
-//     *       method.
-//     */
+     /* @deprecated This method is only useful in conjunction with
+     *       {@linkplain SecurityManager the Security Manager}, which is
+     *       deprecated and subject to removal in a future release.
+     *       Consequently, this method is also deprecated and subject to
+     *       removal. There is no replacement for the Security Manager or this
+     *       method.
+     */
 //    @Deprecated(since="17", forRemoval=true)
     public final void checkAccess() {
         @SuppressWarnings("removal")

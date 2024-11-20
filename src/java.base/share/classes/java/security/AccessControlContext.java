@@ -79,15 +79,14 @@ import sun.security.util.SecurityConstants;
  *
  * @author Roland Schemers
  * @since 1.2
- * 
+ */ 
+ /* Removed from Java 24
+ *      @deprecated This class is only useful in conjunction with
+ *       {@linkplain SecurityManager the Security Manager}, which is deprecated
+ *       and subject to removal in a future release. Consequently, this class
+ *       is also deprecated and subject to removal. There is no replacement for
+ *       the Security Manager or this class.
  */
-// * @deprecated This class is only useful in conjunction with
-// *       {@linkplain SecurityManager the Security Manager}, which is deprecated
-// *       and subject to removal in a future release. Consequently, this class
-// *       is also deprecated and subject to removal. There is no replacement for
-// *       the Security Manager or this class.
-// */
-
 //@Deprecated(since="17", forRemoval=true)
 public final class AccessControlContext {
 
