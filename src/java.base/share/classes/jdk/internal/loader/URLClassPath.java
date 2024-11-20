@@ -39,7 +39,13 @@ import java.net.URL;
 import java.net.URLConnection;
 import java.net.URLStreamHandler;
 import java.net.URLStreamHandlerFactory;
+import java.security.AccessControlContext;
+import java.security.AccessControlException;
+import java.security.AccessController;
 import java.security.CodeSigner;
+import java.security.Permission;
+import java.security.PrivilegedActionException;
+import java.security.PrivilegedExceptionAction;
 import java.security.cert.Certificate;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -64,6 +70,7 @@ import jdk.internal.access.JavaUtilZipFileAccess;
 import jdk.internal.access.SharedSecrets;
 import sun.net.util.URLUtil;
 import sun.net.www.ParseUtil;
+import sun.security.action.GetPropertyAction;
 
 /**
  * This class is used to maintain a search path of URLs for loading classes
@@ -76,15 +83,19 @@ public class URLClassPath {
     private static final String JAVA_VERSION;
     private static final boolean DEBUG;
     private static final boolean DISABLE_JAR_CHECKING;
+    private static final boolean DISABLE_ACC_CHECKING;
     private static final boolean DISABLE_CP_URL_CHECK;
     private static final boolean DEBUG_CP_URL_CHECK;
 
     static {
-        Properties props = System.getProperties();
+        Properties props = GetPropertyAction.privilegedGetProperties();
         JAVA_VERSION = props.getProperty("java.version");
         DEBUG = (props.getProperty("sun.misc.URLClassPath.debug") != null);
         String p = props.getProperty("sun.misc.URLClassPath.disableJarChecking");
         DISABLE_JAR_CHECKING = p != null ? p.equals("true") || p.isEmpty() : false;
+
+        p = props.getProperty("jdk.net.URLClassPath.disableRestrictedPermissions");
+        DISABLE_ACC_CHECKING = p != null ? p.equals("true") || p.isEmpty() : false;
 
         // This property will be removed in a later release
         p = props.getProperty("jdk.net.URLClassPath.disableClassPathURLCheck");
@@ -114,6 +125,12 @@ public class URLClassPath {
     /* Whether this URLClassLoader has been closed yet */
     private boolean closed = false;
 
+    /* The context to be used when loading classes and resources.  If non-null
+     * this is the context that was captured during the creation of the
+     * URLClassLoader. null implies no additional security restrictions. */
+    @SuppressWarnings("removal")
+    private final AccessControlContext acc;
+
     /**
      * Creates a new URLClassPath for the given URLs. The URLs will be
      * searched in the order specified for classes and resources. A URL
@@ -123,9 +140,12 @@ public class URLClassPath {
      * @param urls the directory and JAR file URLs to search for classes
      *        and resources
      * @param factory the URLStreamHandlerFactory to use when creating new URLs
+     * @param acc the context to be used when loading classes and resources, may
+     *            be null
      */
     public URLClassPath(URL[] urls,
-                        URLStreamHandlerFactory factory) {
+                        URLStreamHandlerFactory factory,
+                        @SuppressWarnings("removal") AccessControlContext acc) {
         ArrayList<URL> path = new ArrayList<>(urls.length);
         ArrayDeque<URL> unopenedUrls = new ArrayDeque<>(urls.length);
         for (URL url : urls) {
@@ -140,10 +160,14 @@ public class URLClassPath {
         } else {
             jarHandler = null;
         }
+        if (DISABLE_ACC_CHECKING)
+            this.acc = null;
+        else
+            this.acc = acc;
     }
 
-    public URLClassPath(URL[] urls) {
-        this(urls, null);
+    public URLClassPath(URL[] urls, @SuppressWarnings("removal") AccessControlContext acc) {
+        this(urls, null, acc);
     }
 
     /**
@@ -185,6 +209,7 @@ public class URLClassPath {
         // the application class loader uses the built-in protocol handler to avoid protocol
         // handler lookup when opening JAR files on the class path.
         this.jarHandler = new sun.net.www.protocol.jar.Handler();
+        this.acc = null;
     }
 
     public synchronized List<IOException> closeLoaders() {
@@ -254,18 +279,42 @@ public class URLClassPath {
 
     /**
      * Finds the resource with the specified name on the URL search path
-     * or null if not found.
+     * or null if not found or security check fails.
      *
      * @param name      the name of the resource
+     * @param check     whether to perform a security check
      * @return a {@code URL} for the resource, or {@code null}
      * if the resource could not be found.
      */
-    public URL findResource(String name) {
+    public URL findResource(String name, boolean check) {
         Loader loader;
         for (int i = 0; (loader = getLoader(i)) != null; i++) {
-            URL url = loader.findResource(name);
+            URL url = loader.findResource(name, check);
             if (url != null) {
                 return url;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Finds the first Resource on the URL search path which has the specified
+     * name. Returns null if no Resource could be found.
+     *
+     * @param name the name of the Resource
+     * @param check     whether to perform a security check
+     * @return the Resource, or null if not found
+     */
+    public Resource getResource(String name, boolean check) {
+        if (DEBUG) {
+            System.err.println("URLClassPath.getResource(\"" + name + "\")");
+        }
+
+        Loader loader;
+        for (int i = 0; (loader = getLoader(i)) != null; i++) {
+            Resource res = loader.getResource(name, check);
+            if (res != null) {
+                return res;
             }
         }
         return null;
@@ -278,7 +327,8 @@ public class URLClassPath {
      * @param name the resource name
      * @return an Enumeration of all the urls having the specified name
      */
-    public Enumeration<URL> findResources(final String name) {
+    public Enumeration<URL> findResources(final String name,
+                                     final boolean check) {
         return new Enumeration<>() {
             private int index = 0;
             private URL url = null;
@@ -289,7 +339,7 @@ public class URLClassPath {
                 } else {
                     Loader loader;
                     while ((loader = getLoader(index++)) != null) {
-                        url = loader.findResource(name);
+                        url = loader.findResource(name, check);
                         if (url != null) {
                             return true;
                         }
@@ -313,26 +363,8 @@ public class URLClassPath {
         };
     }
 
-    /**
-     * Finds the first Resource on the URL search path which has the specified
-     * name. Returns null if no Resource could be found.
-     *
-     * @param name the name of the Resource
-     * @return the Resource, or null if not found
-     */
     public Resource getResource(String name) {
-        if (DEBUG) {
-            System.err.println("URLClassPath.getResource(\"" + name + "\")");
-        }
-
-        Loader loader;
-        for (int i = 0; (loader = getLoader(i)) != null; i++) {
-            Resource res = loader.getResource(name);
-            if (res != null) {
-                return res;
-            }
-        }
-        return null;
+        return getResource(name, true);
     }
 
     /**
@@ -342,7 +374,8 @@ public class URLClassPath {
      * @param name the resource name
      * @return an Enumeration of all the resources having the specified name
      */
-    public Enumeration<Resource> getResources(final String name) {
+    public Enumeration<Resource> getResources(final String name,
+                                    final boolean check) {
         return new Enumeration<>() {
             private int index = 0;
             private Resource res = null;
@@ -353,7 +386,7 @@ public class URLClassPath {
                 } else {
                     Loader loader;
                     while ((loader = getLoader(index++)) != null) {
-                        res = loader.getResource(name);
+                        res = loader.getResource(name, check);
                         if (res != null) {
                             return true;
                         }
@@ -375,6 +408,10 @@ public class URLClassPath {
                 return r;
             }
         };
+    }
+
+    public Enumeration<Resource> getResources(final String name) {
+        return getResources(name, true);
     }
 
     /*
@@ -418,6 +455,17 @@ public class URLClassPath {
                     closeQuietly(loader);
                 }
                 continue;
+            } catch (SecurityException se) {
+                // log the error and close the unusable loader (if any).
+                // The context, if there is one, that this URLClassPath was
+                // given during construction will never have permission to access the URL.
+                if (DEBUG) {
+                    System.err.println("Failed to access " + url + ", " + se );
+                }
+                if (loader != null) {
+                    closeQuietly(loader);
+                }
+                continue;
             }
             if (loaderClassPathURLs != null) {
                 push(loaderClassPathURLs);
@@ -443,24 +491,34 @@ public class URLClassPath {
     /*
      * Returns the Loader for the specified base URL.
      */
+    @SuppressWarnings("removal")
     private Loader getLoader(final URL url) throws IOException {
-        String protocol = url.getProtocol();  // lower cased in URL
-        String file = url.getFile();
-        if (file != null && file.endsWith("/")) {
-            if ("file".equals(protocol)) {
-                return new FileLoader(url);
-            } else if ("jar".equals(protocol) &&
-                    isDefaultJarHandler(url) &&
-                    file.endsWith("!/")) {
-                // extract the nested URL
-                @SuppressWarnings("deprecation")
-                URL nestedUrl = new URL(file.substring(0, file.length() - 2));
-                return new JarLoader(nestedUrl, jarHandler);
-            } else {
-                return new Loader(url);
-            }
-        } else {
-            return new JarLoader(url, jarHandler);
+        try {
+            return AccessController.doPrivileged(
+                    new PrivilegedExceptionAction<>() {
+                        public Loader run() throws IOException {
+                            String protocol = url.getProtocol();  // lower cased in URL
+                            String file = url.getFile();
+                            if (file != null && file.endsWith("/")) {
+                                if ("file".equals(protocol)) {
+                                    return new FileLoader(url);
+                                } else if ("jar".equals(protocol) &&
+                                        isDefaultJarHandler(url) &&
+                                        file.endsWith("!/")) {
+                                    // extract the nested URL
+                                    @SuppressWarnings("deprecation")
+                                    URL nestedUrl = new URL(file.substring(0, file.length() - 2));
+                                    return new JarLoader(nestedUrl, jarHandler, acc);
+                                } else {
+                                    return new Loader(url);
+                                }
+                            } else {
+                                return new JarLoader(url, jarHandler, acc);
+                            }
+                        }
+                    }, acc);
+        } catch (PrivilegedActionException pae) {
+            throw (IOException)pae.getException();
         }
     }
 
@@ -479,6 +537,59 @@ public class URLClassPath {
         synchronized (unopenedUrls) {
             for (int i = urls.length - 1; i >= 0; --i) {
                 unopenedUrls.addFirst(urls[i]);
+            }
+        }
+    }
+
+    /*
+     * Checks whether the resource URL should be returned.
+     * Returns null on security check failure.
+     * Called by java.net.URLClassLoader.
+     */
+    public static URL checkURL(URL url) {
+        if (url != null) {
+            try {
+                check(url);
+            } catch (Exception e) {
+                return null;
+            }
+        }
+        return url;
+    }
+
+    /*
+     * Checks whether the resource URL should be returned.
+     * Throws exception on failure.
+     * Called internally within this file.
+     */
+    public static void check(URL url) throws IOException {
+        @SuppressWarnings("removal")
+        SecurityManager security = System.getSecurityManager();
+        if (security != null) {
+            URLConnection urlConnection = url.openConnection();
+            Permission perm = urlConnection.getPermission();
+            if (perm != null) {
+                try {
+                    security.checkPermission(perm);
+                } catch (SecurityException se) {
+                    // fallback to checkRead/checkConnect for pre 1.2
+                    // security managers
+                    if ((perm instanceof java.io.FilePermission) &&
+                        perm.getActions().contains("read")) {
+                        security.checkRead(perm.getName());
+                    } else if ((perm instanceof
+                        java.net.SocketPermission) &&
+                        perm.getActions().contains("connect")) {
+                        URL locUrl = url;
+                        if (urlConnection instanceof JarURLConnection) {
+                            locUrl = ((JarURLConnection)urlConnection).getJarFileURL();
+                        }
+                        security.checkConnect(locUrl.getHost(),
+                                              locUrl.getPort());
+                    } else {
+                        throw se;
+                    }
+                }
             }
         }
     }
@@ -505,7 +616,7 @@ public class URLClassPath {
             return base;
         }
 
-        URL findResource(final String name) {
+        URL findResource(final String name, boolean check) {
             URL url;
             try {
                 @SuppressWarnings("deprecation")
@@ -515,6 +626,10 @@ public class URLClassPath {
             }
 
             try {
+                if (check) {
+                    URLClassPath.check(url);
+                }
+
                 /*
                  * For a HTTP connection we use the HEAD method to
                  * check if the resource exists.
@@ -538,11 +653,7 @@ public class URLClassPath {
             }
         }
 
-        /*
-         * Returns the Resource for the specified name, or null if not
-         * found.
-         */
-        Resource getResource(final String name) {
+        Resource getResource(final String name, boolean check) {
             final URL url;
             try {
                 @SuppressWarnings("deprecation")
@@ -552,6 +663,9 @@ public class URLClassPath {
             }
             final URLConnection uc;
             try {
+                if (check) {
+                    URLClassPath.check(url);
+                }
                 uc = url.openConnection();
 
                 if (uc instanceof JarURLConnection) {
@@ -580,6 +694,15 @@ public class URLClassPath {
         }
 
         /*
+         * Returns the Resource for the specified name, or null if not
+         * found or the caller does not have the permission to get the
+         * resource.
+         */
+        Resource getResource(final String name) {
+            return getResource(name, true);
+        }
+
+        /*
          * Closes this loader and release all resources.
          * Method overridden in sub-classes.
          */
@@ -604,6 +727,8 @@ public class URLClassPath {
     private static class JarLoader extends Loader {
         private JarFile jar;
         private final URL csu;
+        @SuppressWarnings("removal")
+        private final AccessControlContext acc;
         private boolean closed = false;
         private static final JavaUtilZipFileAccess zipAccess =
                 SharedSecrets.getJavaUtilZipFileAccess();
@@ -612,11 +737,14 @@ public class URLClassPath {
          * Creates a new JarLoader for the specified URL referring to
          * a JAR file.
          */
-        private JarLoader(URL url, URLStreamHandler jarHandler)
+        private JarLoader(URL url, URLStreamHandler jarHandler,
+                          @SuppressWarnings("removal") AccessControlContext acc)
             throws IOException
         {
             super(newURL("jar", "", -1, url + "!/", jarHandler));
             csu = url;
+            this.acc = acc;
+
             ensureOpen();
         }
 
@@ -642,13 +770,24 @@ public class URLClassPath {
             return "file".equals(url.getProtocol());
         }
 
+        @SuppressWarnings("removal")
         private void ensureOpen() throws IOException {
             if (jar == null) {
-                if (DEBUG) {
-                    System.err.println("Opening " + csu);
-                    Thread.dumpStack();
+                try {
+                    AccessController.doPrivileged(
+                        new PrivilegedExceptionAction<>() {
+                            public Void run() throws IOException {
+                                if (DEBUG) {
+                                    System.err.println("Opening " + csu);
+                                    Thread.dumpStack();
+                                }
+                                jar = getJarFile(csu);
+                                return null;
+                            }
+                        }, acc);
+                } catch (PrivilegedActionException pae) {
+                    throw (IOException)pae.getException();
                 }
-                jar = getJarFile(csu);
             }
         }
 
@@ -687,9 +826,11 @@ public class URLClassPath {
         }
 
         /*
-         * Creates and returns the Resource. Returns null if the Resource couldn't be created.
+         * Creates the resource and if the check flag is set to true, checks if
+         * is its okay to return the resource.
          */
-        Resource createResource(final String name, final JarEntry entry) {
+        Resource checkResource(final String name, boolean check,
+            final JarEntry entry) {
 
             final URL url;
             try {
@@ -701,7 +842,10 @@ public class URLClassPath {
                 }
                 @SuppressWarnings("deprecation")
                 var _unused = url = new URL(getBaseURL(), ParseUtil.encodePath(nm, false));
-            } catch (IOException e) {
+                if (check) {
+                    URLClassPath.check(url);
+                }
+            } catch (@SuppressWarnings("removal") AccessControlException | IOException e) {
                 return null;
             }
 
@@ -741,8 +885,8 @@ public class URLClassPath {
          * Returns the URL for a resource with the specified name
          */
         @Override
-        URL findResource(final String name) {
-            Resource rsc = getResource(name);
+        URL findResource(final String name, boolean check) {
+            Resource rsc = getResource(name, check);
             if (rsc != null) {
                 return rsc.getURL();
             }
@@ -753,16 +897,17 @@ public class URLClassPath {
          * Returns the JAR Resource for the specified name.
          */
         @Override
-        Resource getResource(final String name) {
+        Resource getResource(final String name, boolean check) {
             try {
                 ensureOpen();
             } catch (IOException e) {
                 throw new InternalError(e);
             }
             final JarEntry entry = jar.getJarEntry(name);
-            if (entry != null) {
-                return createResource(name, entry);
-            }
+            if (entry != null)
+                return checkResource(name, check, entry);
+
+
             return null;
         }
 
@@ -913,8 +1058,8 @@ public class URLClassPath {
          * Returns the URL for a resource with the specified name
          */
         @Override
-        URL findResource(final String name) {
-            Resource rsc = getResource(name);
+        URL findResource(final String name, boolean check) {
+            Resource rsc = getResource(name, check);
             if (rsc != null) {
                 return rsc.getURL();
             }
@@ -922,7 +1067,7 @@ public class URLClassPath {
         }
 
         @Override
-        Resource getResource(final String name) {
+        Resource getResource(final String name, boolean check) {
             final URL url;
             try {
                 @SuppressWarnings("deprecation")
@@ -932,6 +1077,10 @@ public class URLClassPath {
                     // requested resource had ../..'s in path
                     return null;
                 }
+
+                if (check)
+                    URLClassPath.check(url);
+
                 final File file;
                 if (name.contains("..")) {
                     file = (new File(dir, name.replace('/', File.separatorChar)))
