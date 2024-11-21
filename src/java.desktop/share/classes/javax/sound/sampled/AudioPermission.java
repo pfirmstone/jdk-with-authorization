@@ -75,7 +75,9 @@ import java.security.BasicPermission;
  *
  * @author Kara Kytle
  * @since 1.3
+ * @deprecated There is no replacement for this class.
  */
+@Deprecated(since="24", forRemoval=true)
 public class AudioPermission extends BasicPermission {
 
     /**
