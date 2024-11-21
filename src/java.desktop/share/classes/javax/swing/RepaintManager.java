@@ -35,14 +35,11 @@ import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.applet.*;
 
-import jdk.internal.access.JavaSecurityAccess;
-import jdk.internal.access.SharedSecrets;
 import sun.awt.AWTAccessor;
 import sun.awt.AppContext;
 import sun.awt.DisplayChangedListener;
 import sun.awt.SunToolkit;
 import sun.java2d.SunGraphicsEnvironment;
-import sun.security.action.GetPropertyAction;
 
 import com.sun.java.swing.SwingUtilities3;
 import java.awt.geom.AffineTransform;
@@ -187,9 +184,6 @@ public class RepaintManager
      * Runnable used to process all repaint/revalidate requests.
      */
     private final ProcessingRunnable processingRunnable;
-
-    private static final JavaSecurityAccess javaSecurityAccess =
-            SharedSecrets.getJavaSecurityAccess();
 
     /**
      * Listener installed to detect display changes. When display changes,
