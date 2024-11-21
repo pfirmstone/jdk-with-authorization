@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2018, 2021, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -27,10 +27,12 @@ package jdk.net;
 import java.net.SocketException;
 import java.nio.file.attribute.UserPrincipal;
 import java.nio.file.attribute.GroupPrincipal;
+import java.security.AccessController;
+import java.security.PrivilegedAction;
 import jdk.net.ExtendedSocketOptions.PlatformSocketOptions;
 import sun.nio.fs.UnixUserPrincipals;
 
-@SuppressWarnings("restricted")
+@SuppressWarnings({"removal", "restricted"})
 class MacOSXSocketOptions extends PlatformSocketOptions {
 
     public MacOSXSocketOptions() {
@@ -114,6 +116,13 @@ class MacOSXSocketOptions extends PlatformSocketOptions {
     private static native boolean ipDontFragmentSupported0();
 
     static {
-        System.loadLibrary("extnet");
+        if (System.getSecurityManager() == null) {
+            System.loadLibrary("extnet");
+        } else {
+            AccessController.doPrivileged((PrivilegedAction<Void>) () -> {
+                System.loadLibrary("extnet");
+                return null;
+            });
+        }
     }
 }
