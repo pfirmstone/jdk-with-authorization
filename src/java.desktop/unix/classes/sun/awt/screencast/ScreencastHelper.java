@@ -27,12 +27,14 @@ package sun.awt.screencast;
 
 import sun.awt.UNIXToolkit;
 import sun.java2d.pipe.Region;
+import sun.security.action.GetPropertyAction;
 
 import java.awt.GraphicsConfiguration;
 import java.awt.GraphicsEnvironment;
 import java.awt.Rectangle;
 import java.awt.Toolkit;
 import java.awt.geom.AffineTransform;
+import java.security.AccessController;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Set;
@@ -46,6 +48,7 @@ import java.util.stream.IntStream;
  * org.freedesktop.portal.ScreenCast API</a>
  */
 
+@SuppressWarnings("removal")
 public class ScreencastHelper {
 
     static final boolean SCREENCAST_DEBUG;
@@ -67,7 +70,13 @@ public class ScreencastHelper {
     }
 
     static {
-        SCREENCAST_DEBUG = Boolean.getBoolean("awt.robot.screenshotDebug");
+        SCREENCAST_DEBUG = Boolean.parseBoolean(
+                               AccessController.doPrivileged(
+                                       new GetPropertyAction(
+                                               "awt.robot.screenshotDebug",
+                                               "false"
+                                       )
+                               ));
 
         boolean loadFailed = false;
 

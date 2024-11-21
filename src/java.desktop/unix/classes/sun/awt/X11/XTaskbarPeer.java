@@ -31,6 +31,9 @@ import java.awt.peer.TaskbarPeer;
 import java.awt.event.ActionEvent;
 
 import sun.awt.UNIXToolkit;
+import java.security.AccessController;
+import java.security.PrivilegedAction;
+import sun.security.action.GetPropertyAction;
 
 final class XTaskbarPeer implements TaskbarPeer {
 
@@ -41,7 +44,10 @@ final class XTaskbarPeer implements TaskbarPeer {
     private static boolean isUnity;
 
     static {
-        String de = System.getenv("XDG_CURRENT_DESKTOP");
+        @SuppressWarnings("removal")
+        String de = AccessController.doPrivileged(
+                        (PrivilegedAction<String>) ()
+                                -> System.getenv("XDG_CURRENT_DESKTOP"));
         isUnity = "Unity".equals(de);
     }
 
@@ -49,7 +55,9 @@ final class XTaskbarPeer implements TaskbarPeer {
         XToolkit.awtLock();
         try {
             if (!initExecuted) {
-                String dname = System.getProperty("java.desktop.appName", "");
+                @SuppressWarnings("removal")
+                String dname = AccessController.doPrivileged(
+                                new GetPropertyAction("java.desktop.appName", ""));
                 nativeLibraryLoaded = init(dname,
                         UNIXToolkit.getEnabledGtkVersion().ordinal(),
                         UNIXToolkit.isGtkVerbose());

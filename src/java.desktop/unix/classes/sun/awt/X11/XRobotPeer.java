@@ -28,6 +28,7 @@ package sun.awt.X11;
 import java.awt.Rectangle;
 import java.awt.Toolkit;
 import java.awt.peer.RobotPeer;
+import java.security.AccessController;
 
 import sun.awt.AWTAccessor;
 import sun.awt.SunToolkit;
@@ -35,7 +36,9 @@ import sun.awt.UNIXToolkit;
 import sun.awt.X11GraphicsConfig;
 import sun.awt.X11GraphicsDevice;
 import sun.awt.screencast.ScreencastHelper;
+import sun.security.action.GetPropertyAction;
 
+@SuppressWarnings("removal")
 final class XRobotPeer implements RobotPeer {
 
     private static final boolean tryGtk;
@@ -47,8 +50,10 @@ final class XRobotPeer implements RobotPeer {
         loadNativeLibraries();
 
         tryGtk = Boolean.parseBoolean(
-                            System.getProperty("awt.robot.gtk", "true")
-                 );
+                     AccessController.doPrivileged(
+                             new GetPropertyAction("awt.robot.gtk",
+                                     "true")
+                     ));
 
         boolean isOnWayland = false;
 
@@ -56,12 +61,13 @@ final class XRobotPeer implements RobotPeer {
             isOnWayland = sunToolkit.isRunningOnWayland();
         }
 
-        screenshotMethod = System.getProperty(
+        screenshotMethod = AccessController.doPrivileged(
+                new GetPropertyAction(
                         "awt.robot.screenshotMethod",
                         isOnWayland
                             ? METHOD_SCREENCAST
                             : METHOD_X11
-                );
+                ));
     }
 
     private static volatile boolean useGtk;
