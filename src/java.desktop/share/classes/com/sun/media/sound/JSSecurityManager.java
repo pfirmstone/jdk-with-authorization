@@ -52,6 +52,14 @@ final class JSSecurityManager {
     private JSSecurityManager() {
     }
 
+    static void checkRecordPermission() throws SecurityException {
+        @SuppressWarnings("removal")
+        SecurityManager sm = System.getSecurityManager();
+        if (sm != null) {
+            sm.checkPermission(new AudioPermission("record"));
+        }
+    }
+
     /**
      * Load properties from a file.
      * <p>
