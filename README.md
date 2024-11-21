@@ -20,7 +20,7 @@ This project's objectives are to maintain a community fork of OpenJDK that retai
 
 ### Auditing
 - Audit your policy file for possible security issues.
-- Deploy using your automatically generated and audity policy files.
+- Deploy using your automatically generated and audited policy files.
 
 ### Deploy with high scaling, efficient implementations of SecurityManager and Policy.
 -Djava.security.manager=default,
