@@ -35,6 +35,7 @@ import jdk.internal.io.JdkConsoleImpl;
 import jdk.internal.io.JdkConsoleProvider;
 import jdk.internal.javac.PreviewFeature;
 import sun.nio.cs.UTF_8;
+import sun.security.action.GetPropertyAction;
 
 /**
  * Methods to access the character-based console device, if any, associated
@@ -647,7 +648,7 @@ public sealed class Console implements Flushable permits ProxyingConsole {
 
     private static final boolean istty = istty();
     static final Charset CHARSET =
-        Charset.forName(System.getProperty("stdout.encoding"), UTF_8.INSTANCE);
+        Charset.forName(GetPropertyAction.privilegedGetProperty("stdout.encoding"), UTF_8.INSTANCE);
     private static final Console cons = instantiateConsole();
     static {
         // Set up JavaIOAccess in SharedSecrets

@@ -36,6 +36,7 @@ import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.locks.LockSupport;
 import java.util.function.BooleanSupplier;
 import jdk.internal.misc.InnocuousThread;
+import sun.security.action.GetPropertyAction;
 
 /**
  * Polls file descriptors. Virtual threads invoke the poll method to park
@@ -304,7 +305,7 @@ public abstract class Poller {
         Pollers() throws IOException {
             PollerProvider provider = PollerProvider.provider();
             Poller.Mode mode;
-            String s = System.getProperty("jdk.pollerMode");
+            String s = GetPropertyAction.privilegedGetProperty("jdk.pollerMode");
             if (s != null) {
                 if (s.equalsIgnoreCase(Mode.SYSTEM_THREADS.name()) || s.equals("1")) {
                     mode = Mode.SYSTEM_THREADS;
@@ -417,7 +418,7 @@ public abstract class Poller {
          * is not a power of 2.
          */
         private static int pollerCount(String propName, int defaultCount) {
-            String s = System.getProperty(propName);
+            String s = GetPropertyAction.privilegedGetProperty(propName);
             int count = (s != null) ? Integer.parseInt(s) : defaultCount;
 
             // check power of 2
