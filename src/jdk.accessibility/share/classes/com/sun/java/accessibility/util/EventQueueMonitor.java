@@ -29,6 +29,8 @@ import java.util.*;
 import java.awt.*;
 import java.awt.event.*;
 import javax.accessibility.*;
+import java.security.AccessController;
+import java.security.PrivilegedAction;
 
 /**
  * The {@code EventQueueMonitor} class provides key core functionality for Assistive
@@ -140,16 +142,24 @@ public class EventQueueMonitor
     /**
      * Tell the {@code EventQueueMonitor} to start listening for events.
      */
+    @SuppressWarnings("removal")
     public static void maybeInitialize() {
         if (cedt == null) {
-            try {
-                long eventMask = AWTEvent.WINDOW_EVENT_MASK |
-                        AWTEvent.FOCUS_EVENT_MASK |
-                        AWTEvent.MOUSE_MOTION_EVENT_MASK;
+            java.security.AccessController.doPrivileged(
+                new java.security.PrivilegedAction<Void>() {
+                    public Void run() {
+                        try {
+                            long eventMask = AWTEvent.WINDOW_EVENT_MASK |
+                                AWTEvent.FOCUS_EVENT_MASK |
+                                AWTEvent.MOUSE_MOTION_EVENT_MASK;
 
-                Toolkit.getDefaultToolkit().addAWTEventListener(new EventQueueMonitor(), eventMask);
-            } catch (Exception e) {
-            }
+                            Toolkit.getDefaultToolkit().addAWTEventListener(new EventQueueMonitor(), eventMask);
+                        } catch (Exception e) {
+                        }
+                        return null;
+                    }
+                }
+            );
         }
     }
 
