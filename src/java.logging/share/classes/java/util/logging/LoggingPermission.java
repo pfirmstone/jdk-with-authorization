@@ -26,7 +26,6 @@
 
 package java.util.logging;
 
-import java.security.*;
 
 /**
  * The permission which the SecurityManager will check when code

@@ -43,8 +43,6 @@ import java.nio.file.LinkOption;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.security.AccessController;
-import java.security.PrivilegedAction;
 import java.util.HashSet;
 import java.util.Set;
 
@@ -297,10 +295,9 @@ public class FileHandler extends StreamHandler {
      * @throws  IllegalArgumentException if pattern is an empty string
      */
     public FileHandler(String pattern) throws IOException, SecurityException {
-        if (pattern.length() < 1 ) {
+        if (pattern.isEmpty()) {
             throw new IllegalArgumentException();
         }
-        checkPermission();
         configure();
         this.pattern = pattern;
         this.limit = 0;
@@ -330,10 +327,9 @@ public class FileHandler extends StreamHandler {
      */
     public FileHandler(String pattern, boolean append) throws IOException,
             SecurityException {
-        if (pattern.length() < 1 ) {
+        if (pattern.isEmpty()) {
             throw new IllegalArgumentException();
         }
-        checkPermission();
         configure();
         this.pattern = pattern;
         this.limit = 0;
@@ -367,10 +363,10 @@ public class FileHandler extends StreamHandler {
      */
     public FileHandler(String pattern, int limit, int count)
                                         throws IOException, SecurityException {
-        if (limit < 0 || count < 1 || pattern.length() < 1) {
+    public FileHandler(String pattern, int limit, int count) throws IOException {
+        if (limit < 0 || count < 1 || pattern.isEmpty()) {
             throw new IllegalArgumentException();
         }
-        checkPermission();
         configure();
         this.pattern = pattern;
         this.limit = limit;
@@ -439,10 +435,9 @@ public class FileHandler extends StreamHandler {
      */
     public FileHandler(String pattern, long limit, int count, boolean append)
                                         throws IOException {
-        if (limit < 0 || count < 1 || pattern.length() < 1) {
+        if (limit < 0 || count < 1 || pattern.isEmpty()) {
             throw new IllegalArgumentException();
         }
-        checkPermission();
         configure();
         this.pattern = pattern;
         this.limit = limit;
@@ -465,7 +460,6 @@ public class FileHandler extends StreamHandler {
      */
     private void openFiles() throws IOException {
         LogManager manager = LogManager.getLogManager();
-        manager.checkPermission();
         if (count < 1) {
            throw new IllegalArgumentException("file count = " + count);
         }
@@ -495,7 +489,7 @@ public class FileHandler extends StreamHandler {
             // Now try to lock that filename.
             // Because some systems (e.g., Solaris) can only do file locks
             // between processes (and not within a process), we first check
-            // if we ourself already have the file locked.
+            // if we ourselves already have the file locked.
             synchronized(locks) {
                 if (locks.contains(lockFileName)) {
                     // We already own this lock, for a different FileHandler
@@ -630,7 +624,7 @@ public class FileHandler extends StreamHandler {
      * @param generation the generation number to distinguish rotated logs
      * @param unique a unique number to resolve conflicts
      * @return the generated File
-     * @throws IOException
+     * @throws IOException if an I/O error occurs
      */
     private File generate(String pattern, int generation, int unique)
             throws IOException
@@ -710,7 +704,7 @@ public class FileHandler extends StreamHandler {
         if (unique > 0 && !sawu) {
             word = word.append('.').append(unique);
         }
-        if (word.length() > 0) {
+        if (!word.isEmpty()) {
             String n = word.toString();
             Path p = prev == null ? Paths.get(n) : prev.resolveSibling(n);
             result = result == null ? p : result.resolve(p);
@@ -728,21 +722,7 @@ public class FileHandler extends StreamHandler {
     /**
      * Rotate the set of output files
      */
-    private void rotate() {
-        if (tryUseLock()) {
-            try {
-                rotate0();
-            } finally {
-                unlock();
-            }
-        } else {
-            synchronized (this) {
-                rotate0();
-            }
-        }
-    }
-
-    private void rotate0() {
+    private synchronized void rotate() {
         Level oldLevel = getLevel();
         setLevel(Level.OFF);
 
@@ -775,40 +755,14 @@ public class FileHandler extends StreamHandler {
      *                 silently ignored and is not published
      */
     @Override
-    public void publish(LogRecord record) {
-        if (tryUseLock()) {
-            try {
-                publish0(record);
-            } finally {
-                unlock();
-            }
-        } else {
-            synchronized (this) {
-                publish0(record);
-            }
-        }
-
-    }
-    @SuppressWarnings("removal")
-    private void publish0(LogRecord record) {
+    public synchronized void publish(LogRecord record) {
         if (!isLoggable(record)) {
             return;
         }
         super.publish(record);
         flush();
         if (limit > 0 && (meter.written >= limit || meter.written < 0)) {
-            // We performed access checks in the "init" method to make sure
-            // we are only initialized from trusted code.  So we assume
-            // it is OK to write the target files, even if we are
-            // currently being called from untrusted code.
-            // So it is safe to raise privilege here.
-            AccessController.doPrivileged(new PrivilegedAction<Object>() {
-                @Override
-                public Object run() {
-                    rotate();
-                    return null;
-                }
-            });
+            rotate();
         }
     }
 

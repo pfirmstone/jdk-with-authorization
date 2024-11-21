@@ -146,7 +146,7 @@ public class SocketHandler extends StreamHandler {
         sock = new Socket(host, port);
         OutputStream out = sock.getOutputStream();
         BufferedOutputStream bout = new BufferedOutputStream(out);
-        setOutputStreamPrivileged(bout);
+        setOutputStream(bout);
     }
 
     /**
@@ -189,21 +189,7 @@ public class SocketHandler extends StreamHandler {
      *                 silently ignored and is not published
      */
     @Override
-    public void publish(LogRecord record) {
-        if (tryUseLock()) {
-            try {
-                publish0(record);
-            } finally {
-                unlock();
-            }
-        } else {
-            synchronized (this) {
-                publish0(record);
-            }
-        }
-    }
-
-    private void publish0(LogRecord record) {
+    public synchronized void publish(LogRecord record) {
         if (!isLoggable(record)) {
             return;
         }

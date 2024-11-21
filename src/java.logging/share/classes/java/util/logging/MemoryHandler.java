@@ -178,21 +178,7 @@ public class MemoryHandler extends Handler {
      *                 silently ignored and is not published
      */
     @Override
-    public void publish(LogRecord record) {
-        if (tryUseLock()) {
-            try {
-                publish0(record);
-            } finally {
-                unlock();
-            }
-        } else {
-            synchronized (this) {
-                publish0(record);
-            }
-        }
-    }
-
-    private void publish0(LogRecord record) {
+    public synchronized void publish(LogRecord record) {
         if (!isLoggable(record)) {
             return;
         }
@@ -214,21 +200,7 @@ public class MemoryHandler extends Handler {
      * <p>
      * The buffer is then cleared.
      */
-    public void push() {
-        if (tryUseLock()) {
-            try {
-                push0();
-            } finally {
-                unlock();
-            }
-        } else {
-            synchronized (this) {
-                push0();
-            }
-        }
-    }
-
-    private void push0() {
+    public synchronized void push() {
         for (int i = 0; i < count; i++) {
             int ix = (start+i)%buffer.length;
             LogRecord record = buffer[ix];
@@ -290,7 +262,6 @@ public class MemoryHandler extends Handler {
         if (newLevel == null) {
             throw new NullPointerException();
         }
-        checkPermission();
         pushLevel = newLevel;
     }
 
