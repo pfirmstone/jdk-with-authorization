@@ -50,6 +50,7 @@ import java.io.PrintWriter;
 import java.io.Serial;
 import java.io.Serializable;
 import java.lang.ref.WeakReference;
+import java.security.AccessController;
 import java.util.ArrayList;
 import java.util.EventListener;
 import java.util.HashSet;
@@ -66,6 +67,7 @@ import sun.awt.PeerEvent;
 import sun.awt.SunToolkit;
 import sun.awt.dnd.SunDropTargetEvent;
 import sun.java2d.pipe.Region;
+import sun.security.action.GetBooleanAction;
 import sun.util.logging.PlatformLogger;
 
 /**

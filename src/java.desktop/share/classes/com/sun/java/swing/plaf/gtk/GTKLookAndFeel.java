@@ -38,6 +38,7 @@ import java.beans.PropertyChangeEvent;
 import java.beans.PropertyChangeListener;
 import java.lang.ref.ReferenceQueue;
 import java.lang.ref.WeakReference;
+import java.security.AccessController;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -64,6 +65,7 @@ import com.sun.java.swing.plaf.gtk.GTKConstants.PositionType;
 import com.sun.java.swing.plaf.gtk.GTKConstants.StateType;
 import sun.awt.SunToolkit;
 import sun.awt.UNIXToolkit;
+import sun.security.action.GetPropertyAction;
 import sun.swing.AltProcessor;
 import sun.swing.DefaultLayoutStyle;
 import sun.swing.MnemonicHandler;
