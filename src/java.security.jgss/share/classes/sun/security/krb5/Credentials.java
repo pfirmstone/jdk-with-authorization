@@ -524,13 +524,19 @@ public class Credentials {
     }
 
 
-    @SuppressWarnings("restricted")
+    @SuppressWarnings({"removal", "restricted"})
     static void ensureLoaded() {
-        if (OperatingSystem.isMacOS()) {
-            System.loadLibrary("osxkrb5");
-        } else {
-            System.loadLibrary("w2k_lsa_auth");
-        }
+        java.security.AccessController.doPrivileged(
+                new java.security.PrivilegedAction<Void> () {
+                        public Void run() {
+                                if (OperatingSystem.isMacOS()) {
+                                    System.loadLibrary("osxkrb5");
+                                } else {
+                                    System.loadLibrary("w2k_lsa_auth");
+                                }
+                                return null;
+                        }
+                });
         alreadyLoaded = true;
     }
 

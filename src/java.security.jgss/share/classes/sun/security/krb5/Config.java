@@ -34,15 +34,19 @@ import java.io.*;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.nio.file.Path;
+import java.security.PrivilegedAction;
 import java.util.*;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
+import java.security.AccessController;
+import java.security.PrivilegedExceptionAction;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
 import jdk.internal.util.OperatingSystem;
 import sun.net.dns.ResolverConfiguration;
+import sun.security.action.GetPropertyAction;
 import sun.security.krb5.internal.crypto.EType;
 import sun.security.krb5.internal.Krb5;
 import sun.security.util.SecurityProperties;
@@ -160,7 +164,7 @@ public class Config {
             return false;
         }
 
-        String osVersion = System.getProperty("os.version");
+        String osVersion = GetPropertyAction.privilegedGetProperty("os.version");
         String[] fragments = osVersion.split("\\.");
         if (fragments.length < 2) return false;
 
@@ -184,14 +188,16 @@ public class Config {
         /*
          * If either one system property is specified, we throw exception.
          */
-        String tmp = System.getProperty("java.security.krb5.kdc");
+        String tmp = GetPropertyAction
+                .privilegedGetProperty("java.security.krb5.kdc");
         if (tmp != null) {
             // The user can specify a list of kdc hosts separated by ":"
             defaultKDC = tmp.replace(':', ' ');
         } else {
             defaultKDC = null;
         }
-        defaultRealm = System.getProperty("java.security.krb5.realm");
+        defaultRealm = GetPropertyAction
+                .privilegedGetProperty("java.security.krb5.realm");
         if ((defaultKDC == null && defaultRealm != null) ||
             (defaultRealm == null && defaultKDC != null)) {
             throw new KrbException
@@ -660,6 +666,7 @@ public class Config {
      * @param fileName the configuration file
      * @return normalized lines
      */
+    @SuppressWarnings("removal")
     private List<String> loadConfigFile(final String fileName)
             throws IOException, KrbException {
 
@@ -670,15 +677,32 @@ public class Config {
         List<String> raw = new ArrayList<>();
         Set<Path> dupsCheck = new HashSet<>();
 
-        Path fullp = Paths.get(fileName).toAbsolutePath();
-        Path path = Paths.get(fileName);
-        if (!Files.exists(path)) {
-            // This is OK. There are other ways to get
-            // Kerberos 5 settings
-        } else {
-            readConfigFileLines(fullp, raw, dupsCheck);
+        try {
+            Path fullp = AccessController.doPrivileged((PrivilegedAction<Path>)
+                        () -> Paths.get(fileName).toAbsolutePath(),
+                    null,
+                    new PropertyPermission("user.dir", "read"));
+            AccessController.doPrivileged(
+                    new PrivilegedExceptionAction<Void>() {
+                        @Override
+                        public Void run() throws IOException {
+                            Path path = Paths.get(fileName);
+                            if (!Files.exists(path)) {
+                                // This is OK. There are other ways to get
+                                // Kerberos 5 settings
+                                return null;
+                            } else {
+                                return readConfigFileLines(
+                                        fullp, raw, dupsCheck);
+                            }
+                        }
+                    },
+                    null,
+                    // include/includedir can go anywhere
+                    new FilePermission("<<ALL FILES>>", "read"));
+        } catch (java.security.PrivilegedActionException pe) {
+            throw (IOException)pe.getException();
         }
-
         String previous = null;
         for (String line: raw) {
             if (line.startsWith("[")) {
@@ -838,9 +862,10 @@ public class Config {
      * The method returns null if it cannot find a Java config file.
      */
     private String getJavaFileName() {
-        String name = System.getProperty("java.security.krb5.conf");
+        String name = GetPropertyAction
+                .privilegedGetProperty("java.security.krb5.conf");
         if (name == null) {
-            name = System.getProperty("java.home")
+            name = GetPropertyAction.privilegedGetProperty("java.home")
                     + File.separator + "conf" + File.separator + "security"
                     + File.separator + "krb5.conf";
             if (!fileExists(name)) {
@@ -917,7 +942,7 @@ public class Config {
     }
 
     private String findMacosConfigFile() {
-        String userHome = System.getProperty("user.home");
+        String userHome = GetPropertyAction.privilegedGetProperty("user.home");
         final String PREF_FILE = "/Library/Preferences/edu.mit.Kerberos";
         String userPrefs = userHome + PREF_FILE;
 
@@ -1160,6 +1185,7 @@ public class Config {
      * @throws KrbException where no realm can be located
      * @return the default realm, always non null
      */
+    @SuppressWarnings("removal")
     public String getDefaultRealm() throws KrbException {
         if (defaultRealm != null) {
             return defaultRealm;
@@ -1175,9 +1201,16 @@ public class Config {
             }
         }
         if (realm == null) {
-            if (OperatingSystem.isWindows()) {
-                realm = System.getenv("USERDNSDOMAIN");
-            }
+            realm = java.security.AccessController.doPrivileged(
+                    new java.security.PrivilegedAction<String>() {
+                @Override
+                public String run() {
+                    if (OperatingSystem.isWindows()) {
+                        return System.getenv("USERDNSDOMAIN");
+                    }
+                    return null;
+                }
+            });
         }
         if (realm == null) {
             KrbException ke = new KrbException("Cannot locate default realm");
@@ -1196,6 +1229,7 @@ public class Config {
      * @throws KrbException if there's no way to find KDC for the realm
      * @return the list of KDCs separated by a space, always non null
      */
+    @SuppressWarnings("removal")
     public String getKDCList(String realm) throws KrbException {
         if (realm == null) {
             realm = getDefaultRealm();
@@ -1214,14 +1248,21 @@ public class Config {
             }
         }
         if (kdcs == null) {
-            if (OperatingSystem.isWindows()) {
-                String logonServer = System.getenv("LOGONSERVER");
-                if (logonServer != null
-                        && logonServer.startsWith("\\\\")) {
-                    logonServer = logonServer.substring(2);
+            kdcs = java.security.AccessController.doPrivileged(
+                    new java.security.PrivilegedAction<String>() {
+                @Override
+                public String run() {
+                    if (OperatingSystem.isWindows()) {
+                        String logonServer = System.getenv("LOGONSERVER");
+                        if (logonServer != null
+                                && logonServer.startsWith("\\\\")) {
+                            logonServer = logonServer.substring(2);
+                        }
+                        return logonServer;
+                    }
+                    return null;
                 }
-                kdcs = logonServer;
-            }
+            });
         }
         if (kdcs == null) {
             if (defaultKDC != null) {
@@ -1340,8 +1381,24 @@ public class Config {
         return kdcs;
     }
 
+    @SuppressWarnings("removal")
     private boolean fileExists(String name) {
-        return new File(name).exists();
+        return java.security.AccessController.doPrivileged(
+                                new FileExistsAction(name));
+    }
+
+    static class FileExistsAction
+        implements java.security.PrivilegedAction<Boolean> {
+
+        private String fileName;
+
+        public FileExistsAction(String fileName) {
+            this.fileName = fileName;
+        }
+
+        public Boolean run() {
+            return new File(fileName).exists();
+        }
     }
 
     // Shows the content of the Config object for debug purpose.

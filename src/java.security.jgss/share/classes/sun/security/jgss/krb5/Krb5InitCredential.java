@@ -37,7 +37,9 @@ import java.io.InvalidObjectException;
 import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.util.Date;
-import javax.security.auth.login.LoginException;
+import java.security.AccessController;
+import java.security.PrivilegedExceptionAction;
+import java.security.PrivilegedActionException;
 
 /**
  * Implements the krb5 initiator credential element.
@@ -346,6 +348,7 @@ public class Krb5InitCredential
     // XXX call to this.destroy() should destroy the locally cached copy
     // of krb5Credentials and then call super.destroy().
 
+    @SuppressWarnings("removal")
     private static KerberosTicket getTgt(GSSCaller caller, Krb5NameElement name,
                                                  int initLifetime)
         throws GSSException {
@@ -363,18 +366,23 @@ public class Krb5InitCredential
         }
 
         try {
-            GSSCaller realCaller = (caller == GSSCaller.CALLER_UNKNOWN)
-                             ? GSSCaller.CALLER_INITIATE
-                             : caller;
-            // It's OK to use null as serverPrincipal. TGT is almost
-            // the first ticket for a principal and we use list.
-            return Krb5Util.getInitialTicket(realCaller, clientPrincipal);
-        } catch (LoginException e) {
+            final GSSCaller realCaller = (caller == GSSCaller.CALLER_UNKNOWN)
+                                   ? GSSCaller.CALLER_INITIATE
+                                   : caller;
+            return AccessController.doPrivilegedWithCombiner(
+                new PrivilegedExceptionAction<KerberosTicket>() {
+                public KerberosTicket run() throws Exception {
+                    // It's OK to use null as serverPrincipal. TGT is almost
+                    // the first ticket for a principal and we use list.
+                    return Krb5Util.getInitialTicket(
+                        realCaller, clientPrincipal);
+                        }});
+        } catch (PrivilegedActionException e) {
             GSSException ge =
                 new GSSException(GSSException.NO_CRED, -1,
                     "Attempt to obtain new INITIATE credentials failed!" +
                     " (" + e.getMessage() + ")");
-            ge.initCause(e);
+            ge.initCause(e.getException());
             throw ge;
         }
     }

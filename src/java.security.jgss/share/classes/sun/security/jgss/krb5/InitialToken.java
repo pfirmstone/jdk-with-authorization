@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2000, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2000, 2022, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -26,6 +26,7 @@
 package sun.security.jgss.krb5;
 
 import org.ietf.jgss.*;
+import javax.security.auth.kerberos.DelegationPermission;
 import java.io.IOException;
 import java.net.InetAddress;
 import java.net.Inet4Address;
@@ -170,6 +171,14 @@ abstract class InitialToken extends Krb5Token {
                 String realm = delegateTo.getRealmAsString();
                 sb.append(" \"krbtgt/").append(realm).append('@');
                 sb.append(realm).append('\"');
+                @SuppressWarnings("removal")
+                SecurityManager sm = System.getSecurityManager();
+                if (sm != null) {
+                    DelegationPermission perm =
+                        new DelegationPermission(sb.toString());
+                    sm.checkPermission(perm);
+                }
+
 
                 /*
                  * Write 1 in little endian but in two bytes

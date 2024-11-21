@@ -323,7 +323,8 @@ module java.base {
         java.rmi,
         java.sql.rowset;
     exports sun.security.action to
-        java.desktop;
+        java.desktop,
+        java.security.jgss;
     exports sun.security.internal.interfaces to
         jdk.crypto.cryptoki;
     exports sun.security.internal.spec to

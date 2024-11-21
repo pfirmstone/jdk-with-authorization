@@ -26,6 +26,7 @@
 package sun.security.jgss;
 
 import org.ietf.jgss.*;
+import sun.security.action.GetBooleanAction;
 import sun.security.jgss.spi.*;
 import java.security.Provider;
 
@@ -36,8 +37,8 @@ import java.security.Provider;
 public class GSSManagerImpl extends GSSManager {
 
     // Undocumented property
-    private static final Boolean USE_NATIVE =
-            Boolean.getBoolean("sun.security.jgss.native");
+    private static final Boolean USE_NATIVE = GetBooleanAction
+            .privilegedGetProperty("sun.security.jgss.native");
 
     private final ProviderList list;
 
