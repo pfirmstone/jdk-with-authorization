@@ -48,6 +48,8 @@ import java.awt.image.WritableRaster;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.nio.ByteOrder;
+import java.security.AccessController;
+import java.security.PrivilegedAction;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
@@ -2037,9 +2039,17 @@ public class BMPImageReader extends ImageReader implements BMPConstants {
 
     private static Boolean isLinkedProfileAllowed = null;
 
+    @SuppressWarnings("removal")
     private static boolean isLinkedProfileAllowed() {
         if (isLinkedProfileAllowed == null) {
-            isLinkedProfileAllowed = Boolean.getBoolean("sun.imageio.bmp.enableLinkedProfiles");
+            PrivilegedAction<Boolean> a = new PrivilegedAction<Boolean>() {
+                @Override
+                public Boolean run() {
+                    return Boolean.
+                        getBoolean("sun.imageio.bmp.enableLinkedProfiles");
+                }
+            };
+            isLinkedProfileAllowed = AccessController.doPrivileged(a);
         }
         return isLinkedProfileAllowed;
     }

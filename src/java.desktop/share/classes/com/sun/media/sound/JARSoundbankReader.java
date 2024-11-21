@@ -32,6 +32,7 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.net.URL;
 import java.net.URLClassLoader;
+import java.security.AccessController;
 import java.util.ArrayList;
 import java.util.Objects;
 
@@ -54,7 +55,10 @@ public final class JARSoundbankReader extends SoundbankReader {
      * {@code true} if jar sound bank is allowed to be loaded default is
      * {@code false}.
      */
-    private static final boolean JAR_SOUNDBANK_ENABLED = Boolean.getBoolean("jdk.sound.jarsoundbank");
+    @SuppressWarnings("removal")
+    private static final boolean JAR_SOUNDBANK_ENABLED =
+            AccessController.doPrivileged(
+                    new GetBooleanAction("jdk.sound.jarsoundbank"));
 
     private static boolean isZIP(URL url) {
         boolean ok = false;

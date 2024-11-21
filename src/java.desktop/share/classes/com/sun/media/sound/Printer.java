@@ -25,6 +25,7 @@
 
 package com.sun.media.sound;
 
+import java.security.AccessController;
 
 import sun.security.action.GetPropertyAction;
 
@@ -65,7 +66,9 @@ final class Printer {
      * Returns {@code true} if the build of the current jdk is "internal".
      */
     private static boolean isBuildInternal() {
-        String javaVersion = System.getProperty("java.version");
+        @SuppressWarnings("removal")
+        String javaVersion = AccessController.doPrivileged(
+                new GetPropertyAction("java.version"));
         return javaVersion != null && javaVersion.contains("internal");
     }
 

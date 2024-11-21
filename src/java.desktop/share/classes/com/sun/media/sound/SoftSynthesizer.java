@@ -36,6 +36,8 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.lang.ref.WeakReference;
+import java.security.AccessController;
+import java.security.PrivilegedAction;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -632,19 +634,15 @@ public final class SoftSynthesizer implements AudioSynthesizer,
         }
     }
 
-   static interface RunnableAction<T> {
-        T run();
-   }
-
     @Override
     public Soundbank getDefaultSoundbank() {
         synchronized (SoftSynthesizer.class) {
             if (defaultSoundBank != null)
                 return defaultSoundBank;
 
-            List<RunnableAction<InputStream>> actions = new ArrayList<>();
+            List<PrivilegedAction<InputStream>> actions = new ArrayList<>();
 
-            actions.add(new RunnableAction<InputStream>() {
+            actions.add(new PrivilegedAction<InputStream>() {
                 @Override
                 public InputStream run() {
                     File javahome = new File(System.getProperties()
@@ -680,7 +678,7 @@ public final class SoftSynthesizer implements AudioSynthesizer,
                 }
             });
 
-            actions.add(new RunnableAction<InputStream>() {
+            actions.add(new PrivilegedAction<InputStream>() {
                 @Override
                 public InputStream run() {
                     if (OSInfo.getOSType() == OSInfo.OSType.LINUX) {
@@ -714,7 +712,7 @@ public final class SoftSynthesizer implements AudioSynthesizer,
                 }
             });
 
-            actions.add(new RunnableAction<InputStream>() {
+            actions.add(new PrivilegedAction<InputStream>() {
                 @Override
                 public InputStream run() {
                     if (OSInfo.getOSType() == OSInfo.OSType.WINDOWS) {
@@ -731,7 +729,7 @@ public final class SoftSynthesizer implements AudioSynthesizer,
                 }
             });
 
-            actions.add(new RunnableAction<InputStream>() {
+            actions.add(new PrivilegedAction<InputStream>() {
                 @Override
                 public InputStream run() {
                     /*
@@ -751,9 +749,10 @@ public final class SoftSynthesizer implements AudioSynthesizer,
                 }
             });
 
-            for (RunnableAction<InputStream> action : actions) {
+            for (PrivilegedAction<InputStream> action : actions) {
                 try {
-                    InputStream is = action.run();
+                    @SuppressWarnings("removal")
+                    InputStream is = AccessController.doPrivileged(action);
                     if(is == null) continue;
                     Soundbank sbk;
                     try (is) {
@@ -779,8 +778,9 @@ public final class SoftSynthesizer implements AudioSynthesizer,
                 /*
                  * Save generated soundbank to disk for faster future use.
                  */
-                OutputStream out =
-                        ((RunnableAction<OutputStream>) () -> {
+                @SuppressWarnings("removal")
+                OutputStream out = AccessController
+                        .doPrivileged((PrivilegedAction<OutputStream>) () -> {
                             try {
                                 File userhome = new File(System
                                         .getProperty("user.home"), ".gervill");
@@ -798,7 +798,7 @@ public final class SoftSynthesizer implements AudioSynthesizer,
                             } catch (final FileNotFoundException ignored) {
                             }
                             return null;
-                        }).run();
+                        });
                 if (out != null) {
                     try (out) {
                         ((SF2Soundbank) defaultSoundBank).save(out);
@@ -897,24 +897,28 @@ public final class SoftSynthesizer implements AudioSynthesizer,
         return info;
     }
 
+    @SuppressWarnings("removal")
     private Properties getStoredProperties() {
-        Properties p = new Properties();
-        String notePath = "/com/sun/media/sound/softsynthesizer";
-        try {
-            Preferences prefroot = Preferences.userRoot();
-            if (prefroot.nodeExists(notePath)) {
-                Preferences prefs = prefroot.node(notePath);
-                String[] prefs_keys = prefs.keys();
-                for (String prefs_key : prefs_keys) {
-                    String val = prefs.get(prefs_key, null);
-                    if (val != null) {
-                        p.setProperty(prefs_key, val);
+        return AccessController
+                .doPrivileged((PrivilegedAction<Properties>) () -> {
+                    Properties p = new Properties();
+                    String notePath = "/com/sun/media/sound/softsynthesizer";
+                    try {
+                        Preferences prefroot = Preferences.userRoot();
+                        if (prefroot.nodeExists(notePath)) {
+                            Preferences prefs = prefroot.node(notePath);
+                            String[] prefs_keys = prefs.keys();
+                            for (String prefs_key : prefs_keys) {
+                                String val = prefs.get(prefs_key, null);
+                                if (val != null) {
+                                    p.setProperty(prefs_key, val);
+                                }
+                            }
+                        }
+                    } catch (final BackingStoreException ignored) {
                     }
-                }
-            }
-        } catch (final BackingStoreException ignored) {
-        }
-        return p;
+                    return p;
+                });
     }
 
     @Override

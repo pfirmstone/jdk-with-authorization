@@ -28,6 +28,8 @@ package com.sun.imageio.stream;
 import sun.awt.util.ThreadGroupUtils;
 
 import java.io.IOException;
+import java.security.AccessController;
+import java.security.PrivilegedAction;
 import java.util.Set;
 import java.util.WeakHashMap;
 import javax.imageio.stream.ImageInputStream;
@@ -84,18 +86,21 @@ public class StreamCloser {
                     }
                 };
 
-                /* The thread must be a member of a thread group
-                 * which will not get GCed before VM exit.
-                 * Make its parent the top-level thread group.
-                 */
-                ThreadGroup tg = ThreadGroupUtils.getRootThreadGroup();
-                streamCloser = new Thread(tg, streamCloserRunnable,
-                                          "StreamCloser", 0, false);
-                /* Set context class loader to null in order to avoid
-                 * keeping a strong reference to an application classloader.
-                 */
-                streamCloser.setContextClassLoader(null);
-                Runtime.getRuntime().addShutdownHook(streamCloser);
+                AccessController.doPrivileged((PrivilegedAction<Object>) () -> {
+                    /* The thread must be a member of a thread group
+                     * which will not get GCed before VM exit.
+                     * Make its parent the top-level thread group.
+                     */
+                    ThreadGroup tg = ThreadGroupUtils.getRootThreadGroup();
+                    streamCloser = new Thread(tg, streamCloserRunnable,
+                                              "StreamCloser", 0, false);
+                    /* Set context class loader to null in order to avoid
+                     * keeping a strong reference to an application classloader.
+                     */
+                    streamCloser.setContextClassLoader(null);
+                    Runtime.getRuntime().addShutdownHook(streamCloser);
+                    return null;
+                });
             }
         }
     }

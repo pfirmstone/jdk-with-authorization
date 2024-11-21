@@ -25,6 +25,8 @@
 
 package com.sun.media.sound;
 
+import java.security.AccessController;
+import java.security.PrivilegedAction;
 import java.util.StringTokenizer;
 
 /**
@@ -72,12 +74,15 @@ final class Platform {
     /**
      * Load the native library or libraries.
      */
-    @SuppressWarnings("restricted")
+    @SuppressWarnings({"removal", "restricted"})
     private static void loadLibraries() {
         // load the native library
         isNativeLibLoaded = true;
         try {
-            System.loadLibrary(libName);
+            AccessController.doPrivileged((PrivilegedAction<Void>) () -> {
+                System.loadLibrary(libName);
+                return null;
+            });
         } catch (Throwable t) {
             if (Printer.err) Printer.err("Couldn't load library "+libName+": "+t.toString());
             isNativeLibLoaded = false;

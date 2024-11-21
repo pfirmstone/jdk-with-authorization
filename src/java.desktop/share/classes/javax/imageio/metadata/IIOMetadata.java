@@ -28,6 +28,8 @@ package javax.imageio.metadata;
 import org.w3c.dom.Node;
 
 import java.lang.reflect.Method;
+import java.security.AccessController;
+import java.security.PrivilegedAction;
 
 /**
  * An abstract class to be extended by objects that represent metadata
@@ -396,9 +398,12 @@ public abstract class IIOMetadata {
             throw new IllegalArgumentException("Unsupported format name");
         }
         try {
+            final String className = formatClassName;
             // Try to load from the module of the IIOMetadata implementation
             // for this plugin since the IIOMetadataImpl is part of the plugin
-            Class<?> cls = getMetadataFormatClass(formatClassName);
+            PrivilegedAction<Class<?>> pa = () -> { return getMetadataFormatClass(className); };
+            @SuppressWarnings("removal")
+            Class<?> cls = AccessController.doPrivileged(pa);
             Method meth = cls.getMethod("getInstance");
             return (IIOMetadataFormat) meth.invoke(null);
         } catch (Exception e) {

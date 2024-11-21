@@ -25,6 +25,8 @@
 
 package com.sun.media.sound;
 
+import java.security.AccessController;
+import java.security.PrivilegedAction;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -168,7 +170,9 @@ public final class JDK13Services {
             return null;
         }
         String name = typeClass.getName();
-        String value = System.getProperty(name);
+        @SuppressWarnings("removal")
+        String value = AccessController.doPrivileged(
+                (PrivilegedAction<String>) () -> System.getProperty(name));
         if (value == null) {
             value = getProperties().getProperty(name);
         }
