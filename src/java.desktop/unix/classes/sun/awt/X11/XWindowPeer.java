@@ -47,6 +47,8 @@ import java.awt.event.FocusEvent;
 import java.awt.event.WindowEvent;
 import java.awt.peer.ComponentPeer;
 import java.awt.peer.WindowPeer;
+import java.security.AccessController;
+import java.security.PrivilegedAction;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.Set;
@@ -1320,7 +1322,12 @@ class XWindowPeer extends XPanelPeer implements WindowPeer,
             return;
         }
 
-        final String desktopStartupId = XToolkit.getEnv("DESKTOP_STARTUP_ID");
+        @SuppressWarnings("removal")
+        final String desktopStartupId = AccessController.doPrivileged(new PrivilegedAction<String>() {
+            public String run() {
+                return XToolkit.getEnv("DESKTOP_STARTUP_ID");
+            }
+        });
         if (desktopStartupId == null) {
             return;
         }
