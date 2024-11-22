@@ -231,6 +231,7 @@ public class ForkJoinWorkerThread extends Thread {
     /**
      * Clears ThreadLocals, and if necessary resets ContextClassLoader
      */
+    @SuppressWarnings({"removal","unchecked"})
      final void resetThreadLocals() {
          if (U.getReference(this, THREADLOCALS) != null)
              U.putReference(this, THREADLOCALS, null);
@@ -238,7 +239,12 @@ public class ForkJoinWorkerThread extends Thread {
              U.putReference(this, INHERITABLETHREADLOCALS, null);
          if ((this instanceof InnocuousForkJoinWorkerThread) &&
              ((InnocuousForkJoinWorkerThread)this).needCCLReset())
-             super.setContextClassLoader(ClassLoader.getSystemClassLoader());
+             AccessController.doPrivileged((PrivilegedAction)()->
+                 {
+                     super.setContextClassLoader(ClassLoader.getSystemClassLoader());
+                     return null;
+                 }
+             );
      }
 
     private static final Unsafe U = Unsafe.getUnsafe();
@@ -274,13 +280,18 @@ public class ForkJoinWorkerThread extends Thread {
         public void setUncaughtExceptionHandler(UncaughtExceptionHandler x) { }
 
         @Override // paranoically
-        @SuppressWarnings("removal")
+        @SuppressWarnings({"removal", "unchecked"})
         public void setContextClassLoader(ClassLoader cl) {
             if (System.getSecurityManager() != null &&
                 cl != null && ClassLoader.getSystemClassLoader() != cl)
                 throw new SecurityException("setContextClassLoader");
             resetCCL = true;
-            super.setContextClassLoader(cl);
+            AccessController.doPrivileged((PrivilegedAction)()->
+                {
+                    super.setContextClassLoader(cl);
+                    return null;
+                }
+            );
         }
 
         final boolean needCCLReset() { // get and clear
