@@ -22,3 +22,5 @@ NashornProfile.txt
 /.cache
 /.gdbinit
 /.lldbinit
+config.log
+configure.log
