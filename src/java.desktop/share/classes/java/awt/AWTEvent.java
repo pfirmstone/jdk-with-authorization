@@ -39,6 +39,8 @@ import java.awt.event.WindowEvent;
 import java.awt.peer.ComponentPeer;
 import java.awt.peer.LightweightPeer;
 import java.io.Serial;
+import java.security.AccessControlContext;
+import java.security.AccessController;
 import java.util.EventObject;
 
 import sun.awt.AWTAccessor;
@@ -109,6 +111,24 @@ public abstract class AWTEvent extends EventObject {
      * @see #isConsumed
      */
     protected boolean consumed = false;
+
+   /*
+    * The event's AccessControlContext.
+    */
+    @SuppressWarnings("removal")
+    private transient volatile AccessControlContext acc =
+        AccessController.getContext();
+
+   /*
+    * Returns the acc this event was constructed with.
+    */
+    @SuppressWarnings("removal")
+    final AccessControlContext getAccessControlContext() {
+        if (acc == null) {
+            throw new SecurityException("AWTEvent is missing AccessControlContext");
+        }
+        return acc;
+    }
 
     transient boolean focusManagerIsDispatching = false;
     transient boolean isPosted;
@@ -259,6 +279,11 @@ public abstract class AWTEvent extends EventObject {
 
                 public boolean isSystemGenerated(AWTEvent ev) {
                     return ev.isSystemGenerated;
+                }
+
+                @SuppressWarnings("removal")
+                public AccessControlContext getAccessControlContext(AWTEvent ev) {
+                    return ev.getAccessControlContext();
                 }
 
                 public byte[] getBData(AWTEvent ev) {
