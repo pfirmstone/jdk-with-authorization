@@ -257,6 +257,7 @@ public class ForkJoinWorkerThread extends Thread {
     static final class InnocuousForkJoinWorkerThread extends ForkJoinWorkerThread {
         /** The ThreadGroup for all InnocuousForkJoinWorkerThreads */
         private static final ThreadGroup innocuousThreadGroup;
+        private boolean resetCCL;
         @SuppressWarnings("removal")
         private static final AccessControlContext innocuousACC;
         InnocuousForkJoinWorkerThread(ForkJoinPool pool) {
