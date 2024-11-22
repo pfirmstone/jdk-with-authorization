@@ -394,6 +394,8 @@ public:
         return value;
     }
 
+    HICON GetSecurityWarningIcon(UINT index, UINT w, UINT h);
+
     /* Turns on/off dialog modality for the system. */
     INLINE AwtDialog* SetModal(AwtDialog* frame) {
         AwtDialog* previousDialog = m_pModalDialog;

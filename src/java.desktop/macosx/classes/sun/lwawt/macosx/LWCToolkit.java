@@ -119,6 +119,7 @@ import sun.lwawt.LWWindowPeer.PeerType;
 import sun.lwawt.PlatformComponent;
 import sun.lwawt.PlatformDropTarget;
 import sun.lwawt.PlatformWindow;
+import sun.lwawt.SecurityWarningWindow;
 
 @SuppressWarnings("serial") // JDK implementation class
 final class NamedCursor extends Cursor {
@@ -309,6 +310,12 @@ public final class LWCToolkit extends LWToolkit {
             return createCPrinterDialog((CPrinterDialog)target);
         }
         return super.createDialog(target);
+    }
+
+    @Override
+    protected SecurityWarningWindow createSecurityWarning(Window ownerWindow,
+                                                          LWWindowPeer ownerPeer) {
+        return new CWarningWindow(ownerWindow, ownerPeer);
     }
 
     @Override

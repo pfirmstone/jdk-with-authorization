@@ -79,6 +79,13 @@ public class XKeyboardFocusManagerPeer extends KeyboardFocusManagerPeerImpl {
                 to = AWTAccessor.getComponentAccessor().getPeer(currentFocusedWindow);
             }
         }
+
+        if (from != null) {
+            from.updateSecurityWarningVisibility();
+        }
+        if (to != null) {
+            to.updateSecurityWarningVisibility();
+        }
     }
 
     @Override

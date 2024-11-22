@@ -1862,14 +1862,12 @@ public class JInternalFrame extends JComponent implements
 
     /**
      * Gets the warning string that is displayed with this internal frame.
-     * This method always returns <code>null</code>.
-     * Warning strings are no longer applicable, even to top-level
-     * windows, so this method may be removed in a future release
+     * Since an internal frame is always secure (since it's fully
+     * contained within a window that might need a warning string)
+     * this method always returns <code>null</code>.
      * @return    <code>null</code>
      * @see       java.awt.Window#getWarningString
-     * @deprecated since JDK 24
      */
-    @Deprecated(since="24", forRemoval=true)
     @BeanProperty(bound = false)
     public final String getWarningString() {
         return null;

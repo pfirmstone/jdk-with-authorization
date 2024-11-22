@@ -196,6 +196,10 @@ class CFileDialog implements FileDialogPeer {
     }
 
     @Override
+    public void repositionSecurityWarning() {
+    }
+
+    @Override
     public GraphicsConfiguration getAppropriateGraphicsConfiguration(
             GraphicsConfiguration gc) {
         return gc;

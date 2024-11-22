@@ -216,6 +216,7 @@ public class XEmbedHelper {
 
     // Shouldn't be called on Toolkit thread.
     AWTKeyStroke getKeyStrokeForKeySym(long keysym, long state) {
+        XBaseWindow.checkSecurity();
 
         int keycode;
 

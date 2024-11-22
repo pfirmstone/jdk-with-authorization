@@ -1114,7 +1114,13 @@ public final class FontPanel extends JPanel implements AdjustmentListener {
             /// Position and set size of zoom window as needed
             zoomWindow.setLocation( canvasLoc.x + zoomAreaX, canvasLoc.y + zoomAreaY );
             if ( !nowZooming ) {
-                zoomWindow.setSize( zoomAreaWidth + 1, zoomAreaHeight + 1 );
+                if ( zoomWindow.getWarningString() != null )
+                  /// If this is not opened as a "secure" window,
+                  /// it has a banner below the zoom dialog which makes it look really BAD
+                  /// So enlarge it by a bit
+                  zoomWindow.setSize( zoomAreaWidth + 1, zoomAreaHeight + 20 );
+                else
+                  zoomWindow.setSize( zoomAreaWidth + 1, zoomAreaHeight + 1 );
             }
 
             /// Prepare zoomed image

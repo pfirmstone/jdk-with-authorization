@@ -383,6 +383,22 @@ public class Desktop {
         }
     }
 
+
+    /**
+     * Calls to the security manager's {@code checkPermission} method with an
+     * {@code AWTPermission("showWindowWithoutWarningBanner")} permission. This
+     * permission is needed, because we cannot add a security warning icon to
+     * the windows of the external native application.
+     */
+    private void checkAWTPermission() {
+        @SuppressWarnings("removal")
+        SecurityManager sm = System.getSecurityManager();
+        if (sm != null) {
+            sm.checkPermission(new AWTPermission(
+                    "showWindowWithoutWarningBanner"));
+        }
+    }
+
     /**
      * Launches the associated application to open the file.
      *
@@ -407,6 +423,7 @@ public class Desktop {
      */
     public void open(File file) throws IOException {
         file = new File(file.getPath());
+        checkAWTPermission();
         checkExec();
         checkActionSupport(Action.OPEN);
         checkFileValidation(file);
@@ -438,6 +455,7 @@ public class Desktop {
      */
     public void edit(File file) throws IOException {
         file = new File(file.getPath());
+        checkAWTPermission();
         checkExec();
         checkActionSupport(Action.EDIT);
         file.canWrite();
@@ -508,6 +526,7 @@ public class Desktop {
      * @see java.awt.AWTPermission
      */
     public void browse(URI uri) throws IOException {
+        checkAWTPermission();
         checkExec();
         checkActionSupport(Action.BROWSE);
         Objects.requireNonNull(uri);
@@ -530,6 +549,7 @@ public class Desktop {
      * @see java.awt.AWTPermission
      */
     public void mail() throws IOException {
+        checkAWTPermission();
         checkExec();
         checkActionSupport(Action.MAIL);
         URI mailtoURI = null;
@@ -573,6 +593,7 @@ public class Desktop {
      * @see java.awt.AWTPermission
      */
     public  void mail(URI mailtoURI) throws IOException {
+        checkAWTPermission();
         checkExec();
         checkActionSupport(Action.MAIL);
         if (mailtoURI == null) throw new NullPointerException();
@@ -936,6 +957,7 @@ public class Desktop {
      * @since 9
      */
     public void openHelpViewer() {
+        checkAWTPermission();
         checkExec();
         checkEventsProcessingPermission();
         checkActionSupport(Action.APP_HELP_VIEWER);
@@ -986,6 +1008,7 @@ public class Desktop {
      */
     public void browseFileDirectory(File file) {
         file = new File(file.getPath());
+        checkAWTPermission();
         checkExec();
         checkActionSupport(Action.BROWSE_FILE_DIR);
         checkFileValidation(file);

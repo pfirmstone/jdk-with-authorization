@@ -910,6 +910,9 @@ MsgRouting AwtFrame::WmWindowPosChanging(LPARAM windowPos) {
 MsgRouting AwtFrame::WmSize(UINT type, int w, int h)
 {
     currentWmSizeState = type;
+    if (currentWmSizeState == SIZE_MINIMIZED) {
+        UpdateSecurityWarningVisibility();
+    }
 
     if (m_ignoreWmSize) {
         return mrDoDefault;

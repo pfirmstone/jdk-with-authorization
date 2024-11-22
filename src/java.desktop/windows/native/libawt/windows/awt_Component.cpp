@@ -6420,7 +6420,10 @@ void AwtComponent::PostUngrabEvent() {
 
 void AwtComponent::SetFocusedWindow(HWND window)
 {
+    HWND old = sm_focusedWindow;
     sm_focusedWindow = window;
+
+    AwtWindow::FocusedWindowChanged(old, window);
 }
 
 /************************************************************************

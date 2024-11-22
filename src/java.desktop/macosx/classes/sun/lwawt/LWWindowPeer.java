@@ -146,6 +146,8 @@ public class LWWindowPeer
 
     private final PeerType peerType;
 
+    private final SecurityWarningWindow warningWindow;
+
     private volatile boolean targetFocusable;
 
     /**
@@ -195,6 +197,18 @@ public class LWWindowPeer
         }
 
         platformWindow.initialize(target, this, ownerDelegate);
+        // Init warning window(for applets)
+        SecurityWarningWindow warn = null;
+        if (target.getWarningString() != null) {
+            // accessSystemTray permission allows to display TrayIcon, TrayIcon tooltip
+            // and TrayIcon balloon windows without a warning window.
+            if (!AWTAccessor.getWindowAccessor().isTrayIconWindow(target)) {
+                LWToolkit toolkit = (LWToolkit)Toolkit.getDefaultToolkit();
+                warn = toolkit.createSecurityWarning(target, this);
+            }
+        }
+
+        warningWindow = warn;
     }
 
     @Override
@@ -260,6 +274,9 @@ public class LWWindowPeer
         if (isGrabbing()) {
             ungrab();
         }
+        if (warningWindow != null) {
+            warningWindow.dispose();
+        }
 
         platformWindow.dispose();
         super.disposeImpl();
@@ -277,6 +294,9 @@ public class LWWindowPeer
 
     @Override
     protected void setVisibleImpl(final boolean visible) {
+        if (!visible && warningWindow != null) {
+            warningWindow.setVisible(false, false);
+        }
         updateFocusableWindowState();
         super.setVisibleImpl(visible);
         // TODO: update graphicsConfig, see 4868278
@@ -535,6 +555,19 @@ public class LWWindowPeer
         updateOpaque();
     }
 
+    @Override
+    public void repositionSecurityWarning() {
+        if (warningWindow != null) {
+            ComponentAccessor compAccessor = AWTAccessor.getComponentAccessor();
+            Window target = getTarget();
+            int x = compAccessor.getX(target);
+            int y = compAccessor.getY(target);
+            int width = compAccessor.getWidth(target);
+            int height = compAccessor.getHeight(target);
+            warningWindow.reposition(x, y, width, height);
+        }
+    }
+
     // ---- FRAME PEER METHODS ---- //
 
     @Override // FramePeer and DialogPeer
@@ -720,6 +753,7 @@ public class LWWindowPeer
             repaintPeer();
         }
 
+        repositionSecurityWarning();
     }
 
     private void clearBackground(final int w, final int h) {
@@ -957,6 +991,8 @@ public class LWWindowPeer
                                        Point loc, int xAbs, int yAbs,
                                        int clickCount, boolean popupTrigger, int button) {
 
+        updateSecurityWarningVisibility();
+
         postEvent(new MouseEvent(target,
                 MouseEvent.MOUSE_ENTERED,
                 when, modifiers,
@@ -967,6 +1003,8 @@ public class LWWindowPeer
     private void postMouseExitedEvent(Component target, long when, int modifiers,
                                       Point loc, int xAbs, int yAbs,
                                       int clickCount, boolean popupTrigger, int button) {
+
+        updateSecurityWarningVisibility();
 
         postEvent(new MouseEvent(target,
                 MouseEvent.MOUSE_EXITED,
@@ -1056,6 +1094,7 @@ public class LWWindowPeer
         postEvent(stateChangedEvent);
         windowState = newWindowState;
 
+        updateSecurityWarningVisibility();
     }
 
     private static int getGraphicsConfigScreen(GraphicsConfiguration gc) {
@@ -1415,11 +1454,13 @@ public class LWWindowPeer
     @Override
     public void enterFullScreenMode() {
         platformWindow.enterFullScreenMode();
+        updateSecurityWarningVisibility();
     }
 
     @Override
     public void exitFullScreenMode() {
         platformWindow.exitFullScreenMode();
+        updateSecurityWarningVisibility();
     }
 
     public long getLayerPtr() {
@@ -1452,6 +1493,33 @@ public class LWWindowPeer
 
     public PeerType getPeerType() {
         return peerType;
+    }
+
+    public void updateSecurityWarningVisibility() {
+        if (warningWindow == null) {
+            return;
+        }
+
+        if (!isVisible()) {
+            return; // The warning window should already be hidden.
+        }
+
+        boolean show = false;
+
+        if (!platformWindow.isFullScreenMode()) {
+            if (isVisible()) {
+                if (LWKeyboardFocusManagerPeer.getInstance().getCurrentFocusedWindow() ==
+                        getTarget()) {
+                    show = true;
+                }
+
+                if (platformWindow.isUnderMouse() || warningWindow.isUnderMouse()) {
+                    show = true;
+                }
+            }
+        }
+
+        warningWindow.setVisible(show, true);
     }
 
     @Override
