@@ -303,6 +303,6 @@ public class StreamHandler extends Handler {
                 setOutputStream(out);
                 return null;
             }
-        }, null, LogManager.controlPermission);
+        }, null, LogManager.CONTROL_PERMISSION);
     }
 }

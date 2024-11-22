@@ -122,7 +122,7 @@ public abstract class Handler {
                 }
                 return null;
             }
-        }, null, LogManager.controlPermission);
+        }, null, LogManager.CONTROL_PERMISSION);
     }
 
     /**
