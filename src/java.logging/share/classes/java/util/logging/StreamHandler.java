@@ -29,7 +29,6 @@ package java.util.logging;
 import java.io.*;
 import java.security.AccessController;
 import java.security.PrivilegedAction;
-import java.security.SecurityException;
 import java.util.Objects;
 
 /**

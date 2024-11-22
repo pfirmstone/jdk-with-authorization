@@ -31,7 +31,6 @@ import java.io.UnsupportedEncodingException;
 import java.security.AccessController;
 import java.security.PrivilegedAction;
 import java.util.concurrent.locks.ReentrantLock;
-import java.security.SecurityException;
 
 /**
  * A {@code Handler} object takes log messages from a {@code Logger} and

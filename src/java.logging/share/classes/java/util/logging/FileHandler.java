@@ -367,7 +367,6 @@ public class FileHandler extends StreamHandler {
      */
     public FileHandler(String pattern, int limit, int count)
                                         throws IOException, SecurityException {
-    public FileHandler(String pattern, int limit, int count) throws IOException {
         if (limit < 0 || count < 1 || pattern.isEmpty()) {
             throw new IllegalArgumentException();
         }
