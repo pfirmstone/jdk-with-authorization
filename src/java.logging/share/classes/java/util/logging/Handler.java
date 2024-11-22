@@ -28,6 +28,10 @@ package java.util.logging;
 
 import java.util.Objects;
 import java.io.UnsupportedEncodingException;
+import java.security.AccessController;
+import java.security.PrivilegedAction;
+import java.util.concurrent.locks.ReentrantLock;
+import java.security.SecurityException;
 
 /**
  * A {@code Handler} object takes log messages from a {@code Logger} and
@@ -86,6 +90,7 @@ public abstract class Handler {
      *                           nor found in LogManager configuration properties
      * @param specifiedFormatter if not null, this is the formatter to configure
      */
+    @SuppressWarnings("removal")
     Handler(Level defaultLevel, Formatter defaultFormatter,
             Formatter specifiedFormatter) {
         this();
@@ -96,23 +101,29 @@ public abstract class Handler {
         final Level level = manager.getLevelProperty(cname + ".level", defaultLevel);
         final Filter filter = manager.getFilterProperty(cname + ".filter", null);
         final Formatter formatter = specifiedFormatter == null
-                ? manager.getFormatterProperty(cname + ".formatter", defaultFormatter)
-                : specifiedFormatter;
+                                    ? manager.getFormatterProperty(cname + ".formatter", defaultFormatter)
+                                    : specifiedFormatter;
         final String encoding = manager.getStringProperty(cname + ".encoding", null);
 
-        setLevel(level);
-        setFilter(filter);
-        setFormatter(formatter);
-        try {
-            setEncoding(encoding);
-        } catch (Exception ex) {
-            try {
-                setEncoding(null);
-            } catch (Exception ex2) {
-                // doing a setEncoding with null should always work.
-                // assert false;
+        AccessController.doPrivileged(new PrivilegedAction<Void>() {
+            @Override
+            public Void run() {
+                setLevel(level);
+                setFilter(filter);
+                setFormatter(formatter);
+                try {
+                    setEncoding(encoding);
+                } catch (Exception ex) {
+                    try {
+                        setEncoding(null);
+                    } catch (Exception ex2) {
+                        // doing a setEncoding with null should always work.
+                        // assert false;
+                    }
+                }
+                return null;
             }
-        }
+        }, null, LogManager.controlPermission);
     }
 
     /**
@@ -158,21 +169,7 @@ public abstract class Handler {
      * @throws  SecurityException  if a security manager exists and if
      *             the caller does not have {@code LoggingPermission("control")}.
      */
-    public void setFormatter(Formatter newFormatter) throws SecurityException {
-        if (tryUseLock()) {
-            try {
-                setFormatter0(newFormatter);
-            } finally {
-                unlock();
-            }
-        } else {
-            synchronized (this) {
-                setFormatter0(newFormatter);
-            }
-        }
-    }
-
-    private void setFormatter0(Formatter newFormatter) throws SecurityException {
+    public synchronized void setFormatter(Formatter newFormatter) throws SecurityException {
         checkPermission();
         formatter = Objects.requireNonNull(newFormatter);
     }
@@ -198,23 +195,8 @@ public abstract class Handler {
      * @throws  UnsupportedEncodingException if the named encoding is
      *          not supported.
      */
-    public void setEncoding(String encoding)
+    public synchronized void setEncoding(String encoding)
             throws SecurityException, java.io.UnsupportedEncodingException {
-        if (tryUseLock()) {
-            try {
-                setEncoding0(encoding);
-            } finally {
-                unlock();
-            }
-        } else {
-            synchronized (this) {
-                setEncoding0(encoding);
-            }
-        }
-    }
-
-    private void setEncoding0(String encoding)
-                        throws SecurityException, java.io.UnsupportedEncodingException {
         checkPermission();
         if (encoding != null) {
             try {
@@ -249,21 +231,7 @@ public abstract class Handler {
      * @throws  SecurityException  if a security manager exists and if
      *             the caller does not have {@code LoggingPermission("control")}.
      */
-    public void setFilter(Filter newFilter) throws SecurityException {
-        if (tryUseLock()) {
-            try {
-                setFilter0(newFilter);
-            } finally {
-                unlock();
-            }
-        } else {
-            synchronized (this) {
-                setFilter0(newFilter);
-            }
-        }
-    }
-
-    private void setFilter0(Filter newFilter) throws SecurityException {
+    public synchronized void setFilter(Filter newFilter) throws SecurityException {
         checkPermission();
         filter = newFilter;
     }
@@ -287,7 +255,8 @@ public abstract class Handler {
      * @throws  SecurityException  if a security manager exists and if
      *             the caller does not have {@code LoggingPermission("control")}.
      */
-    public synchronized void setErrorManager(ErrorManager em) {
+    public synchronized void setErrorManager(ErrorManager em) throws SecurityException {
+        checkPermission();
         if (em == null) {
            throw new NullPointerException();
         }
@@ -301,7 +270,8 @@ public abstract class Handler {
      * @throws  SecurityException  if a security manager exists and if
      *             the caller does not have {@code LoggingPermission("control")}.
      */
-    public ErrorManager getErrorManager() {
+    public ErrorManager getErrorManager() throws SecurityException {
+        checkPermission();
         return errorManager;
     }
 
@@ -337,24 +307,11 @@ public abstract class Handler {
      * @throws  SecurityException  if a security manager exists and if
      *             the caller does not have {@code LoggingPermission("control")}.
      */
-    public void setLevel(Level newLevel) throws SecurityException {
-        if (tryUseLock()) {
-            try {
-                setLevel0(newLevel);
-            } finally {
-                unlock();
-            }
-        } else {
-            synchronized (this) {
-                setLevel0(newLevel);
-            }
-        }
-    }
-
-    private void setLevel0(Level newLevel) throws SecurityException {
+    public synchronized void setLevel(Level newLevel) throws SecurityException {
         if (newLevel == null) {
             throw new NullPointerException();
         }
+        checkPermission();
         logLevel = newLevel;
     }
 
@@ -396,4 +353,10 @@ public abstract class Handler {
         return filter.isLoggable(record);
     }
 
+    // Package-private support method for security checks.
+    // We check that the caller has appropriate security privileges
+    // to update Handler state and if not throw a SecurityException.
+    void checkPermission() throws SecurityException {
+        manager.checkPermission();
+    }
 }

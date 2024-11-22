@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2000, 2023, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2000, 2024, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -146,7 +146,7 @@ public class SocketHandler extends StreamHandler {
         sock = new Socket(host, port);
         OutputStream out = sock.getOutputStream();
         BufferedOutputStream bout = new BufferedOutputStream(out);
-        setOutputStream(bout);
+        setOutputStreamPrivileged(bout);
     }
 
     /**
@@ -156,21 +156,7 @@ public class SocketHandler extends StreamHandler {
      *             the caller does not have {@code LoggingPermission("control")}.
      */
     @Override
-    public void close() throws SecurityException {
-        if (tryUseLock()) {
-            try {
-                close0();
-            } finally {
-                unlock();
-            }
-        } else {
-            synchronized (this) {
-                close0();
-            }
-        }
-    }
-
-    private void close0() throws SecurityException {
+    public synchronized void close() throws SecurityException {
         super.close();
         if (sock != null) {
             try {

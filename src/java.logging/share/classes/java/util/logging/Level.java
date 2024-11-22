@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2000, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2000, 2021, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -29,6 +29,8 @@ import java.io.Serial;
 import java.lang.ref.Reference;
 import java.lang.ref.ReferenceQueue;
 import java.lang.ref.WeakReference;
+import java.security.AccessController;
+import java.security.PrivilegedAction;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -618,7 +620,8 @@ public class Level implements java.io.Serializable {
         }
 
         private static void registerWithClassLoader(Level customLevel) {
-            final ClassLoader cl = customLevel.getClass().getClassLoader();
+            PrivilegedAction<ClassLoader> pa = customLevel.getClass()::getClassLoader;
+            final ClassLoader cl = AccessController.doPrivileged(pa);
             CUSTOM_LEVEL_CLV.computeIfAbsent(cl, (c, v) -> new ArrayList<>())
                 .add(customLevel);
         }

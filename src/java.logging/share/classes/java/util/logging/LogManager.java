@@ -27,6 +27,7 @@ package java.util.logging;
 
 import java.io.*;
 import java.util.*;
+import java.security.*;
 import java.lang.ref.ReferenceQueue;
 import java.lang.ref.WeakReference;
 import java.util.concurrent.ConcurrentHashMap;
@@ -38,6 +39,8 @@ import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
+import jdk.internal.access.JavaAWTAccess;
+import jdk.internal.access.SharedSecrets;
 import sun.util.logging.internal.LoggingProviderImpl;
 import static jdk.internal.logger.DefaultLoggerFinder.isSystem;
 
@@ -215,36 +218,39 @@ public class LogManager {
             Collections.synchronizedMap(new IdentityHashMap<>());
 
     // The global LogManager object
-    private static final LogManager manager = initLogManager();
+    @SuppressWarnings("removal")
+    private static final LogManager manager = AccessController.doPrivileged(
+            new PrivilegedAction<LogManager>() {
+                @Override
+                public LogManager run() {
+                    LogManager mgr = null;
+                    String cname = null;
+                    try {
+                        cname = System.getProperty("java.util.logging.manager");
+                        if (cname != null) {
+                            try {
+                                @SuppressWarnings("deprecation")
+                                Object tmp = ClassLoader.getSystemClassLoader()
+                                        .loadClass(cname).newInstance();
+                                mgr = (LogManager) tmp;
+                            } catch (ClassNotFoundException ex) {
+                                @SuppressWarnings("deprecation")
+                                Object tmp = Thread.currentThread()
+                                        .getContextClassLoader().loadClass(cname).newInstance();
+                                mgr = (LogManager) tmp;
+                            }
+                        }
+                    } catch (Exception ex) {
+                        System.err.println("Could not load Logmanager \"" + cname + "\"");
+                        ex.printStackTrace();
+                    }
+                    if (mgr == null) {
+                        mgr = new LogManager();
+                    }
+                    return mgr;
 
-    private static LogManager initLogManager() {
-        LogManager mgr = null;
-        String cname = null;
-        try {
-            cname = System.getProperty("java.util.logging.manager");
-            if (cname != null) {
-                try {
-                    @SuppressWarnings("deprecation")
-                    Object tmp = ClassLoader.getSystemClassLoader()
-                            .loadClass(cname).newInstance();
-                    mgr = (LogManager) tmp;
-                } catch (ClassNotFoundException ex) {
-                    @SuppressWarnings("deprecation")
-                    Object tmp = Thread.currentThread()
-                            .getContextClassLoader().loadClass(cname).newInstance();
-                    mgr = (LogManager) tmp;
                 }
-            }
-        } catch (Exception ex) {
-            System.err.println("Could not load Logmanager \"" + cname + "\"");
-            ex.printStackTrace();
-        }
-        if (mgr == null) {
-            mgr = new LogManager();
-        }
-        return mgr;
-    }
-
+            });
 
     // This private class is used as a shutdown hook.
     // It does a "reset" to close all open handlers.
@@ -284,6 +290,11 @@ public class LogManager {
      * retrieved by calling LogManager.getLogManager.
      */
     protected LogManager() {
+        this(checkSubclassPermissions());
+    }
+
+    private LogManager(Void checked) {
+
         // Add a shutdown hook to close the global handlers.
         try {
             Runtime.getRuntime().addShutdownHook(new Cleaner());
@@ -291,6 +302,20 @@ public class LogManager {
             // If the VM is already shutting down,
             // We do not need to register shutdownHook.
         }
+    }
+
+    private static Void checkSubclassPermissions() {
+        @SuppressWarnings("removal")
+        final SecurityManager sm = System.getSecurityManager();
+        if (sm != null) {
+            // These permission will be checked in the LogManager constructor,
+            // in order to register the Cleaner() thread as a shutdown hook.
+            // Check them here to avoid the penalty of constructing the object
+            // etc...
+            sm.checkPermission(new RuntimePermission("shutdownHooks"));
+            sm.checkPermission(new RuntimePermission("setContextClassLoader"));
+        }
+        return null;
     }
 
     /**
@@ -355,33 +380,40 @@ public class LogManager {
             // We use initializedCalled to break the recursion.
             initializedCalled = true;
             try {
-                assert rootLogger == null;
-                assert initializedCalled && !initializationDone;
+                AccessController.doPrivileged(new PrivilegedAction<Object>() {
+                    @Override
+                    public Object run() {
+                        assert rootLogger == null;
+                        assert initializedCalled && !initializationDone;
 
-                // create root logger before reading primordial
-                // configuration - to ensure that it will be added
-                // before the global logger, and not after.
-                final Logger root = owner.rootLogger = owner.new RootLogger();
+                        // create root logger before reading primordial
+                        // configuration - to ensure that it will be added
+                        // before the global logger, and not after.
+                        final Logger root = owner.rootLogger = owner.new RootLogger();
 
-                // Read configuration.
-                owner.readPrimordialConfiguration();
+                        // Read configuration.
+                        owner.readPrimordialConfiguration();
 
-                // Create and retain Logger for the root of the namespace.
-                owner.addLogger(root);
+                        // Create and retain Logger for the root of the namespace.
+                        owner.addLogger(root);
 
-                // Initialize level if not yet initialized
-                if (!root.isLevelInitialized()) {
-                    root.setLevel(defaultLevel);
-                }
+                        // Initialize level if not yet initialized
+                        if (!root.isLevelInitialized()) {
+                            root.setLevel(defaultLevel);
+                        }
 
-                // Adding the global Logger.
-                // Do not call Logger.getGlobal() here as this might trigger
-                // subtle inter-dependency issues.
-                @SuppressWarnings("deprecation") final Logger global = Logger.global;
+                        // Adding the global Logger.
+                        // Do not call Logger.getGlobal() here as this might trigger
+                        // subtle inter-dependency issues.
+                        @SuppressWarnings("deprecation")
+                        final Logger global = Logger.global;
 
-                // Make sure the global logger will be registered in the
-                // global manager
-                owner.addLogger(global);
+                        // Make sure the global logger will be registered in the
+                        // global manager
+                        owner.addLogger(global);
+                        return null;
+                    }
+                });
             } finally {
                 initializationDone = true;
             }
@@ -429,6 +461,29 @@ public class LogManager {
     // Loggers are isolated from each AppContext.
     private LoggerContext getUserContext() {
         LoggerContext context = null;
+
+        @SuppressWarnings("removal")
+        SecurityManager sm = System.getSecurityManager();
+        JavaAWTAccess javaAwtAccess = SharedSecrets.getJavaAWTAccess();
+        if (sm != null && javaAwtAccess != null) {
+            // for each applet, it has its own LoggerContext isolated from others
+            final Object ecx = javaAwtAccess.getAppletContext();
+            if (ecx != null) {
+                synchronized (javaAwtAccess) {
+                    // find the AppContext of the applet code
+                    // will be null if we are in the main app context.
+                    if (contextsMap == null) {
+                        contextsMap = new WeakHashMap<>();
+                    }
+                    context = contextsMap.get(ecx);
+                    if (context == null) {
+                        // Create a new LoggerContext for the applet.
+                        context = new LoggerContext();
+                        contextsMap.put(ecx, context);
+                    }
+                }
+            }
+        }
         // for standalone app, return userContext
         return context != null ? context : userContext;
     }
@@ -522,7 +577,14 @@ public class LogManager {
         // LogManager will set the sysLogger's handlers via LogManager.addLogger method.
         if (logger != sysLogger) {
             // if logger already exists we merge the two logger configurations.
-            logger.mergeWithSystemLogger(sysLogger);
+            final Logger l = logger;
+            AccessController.doPrivileged(new PrivilegedAction<Void>() {
+                @Override
+                public Void run() {
+                    l.mergeWithSystemLogger(sysLogger);
+                    return null;
+                }
+            });
         }
         return sysLogger;
     }
@@ -738,7 +800,7 @@ public class LogManager {
             // the logger's level is already initialized
             Level level = owner.getLevelProperty(name + ".level", null);
             if (level != null && !logger.isLevelInitialized()) {
-                logger.setLevel(level);
+                doSetLevel(logger, level);
             }
 
             // instantiation of the handler is done in the LogManager.addLogger
@@ -763,7 +825,7 @@ public class LogManager {
             }
 
             if (parent != null) {
-               logger.setParent(parent);
+                doSetParent(logger, parent);
             }
             // Walk over the children and tell them we are their new parent.
             node.walkAndSetParent(logger);
@@ -795,12 +857,18 @@ public class LogManager {
         private void processParentHandlers(final Logger logger, final String name,
                Predicate<Logger> visited) {
             final LogManager owner = getOwner();
-            if (logger != owner.rootLogger) {
-                boolean useParent = owner.getBooleanProperty(name + ".useParentHandlers", true);
-                if (!useParent) {
-                    logger.setUseParentHandlers(false);
+            AccessController.doPrivileged(new PrivilegedAction<Void>() {
+                @Override
+                public Void run() {
+                    if (logger != owner.rootLogger) {
+                        boolean useParent = owner.getBooleanProperty(name + ".useParentHandlers", true);
+                        if (!useParent) {
+                            logger.setUseParentHandlers(false);
+                        }
+                    }
+                    return null;
                 }
-            }
+            });
 
             int ix = 1;
             for (;;) {
@@ -891,10 +959,20 @@ public class LogManager {
     }
 
     // Add new per logger handlers.
+    // We need to raise privilege here. All our decisions will
+    // be made based on the logging configuration, which can
+    // only be modified by trusted code.
     private void loadLoggerHandlers(final Logger logger, final String name,
-                                    final String handlersPropertyName) {
-        setLoggerHandlers(logger, name, handlersPropertyName,
-                createLoggerHandlers(name, handlersPropertyName));
+                                    final String handlersPropertyName)
+    {
+        AccessController.doPrivileged(new PrivilegedAction<Void>() {
+            @Override
+            public Void run() {
+                setLoggerHandlers(logger, name, handlersPropertyName,
+                    createLoggerHandlers(name, handlersPropertyName));
+                return null;
+            }
+        });
     }
 
     private void setLoggerHandlers(final Logger logger, final String name,
@@ -1147,6 +1225,43 @@ public class LogManager {
                 && configurationLock.isHeldByCurrentThread();
     }
 
+    // Private method to set a level on a logger.
+    // If necessary, we raise privilege before doing the call.
+    private static void doSetLevel(final Logger logger, final Level level) {
+        SecurityManager sm = System.getSecurityManager();
+        if (sm == null) {
+            // There is no security manager, so things are easy.
+            logger.setLevel(level);
+            return;
+        }
+        // There is a security manager.  Raise privilege before
+        // calling setLevel.
+        AccessController.doPrivileged(new PrivilegedAction<Object>() {
+            @Override
+            public Object run() {
+                logger.setLevel(level);
+                return null;
+            }});
+    }
+
+    // Private method to set a parent on a logger.
+    // If necessary, we raise privilege before doing the setParent call.
+    private static void doSetParent(final Logger logger, final Logger parent) {
+        SecurityManager sm = System.getSecurityManager();
+        if (sm == null) {
+            // There is no security manager, so things are easy.
+            logger.setParent(parent);
+            return;
+        }
+        // There is a security manager.  Raise privilege before
+        // calling setParent.
+        AccessController.doPrivileged(new PrivilegedAction<Object>() {
+            @Override
+            public Object run() {
+                logger.setParent(parent);
+                return null;
+            }});
+    }
 
     /**
      * Method to find a named logger.
@@ -1265,7 +1380,7 @@ public class LogManager {
         }
     }
 
-    String getConfigurationFileName() {
+    String getConfigurationFileName() throws IOException {
         String fname = System.getProperty("java.util.logging.config.file");
         if (fname == null) {
             fname = System.getProperty("java.home");
@@ -1750,6 +1865,7 @@ public class LogManager {
      */
     public void updateConfiguration(Function<String, BiFunction<String,String,String>> mapper)
             throws IOException {
+        checkPermission();
         ensureLogManagerInitialized();
         drainLoggerRefQueueBounded();
 
@@ -1951,6 +2067,7 @@ public class LogManager {
     public void updateConfiguration(InputStream ins,
             Function<String, BiFunction<String,String,String>> mapper)
             throws IOException {
+        checkPermission();
         ensureLogManagerInitialized();
         drainLoggerRefQueueBounded();
 
@@ -2306,6 +2423,13 @@ public class LogManager {
         }
     }
 
+    static final Permission CONTROL_PERMISSION =
+            new LoggingPermission("control", null);
+
+    void checkPermission() {
+        CONTROL_PERMISSION.checkGuard(null);
+    }
+
     /**
      * Check that the current context is trusted to modify the logging
      * configuration.  This requires LoggingPermission("control").
@@ -2351,7 +2475,7 @@ public class LogManager {
                 if (logger == null) {
                     node.walkAndSetParent(parent);
                 } else {
-                    logger.setParent(parent);
+                    doSetParent(logger, parent);
                 }
             }
         }
@@ -2487,8 +2611,19 @@ public class LogManager {
      */
     public LogManager addConfigurationListener(Runnable listener) {
         final Runnable r = Objects.requireNonNull(listener);
+        checkPermission();
+        @SuppressWarnings("removal")
+        final SecurityManager sm = System.getSecurityManager();
+        @SuppressWarnings("removal")
+        final AccessControlContext acc =
+                sm == null ? null : AccessController.getContext();
+        final PrivilegedAction<Void> pa =
+                acc == null ? null : () -> { r.run() ; return null; };
+        @SuppressWarnings("removal")
+        final Runnable pr =
+                acc == null ? r : () -> AccessController.doPrivileged(pa, acc);
         // Will do nothing if already registered.
-        listeners.putIfAbsent(r, r);
+        listeners.putIfAbsent(r, pr);
         return this;
     }
 
@@ -2506,6 +2641,7 @@ public class LogManager {
      */
     public void removeConfigurationListener(Runnable listener) {
         final Runnable key = Objects.requireNonNull(listener);
+        checkPermission();
         listeners.remove(key);
     }
 
@@ -2539,7 +2675,8 @@ public class LogManager {
      * behalf of system and application classes.
      */
     private static final class LoggingProviderAccess
-        implements LoggingProviderImpl.LogManagerAccess {
+        implements LoggingProviderImpl.LogManagerAccess,
+                   PrivilegedAction<Void> {
 
         private LoggingProviderAccess() {
         }
@@ -2573,6 +2710,7 @@ public class LogManager {
             }
             Objects.requireNonNull(name);
             Objects.requireNonNull(module);
+            CONTROL_PERMISSION.checkGuard(null);
             if (isSystem(module)) {
                 return manager.demandSystemLogger(name,
                     Logger.SYSTEM_LOGGER_RB_NAME, module);
@@ -2581,15 +2719,22 @@ public class LogManager {
             }
         }
 
-        private void init() {
+        @Override
+        public Void run() {
             LoggingProviderImpl.setLogManagerAccess(INSTANCE);
+            return null;
         }
 
         static final LoggingProviderAccess INSTANCE = new LoggingProviderAccess();
     }
 
     static {
-        LoggingProviderAccess.INSTANCE.init();
+        initStatic();
+    }
+
+    private static void initStatic() {
+        AccessController.doPrivileged(LoggingProviderAccess.INSTANCE, null,
+                                      CONTROL_PERMISSION);
     }
 
 }

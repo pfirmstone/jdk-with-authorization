@@ -43,6 +43,8 @@ import java.nio.file.LinkOption;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.security.AccessController;
+import java.security.PrivilegedAction;
 import java.util.HashSet;
 import java.util.Set;
 
@@ -298,6 +300,7 @@ public class FileHandler extends StreamHandler {
         if (pattern.isEmpty()) {
             throw new IllegalArgumentException();
         }
+        checkPermission();
         configure();
         this.pattern = pattern;
         this.limit = 0;
@@ -330,6 +333,7 @@ public class FileHandler extends StreamHandler {
         if (pattern.isEmpty()) {
             throw new IllegalArgumentException();
         }
+        checkPermission();
         configure();
         this.pattern = pattern;
         this.limit = 0;
@@ -367,6 +371,7 @@ public class FileHandler extends StreamHandler {
         if (limit < 0 || count < 1 || pattern.isEmpty()) {
             throw new IllegalArgumentException();
         }
+        checkPermission();
         configure();
         this.pattern = pattern;
         this.limit = limit;
@@ -438,6 +443,7 @@ public class FileHandler extends StreamHandler {
         if (limit < 0 || count < 1 || pattern.isEmpty()) {
             throw new IllegalArgumentException();
         }
+        checkPermission();
         configure();
         this.pattern = pattern;
         this.limit = limit;
@@ -460,6 +466,7 @@ public class FileHandler extends StreamHandler {
      */
     private void openFiles() throws IOException {
         LogManager manager = LogManager.getLogManager();
+        manager.checkPermission();
         if (count < 1) {
            throw new IllegalArgumentException("file count = " + count);
         }
@@ -762,7 +769,18 @@ public class FileHandler extends StreamHandler {
         super.publish(record);
         flush();
         if (limit > 0 && (meter.written >= limit || meter.written < 0)) {
-            rotate();
+            // We performed access checks in the "init" method to make sure
+            // we are only initialized from trusted code.  So we assume
+            // it is OK to write the target files, even if we are
+            // currently being called from untrusted code.
+            // So it is safe to raise privilege here.
+            AccessController.doPrivileged(new PrivilegedAction<Object>() {
+                @Override
+                public Object run() {
+                    rotate();
+                    return null;
+                }
+            });
         }
     }
 
@@ -773,21 +791,7 @@ public class FileHandler extends StreamHandler {
      *             the caller does not have {@code LoggingPermission("control")}.
      */
     @Override
-    public void close() throws SecurityException {
-        if (tryUseLock()) {
-            try {
-                close0();
-            } finally {
-                unlock();
-            }
-        } else {
-            synchronized (this) {
-                close0();
-            }
-        }
-    }
-
-    private void close0() throws SecurityException {
+    public synchronized void close() throws SecurityException {
         super.close();
         // Unlock any lock file.
         if (lockFileName == null) {

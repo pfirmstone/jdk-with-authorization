@@ -27,6 +27,9 @@
 package java.util.logging;
 
 import java.io.*;
+import java.security.AccessController;
+import java.security.PrivilegedAction;
+import java.security.SecurityException;
 import java.util.Objects;
 
 /**
@@ -97,7 +100,7 @@ public class StreamHandler extends Handler {
         // configure with default level but use specified formatter
         super(Level.INFO, null, Objects.requireNonNull(formatter));
 
-        setOutputStream(out);
+        setOutputStreamPrivileged(out);
     }
 
     /**
@@ -120,21 +123,7 @@ public class StreamHandler extends Handler {
      * @throws  SecurityException  if a security manager exists and if
      *             the caller does not have {@code LoggingPermission("control")}.
      */
-    protected void setOutputStream(OutputStream out) throws SecurityException {
-        if (tryUseLock()) {
-            try {
-                setOutputStream0(out);
-            } finally {
-                unlock();
-            }
-        } else {
-            synchronized (this) {
-                setOutputStream0(out);
-            }
-        }
-    }
-
-    private void setOutputStream0(OutputStream out) throws SecurityException {
+    protected synchronized void setOutputStream(OutputStream out) throws SecurityException {
         if (out == null) {
             throw new NullPointerException();
         }
@@ -169,21 +158,7 @@ public class StreamHandler extends Handler {
      *          not supported.
      */
     @Override
-    public void setEncoding(String encoding)
-                        throws SecurityException, java.io.UnsupportedEncodingException {
-        if (tryUseLock()) {
-            try {
-                setEncoding0(encoding);
-            } finally {
-                unlock();
-            }
-        } else {
-            synchronized (this) {
-                setEncoding0(encoding);
-            }
-        }
-    }
-    private void setEncoding0(String encoding)
+    public synchronized void setEncoding(String encoding)
                         throws SecurityException, java.io.UnsupportedEncodingException {
         super.setEncoding(encoding);
         if (output == null) {
@@ -217,7 +192,7 @@ public class StreamHandler extends Handler {
      */
     @Override
     public synchronized void publish(LogRecord record) {
-       if (!isLoggable(record)) {
+        if (!isLoggable(record)) {
             return;
         }
         String msg;
@@ -281,7 +256,8 @@ public class StreamHandler extends Handler {
         }
     }
 
-    private void flushAndClose() {
+    private void flushAndClose() throws SecurityException {
+        checkPermission();
         Writer writer = this.writer;
         if (writer != null) {
             try {
@@ -314,18 +290,20 @@ public class StreamHandler extends Handler {
      *             the caller does not have LoggingPermission("control").
      */
     @Override
-    public void close() throws SecurityException {
-        if (tryUseLock()) {
-            try {
-                flushAndClose();
-            } finally {
-                unlock();
-            }
-        } else {
-            synchronized (this) {
-                flushAndClose();
-            }
-        }
+    public synchronized void close() throws SecurityException {
+        flushAndClose();
     }
 
+    // Package-private support for setting OutputStream
+    // with elevated privilege.
+    @SuppressWarnings("removal")
+    final void setOutputStreamPrivileged(final OutputStream out) {
+        AccessController.doPrivileged(new PrivilegedAction<Void>() {
+            @Override
+            public Void run() {
+                setOutputStream(out);
+                return null;
+            }
+        }, null, LogManager.controlPermission);
+    }
 }
