@@ -552,7 +552,6 @@ public class LogManager {
         return demandSystemLogger(name, resourceBundleName, module);
     }
 
-    @SuppressWarnings("removal")
     Logger demandSystemLogger(String name, String resourceBundleName, Module module) {
         // Add a system logger in the system context's namespace
         final Logger sysLogger = getSystemContext()
@@ -855,7 +854,6 @@ public class LogManager {
 
         // If logger.getUseParentHandlers() returns 'true' and any of the logger's
         // parents have levels or handlers defined, make sure they are instantiated.
-        @SuppressWarnings("removal")
         private void processParentHandlers(final Logger logger, final String name,
                Predicate<Logger> visited) {
             final LogManager owner = getOwner();
@@ -898,7 +896,7 @@ public class LogManager {
                 return root;
             }
             LogNode node = root;
-            while (name.length() > 0) {
+            while (!name.isEmpty()) {
                 int ix = name.indexOf('.');
                 String head;
                 if (ix > 0) {
@@ -964,7 +962,6 @@ public class LogManager {
     // We need to raise privilege here. All our decisions will
     // be made based on the logging configuration, which can
     // only be modified by trusted code.
-    @SuppressWarnings("removal")
     private void loadLoggerHandlers(final Logger logger, final String name,
                                     final String handlersPropertyName)
     {
@@ -1230,7 +1227,6 @@ public class LogManager {
 
     // Private method to set a level on a logger.
     // If necessary, we raise privilege before doing the call.
-    @SuppressWarnings("removal")
     private static void doSetLevel(final Logger logger, final Level level) {
         SecurityManager sm = System.getSecurityManager();
         if (sm == null) {
@@ -1250,7 +1246,6 @@ public class LogManager {
 
     // Private method to set a parent on a logger.
     // If necessary, we raise privilege before doing the setParent call.
-    @SuppressWarnings("removal")
     private static void doSetParent(final Logger logger, final Logger parent) {
         SecurityManager sm = System.getSecurityManager();
         if (sm == null) {
@@ -1523,7 +1518,7 @@ public class LogManager {
             String word = hands.substring(ix, end);
             ix = end+1;
             word = word.trim();
-            if (word.length() == 0) {
+            if (word.isEmpty()) {
                 continue;
             }
             result.add(word);
@@ -2428,14 +2423,11 @@ public class LogManager {
         }
     }
 
-    static final Permission controlPermission =
+    static final Permission CONTROL_PERMISSION =
             new LoggingPermission("control", null);
 
     void checkPermission() {
-        @SuppressWarnings("removal")
-        SecurityManager sm = System.getSecurityManager();
-        if (sm != null)
-            sm.checkPermission(controlPermission);
+        CONTROL_PERMISSION.checkGuard(null);
     }
 
     /**
@@ -2718,11 +2710,7 @@ public class LogManager {
             }
             Objects.requireNonNull(name);
             Objects.requireNonNull(module);
-            @SuppressWarnings("removal")
-            SecurityManager sm = System.getSecurityManager();
-            if (sm != null) {
-                sm.checkPermission(controlPermission);
-            }
+            CONTROL_PERMISSION.checkGuard(null);
             if (isSystem(module)) {
                 return manager.demandSystemLogger(name,
                     Logger.SYSTEM_LOGGER_RB_NAME, module);
@@ -2744,10 +2732,9 @@ public class LogManager {
         initStatic();
     }
 
-    @SuppressWarnings("removal")
     private static void initStatic() {
         AccessController.doPrivileged(LoggingProviderAccess.INSTANCE, null,
-                                      controlPermission);
+                                      CONTROL_PERMISSION);
     }
 
 }

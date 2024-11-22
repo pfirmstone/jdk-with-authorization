@@ -52,6 +52,8 @@ import java.util.concurrent.locks.ReentrantLock;
 
 public abstract class Handler {
     private static final int offValue = Level.OFF.intValue();
+
+    // ensure log manager is initialized
     private final LogManager manager = LogManager.getLogManager();
 
     // We're using volatile here to avoid synchronizing getters, which
@@ -66,7 +68,6 @@ public abstract class Handler {
     private volatile Level logLevel = Level.ALL;
     private volatile ErrorManager errorManager = new ErrorManager();
     private volatile String encoding;
-    private final ReentrantLock lock;
 
     /**
      * Default constructor.  The resulting {@code Handler} has a log
@@ -74,19 +75,7 @@ public abstract class Handler {
      * {@code Filter}.  A default {@code ErrorManager} instance is installed
      * as the {@code ErrorManager}.
      */
-    protected Handler() {
-        lock = initLocking();
-    }
-
-    private ReentrantLock initLocking() {
-        Class<?> clazz = this.getClass();
-        ClassLoader loader = clazz.getClassLoader();
-        if (loader != null && loader != ClassLoader.getPlatformClassLoader()) {
-            return null;
-        } else {
-            return new ReentrantLock();
-        }
-    }
+    protected Handler() { }
 
     /**
      * Package-private constructor for chaining from subclass constructors
@@ -133,16 +122,7 @@ public abstract class Handler {
                 }
                 return null;
             }
-        }, null, LogManager.controlPermission);
-    }
-
-    boolean tryUseLock() {
-        if (lock == null) return false;
-        lock.lock();
-        return true;
-    }
-    void unlock() {
-        lock.unlock();
+        }, null, LogManager.CONTROL_PERMISSION);
     }
 
     /**
@@ -188,21 +168,7 @@ public abstract class Handler {
      * @throws  SecurityException  if a security manager exists and if
      *             the caller does not have {@code LoggingPermission("control")}.
      */
-    public void setFormatter(Formatter newFormatter) throws SecurityException {
-        if (tryUseLock()) {
-            try {
-                setFormatter0(newFormatter);
-            } finally {
-                unlock();
-            }
-        } else {
-            synchronized (this) {
-                setFormatter0(newFormatter);
-            }
-        }
-    }
-
-    private void setFormatter0(Formatter newFormatter) throws SecurityException {
+    public synchronized void setFormatter(Formatter newFormatter) throws SecurityException {
         checkPermission();
         formatter = Objects.requireNonNull(newFormatter);
     }
@@ -228,23 +194,8 @@ public abstract class Handler {
      * @throws  UnsupportedEncodingException if the named encoding is
      *          not supported.
      */
-    public void setEncoding(String encoding)
+    public synchronized void setEncoding(String encoding)
             throws SecurityException, java.io.UnsupportedEncodingException {
-        if (tryUseLock()) {
-            try {
-                setEncoding0(encoding);
-            } finally {
-                unlock();
-            }
-        } else {
-            synchronized (this) {
-                setEncoding0(encoding);
-            }
-        }
-    }
-
-    private void setEncoding0(String encoding)
-                        throws SecurityException, java.io.UnsupportedEncodingException {
         checkPermission();
         if (encoding != null) {
             try {
@@ -279,21 +230,7 @@ public abstract class Handler {
      * @throws  SecurityException  if a security manager exists and if
      *             the caller does not have {@code LoggingPermission("control")}.
      */
-    public void setFilter(Filter newFilter) throws SecurityException {
-        if (tryUseLock()) {
-            try {
-                setFilter0(newFilter);
-            } finally {
-                unlock();
-            }
-        } else {
-            synchronized (this) {
-                setFilter0(newFilter);
-            }
-        }
-    }
-
-    private void setFilter0(Filter newFilter) throws SecurityException {
+    public synchronized void setFilter(Filter newFilter) throws SecurityException {
         checkPermission();
         filter = newFilter;
     }
@@ -317,21 +254,7 @@ public abstract class Handler {
      * @throws  SecurityException  if a security manager exists and if
      *             the caller does not have {@code LoggingPermission("control")}.
      */
-    public void setErrorManager(ErrorManager em) {
-        if (tryUseLock()) {
-            try {
-                setErrorManager0(em);
-            } finally {
-                unlock();
-            }
-        } else {
-            synchronized (this) {
-                setErrorManager0(em);
-            }
-        }
-    }
-
-    private void setErrorManager0(ErrorManager em) {
+    public synchronized void setErrorManager(ErrorManager em) throws SecurityException {
         checkPermission();
         if (em == null) {
            throw new NullPointerException();
@@ -346,7 +269,7 @@ public abstract class Handler {
      * @throws  SecurityException  if a security manager exists and if
      *             the caller does not have {@code LoggingPermission("control")}.
      */
-    public ErrorManager getErrorManager() {
+    public ErrorManager getErrorManager() throws SecurityException {
         checkPermission();
         return errorManager;
     }
@@ -383,21 +306,7 @@ public abstract class Handler {
      * @throws  SecurityException  if a security manager exists and if
      *             the caller does not have {@code LoggingPermission("control")}.
      */
-    public void setLevel(Level newLevel) throws SecurityException {
-        if (tryUseLock()) {
-            try {
-                setLevel0(newLevel);
-            } finally {
-                unlock();
-            }
-        } else {
-            synchronized (this) {
-                setLevel0(newLevel);
-            }
-        }
-    }
-
-    private void setLevel0(Level newLevel) throws SecurityException {
+    public synchronized void setLevel(Level newLevel) throws SecurityException {
         if (newLevel == null) {
             throw new NullPointerException();
         }

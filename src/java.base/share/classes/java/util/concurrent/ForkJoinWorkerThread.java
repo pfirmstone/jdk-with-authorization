@@ -41,6 +41,7 @@ import java.security.PrivilegedAction;
 import java.security.ProtectionDomain;
 import jdk.internal.access.JavaLangAccess;
 import jdk.internal.access.SharedSecrets;
+import jdk.internal.misc.Unsafe;
 
 /**
  * A thread managed by a {@link ForkJoinPool}, which executes
@@ -226,6 +227,31 @@ public class ForkJoinWorkerThread extends Thread {
                   (sq = qs[i]) != null && sq.top - sq.base > 0) ||
                  q.top - q.base > 0));
     }
+
+    /**
+     * Clears ThreadLocals, and if necessary resets ContextClassLoader
+     */
+    @SuppressWarnings({"removal","unchecked"})
+     final void resetThreadLocals() {
+         if (U.getReference(this, THREADLOCALS) != null)
+             U.putReference(this, THREADLOCALS, null);
+         if (U.getReference(this, INHERITABLETHREADLOCALS) != null)
+             U.putReference(this, INHERITABLETHREADLOCALS, null);
+         if ((this instanceof InnocuousForkJoinWorkerThread) &&
+             ((InnocuousForkJoinWorkerThread)this).needCCLReset())
+             AccessController.doPrivileged((PrivilegedAction)()->
+                 {
+                     super.setContextClassLoader(ClassLoader.getSystemClassLoader());
+                     return null;
+                 }
+             );
+     }
+
+    private static final Unsafe U = Unsafe.getUnsafe();
+    private static final long THREADLOCALS
+        = U.objectFieldOffset(Thread.class, "threadLocals");
+    private static final long INHERITABLETHREADLOCALS
+        = U.objectFieldOffset(Thread.class, "inheritableThreadLocals");
     private static final JavaLangAccess JLA = SharedSecrets.getJavaLangAccess();
 
     /**
@@ -237,6 +263,7 @@ public class ForkJoinWorkerThread extends Thread {
     static final class InnocuousForkJoinWorkerThread extends ForkJoinWorkerThread {
         /** The ThreadGroup for all InnocuousForkJoinWorkerThreads */
         private static final ThreadGroup innocuousThreadGroup;
+        private boolean resetCCL;
         @SuppressWarnings("removal")
         private static final AccessControlContext innocuousACC;
         InnocuousForkJoinWorkerThread(ForkJoinPool pool) {
@@ -253,9 +280,25 @@ public class ForkJoinWorkerThread extends Thread {
         public void setUncaughtExceptionHandler(UncaughtExceptionHandler x) { }
 
         @Override // paranoically
+        @SuppressWarnings({"removal", "unchecked"})
         public void setContextClassLoader(ClassLoader cl) {
-            if (cl != null && ClassLoader.getSystemClassLoader() != cl)
+            if (System.getSecurityManager() != null &&
+                cl != null && ClassLoader.getSystemClassLoader() != cl)
                 throw new SecurityException("setContextClassLoader");
+            resetCCL = true;
+            AccessController.doPrivileged((PrivilegedAction)()->
+                {
+                    super.setContextClassLoader(cl);
+                    return null;
+                }
+            );
+        }
+
+        final boolean needCCLReset() { // get and clear
+            boolean needReset;
+            if (needReset = resetCCL)
+                resetCCL = false;
+            return needReset;
         }
 
         @SuppressWarnings("removal")
