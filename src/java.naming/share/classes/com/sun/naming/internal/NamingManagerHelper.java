@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2022, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2022, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -181,8 +181,9 @@ public class NamingManagerHelper {
     static ObjectFactory getObjectFactoryFromReference(
             Reference ref, String factoryName, Predicate<Class<?>> filter)
             throws IllegalAccessException,
-            InstantiationException {
-        Class<?> clas;
+            InstantiationException,
+            MalformedURLException {
+        Class<?> clas = null;
 
         // Try to use current class loader
         try {
@@ -192,11 +193,27 @@ public class NamingManagerHelper {
                 return null;
             }
         } catch (ClassNotFoundException e) {
-            return null;
+            // ignore and continue
+            // e.printStackTrace();
         }
-        assert clas != null;
+        // All other exceptions are passed up.
+
+        // Not in class path; try to use codebase
+        String codebase;
+        if (clas == null &&
+                (codebase = ref.getFactoryClassLocation()) != null) {
+            try {
+                clas = helper.loadClass(factoryName, codebase);
+                // Validate factory's class with the objects factory serial filter
+                if (clas == null || !filter.test(clas)) {
+                    return null;
+                }
+            } catch (ClassNotFoundException e) {
+            }
+        }
+
         @SuppressWarnings("deprecation") // Class.newInstance
-        ObjectFactory result = (ObjectFactory) clas.newInstance();
+        ObjectFactory result = (clas != null) ? (ObjectFactory) clas.newInstance() : null;
         return result;
     }
 
@@ -384,6 +401,12 @@ public class NamingManagerHelper {
             ObjectFactoryBuilder builder) throws NamingException {
         if (object_factory_builder != null)
             throw new IllegalStateException("ObjectFactoryBuilder already set");
+
+        @SuppressWarnings("removal")
+        SecurityManager security = System.getSecurityManager();
+        if (security != null) {
+            security.checkSetFactory();
+        }
         object_factory_builder = builder;
     }
 
