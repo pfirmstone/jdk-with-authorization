@@ -311,12 +311,9 @@ public final class Module implements AnnotatedElement {
             String mod = isNamed() ? "module " + getName() : "an unnamed module";
             if (currentClass != null) {
                 // try to extract location of the current class (e.g. jar or folder)
-                CodeSource cs = currentClass.getProtectionDomain().getCodeSource();
-                if (cs != null) {
-                    URL url = cs.getLocation();
-                    if (url != null) {
-                        mod += " (" + url + ")";
-                    }
+                URL url = System.codeSource(currentClass);
+                if (url != null) {
+                    mod += " (" + url + ")";
                 }
             }
             if (illegalNativeAccess == ModuleBootstrap.IllegalNativeAccess.DENY) {

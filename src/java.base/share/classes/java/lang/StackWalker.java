@@ -399,6 +399,7 @@ public final class StackWalker {
         }
 
         EnumSet<Option> optionSet = toEnumSet(options);
+        checkPermission(optionSet);
         return new StackWalker(optionSet);
     }
 
@@ -436,6 +437,7 @@ public final class StackWalker {
             throw new IllegalArgumentException("estimateDepth must be > 0");
         }
         EnumSet<Option> optionSet = toEnumSet(options);
+        checkPermission(optionSet);
         return new StackWalker(optionSet, estimateDepth);
     }
 
@@ -457,6 +459,17 @@ public final class StackWalker {
         this.retainClassRef = hasOption(Option.RETAIN_CLASS_REFERENCE);
         this.contScope = contScope;
         this.continuation = continuation;
+    }
+
+    private static void checkPermission(Set<Option> options) {
+        Objects.requireNonNull(options);
+        @SuppressWarnings("removal")
+        SecurityManager sm = System.getSecurityManager();
+        if (sm != null) {
+            if (options.contains(Option.RETAIN_CLASS_REFERENCE)) {
+                sm.checkPermission(new RuntimePermission("getStackWalkerWithClassReference"));
+            }
+        }
     }
 
     /*
@@ -652,6 +665,7 @@ public final class StackWalker {
 
     static StackWalker newInstance(Set<Option> options, ExtendedOption extendedOption, ContinuationScope contScope, Continuation continuation) {
         EnumSet<Option> optionSet = toEnumSet(options);
+        checkPermission(optionSet);
         return new StackWalker(optionSet, 0, extendedOption, contScope, continuation);
     }
 
