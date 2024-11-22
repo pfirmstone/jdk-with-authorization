@@ -350,7 +350,6 @@ module java.base {
     exports sun.security.tools to
         jdk.jartool;
     exports sun.security.util to
-        java.desktop,
         java.naming,
         java.rmi,
         java.security.jgss,

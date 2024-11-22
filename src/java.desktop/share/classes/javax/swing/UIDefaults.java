@@ -1069,8 +1069,6 @@ public class UIDefaults extends Hashtable<Object,Object>
      * @since 1.3
      */
     public static class ProxyLazyValue implements LazyValue {
-        @SuppressWarnings("removal")
-        private AccessControlContext acc;
         private String className;
         private String methodName;
         private Object[] args;
@@ -1124,9 +1122,7 @@ public class UIDefaults extends Hashtable<Object,Object>
          * @param o    an array of <code>Objects</code> to be passed as
          *              parameters to the static method in class c
          */
-        @SuppressWarnings("removal")
         public ProxyLazyValue(String c, String m, Object[] o) {
-            acc = AccessController.getContext();
             className = c;
             methodName = m;
             if (o != null) {

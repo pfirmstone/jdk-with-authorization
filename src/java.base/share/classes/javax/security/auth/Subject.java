@@ -661,8 +661,7 @@ public final class Subject implements java.io.Serializable {
      * @param action the code to be run as the specified
      *                  {@code Subject}.
      *
-     * @param acc the {@code AccessControlContext} to be tied to the
-     *                  specified <i>subject</i> and <i>action</i>.
+     * @param acc ignored
      *
      * @return the value returned by the PrivilegedAction's
      *                  {@code run} method.
@@ -751,8 +750,7 @@ public final class Subject implements java.io.Serializable {
      * @param action the code to be run as the specified
      *                  {@code Subject}.
      *
-     * @param acc the {@code AccessControlContext} to be tied to the
-     *                  specified <i>subject</i> and <i>action</i>.
+     * @param acc ignored
      *
      * @return the value returned by the
      *                  PrivilegedExceptionAction's {@code run} method.

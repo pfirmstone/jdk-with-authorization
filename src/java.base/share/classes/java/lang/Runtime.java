@@ -181,11 +181,6 @@ public class Runtime {
      * @see #halt(int)
      */
     public void exit(int status) {
-        @SuppressWarnings("removal")
-        SecurityManager security = System.getSecurityManager();
-        if (security != null) {
-            security.checkExit(status);
-        }
         Shutdown.exit(status);
     }
 
@@ -243,11 +238,6 @@ public class Runtime {
      * @since 1.3
      */
     public void addShutdownHook(Thread hook) {
-        @SuppressWarnings("removal")
-        SecurityManager sm = System.getSecurityManager();
-        if (sm != null) {
-            sm.checkPermission(new RuntimePermission("shutdownHooks"));
-        }
         ApplicationShutdownHooks.add(hook);
     }
 
@@ -274,11 +264,6 @@ public class Runtime {
      * @since 1.3
      */
     public boolean removeShutdownHook(Thread hook) {
-        @SuppressWarnings("removal")
-        SecurityManager sm = System.getSecurityManager();
-        if (sm != null) {
-            sm.checkPermission(new RuntimePermission("shutdownHooks"));
-        }
         return ApplicationShutdownHooks.remove(hook);
     }
 
@@ -314,11 +299,6 @@ public class Runtime {
      * @since 1.3
      */
     public void halt(int status) {
-        @SuppressWarnings("removal")
-        SecurityManager sm = System.getSecurityManager();
-        if (sm != null) {
-            sm.checkExit(status);
-        }
         Shutdown.beforeHalt();
         Shutdown.halt(status);
     }
@@ -845,11 +825,6 @@ public class Runtime {
     }
 
     void load0(Class<?> fromClass, String filename) {
-        @SuppressWarnings("removal")
-        SecurityManager security = System.getSecurityManager();
-        if (security != null) {
-            security.checkLink(filename);
-        }
         File file = new File(filename);
         if (!file.isAbsolute()) {
             throw new UnsatisfiedLinkError(
@@ -915,11 +890,6 @@ public class Runtime {
     }
 
     void loadLibrary0(Class<?> fromClass, String libname) {
-        @SuppressWarnings("removal")
-        SecurityManager security = System.getSecurityManager();
-        if (security != null) {
-            security.checkLink(libname);
-        }
         if (libname.indexOf((int)File.separatorChar) != -1) {
             throw new UnsatisfiedLinkError(
                 "Directory separator should not appear in library name: " + libname);

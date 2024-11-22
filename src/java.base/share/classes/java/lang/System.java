@@ -45,7 +45,6 @@ import java.lang.reflect.Executable;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.net.URI;
-import java.net.URL;
 import java.nio.channels.Channel;
 import java.nio.channels.spi.SelectorProvider;
 import java.nio.charset.CharacterCodingException;
@@ -55,16 +54,13 @@ import java.security.AccessController;
 import java.security.CodeSource;
 import java.security.PrivilegedAction;
 import java.security.ProtectionDomain;
-import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Properties;
-import java.util.PropertyPermission;
 import java.util.ResourceBundle;
 import java.util.Set;
-import java.util.WeakHashMap;
 import java.util.concurrent.Executor;
 import java.util.function.Supplier;
 import java.util.concurrent.ConcurrentHashMap;
@@ -98,7 +94,6 @@ import sun.nio.fs.DefaultFileSystemProvider;
 import sun.reflect.annotation.AnnotationType;
 import sun.nio.ch.Interruptible;
 import sun.nio.cs.UTF_8;
-import sun.security.util.SecurityConstants;
 
 /**
  * The {@code System} class contains several useful class fields
@@ -232,7 +227,6 @@ public final class System {
      * @since   1.1
      */
     public static void setIn(InputStream in) {
-        checkIO();
         setIn0(in);
     }
 
@@ -256,7 +250,6 @@ public final class System {
      * @since   1.1
      */
     public static void setOut(PrintStream out) {
-        checkIO();
         setOut0(out);
     }
 
@@ -280,7 +273,6 @@ public final class System {
      * @since   1.1
      */
     public static void setErr(PrintStream err) {
-        checkIO();
         setErr0(err);
     }
 
@@ -335,31 +327,9 @@ public final class System {
         return SelectorProvider.provider().inheritedChannel();
     }
 
-    private static void checkIO() {
-        @SuppressWarnings("removal")
-        SecurityManager sm = getSecurityManager();
-        if (sm != null) {
-            sm.checkPermission(new RuntimePermission("setIO"));
-        }
-    }
-
     private static native void setIn0(InputStream in);
     private static native void setOut0(PrintStream out);
     private static native void setErr0(PrintStream err);
-
-    private static class CallersHolder {
-        // Remember callers of setSecurityManager() here so that warning
-        // is only printed once for each different caller
-        static final Map<Class<?>, Boolean> callers
-            = Collections.synchronizedMap(new WeakHashMap<>());
-    }
-
-    static URL codeSource(Class<?> clazz) {
-        PrivilegedAction<ProtectionDomain> pa = clazz::getProtectionDomain;
-        @SuppressWarnings("removal")
-        CodeSource cs = AccessController.doPrivileged(pa).getCodeSource();
-        return (cs != null) ? cs.getLocation() : null;
-    }
 
     /**
      * Sets the system-wide security manager.
@@ -866,12 +836,6 @@ public final class System {
      * @see        java.util.Properties
      */
     public static Properties getProperties() {
-        @SuppressWarnings("removal")
-        SecurityManager sm = getSecurityManager();
-        if (sm != null) {
-            sm.checkPropertiesAccess();
-        }
-
         return props;
     }
 
@@ -919,12 +883,6 @@ public final class System {
      * @see        java.lang.SecurityManager#checkPropertiesAccess()
      */
     public static void setProperties(Properties props) {
-        @SuppressWarnings("removal")
-        SecurityManager sm = getSecurityManager();
-        if (sm != null) {
-            sm.checkPropertiesAccess();
-        }
-
         if (props == null) {
             Map<String, String> tempProps = SystemProps.initProperties();
             VersionProps.init(tempProps);
@@ -965,12 +923,6 @@ public final class System {
      */
     public static String getProperty(String key) {
         checkKey(key);
-        @SuppressWarnings("removal")
-        SecurityManager sm = getSecurityManager();
-        if (sm != null) {
-            sm.checkPropertyAccess(key);
-        }
-
         return props.getProperty(key);
     }
 
@@ -1001,12 +953,6 @@ public final class System {
      */
     public static String getProperty(String key, String def) {
         checkKey(key);
-        @SuppressWarnings("removal")
-        SecurityManager sm = getSecurityManager();
-        if (sm != null) {
-            sm.checkPropertyAccess(key);
-        }
-
         return props.getProperty(key, def);
     }
 
@@ -1045,13 +991,6 @@ public final class System {
      */
     public static String setProperty(String key, String value) {
         checkKey(key);
-        @SuppressWarnings("removal")
-        SecurityManager sm = getSecurityManager();
-        if (sm != null) {
-            sm.checkPermission(new PropertyPermission(key,
-                SecurityConstants.PROPERTY_WRITE_ACTION));
-        }
-
         return (String) props.setProperty(key, value);
     }
 
@@ -1087,12 +1026,6 @@ public final class System {
      */
     public static String clearProperty(String key) {
         checkKey(key);
-        @SuppressWarnings("removal")
-        SecurityManager sm = getSecurityManager();
-        if (sm != null) {
-            sm.checkPermission(new PropertyPermission(key, "write"));
-        }
-
         return (String) props.remove(key);
     }
 
@@ -1152,12 +1085,6 @@ public final class System {
      * @see    ProcessBuilder#environment()
      */
     public static String getenv(String name) {
-        @SuppressWarnings("removal")
-        SecurityManager sm = getSecurityManager();
-        if (sm != null) {
-            sm.checkPermission(new RuntimePermission("getenv."+name));
-        }
-
         return ProcessEnvironment.getenv(name);
     }
 
@@ -1202,12 +1129,6 @@ public final class System {
      * @since  1.5
      */
     public static java.util.Map<String,String> getenv() {
-        @SuppressWarnings("removal")
-        SecurityManager sm = getSecurityManager();
-        if (sm != null) {
-            sm.checkPermission(new RuntimePermission("getenv.*"));
-        }
-
         return ProcessEnvironment.getenv();
     }
 
@@ -1643,13 +1564,6 @@ public final class System {
      */
     @SuppressWarnings("doclint:reference") // cross-module links
     public abstract static class LoggerFinder {
-        /**
-         * The {@code RuntimePermission("loggerFinder")} is
-         * necessary to subclass and instantiate the {@code LoggerFinder} class,
-         * as well as to obtain loggers from an instance of that class.
-         */
-        static final RuntimePermission LOGGERFINDER_PERMISSION =
-                new RuntimePermission("loggerFinder");
 
         /**
          * Creates a new instance of {@code LoggerFinder}.
@@ -1664,20 +1578,6 @@ public final class System {
          *         {@code RuntimePermission("loggerFinder")}.
          */
         protected LoggerFinder() {
-            this(checkPermission());
-        }
-
-        private LoggerFinder(Void unused) {
-            // nothing to do.
-        }
-
-        private static Void checkPermission() {
-            @SuppressWarnings("removal")
-            final SecurityManager sm = System.getSecurityManager();
-            if (sm != null) {
-                sm.checkPermission(LOGGERFINDER_PERMISSION);
-            }
-            return null;
         }
 
         /**
@@ -1756,11 +1656,6 @@ public final class System {
          *         {@code RuntimePermission("loggerFinder")}.
          */
         public static LoggerFinder getLoggerFinder() {
-            @SuppressWarnings("removal")
-            final SecurityManager sm = System.getSecurityManager();
-            if (sm != null) {
-                sm.checkPermission(LOGGERFINDER_PERMISSION);
-            }
             return accessProvider();
         }
 
@@ -1773,10 +1668,7 @@ public final class System {
             // just fetch it again.
             LoggerFinder finder = service;
             if (finder == null) {
-                PrivilegedAction<LoggerFinder> pa =
-                        () -> LoggerFinderLoader.getLoggerFinder();
-                finder = AccessController.doPrivileged(pa, null,
-                        LOGGERFINDER_PERMISSION);
+                finder = LoggerFinderLoader.getLoggerFinder();
                 if (finder instanceof TemporaryLoggerFinder) return finder;
                 service = finder;
             }
@@ -1881,17 +1773,6 @@ public final class System {
         final Class<?> caller = Reflection.getCallerClass();
         if (caller == null) {
             throw new IllegalCallerException("no caller frame");
-        }
-        final SecurityManager sm = System.getSecurityManager();
-        // We don't use LazyLoggers if a resource bundle is specified.
-        // Bootstrap sensitive classes in the JDK do not use resource bundles
-        // when logging. This could be revisited later, if it needs to.
-        if (sm != null) {
-            final PrivilegedAction<Logger> pa =
-                    () -> LoggerFinder.accessProvider()
-                            .getLocalizedLogger(name, rb, caller.getModule());
-            return AccessController.doPrivileged(pa, null,
-                                         LoggerFinder.LOGGERFINDER_PERMISSION);
         }
         return LoggerFinder.accessProvider()
                 .getLocalizedLogger(name, rb, caller.getModule());

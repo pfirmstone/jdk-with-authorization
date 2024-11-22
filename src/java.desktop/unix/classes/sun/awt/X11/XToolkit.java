@@ -203,7 +203,6 @@ public final class XToolkit extends UNIXToolkit implements Runnable {
     private static final X11GraphicsDevice device;
     private static final long display;
     static int awt_multiclick_time;
-    static boolean securityWarningEnabled;
 
     /**
      * Dimensions of default virtual screen in pixels. These values are used to
@@ -215,7 +214,6 @@ public final class XToolkit extends UNIXToolkit implements Runnable {
     private static XMouseInfoPeer xPeer;
 
     static {
-        initSecurityWarning();
         if (GraphicsEnvironment.isHeadless()) {
             localEnv = null;
             device = null;
