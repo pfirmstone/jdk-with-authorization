@@ -157,6 +157,9 @@ public interface SSLSession {
      * replaced.  If the new (or existing) {@code value} implements the
      * {@code SSLSessionBindingListener} interface, the object
      * represented by {@code value} is notified appropriately.
+     * <p>
+     * For security reasons, the same named values may not be
+     * visible across different access control contexts.
      *
      * @param name the name to which the data object will be bound.
      *          This may not be null.
@@ -169,6 +172,9 @@ public interface SSLSession {
     /**
      * Returns the object bound to the given name in the session's
      * application layer data.  Returns null if there is no such binding.
+     * <p>
+     * For security reasons, the same named values may not be
+     * visible across different access control contexts.
      *
      * @param name the name of the binding to find.
      * @return the value bound to that name, or null if the binding does
@@ -184,8 +190,12 @@ public interface SSLSession {
      * bound to the given name.  If the bound existing object
      * implements the {@code SSLSessionBindingListener} interface,
      * it is notified appropriately.
+     * <p>
+     * For security reasons, the same named values may not be
+     * visible across different access control contexts.
      *
-     * @param name the name of the object to remove
+     * @param name the name of the object to remove visible
+     *          across different access control contexts
      * @throws IllegalArgumentException if the argument is null.
      */
     void removeValue(String name);
@@ -194,6 +204,9 @@ public interface SSLSession {
     /**
      * Returns an array of the names of all the application layer
      * data objects bound into the Session.
+     * <p>
+     * For security reasons, the same named values may not be
+     * visible across different access control contexts.
      *
      * @return a non-null (possibly empty) array of names of the objects
      *  bound to this Session.
