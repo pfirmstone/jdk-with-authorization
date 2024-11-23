@@ -1394,6 +1394,7 @@ public class Window extends Container implements Accessible {
      * and returns the string value of that property.
      * @return    the warning string for this window.
      */
+//    @Deprecated(since="24", forRemoval=true)
     public final String getWarningString() {
         return warningString;
     }
