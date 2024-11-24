@@ -39,6 +39,8 @@ import java.rmi.server.ObjID;
 import java.rmi.server.RemoteCall;
 import java.security.AccessController;
 import java.security.PrivilegedAction;
+import java.security.PrivilegedExceptionAction;
+import java.security.PrivilegedActionException;
 
 import sun.rmi.runtime.Log;
 import sun.rmi.server.UnicastRef;
@@ -103,8 +105,19 @@ public class StreamRemoteCall implements RemoteCall {
     {
         if (out == null) {
             Transport.transportLog.log(Log.VERBOSE, "getting output stream");
-
-            out = new ConnectionOutputStream(conn, resultStream);
+            try {
+                out = AccessController.doPrivilegedWithCombiner(
+                        (PrivilegedExceptionAction<ConnectionOutputStream>)()->
+                    {        
+                        return new ConnectionOutputStream(conn, resultStream);
+                    }
+                );
+            } catch (PrivilegedActionException e){
+                Exception cause = e.getException();
+                if (cause instanceof IOException) throw (IOException) cause;
+                if (cause instanceof RuntimeException) throw (RuntimeException) cause;
+                throw new IOException(e);
+            }
         }
         return out;
     }
@@ -143,14 +156,21 @@ public class StreamRemoteCall implements RemoteCall {
     public ObjectInput getInputStream() throws IOException {
         if (in == null) {
             Transport.transportLog.log(Log.VERBOSE, "getting input stream");
-
-            in = new ConnectionInputStream(conn.getInputStream());
-            if (filter != null) {
-                AccessController.doPrivileged((PrivilegedAction<Void>) () -> {
-                    in.setObjectInputFilter(filter);
-                    return null;
+            try {
+            in =  AccessController.doPrivilegedWithCombiner(
+                    (PrivilegedExceptionAction<ConnectionInputStream>) () -> 
+                {
+                    ConnectionInputStream input = new ConnectionInputStream(conn.getInputStream());
+                    if (filter != null) input.setObjectInputFilter(filter);
+                    return input;
                 });
+            } catch (PrivilegedActionException e){
+                Exception cause = e.getException();
+                if (cause instanceof IOException) throw (IOException) cause;
+                if (cause instanceof RuntimeException) throw (RuntimeException) cause;
+                throw new IOException(e);
             }
+            
         }
         return in;
     }

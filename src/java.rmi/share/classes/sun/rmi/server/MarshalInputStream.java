@@ -35,6 +35,7 @@ import java.security.AccessControlException;
 import java.security.Permission;
 import java.rmi.server.RMIClassLoader;
 import java.security.PrivilegedAction;
+import java.security.AccessController;
 
 /**
  * MarshalInputStream is an extension of ObjectInputStream.  When resolving
@@ -107,7 +108,7 @@ public class MarshalInputStream extends ObjectInputStream {
         throws IOException, StreamCorruptedException
     {
         super(in);
-                    }
+    }
 
     /**
      * Returns a callback previously registered via the setDoneCallback
