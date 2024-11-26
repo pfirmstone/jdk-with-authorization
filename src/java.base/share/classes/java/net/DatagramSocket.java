@@ -1188,11 +1188,6 @@ public class DatagramSocket implements java.io.Closeable {
         if (factory != null) {
             throw new SocketException("factory already defined");
         }
-        @SuppressWarnings("removal")
-        SecurityManager security = System.getSecurityManager();
-        if (security != null) {
-            security.checkSetFactory();
-        }
         factory = fac;
     }
 

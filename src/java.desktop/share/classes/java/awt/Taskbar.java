@@ -177,19 +177,6 @@ public class Taskbar {
         }
     }
 
-    /**
-     *  Calls to the security manager's {@code checkPermission} method with
-     *  an {@code RuntimePermission("canProcessApplicationEvents")} permissions.
-     */
-    private void checkEventsProcessingPermission(){
-        @SuppressWarnings("removal")
-        SecurityManager sm = System.getSecurityManager();
-        if (sm != null) {
-            sm.checkPermission(new RuntimePermission(
-                    "canProcessApplicationEvents"));
-        }
-    }
-
     private Taskbar() {
         Toolkit defaultToolkit = Toolkit.getDefaultToolkit();
         if (defaultToolkit instanceof SunToolkit) {
@@ -267,7 +254,6 @@ public class Taskbar {
      * does not support the {@link Taskbar.Feature#USER_ATTENTION} feature
      */
     public void requestUserAttention(final boolean enabled, final boolean critical) {
-        checkEventsProcessingPermission();
         checkFeatureSupport(Feature.USER_ATTENTION);
         peer.requestUserAttention(enabled, critical);
     }
@@ -286,7 +272,6 @@ public class Taskbar {
      * does not support the {@link Taskbar.Feature#USER_ATTENTION_WINDOW} feature
      */
     public void requestWindowUserAttention(Window w) {
-        checkEventsProcessingPermission();
         checkFeatureSupport(Feature.USER_ATTENTION_WINDOW);
         peer.requestWindowUserAttention(w);
     }
@@ -302,7 +287,6 @@ public class Taskbar {
      * does not support the {@link Taskbar.Feature#MENU} feature
      */
     public void setMenu(final PopupMenu menu) {
-        checkEventsProcessingPermission();
         checkFeatureSupport(Feature.MENU);
         peer.setMenu(menu);
     }
@@ -317,7 +301,6 @@ public class Taskbar {
      * does not support the {@link Taskbar.Feature#MENU} feature
      */
     public PopupMenu getMenu() {
-        checkEventsProcessingPermission();
         checkFeatureSupport(Feature.MENU);
         return peer.getMenu();
     }
@@ -332,7 +315,6 @@ public class Taskbar {
      * does not support the {@link Taskbar.Feature#ICON_IMAGE} feature
      */
     public void setIconImage(final Image image) {
-        checkEventsProcessingPermission();
         checkFeatureSupport(Feature.ICON_IMAGE);
         peer.setIconImage(image);
     }
@@ -351,7 +333,6 @@ public class Taskbar {
      * does not support the {@link Taskbar.Feature#ICON_IMAGE} feature
      */
     public Image getIconImage() {
-        checkEventsProcessingPermission();
         checkFeatureSupport(Feature.ICON_IMAGE);
         return peer.getIconImage();
     }
@@ -374,7 +355,6 @@ public class Taskbar {
      * or {@link Taskbar.Feature#ICON_BADGE_TEXT} feature
      */
     public void setIconBadge(final String badge) {
-        checkEventsProcessingPermission();
         checkFeatureSupport(Feature.ICON_BADGE_NUMBER);
         peer.setIconBadge(badge);
     }
@@ -396,7 +376,6 @@ public class Taskbar {
      * does not support the {@link Taskbar.Feature#ICON_BADGE_IMAGE_WINDOW} feature
      */
     public void setWindowIconBadge(Window w, final Image badge) {
-        checkEventsProcessingPermission();
         checkFeatureSupport(Feature.ICON_BADGE_IMAGE_WINDOW);
         if (w != null) {
             peer.setWindowIconBadge(w, badge);
@@ -414,7 +393,6 @@ public class Taskbar {
      * does not support the {@link Taskbar.Feature#PROGRESS_VALUE} feature
      */
     public void setProgressValue(int value) {
-        checkEventsProcessingPermission();
         checkFeatureSupport(Feature.PROGRESS_VALUE);
         peer.setProgressValue(value);
     }
@@ -446,7 +424,6 @@ public class Taskbar {
      * does not support the {@link Taskbar.Feature#PROGRESS_VALUE_WINDOW} feature
      */
     public void setWindowProgressValue(Window w, int value) {
-        checkEventsProcessingPermission();
         checkFeatureSupport(Feature.PROGRESS_VALUE_WINDOW);
         if (w != null) {
             peer.setWindowProgressValue(w, value);
@@ -480,7 +457,6 @@ public class Taskbar {
      * does not support the {@link Taskbar.Feature#PROGRESS_STATE_WINDOW} feature
      */
     public void setWindowProgressState(Window w, State state) {
-        checkEventsProcessingPermission();
         checkFeatureSupport(Feature.PROGRESS_STATE_WINDOW);
         if (w != null) {
             peer.setWindowProgressState(w, state);

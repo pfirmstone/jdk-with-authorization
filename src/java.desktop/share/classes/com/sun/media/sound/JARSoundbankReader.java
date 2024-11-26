@@ -100,7 +100,6 @@ public final class JARSoundbankReader extends SoundbankReader {
                     try {
                         Class<?> c = Class.forName(line.trim(), false, ucl);
                         if (Soundbank.class.isAssignableFrom(c)) {
-                            ReflectUtil.checkPackageAccess(c);
                             Object o = c.newInstance();
                             soundbanks.add((Soundbank) o);
                         }

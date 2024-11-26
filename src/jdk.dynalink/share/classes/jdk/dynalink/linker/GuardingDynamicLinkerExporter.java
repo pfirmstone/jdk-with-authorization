@@ -55,8 +55,6 @@ public abstract class GuardingDynamicLinkerExporter implements Supplier<List<Gua
      */
     public static final String AUTOLOAD_PERMISSION_NAME = "dynalink.exportLinkersAutomatically";
 
-    private static final Permission AUTOLOAD_PERMISSION = new RuntimePermission(AUTOLOAD_PERMISSION_NAME);
-
     /**
      * Creates a new linker exporter. If there is a security manager installed
      * checks for the
@@ -67,10 +65,5 @@ public abstract class GuardingDynamicLinkerExporter implements Supplier<List<Gua
      * granted.
      */
     protected GuardingDynamicLinkerExporter() {
-        @SuppressWarnings("removal")
-        final SecurityManager sm = System.getSecurityManager();
-        if (sm != null) {
-            sm.checkPermission(AUTOLOAD_PERMISSION);
-        }
     }
 }

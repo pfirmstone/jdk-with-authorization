@@ -177,7 +177,6 @@ final class AquaUtils {
         @SuppressWarnings("deprecation")
         T getInstance() {
             try {
-                ReflectUtil.checkPackageAccess(clazz);
                 return clazz.newInstance();
             } catch (ReflectiveOperationException ignored) {
             }

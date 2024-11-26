@@ -33,7 +33,6 @@ import java.security.AccessController;
 import java.security.PrivilegedAction;
 
 import sun.reflect.misc.MethodUtil;
-import sun.reflect.misc.ReflectUtil;
 
 /**
  * The {@code EventHandler} class provides
@@ -714,7 +713,6 @@ public class EventHandler implements InvocationHandler {
     }
 
     private static ClassLoader getClassLoader(Class<?> type) {
-        ReflectUtil.checkPackageAccess(type);
         ClassLoader loader = type.getClassLoader();
         if (loader == null) {
             loader = Thread.currentThread().getContextClassLoader(); // avoid use of BCP

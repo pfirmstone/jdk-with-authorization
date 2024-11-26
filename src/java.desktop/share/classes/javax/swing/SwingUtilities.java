@@ -24,7 +24,6 @@
  */
 package javax.swing;
 
-import sun.reflect.misc.ReflectUtil;
 import sun.swing.SwingUtilities2;
 import sun.swing.UIAction;
 
@@ -1976,14 +1975,6 @@ public class SwingUtilities implements SwingConstants
         public void show() {
             // This frame can never be shown
         }
-        public void dispose() {
-            try {
-                getToolkit().getSystemEventQueue();
-                super.dispose();
-            } catch (Exception e) {
-                // untrusted code not allowed to dispose
-            }
-        }
     }
 
     /**
@@ -2038,7 +2029,6 @@ public class SwingUtilities implements SwingConstants
 
 
     static Class<?> loadSystemClass(String className) throws ClassNotFoundException {
-        ReflectUtil.checkPackageAccess(className);
         return Class.forName(className, true, Thread.currentThread().
                              getContextClassLoader());
     }

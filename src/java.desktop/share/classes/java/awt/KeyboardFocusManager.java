@@ -367,12 +367,6 @@ public abstract class KeyboardFocusManager
      */
     private static java.util.Map<Window, WeakReference<Component>> mostRecentFocusOwners = new WeakHashMap<>();
 
-    /**
-     * We cache the permission used to verify that the calling thread is
-     * permitted to access the global focus state.
-     */
-    private static AWTPermission replaceKeyboardFocusManagerPermission;
-
     /*
      * SequencedEvent which is currently dispatched in AppContext.
      */
@@ -494,7 +488,6 @@ public abstract class KeyboardFocusManager
      */
     protected Component getGlobalFocusOwner() throws SecurityException {
         synchronized (KeyboardFocusManager.class) {
-            checkKFMSecurity();
             return focusOwner;
         }
     }
@@ -533,7 +526,6 @@ public abstract class KeyboardFocusManager
 
         if (focusOwner == null || focusOwner.isFocusable()) {
             synchronized (KeyboardFocusManager.class) {
-                checkKFMSecurity();
 
                 oldFocusOwner = getFocusOwner();
 
@@ -708,7 +700,6 @@ public abstract class KeyboardFocusManager
         throws SecurityException
     {
         synchronized (KeyboardFocusManager.class) {
-            checkKFMSecurity();
             return permanentFocusOwner;
         }
     }
@@ -748,7 +739,6 @@ public abstract class KeyboardFocusManager
 
         if (permanentFocusOwner == null || permanentFocusOwner.isFocusable()) {
             synchronized (KeyboardFocusManager.class) {
-                checkKFMSecurity();
 
                 oldPermanentFocusOwner = getPermanentFocusOwner();
 
@@ -813,7 +803,6 @@ public abstract class KeyboardFocusManager
      */
     protected Window getGlobalFocusedWindow() throws SecurityException {
         synchronized (KeyboardFocusManager.class) {
-            checkKFMSecurity();
             return focusedWindow;
         }
     }
@@ -849,7 +838,6 @@ public abstract class KeyboardFocusManager
 
         if (focusedWindow == null || focusedWindow.isFocusableWindow()) {
             synchronized (KeyboardFocusManager.class) {
-                checkKFMSecurity();
 
                 oldFocusedWindow = getFocusedWindow();
 
@@ -915,7 +903,6 @@ public abstract class KeyboardFocusManager
      */
     protected Window getGlobalActiveWindow() throws SecurityException {
         synchronized (KeyboardFocusManager.class) {
-            checkKFMSecurity();
             return activeWindow;
         }
     }
@@ -949,7 +936,6 @@ public abstract class KeyboardFocusManager
     {
         Window oldActiveWindow;
         synchronized (KeyboardFocusManager.class) {
-            checkKFMSecurity();
 
             oldActiveWindow = getActiveWindow();
             if (focusLog.isLoggable(PlatformLogger.Level.FINER)) {
@@ -1232,7 +1218,6 @@ public abstract class KeyboardFocusManager
         throws SecurityException
     {
         synchronized (KeyboardFocusManager.class) {
-            checkKFMSecurity();
             return currentFocusCycleRoot;
         }
     }
@@ -3069,42 +3054,6 @@ public abstract class KeyboardFocusManager
             return (heavyweightRequests.size() > 0)
                 ? heavyweightRequests.getFirst()
                 : null;
-        }
-    }
-
-    private static void checkReplaceKFMPermission()
-        throws SecurityException
-    {
-        @SuppressWarnings("removal")
-        SecurityManager security = System.getSecurityManager();
-        if (security != null) {
-            if (replaceKeyboardFocusManagerPermission == null) {
-                replaceKeyboardFocusManagerPermission =
-                    new AWTPermission("replaceKeyboardFocusManager");
-            }
-            security.
-                checkPermission(replaceKeyboardFocusManagerPermission);
-        }
-    }
-
-    // Checks if this KeyboardFocusManager instance is the current KFM,
-    // or otherwise checks if the calling thread has "replaceKeyboardFocusManager"
-    // permission. Here's the reasoning to do so:
-    //
-    // A system KFM instance (which is the current KFM by default) may have no
-    // "replaceKFM" permission when a client code is on the call stack beneath,
-    // but still it should be able to execute the methods protected by this check
-    // due to the system KFM is trusted (and so it does like "privileged").
-    //
-    // If this KFM instance is not the current KFM but the client code has all
-    // permissions we can't throw SecurityException because it would contradict
-    // the security concepts. In this case the trusted client code is responsible
-    // for calling the secured methods from KFM instance which is not current.
-    private void checkKFMSecurity()
-        throws SecurityException
-    {
-        if (this != getCurrentKeyboardFocusManager()) {
-            checkReplaceKFMPermission();
         }
     }
 }

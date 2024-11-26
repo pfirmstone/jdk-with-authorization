@@ -44,7 +44,6 @@ import javax.accessibility.AccessibleRole;
 import javax.accessibility.AccessibleState;
 import javax.accessibility.AccessibleStateSet;
 
-import sun.awt.AWTPermissions;
 import sun.awt.AppContext;
 import sun.awt.SunToolkit;
 import sun.awt.util.IdentityArrayList;
@@ -866,8 +865,6 @@ public class Dialog extends Window {
             return;
         }
 
-        checkModalityPermission(type);
-
         modalityType = type;
         modal = (modalityType != ModalityType.MODELESS);
     }
@@ -1585,16 +1582,6 @@ public class Dialog extends Window {
         }
     }
 
-    private void checkModalityPermission(ModalityType mt) {
-        if (mt == ModalityType.TOOLKIT_MODAL) {
-            @SuppressWarnings("removal")
-            SecurityManager sm = System.getSecurityManager();
-            if (sm != null) {
-                sm.checkPermission(AWTPermissions.TOOLKIT_MODALITY_PERMISSION);
-            }
-        }
-    }
-
     /**
      * Reads serializable fields from stream.
      *
@@ -1615,12 +1602,6 @@ public class Dialog extends Window {
             s.readFields();
 
         ModalityType localModalityType = (ModalityType)fields.get("modalityType", null);
-
-        try {
-            checkModalityPermission(localModalityType);
-        } catch (@SuppressWarnings("removal") AccessControlException ace) {
-            localModalityType = DEFAULT_MODALITY_TYPE;
-        }
 
         // in 1.5 or earlier modalityType was absent, so use "modal" instead
         if (localModalityType == null) {
