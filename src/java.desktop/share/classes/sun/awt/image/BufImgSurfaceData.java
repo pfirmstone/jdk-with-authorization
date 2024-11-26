@@ -437,6 +437,11 @@ public class BufImgSurfaceData extends SurfaceData {
         return new Rectangle(bufImg.getWidth(), bufImg.getHeight());
     }
 
+    protected void checkCustomComposite() {
+        // BufferedImages always allow Custom Composite objects since
+        // their pixels are immediately retrievable anyway.
+    }
+
     /**
      * Returns destination Image associated with this SurfaceData.
      */

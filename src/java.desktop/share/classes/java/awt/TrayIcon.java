@@ -145,8 +145,9 @@ public class TrayIcon {
     }
 
     private TrayIcon()
-      throws UnsupportedOperationException, HeadlessException
+      throws UnsupportedOperationException, HeadlessException, SecurityException
     {
+        SystemTray.checkSystemTrayAllowed();
         if (GraphicsEnvironment.isHeadless()) {
             throw new HeadlessException();
         }

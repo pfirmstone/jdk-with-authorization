@@ -32,6 +32,7 @@ import java.beans.PropertyChangeSupport;
 import java.util.Vector;
 
 import sun.awt.AWTAccessor;
+import sun.awt.AWTPermissions;
 import sun.awt.AppContext;
 import sun.awt.HeadlessToolkit;
 import sun.awt.SunToolkit;
@@ -168,6 +169,7 @@ public class SystemTray {
      * @see AWTPermission
      */
     public static SystemTray getSystemTray() {
+        checkSystemTrayAllowed();
         if (GraphicsEnvironment.isHeadless()) {
             throw new HeadlessException();
         }
@@ -498,6 +500,14 @@ public class SystemTray {
             } else if (toolkit instanceof HeadlessToolkit) {
                 peer = ((HeadlessToolkit)Toolkit.getDefaultToolkit()).createSystemTray(this);
             }
+        }
+    }
+
+    static void checkSystemTrayAllowed() {
+        @SuppressWarnings("removal")
+        SecurityManager security = System.getSecurityManager();
+        if (security != null) {
+            security.checkPermission(AWTPermissions.ACCESS_SYSTEM_TRAY_PERMISSION);
         }
     }
 

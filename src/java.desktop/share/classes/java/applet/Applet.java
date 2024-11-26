@@ -25,6 +25,7 @@
 
 package java.applet;
 
+import java.awt.AWTPermission;
 import java.awt.Dimension;
 import java.awt.GraphicsEnvironment;
 import java.awt.HeadlessException;
@@ -131,6 +132,12 @@ public class Applet extends Panel {
      * @throws SecurityException if the caller cannot set the stub
      */
     public final void setStub(AppletStub stub) {
+        if (this.stub != null) {
+            SecurityManager s = System.getSecurityManager();
+            if (s != null) {
+                s.checkPermission(new AWTPermission("setAppletStub"));
+            }
+        }
         this.stub = stub;
     }
 

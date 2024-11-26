@@ -1091,9 +1091,22 @@ public abstract class SunToolkit extends Toolkit
 
     /**
      * Returns whether popup is allowed to be shown above the task bar.
+     * This is a default implementation of this method, which checks
+     * corresponding security permission.
      */
     public boolean canPopupOverlapTaskBar() {
-        return true;
+        boolean result = true;
+        try {
+            @SuppressWarnings("removal")
+            SecurityManager sm = System.getSecurityManager();
+            if (sm != null) {
+                sm.checkPermission(AWTPermissions.SET_WINDOW_ALWAYS_ON_TOP_PERMISSION);
+            }
+        } catch (SecurityException se) {
+            // There is no permission to show popups over the task bar
+            result = false;
+        }
+        return result;
     }
 
     /**
