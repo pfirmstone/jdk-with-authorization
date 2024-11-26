@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2012, 2021, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -25,6 +25,8 @@
 
 package sun.util.locale.provider;
 
+import java.security.AccessController;
+import java.security.PrivilegedAction;
 import java.text.spi.BreakIteratorProvider;
 import java.text.spi.CollatorProvider;
 import java.text.spi.DateFormatProvider;
@@ -184,7 +186,9 @@ public abstract class AuxLocaleProviderAdapter extends LocaleProviderAdapter {
      * A dummy locale service provider that indicates there is no
      * provider available
      */
-    private static final NullProvider NULL_PROVIDER = new NullProvider();
+    @SuppressWarnings("removal")
+    private static final NullProvider NULL_PROVIDER = AccessController.doPrivileged(
+        (PrivilegedAction<NullProvider>) () -> new NullProvider());
 
     private static class NullProvider extends LocaleServiceProvider {
         @Override

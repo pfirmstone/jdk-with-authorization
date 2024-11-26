@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2016, 2021, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -26,6 +26,9 @@
 package sun.util.resources;
 
 import java.io.InputStream;
+import java.security.AccessController;
+import java.security.PrivilegedActionException;
+import java.security.PrivilegedExceptionAction;
 import java.util.Collections;
 import java.util.Enumeration;
 import java.util.ResourceBundle;
@@ -69,12 +72,25 @@ public abstract class BreakIteratorResourceBundle extends ResourceBundle {
         String path = getClass().getPackageName().replace('.', '/')
                       + '/' + info.getString(key);
         byte[] data;
-        try (InputStream is = getClass().getModule().getResourceAsStream(path)) {
+        try (InputStream is = getResourceAsStream(path)) {
             data = is.readAllBytes();
         } catch (Exception e) {
             throw new InternalError("Can't load " + path, e);
         }
         return data;
+    }
+
+    @SuppressWarnings("removal")
+    private InputStream getResourceAsStream(String path) throws Exception {
+        PrivilegedExceptionAction<InputStream> pa;
+        pa = () -> getClass().getModule().getResourceAsStream(path);
+        InputStream is;
+        try {
+            is = AccessController.doPrivileged(pa);
+        } catch (PrivilegedActionException e) {
+            throw e.getException();
+        }
+        return is;
     }
 
     @Override
