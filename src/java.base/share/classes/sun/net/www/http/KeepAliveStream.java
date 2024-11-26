@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 1996, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 1996, 2022, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -176,10 +176,16 @@ class KeepAliveStream extends MeteredStream implements Hurryable {
             }
 
             if (startCleanupThread) {
-                cleanerThread = InnocuousThread.newSystemThread("Keep-Alive-SocketCleaner", queue);
-                cleanerThread.setDaemon(true);
-                cleanerThread.setPriority(Thread.MAX_PRIORITY - 2);
-                cleanerThread.start();
+                java.security.AccessController.doPrivileged(
+                    new java.security.PrivilegedAction<Void>() {
+                    public Void run() {
+                        cleanerThread = InnocuousThread.newSystemThread("Keep-Alive-SocketCleaner", queue);
+                        cleanerThread.setDaemon(true);
+                        cleanerThread.setPriority(Thread.MAX_PRIORITY - 2);
+                        cleanerThread.start();
+                        return null;
+                    }
+                });
             }
         } finally {
             queue.unlock();

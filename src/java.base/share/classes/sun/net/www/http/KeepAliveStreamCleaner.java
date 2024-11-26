@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2005, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2005, 2023, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -28,16 +28,18 @@ package sun.net.www.http;
 import java.io.IOException;
 import java.util.LinkedList;
 import sun.net.NetProperties;
+import java.security.AccessController;
+import java.security.PrivilegedAction;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.ReentrantLock;
 
 /**
- * This class is used to clean up any remaining data that may be on a KeepAliveStream
+ * This class is used to cleanup any remaining data that may be on a KeepAliveStream
  * so that the connection can be cached in the KeepAliveCache.
  * Instances of this class can be used as a FIFO queue for KeepAliveCleanerEntry objects.
  * Executing this Runnable removes each KeepAliveCleanerEntry from the Queue, reads
- * the remaining bytes on its KeepAliveStream, and if successful puts the connection in
+ * the reamining bytes on its KeepAliveStream, and if successful puts the connection in
  * the KeepAliveCache.
  *
  * @author Chris Hegarty
@@ -48,8 +50,8 @@ class KeepAliveStreamCleaner
     extends LinkedList<KeepAliveCleanerEntry>
     implements Runnable
 {
-    // maximum amount of remaining data that we will try to clean up
-    protected static final long MAX_DATA_REMAINING;
+    // maximum amount of remaining data that we will try to cleanup
+    protected static final int MAX_DATA_REMAINING;
 
     // maximum amount of KeepAliveStreams to be queued
     protected static final int MAX_CAPACITY;
@@ -62,10 +64,22 @@ class KeepAliveStreamCleaner
 
     static {
         final String maxDataKey = "http.KeepAlive.remainingData";
-        MAX_DATA_REMAINING = NetProperties.getInteger(maxDataKey, 512) * 1024L;
+        @SuppressWarnings("removal")
+        int maxData = AccessController.doPrivileged(
+            new PrivilegedAction<Integer>() {
+                public Integer run() {
+                    return NetProperties.getInteger(maxDataKey, 512);
+                }}).intValue() * 1024;
+        MAX_DATA_REMAINING = maxData;
 
         final String maxCapacityKey = "http.KeepAlive.queuedConnections";
-        MAX_CAPACITY = NetProperties.getInteger(maxCapacityKey, 10);
+        @SuppressWarnings("removal")
+        int maxCapacity = AccessController.doPrivileged(
+            new PrivilegedAction<Integer>() {
+                public Integer run() {
+                    return NetProperties.getInteger(maxCapacityKey, 10);
+                }}).intValue();
+        MAX_CAPACITY = maxCapacity;
 
     }
 

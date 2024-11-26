@@ -30,6 +30,8 @@ import java.io.NotSerializableException;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.net.URL;
+import java.security.AccessController;
+import java.security.PrivilegedAction;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -37,6 +39,7 @@ import java.util.List;
 import java.util.concurrent.locks.ReentrantLock;
 
 import jdk.internal.misc.InnocuousThread;
+import sun.security.action.GetIntegerAction;
 import sun.net.www.protocol.http.HttpURLConnection;
 import sun.util.logging.PlatformLogger;
 
@@ -66,8 +69,10 @@ public class KeepAliveCache
 
     static final PlatformLogger logger = HttpURLConnection.getHttpLogger();
 
+    @SuppressWarnings("removal")
     static int getUserKeepAliveSeconds(String type) {
-        int v = Integer.getInteger(keepAliveProp+type, -1);
+        int v = AccessController.doPrivileged(
+            new GetIntegerAction(keepAliveProp+type, -1)).intValue();
         return v < -1 ? -1 : v;
     }
 
@@ -84,9 +89,12 @@ public class KeepAliveCache
      */
     static final int MAX_CONNECTIONS = 5;
     static int result = -1;
+    @SuppressWarnings("removal")
     static int getMaxConnections() {
         if (result == -1) {
-            result = Integer.getInteger("http.maxConnections", MAX_CONNECTIONS);
+            result = AccessController.doPrivileged(
+                new GetIntegerAction("http.maxConnections", MAX_CONNECTIONS))
+                .intValue();
             if (result <= 0) {
                 result = MAX_CONNECTIONS;
             }
@@ -111,6 +119,7 @@ public class KeepAliveCache
      * @param url  The URL contains info about the host and port
      * @param http The HttpClient to be cached
      */
+    @SuppressWarnings("removal")
     public void put(final URL url, Object obj, HttpClient http) {
         // this method may need to close an HttpClient, either because
         // it is not cacheable, or because the cache is at its capacity.
@@ -135,10 +144,15 @@ public class KeepAliveCache
                  * The robustness to get around this is in HttpClient.parseHTTP()
                  */
                 final KeepAliveCache cache = this;
-                keepAliveTimer = InnocuousThread.newSystemThread("Keep-Alive-Timer", cache);
-                keepAliveTimer.setDaemon(true);
-                keepAliveTimer.setPriority(Thread.MAX_PRIORITY - 2);
-                keepAliveTimer.start();
+                AccessController.doPrivileged(new PrivilegedAction<>() {
+                    public Void run() {
+                        keepAliveTimer = InnocuousThread.newSystemThread("Keep-Alive-Timer", cache);
+                        keepAliveTimer.setDaemon(true);
+                        keepAliveTimer.setPriority(Thread.MAX_PRIORITY - 2);
+                        keepAliveTimer.start();
+                        return null;
+                    }
+                });
             }
 
             KeepAliveKey key = new KeepAliveKey(url, obj);
