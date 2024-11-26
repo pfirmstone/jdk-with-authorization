@@ -229,6 +229,7 @@ public abstract class HttpsURLConnection extends HttpURLConnection {
             throw new IllegalArgumentException(
                 "no default HostnameVerifier specified");
         }
+
         defaultHostnameVerifier = v;
     }
 
@@ -305,6 +306,7 @@ public abstract class HttpsURLConnection extends HttpURLConnection {
             throw new IllegalArgumentException(
                 "no default SSLSocketFactory specified");
         }
+
         defaultSSLSocketFactory = sf;
     }
 
@@ -349,6 +351,7 @@ public abstract class HttpsURLConnection extends HttpURLConnection {
             throw new IllegalArgumentException(
                 "no SSLSocketFactory specified");
         }
+
         sslSocketFactory = sf;
     }
 
