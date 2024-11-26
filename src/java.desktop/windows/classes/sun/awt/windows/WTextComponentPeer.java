@@ -32,6 +32,10 @@ import java.awt.event.TextEvent;
 abstract
 class WTextComponentPeer extends WComponentPeer implements TextComponentPeer {
 
+    static {
+        initIDs();
+    }
+
     // TextComponentPeer implementation
 
     @Override
@@ -102,6 +106,11 @@ class WTextComponentPeer extends WComponentPeer implements TextComponentPeer {
     public void valueChanged() {
         postEvent(new TextEvent(target, TextEvent.TEXT_VALUE_CHANGED));
     }
+
+    /**
+     * Initialize JNI field and method IDs
+     */
+    private static native void initIDs();
 
     @Override
     public boolean shouldClearRectBeforePaint() {

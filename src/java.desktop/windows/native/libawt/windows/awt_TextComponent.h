@@ -41,6 +41,7 @@
 
 class AwtTextComponent : public AwtComponent {
 public:
+    static jmethodID canAccessClipboardMID;
 
     AwtTextComponent();
 
