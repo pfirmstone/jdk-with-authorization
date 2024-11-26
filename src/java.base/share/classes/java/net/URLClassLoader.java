@@ -26,13 +26,15 @@
 package java.net;
 
 import java.io.Closeable;
+import java.io.File;
+import java.io.FilePermission;
 import java.io.IOException;
 import java.io.InputStream;
 import java.security.AccessControlContext;
 import java.security.AccessController;
 import java.security.CodeSigner;
 import java.security.CodeSource;
-import java.security.Permissions;
+import java.security.Permission;
 import java.security.PermissionCollection;
 import java.security.PrivilegedAction;
 import java.security.PrivilegedExceptionAction;
@@ -52,6 +54,8 @@ import jdk.internal.loader.Resource;
 import jdk.internal.loader.URLClassPath;
 import jdk.internal.access.SharedSecrets;
 import jdk.internal.perf.PerfCounter;
+import sun.net.www.ParseUtil;
+import sun.security.util.SecurityConstants;
 
 /**
  * This class loader is used to load classes and resources from a search
