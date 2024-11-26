@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2000, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2000, 2022, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -27,6 +27,8 @@ package java.util.prefs;
 
 import java.util.StringTokenizer;
 import java.io.ByteArrayOutputStream;
+import java.security.AccessController;
+import java.security.PrivilegedAction;
 
 import sun.util.logging.PlatformLogger;
 
@@ -48,9 +50,13 @@ class WindowsPreferences extends AbstractPreferences {
         loadPrefsLib();
     }
 
-    @SuppressWarnings("restricted")
+    @SuppressWarnings({"removal", "restricted"})
     private static void loadPrefsLib() {
-        System.loadLibrary("prefs");
+        PrivilegedAction<Void> load = () -> {
+            System.loadLibrary("prefs");
+            return null;
+        };
+        AccessController.doPrivileged(load);
     }
 
     /**

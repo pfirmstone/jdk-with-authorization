@@ -27,6 +27,9 @@ package java.util.prefs;
 
 import java.util.*;
 import java.io.*;
+import java.security.AccessController;
+import java.security.PrivilegedAction;
+import java.security.PrivilegedExceptionAction;
 import java.security.PrivilegedActionException;
 import sun.util.logging.PlatformLogger;
 
@@ -50,9 +53,13 @@ class FileSystemPreferences extends AbstractPreferences {
         loadPrefsLib();
     }
 
-    @SuppressWarnings("restricted")
+    @SuppressWarnings({"removal", "restricted"})
     private static void loadPrefsLib() {
-        System.loadLibrary("prefs");
+        PrivilegedAction<Void> load = () -> {
+            System.loadLibrary("prefs");
+            return null;
+        };
+        AccessController.doPrivileged(load);
     }
 
     /**
@@ -60,7 +67,8 @@ class FileSystemPreferences extends AbstractPreferences {
      */
     @SuppressWarnings("removal")
     private static final int SYNC_INTERVAL = Math.max(1,
-            Integer.getInteger("java.util.prefs.syncInterval", 30));
+        AccessController.doPrivileged((PrivilegedAction<Integer>) () ->
+             Integer.getInteger("java.util.prefs.syncInterval", 30)));
 
     /**
      * Returns logger for error messages. Backing store exceptions are logged at
@@ -109,47 +117,52 @@ class FileSystemPreferences extends AbstractPreferences {
         return root;
     }
 
+    @SuppressWarnings("removal")
     private static void setupUserRoot() {
-        userRootDir =
-              new File(System.getProperty("java.util.prefs.userRoot",
+        AccessController.doPrivileged(new PrivilegedAction<Void>() {
+            public Void run() {
+                userRootDir =
+                      new File(System.getProperty("java.util.prefs.userRoot",
                       System.getProperty("user.home")), ".java/.userPrefs");
-        // Attempt to create root dir if it does not yet exist.
-        if (!userRootDir.exists()) {
-            if (userRootDir.mkdirs()) {
-                try {
-                    chmod(userRootDir.getCanonicalPath(), USER_RWX);
-                } catch (IOException e) {
-                    getLogger().warning("Could not change permissions" +
-                        " on userRoot directory. ");
-                }
-                getLogger().info("Created user preferences directory.");
-            } else {
-                getLogger().warning("Couldn't create user preferences" +
+                // Attempt to create root dir if it does not yet exist.
+                if (!userRootDir.exists()) {
+                    if (userRootDir.mkdirs()) {
+                        try {
+                            chmod(userRootDir.getCanonicalPath(), USER_RWX);
+                        } catch (IOException e) {
+                            getLogger().warning("Could not change permissions" +
+                                " on userRoot directory. ");
+                        }
+                        getLogger().info("Created user preferences directory.");
+                    }
+                    else
+                        getLogger().warning("Couldn't create user preferences" +
                         " directory. User preferences are unusable.");
-            }
-        }
-        isUserRootWritable = userRootDir.canWrite();
-        String USER_NAME = System.getProperty("user.name");
-        userLockFile = new File(userRootDir,".user.lock." + USER_NAME);
-        userRootModFile = new File (userRootDir,
-                                       ".userRootModFile." + USER_NAME);
-        if (!userRootModFile.exists()) {
-            try {
-                // create if does not exist.
-                userRootModFile.createNewFile();
-                // Only user can read/write userRootModFile.
-                int result = chmod(userRootModFile.getCanonicalPath(),
-                        USER_READ_WRITE);
-                if (result != 0)
-                    getLogger().warning("Problem creating userRoot " +
+                }
+                isUserRootWritable = userRootDir.canWrite();
+                String USER_NAME = System.getProperty("user.name");
+                userLockFile = new File (userRootDir,".user.lock." + USER_NAME);
+                userRootModFile = new File (userRootDir,
+                                               ".userRootModFile." + USER_NAME);
+                if (!userRootModFile.exists())
+                try {
+                    // create if does not exist.
+                    userRootModFile.createNewFile();
+                    // Only user can read/write userRootModFile.
+                    int result = chmod(userRootModFile.getCanonicalPath(),
+                                                               USER_READ_WRITE);
+                    if (result !=0)
+                        getLogger().warning("Problem creating userRoot " +
                             "mod file. Chmod failed on " +
-                            userRootModFile.getCanonicalPath() +
-                            " Unix error code " + result);
-            } catch (IOException e) {
-                getLogger().warning(e.toString());
+                             userRootModFile.getCanonicalPath() +
+                             " Unix error code " + result);
+                } catch (IOException e) {
+                    getLogger().warning(e.toString());
+                }
+                userRootModTime = userRootModFile.lastModified();
+                return null;
             }
-        }
-        userRootModTime = userRootModFile.lastModified();
+        });
     }
 
 
@@ -172,54 +185,58 @@ class FileSystemPreferences extends AbstractPreferences {
         return root;
     }
 
+    @SuppressWarnings("removal")
     private static void setupSystemRoot() {
-        String systemPrefsDirName =
-          System.getProperty("java.util.prefs.systemRoot", "/etc/.java");
-        systemRootDir =
-             new File(systemPrefsDirName, ".systemPrefs");
-        // Attempt to create root dir if it does not yet exist.
-        if (!systemRootDir.exists()) {
-            // system root does not exist in /etc/.java
-            // Switching  to java.home
-            systemRootDir =
-                          new File(System.getProperty("java.home"),
-                                                    ".systemPrefs");
-            if (!systemRootDir.exists()) {
-                if (systemRootDir.mkdirs()) {
-                    getLogger().info(
-                        "Created system preferences directory "
-                        + "in java.home.");
-                    try {
-                        chmod(systemRootDir.getCanonicalPath(),
-                                                  USER_RWX_ALL_RX);
-                    } catch (IOException e) {
+        AccessController.doPrivileged(new PrivilegedAction<Void>() {
+            public Void run() {
+                String systemPrefsDirName =
+                  System.getProperty("java.util.prefs.systemRoot","/etc/.java");
+                systemRootDir =
+                     new File(systemPrefsDirName, ".systemPrefs");
+                // Attempt to create root dir if it does not yet exist.
+                if (!systemRootDir.exists()) {
+                    // system root does not exist in /etc/.java
+                    // Switching  to java.home
+                    systemRootDir =
+                                  new File(System.getProperty("java.home"),
+                                                            ".systemPrefs");
+                    if (!systemRootDir.exists()) {
+                        if (systemRootDir.mkdirs()) {
+                            getLogger().info(
+                                "Created system preferences directory "
+                                + "in java.home.");
+                            try {
+                                chmod(systemRootDir.getCanonicalPath(),
+                                                          USER_RWX_ALL_RX);
+                            } catch (IOException e) {
+                            }
+                        } else {
+                            getLogger().warning("Could not create "
+                                + "system preferences directory. System "
+                                + "preferences are unusable.");
+                        }
                     }
-                } else {
-                    getLogger().warning("Could not create "
-                        + "system preferences directory. System "
-                        + "preferences are unusable.");
                 }
-            }
-        }
-        isSystemRootWritable = systemRootDir.canWrite();
-        systemLockFile = new File(systemRootDir, ".system.lock");
-        systemRootModFile = new File (systemRootDir, ".systemRootModFile");
-        if (!systemRootModFile.exists() && isSystemRootWritable) {
-            try {
-                // create if does not exist.
-                systemRootModFile.createNewFile();
-                int result = chmod(systemRootModFile.getCanonicalPath(),
-                        USER_RW_ALL_READ);
-                if (result != 0) {
-                    getLogger().warning("Chmod failed on " +
-                            systemRootModFile.getCanonicalPath() +
-                            " Unix error code " + result);
+                isSystemRootWritable = systemRootDir.canWrite();
+                systemLockFile = new File(systemRootDir, ".system.lock");
+                systemRootModFile =
+                               new File (systemRootDir,".systemRootModFile");
+                if (!systemRootModFile.exists() && isSystemRootWritable)
+                try {
+                    // create if does not exist.
+                    systemRootModFile.createNewFile();
+                    int result = chmod(systemRootModFile.getCanonicalPath(),
+                                                          USER_RW_ALL_READ);
+                    if (result !=0)
+                        getLogger().warning("Chmod failed on " +
+                               systemRootModFile.getCanonicalPath() +
+                              " Unix error code " + result);
+                } catch (IOException e) { getLogger().warning(e.toString());
                 }
-            } catch (IOException e) {
-                getLogger().warning(e.toString());
+                systemRootModTime = systemRootModFile.lastModified();
+                return null;
             }
-        }
-        systemRootModTime = systemRootModFile.lastModified();
+        });
     }
 
 
@@ -439,6 +456,7 @@ class FileSystemPreferences extends AbstractPreferences {
         addShutdownHook();
     }
 
+    @SuppressWarnings("removal")
     private static void addShutdownHook() {
         // Add periodic timer task to periodically sync cached prefs
         syncTimer.schedule(new TimerTask() {
@@ -448,11 +466,16 @@ class FileSystemPreferences extends AbstractPreferences {
         }, SYNC_INTERVAL*1000, SYNC_INTERVAL*1000);
 
         // Add shutdown hook to flush cached prefs on normal termination
-        Runtime.getRuntime().addShutdownHook(
-            new Thread(null, null, "Sync Timer Thread", 0, false) {
-            public void run() {
-                syncTimer.cancel();
-                syncWorld();
+        AccessController.doPrivileged(new PrivilegedAction<Void>() {
+            public Void run() {
+                Runtime.getRuntime().addShutdownHook(
+                    new Thread(null, null, "Sync Timer Thread", 0, false) {
+                    public void run() {
+                        syncTimer.cancel();
+                        syncWorld();
+                    }
+                });
+                return null;
             }
         });
     }
@@ -503,13 +526,19 @@ class FileSystemPreferences extends AbstractPreferences {
      * parent node and name.  This constructor, called from childSpi,
      * is used to make every node except for the two //roots.
      */
+    @SuppressWarnings("removal")
     private FileSystemPreferences(FileSystemPreferences parent, String name) {
         super(parent, name);
         isUserNode = parent.isUserNode;
         dir  = new File(parent.dir, dirName(name));
         prefsFile = new File(dir, "prefs.xml");
         tmpFile  = new File(dir, "prefs.tmp");
-        newNode = !dir.exists();
+        AccessController.doPrivileged(new PrivilegedAction<Void>() {
+            public Void run() {
+                newNode = !dir.exists();
+                return null;
+            }
+        });
         if (newNode) {
             // These 2 things guarantee node will get written at next flush/sync
             prefsCache = new TreeMap<>();
@@ -567,32 +596,43 @@ class FileSystemPreferences extends AbstractPreferences {
      * fails, a BackingStoreException is thrown and both prefsCache and
      * lastSyncTime are unaffected by the call.
      */
+    @SuppressWarnings("removal")
     private void loadCache() throws BackingStoreException {
-        Map<String, String> m = new TreeMap<>();
-        long newLastSyncTime = 0;
         try {
-            newLastSyncTime = prefsFile.lastModified();
-            try (FileInputStream fis = new FileInputStream(prefsFile)) {
-                XmlSupport.importMap(fis, m);
-            }
-        } catch(Exception e) {
-            if (e instanceof InvalidPreferencesFormatException) {
-                getLogger().warning("Invalid preferences format in "
-                                            + prefsFile.getPath());
-                prefsFile.renameTo( new File(
-                                        prefsFile.getParentFile(),
-                                      "IncorrectFormatPrefs.xml"));
-                m = new TreeMap<>();
-            } else if (e instanceof FileNotFoundException) {
-                getLogger().warning("Prefs file removed in background "
-                        + prefsFile.getPath());
-            } else {
-                throw new BackingStoreException(e);
-            }
+            AccessController.doPrivileged(
+                new PrivilegedExceptionAction<Void>() {
+                public Void run() throws BackingStoreException {
+                    Map<String, String> m = new TreeMap<>();
+                    long newLastSyncTime = 0;
+                    try {
+                        newLastSyncTime = prefsFile.lastModified();
+                        try (FileInputStream fis = new FileInputStream(prefsFile)) {
+                            XmlSupport.importMap(fis, m);
+                        }
+                    } catch(Exception e) {
+                        if (e instanceof InvalidPreferencesFormatException) {
+                            getLogger().warning("Invalid preferences format in "
+                                                        +  prefsFile.getPath());
+                            prefsFile.renameTo( new File(
+                                                    prefsFile.getParentFile(),
+                                                  "IncorrectFormatPrefs.xml"));
+                            m = new TreeMap<>();
+                        } else if (e instanceof FileNotFoundException) {
+                        getLogger().warning("Prefs file removed in background "
+                                           + prefsFile.getPath());
+                        } else {
+                            throw new BackingStoreException(e);
+                        }
+                    }
+                    // Attempt succeeded; update state
+                    prefsCache = m;
+                    lastSyncTime = newLastSyncTime;
+                    return null;
+                }
+            });
+        } catch (PrivilegedActionException e) {
+            throw (BackingStoreException) e.getException();
         }
-        // Attempt succeeded; update state
-        prefsCache = m;
-        lastSyncTime = newLastSyncTime;
     }
 
     /**
@@ -604,21 +644,32 @@ class FileSystemPreferences extends AbstractPreferences {
      * and lastSyncTime will be unaffected by this call.  This call will
      * NEVER leave prefsFile in a corrupt state.
      */
+    @SuppressWarnings("removal")
     private void writeBackCache() throws BackingStoreException {
         try {
-            if (!dir.exists() && !dir.mkdirs())
-                throw new BackingStoreException(dir +
-                                                 " create failed.");
-            try (FileOutputStream fos = new FileOutputStream(tmpFile)) {
-                XmlSupport.exportMap(fos, prefsCache);
-            }
-            if (!tmpFile.renameTo(prefsFile))
-                throw new BackingStoreException("Can't rename " +
-                tmpFile + " to " + prefsFile);
-        } catch(BackingStoreException e) {
-            throw e;
-        } catch(Exception e) {
-            throw new BackingStoreException(e);
+            AccessController.doPrivileged(
+                new PrivilegedExceptionAction<Void>() {
+                public Void run() throws BackingStoreException {
+                    try {
+                        if (!dir.exists() && !dir.mkdirs())
+                            throw new BackingStoreException(dir +
+                                                             " create failed.");
+                        try (FileOutputStream fos = new FileOutputStream(tmpFile)) {
+                            XmlSupport.exportMap(fos, prefsCache);
+                        }
+                        if (!tmpFile.renameTo(prefsFile))
+                            throw new BackingStoreException("Can't rename " +
+                            tmpFile + " to " + prefsFile);
+                    } catch(Exception e) {
+                        if (e instanceof BackingStoreException)
+                            throw (BackingStoreException)e;
+                        throw new BackingStoreException(e);
+                    }
+                    return null;
+                }
+            });
+        } catch (PrivilegedActionException e) {
+            throw (BackingStoreException) e.getException();
         }
     }
 
@@ -627,15 +678,21 @@ class FileSystemPreferences extends AbstractPreferences {
         return prefsCache.keySet().toArray(new String[prefsCache.size()]);
     }
 
+    @SuppressWarnings("removal")
     protected String[] childrenNamesSpi() {
-        List<String> result = new ArrayList<>();
-        File[] dirContents = dir.listFiles();
-        if (dirContents != null) {
-            for (int i = 0; i < dirContents.length; i++)
-                if (dirContents[i].isDirectory())
-                    result.add(nodeName(dirContents[i].getName()));
-        }
-        return result.toArray(EMPTY_STRING_ARRAY);
+        return AccessController.doPrivileged(
+            new PrivilegedAction<String[]>() {
+                public String[] run() {
+                    List<String> result = new ArrayList<>();
+                    File[] dirContents = dir.listFiles();
+                    if (dirContents != null) {
+                        for (int i = 0; i < dirContents.length; i++)
+                            if (dirContents[i].isDirectory())
+                                result.add(nodeName(dirContents[i].getName()));
+                    }
+                    return result.toArray(EMPTY_STRING_ARRAY);
+               }
+            });
     }
 
     private static final String[] EMPTY_STRING_ARRAY = new String[0];
@@ -660,30 +717,42 @@ class FileSystemPreferences extends AbstractPreferences {
     /**
      * Called with file lock held (in addition to node locks).
      */
+    @SuppressWarnings("removal")
     protected void removeNodeSpi() throws BackingStoreException {
-        if (changeLog.contains(nodeCreate)) {
-            changeLog.remove(nodeCreate);
-            nodeCreate = null;
-            return;
+        try {
+            AccessController.doPrivileged(
+                new PrivilegedExceptionAction<Void>() {
+                public Void run() throws BackingStoreException {
+                    if (changeLog.contains(nodeCreate)) {
+                        changeLog.remove(nodeCreate);
+                        nodeCreate = null;
+                        return null;
+                    }
+                    if (!dir.exists())
+                        return null;
+                    prefsFile.delete();
+                    tmpFile.delete();
+                    // dir should be empty now.  If it's not, empty it
+                    File[] junk = dir.listFiles();
+                    if (junk.length != 0) {
+                        getLogger().warning(
+                           "Found extraneous files when removing node: "
+                            + Arrays.asList(junk));
+                        for (int i=0; i<junk.length; i++)
+                            junk[i].delete();
+                    }
+                    if (!dir.delete())
+                        throw new BackingStoreException("Couldn't delete dir: "
+                                                                         + dir);
+                    return null;
+                }
+            });
+        } catch (PrivilegedActionException e) {
+            throw (BackingStoreException) e.getException();
         }
-        if (!dir.exists())
-            return;
-        prefsFile.delete();
-        tmpFile.delete();
-        // dir should be empty now.  If it's not, empty it
-        File[] junk = dir.listFiles();
-        if (junk.length != 0) {
-            getLogger().warning(
-               "Found extraneous files when removing node: "
-                + Arrays.asList(junk));
-            for (int i=0; i<junk.length; i++)
-                junk[i].delete();
-        }
-        if (!dir.delete())
-            throw new BackingStoreException("Couldn't delete dir: "
-                                                             + dir);
     }
 
+    @SuppressWarnings("removal")
     public synchronized void sync() throws BackingStoreException {
         boolean userNode = isUserNode();
         boolean shared;
@@ -696,34 +765,58 @@ class FileSystemPreferences extends AbstractPreferences {
             shared = !isSystemRootWritable;
         }
         synchronized (isUserNode()? userLockFile:systemLockFile) {
-           if (!lockFile(shared)) {
-               throw (new BackingStoreException("Couldn't get file lock."));
-           }
-           long nmt;
-           if (isUserNode()) {
-               nmt = userRootModFile.lastModified();
-               isUserRootModified = userRootModTime == nmt;
-           } else {
-               nmt = systemRootModFile.lastModified();
-               isSystemRootModified = systemRootModTime == nmt;
-           }
-           final long newModTime = nmt;
+           if (!lockFile(shared))
+               throw(new BackingStoreException("Couldn't get file lock."));
+           final Long newModTime =
+                AccessController.doPrivileged(
+                    new PrivilegedAction<Long>() {
+               public Long run() {
+                   long nmt;
+                   if (isUserNode()) {
+                       nmt = userRootModFile.lastModified();
+                       isUserRootModified = userRootModTime == nmt;
+                   } else {
+                       nmt = systemRootModFile.lastModified();
+                       isSystemRootModified = systemRootModTime == nmt;
+                   }
+                   return nmt;
+               }
+           });
            try {
                super.sync();
-               if (isUserNode()) {
-                   userRootModTime = newModTime + 1000;
-                   userRootModFile.setLastModified(userRootModTime);
-               } else {
-                   systemRootModTime = newModTime + 1000;
-                   systemRootModFile.setLastModified(systemRootModTime);
-               }
+               AccessController.doPrivileged(new PrivilegedAction<Void>() {
+                   public Void run() {
+                   if (isUserNode()) {
+                       userRootModTime = newModTime.longValue() + 1000;
+                       userRootModFile.setLastModified(userRootModTime);
+                   } else {
+                       systemRootModTime = newModTime.longValue() + 1000;
+                       systemRootModFile.setLastModified(systemRootModTime);
+                   }
+                   return null;
+                   }
+               });
            } finally {
                 unlockFile();
            }
         }
     }
 
+    @SuppressWarnings("removal")
     protected void syncSpi() throws BackingStoreException {
+        try {
+            AccessController.doPrivileged(
+                new PrivilegedExceptionAction<Void>() {
+                public Void run() throws BackingStoreException {
+                    syncSpiPrivileged();
+                    return null;
+                }
+            });
+        } catch (PrivilegedActionException e) {
+            throw (BackingStoreException) e.getException();
+        }
+    }
+    private void syncSpiPrivileged() throws BackingStoreException {
         if (isRemoved())
             throw new IllegalStateException("Node has been removed");
         if (prefsCache == null)
