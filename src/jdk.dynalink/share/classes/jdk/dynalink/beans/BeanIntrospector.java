@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2010, 2021, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -63,6 +63,8 @@ package jdk.dynalink.beans;
 import java.lang.invoke.MethodHandle;
 import java.lang.reflect.Method;
 import java.lang.reflect.RecordComponent;
+import java.security.AccessController;
+import java.security.PrivilegedAction;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
@@ -84,12 +86,20 @@ class BeanIntrospector extends FacetIntrospector {
 
     @Override Collection<Method> getRecordComponentGetters() {
         if (clazz.isRecord()) {
-            final RecordComponent[] rcs = clazz.getRecordComponents();
-            return Arrays.stream(rcs)
-                .map(RecordComponent::getAccessor)
-                .map(membersLookup::getAccessibleMethod)
-                .filter(Objects::nonNull) // no accessible counterpart
-                .toList();
+            try {
+                // Need to use doPrivileged as getRecordComponents is rather strict.
+                @SuppressWarnings("removal")
+                final RecordComponent[] rcs = AccessController.doPrivileged(
+                    (PrivilegedAction<RecordComponent[]>) clazz::getRecordComponents);
+                return Arrays.stream(rcs)
+                    .map(RecordComponent::getAccessor)
+                    .map(membersLookup::getAccessibleMethod)
+                    .filter(Objects::nonNull) // no accessible counterpart
+                    .toList();
+            } catch (SecurityException e) {
+                // We couldn't execute getRecordComponents.
+                return List.of();
+            }
         } else {
             return List.of();
         }

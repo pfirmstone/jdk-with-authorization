@@ -63,6 +63,9 @@ package jdk.dynalink;
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodType;
 import java.lang.invoke.MutableCallSite;
+import java.security.AccessControlContext;
+import java.security.AccessController;
+import java.security.PrivilegedAction;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -76,6 +79,7 @@ import java.util.ServiceLoader;
 import java.util.Set;
 import java.util.function.Supplier;
 import jdk.dynalink.beans.BeansLinker;
+import jdk.dynalink.internal.AccessControlContextFactory;
 import jdk.dynalink.linker.GuardedInvocation;
 import jdk.dynalink.linker.GuardedInvocationTransformer;
 import jdk.dynalink.linker.GuardingDynamicLinker;
@@ -104,6 +108,10 @@ import jdk.dynalink.linker.support.TypeUtilities;
  * @since 9
  */
 public final class DynamicLinkerFactory {
+    @SuppressWarnings("removal")
+    private static final AccessControlContext GET_CLASS_LOADER_CONTEXT =
+            AccessControlContextFactory.createAccessControlContext("getClassLoader");
+
     /**
      * Default value for {@link #setUnstableRelinkThreshold(int) unstable relink
      * threshold}.
@@ -425,14 +433,17 @@ public final class DynamicLinkerFactory {
 
     private List<GuardingDynamicLinker> discoverAutoLoadLinkers() {
         autoLoadingErrors = new LinkedList<>();
-        final ClassLoader effectiveClassLoader =
-                classLoaderExplicitlySet ? classLoader : Thread.currentThread().getContextClassLoader();
+        final ClassLoader effectiveClassLoader = classLoaderExplicitlySet ? classLoader : getThreadContextClassLoader();
         final List<GuardingDynamicLinker> discovered = new LinkedList<>();
         try {
+            @SuppressWarnings("removal")
             final ServiceLoader<GuardingDynamicLinkerExporter> linkerLoader =
-                    (effectiveClassLoader == null)
-                ? ServiceLoader.loadInstalled(GuardingDynamicLinkerExporter.class)
-                : ServiceLoader.load(GuardingDynamicLinkerExporter.class, effectiveClassLoader);
+                    AccessController.doPrivileged((PrivilegedAction<ServiceLoader<GuardingDynamicLinkerExporter>>)()-> {
+                        if (effectiveClassLoader == null) {
+                            return ServiceLoader.loadInstalled(GuardingDynamicLinkerExporter.class);
+                        }
+                        return ServiceLoader.load(GuardingDynamicLinkerExporter.class, effectiveClassLoader);
+                    });
 
             for(final Iterator<GuardingDynamicLinkerExporter> it = linkerLoader.iterator(); it.hasNext();) {
                 try {
@@ -460,6 +471,13 @@ public final class DynamicLinkerFactory {
             autoLoadingErrors.add(e);
         }
         return discovered;
+    }
+
+    @SuppressWarnings("removal")
+    private static ClassLoader getThreadContextClassLoader() {
+        return AccessController.doPrivileged(
+            (PrivilegedAction<ClassLoader>) () -> Thread.currentThread().getContextClassLoader(),
+            GET_CLASS_LOADER_CONTEXT);
     }
 
     private static void addClasses(final Set<Class<? extends GuardingDynamicLinker>> knownLinkerClasses,
