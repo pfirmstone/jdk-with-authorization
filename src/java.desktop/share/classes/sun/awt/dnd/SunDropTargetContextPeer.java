@@ -56,6 +56,7 @@ import java.io.IOException;
 import java.io.InputStream;
 
 import sun.awt.AppContext;
+import sun.awt.AWTPermissions;
 import sun.awt.SunToolkit;
 import sun.awt.datatransfer.DataTransferer;
 import sun.awt.datatransfer.ToolkitThreadBlockedHandler;
