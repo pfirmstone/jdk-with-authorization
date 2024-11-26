@@ -98,6 +98,7 @@ import sun.print.PrintServiceLookupProvider;
 import sun.print.ServiceDialog;
 
 import java.awt.Frame;
+import java.io.FilePermission;
 
 import sun.java2d.Disposer;
 import sun.java2d.DisposerRecord;
@@ -1903,6 +1904,23 @@ public final class WPrinterJob extends RasterPrinterJob
 
     private int getMediaTrayAttrib() {
         return mAttMediaTray;
+    }
+
+
+
+    private boolean getPrintToFileEnabled() {
+        @SuppressWarnings("removal")
+        SecurityManager security = System.getSecurityManager();
+        if (security != null) {
+            FilePermission printToFilePermission =
+                new FilePermission("<<ALL FILES>>", "read,write");
+            try {
+                security.checkPermission(printToFilePermission);
+            } catch (SecurityException e) {
+                return false;
+            }
+        }
+        return true;
     }
 
     private void setNativeAttributes(int flags, int fields, int values) {

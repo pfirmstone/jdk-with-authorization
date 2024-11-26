@@ -72,6 +72,7 @@ jmethodID AwtPrintControl::getMinPageID;
 jmethodID AwtPrintControl::getCollateID;
 jmethodID AwtPrintControl::getOrientID;
 jmethodID AwtPrintControl::getQualityID;
+jmethodID AwtPrintControl::getPrintToFileEnabledID;
 jmethodID AwtPrintControl::getPrinterID;
 jmethodID AwtPrintControl::setPrinterID;
 jmethodID AwtPrintControl::getResID;
@@ -367,6 +368,11 @@ void AwtPrintControl::initIDs(JNIEnv *env, jclass cls)
       env->GetMethodID(cls, "getSelectAttrib", "()I");
     DASSERT(AwtPrintControl::getSelectID != NULL);
     CHECK_NULL(AwtPrintControl::getSelectID);
+
+    AwtPrintControl::getPrintToFileEnabledID =
+      env->GetMethodID(cls, "getPrintToFileEnabled", "()Z");
+    DASSERT(AwtPrintControl::getPrintToFileEnabledID != NULL);
+    CHECK_NULL(AwtPrintControl::getPrintToFileEnabledID);
 
     AwtPrintControl::setNativeAttID =
       env->GetMethodID(cls, "setNativeAttributes", "(III)V");
@@ -801,6 +807,11 @@ BOOL AwtPrintControl::InitPrintDialog(JNIEnv *env,
     // SunPageSelection (AWT)
     if (selectType != 0) {
       pd.Flags |= selectType;
+    }
+
+    if (!env->CallBooleanMethod(printCtrl,
+                                AwtPrintControl::getPrintToFileEnabledID)) {
+      pd.Flags |= PD_DISABLEPRINTTOFILE;
     }
 
     if (pd.hDevMode != NULL) {

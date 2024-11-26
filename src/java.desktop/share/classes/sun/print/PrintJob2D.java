@@ -42,6 +42,7 @@ import java.awt.print.PrinterException;
 import java.awt.print.PrinterJob;
 
 import java.io.File;
+import java.io.FilePermission;
 import java.io.IOException;
 
 import java.net.URI;
@@ -350,6 +351,7 @@ public class PrintJob2D extends PrintJob implements Printable, Runnable {
         // Verify that the app has access to the file system
         DestinationType dest= this.jobAttributes.getDestination();
         if (dest == DestinationType.FILE) {
+            throwPrintToFile();
 
             // check if given filename is valid
             String destStr = jobAttributes.getFileName();
@@ -1260,6 +1262,19 @@ public class PrintJob2D extends PrintJob implements Printable, Runnable {
             str = media.toString();
         }
         props.setProperty(PAPERSIZE_PROP, str);
+    }
+
+    private void throwPrintToFile() {
+        @SuppressWarnings("removal")
+        SecurityManager security = System.getSecurityManager();
+        FilePermission printToFilePermission = null;
+        if (security != null) {
+            if (printToFilePermission == null) {
+                printToFilePermission =
+                    new FilePermission("<<ALL FILES>>", "read,write");
+            }
+            security.checkPermission(printToFilePermission);
+        }
     }
 
 }

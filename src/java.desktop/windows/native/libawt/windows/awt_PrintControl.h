@@ -63,6 +63,7 @@ public:
     static jmethodID getCollateID;
     static jmethodID getOrientID;
     static jmethodID getQualityID;
+    static jmethodID getPrintToFileEnabledID;
     static jmethodID getPrinterID;
     static jmethodID setPrinterID;
     static jmethodID getResID;

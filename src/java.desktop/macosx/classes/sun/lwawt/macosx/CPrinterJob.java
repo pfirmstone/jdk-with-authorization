@@ -125,7 +125,7 @@ public final class CPrinterJob extends RasterPrinterJob {
             return super.printDialog(attributes);
         }
 
-        return jobSetup(getPageable());
+        return jobSetup(getPageable(), checkAllowedToPrintToFile());
     }
 
     /**
@@ -590,8 +590,8 @@ public final class CPrinterJob extends RasterPrinterJob {
      * dialog.
      * If the dialog is to use a set of attributes, useAttributes is true.
      */
-    private boolean jobSetup(Pageable doc) {
-        CPrinterDialog printerDialog = new CPrinterJobDialog(null, this, doc);
+    private boolean jobSetup(Pageable doc, boolean allowPrintToFile) {
+        CPrinterDialog printerDialog = new CPrinterJobDialog(null, this, doc, allowPrintToFile);
         printerDialog.setVisible(true);
         boolean result = printerDialog.getRetVal();
         printerDialog.dispose();
