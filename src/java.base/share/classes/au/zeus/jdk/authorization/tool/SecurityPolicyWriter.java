@@ -196,7 +196,7 @@ public class SecurityPolicyWriter extends CombinerSecurityManager{
         }
         p.put("java.io.tmpdir", System.getProperty("java.io.tmpdir"));
         p.put("java.home", System.getProperty("java.home"));
-        p.put("HOST", hostname);
+        if (hostname!= null) p.put("HOST", hostname);
 //        p.put("jsk.home", System.getProperty("jsk.home"));
 //        p.put("qa.home", System.getProperty("qa.home"));
         Map<String,String> paths = new HashMap<String,String>(p.size());

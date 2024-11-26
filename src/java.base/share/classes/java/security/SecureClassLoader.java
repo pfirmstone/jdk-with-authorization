@@ -26,6 +26,7 @@
 package java.security;
 
 import au.zeus.jdk.authorization.guards.LoadClassPermission;
+import au.zeus.jdk.authorization.policy.ConcurrentPermissions;
 import sun.security.util.Debug;
 
 import java.util.Map;
@@ -199,7 +200,7 @@ public class SecureClassLoader extends ClassLoader {
      */
     protected PermissionCollection getPermissions(CodeSource codesource)
     {
-        return new Permissions(); // ProtectionDomain defers the binding
+        return new ConcurrentPermissions(); // ProtectionDomain defers the binding
     }
 
     /*

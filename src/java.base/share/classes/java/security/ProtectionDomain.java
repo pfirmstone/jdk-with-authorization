@@ -39,6 +39,7 @@ import sun.security.provider.PolicyFile;
 import sun.security.util.Debug;
 import sun.security.util.FilePermCompat;
 import sun.security.util.SecurityConstants;
+import au.zeus.jdk.authorization.policy.ConcurrentPermissions;
 
 /**
  * The {@code ProtectionDomain} class encapsulates the characteristics of a
@@ -137,10 +138,10 @@ public class ProtectionDomain {
     private final Principal[] principals;
 
     /* the rights this protection domain is granted */
-    private PermissionCollection permissions;
+    private final PermissionCollection permissions;
 
     /* if the permissions object has AllPermission */
-    private boolean hasAllPerm = false;
+    private final boolean hasAllPerm;
 
     /*
      * An object used as a key when the ProtectionDomain is stored in a Map.
@@ -163,14 +164,14 @@ public class ProtectionDomain {
     public ProtectionDomain(CodeSource codesource,
                             PermissionCollection permissions) {
         this.codesource = codesource;
-        if (permissions != null) {
-            this.permissions = permissions;
-            this.permissions.setReadOnly();
-            if (permissions instanceof Permissions &&
-                ((Permissions)permissions).allPermission != null) {
-                hasAllPerm = true;
-            }
+        boolean hasAllP = false;
+        if (permissions != null) permissions.setReadOnly();
+        this.permissions = permissions;
+        if (permissions instanceof ConcurrentPermissions &&
+            ((ConcurrentPermissions)permissions).allPermission()) {
+            hasAllP = true;
         }
+        this.hasAllPerm = hasAllP;
         this.classloader = null;
         this.principals = new Principal[0];
     }
@@ -208,14 +209,14 @@ public class ProtectionDomain {
                             ClassLoader classloader,
                             Principal[] principals) {
         this.codesource = codesource;
-        if (permissions != null) {
-            this.permissions = permissions;
-            this.permissions.setReadOnly();
-            if (permissions instanceof Permissions &&
-                ((Permissions)permissions).allPermission != null) {
-                hasAllPerm = true;
-            }
+        boolean hasAllPerm = false;
+        if (permissions != null) permissions.setReadOnly();
+        this.permissions = permissions;
+        if (permissions instanceof ConcurrentPermissions &&
+            ((ConcurrentPermissions)permissions).allPermission()) {
+            hasAllPerm = true;
         }
+        this.hasAllPerm = hasAllPerm;
         this.classloader = classloader;
         this.principals = (principals != null ? principals.clone():
                            new Principal[0]);

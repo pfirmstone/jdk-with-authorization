@@ -150,6 +150,10 @@ class PrincipalGrant extends PermissionGrant implements Serializable{
 		/* Some complex permissions have quoted strings embedded or
 		literal carriage returns that must be escaped.  */
 		String name = p.getName();
+                if (p instanceof UnresolvedPermission unresolvedPermission){
+                    sb.append(name).append(" ");
+                    name = unresolvedPermission.getUnresolvedName();
+                }
 		if (p instanceof FilePermission && File.separatorChar == '\\'){
 		    name = name.replace("\\", "\\\\");
 		} else {
@@ -158,6 +162,9 @@ class PrincipalGrant extends PermissionGrant implements Serializable{
 		sb.append(name);
 	    }
 	    String actions = p.getActions();
+            if (p instanceof UnresolvedPermission unresolvedPermission){
+                actions = unresolvedPermission.getUnresolvedActions();
+            }
 	    if (actions != null && !"".equals(actions)){
 		sb.append("\", \"");
 		sb.append(actions);

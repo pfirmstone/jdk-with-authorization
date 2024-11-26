@@ -25,11 +25,8 @@
 package au.zeus.jdk.authorization.impl;
 
 
-import java.security.AccessController;
-import java.security.PrivilegedAction;
-import java.util.Locale;
-import java.util.MissingResourceException;
-import java.util.ResourceBundle;
+import java.util.Map;
+import java.util.HashMap;
 
 
 
@@ -48,20 +45,51 @@ import java.util.ResourceBundle;
  * @since 3.0.0
  */
 public class Messages {
-
-    // ResourceBundle holding the system messages.
-    static final private ResourceBundle bundle ;
     
-    static {
-        // Attempt to load the messages.
-        ResourceBundle rb = null;
-        try {
-            rb = setLocale(Locale.getDefault(),
-                    "sun.util.resources.messages"); //$NON-NLS-1$
-        } catch (Throwable e) {
-            System.err.println(e);
-        }
-        bundle = rb;
+    static final Map<String,String> messages = new HashMap<>();
+    
+    static{
+        //ConcurrentPolicyFile
+        messages.put("security.1A4","Unable to resolve Principal name: {0}");
+        messages.put("security.1A5","Unable to grant Permission: {0} {1}");
+        messages.put("security.1A6","Unable to resolve Signer name: {0}");
+        messages.put("security.1A7","Unable to resolve CodeSource name: {0}");
+        messages.put("security.1A8","Problem parsing policy: {0} {1}");
+        messages.put("security.1A9","Unable to process grant {0}");
+        messages.put("security.143","Error expanding alias : {0}");
+        messages.put("security.144","Self protocol is valid only in context of Principal-based grant entries");
+        messages.put("security.145","Unknown expansion protocol : {0}");
+        messages.put("security.146","No KeyStore to resolve signers : \"{0}\"");
+        messages.put("security.147","No KeyStore to resolve principal by alias : \"{0}\"");
+        messages.put("security.148","Invalid certificate for alias \"{0}\" : {1}. Only X509Certificate should be aliased to principals.");
+        messages.put("security.8A","Expected syntax is : keystore \"url\"[, \"type\"]");
+        messages.put("security.8B","Expected syntax is : signedby \"name1,...,nameN\"");
+        messages.put("security.8C","Expected syntax is : codebase \"url\"");
+        messages.put("security.8D","Expected syntax is : principal [class_name] \"principal_name\"");
+        messages.put("security.8E","Expected syntax is : permission permission_class_name [\"target_name\"] [, \"action_list\"] [, signedby \"name1,...,nameN\"]");
+        messages.put("security.8F","Unexpected token encountered: {0}. {1}");
+        messages.put("security.89","Expected entries are : \"grant\" or \"keystore\"");
+        messages.put("security.90","Unexpected token encountered: {0}");
+        messages.put("security.91","Class cannot be null or empty");
+        //Uri
+        messages.put("luni.82", "Relative path");
+        messages.put("luni.83", "Scheme expected");
+        messages.put("luni.84", "Scheme-specific part expected");
+        messages.put("luni.85", "Illegal character in scheme");
+        messages.put("luni.86", "{0} in schemeSpecificPart");
+        messages.put("luni.87", "{0} in authority");
+        messages.put("luni.88", "{0} in path");
+        messages.put("luni.89", "{0} in query");
+        messages.put("luni.8A", "{0} in fragment");
+        messages.put("luni.91", "URI is not absolute");
+        
+        messages.put("luni.9E", "method has not been implemented yet");
+        messages.put("luni.9F", "Authority expected");
+        messages.put("luni.A0", "Expected host");
+       
+        messages.put("luni.7D", "Incomplete % sequence");
+        messages.put("luni.7E", "Invalid % sequence ({0})");
+        messages.put("luni.7F", "Illegal character");
     }
 
     /**
@@ -72,14 +100,9 @@ public class Messages {
      * @return String the message for that key in the system message bundle.
      */
     static public String getString(String msg) {
-        if (bundle == null) {
-            return msg;
-        }
-        try {
-            return bundle.getString(msg);
-        } catch (MissingResourceException e) {
-            return "Missing message: " + msg; //$NON-NLS-1$
-        }
+        String result = messages.get(msg);
+        if (result != null) return result;
+        return msg;
     }
 
     /**
@@ -146,17 +169,8 @@ public class Messages {
      * @return String the message for that key in the system message bundle.
      */
     static public String getString(String msg, Object[] args) {
-        String format = msg;
-
-        if (bundle != null) {
-            try {
-                format = bundle.getString(msg);
-            } catch (MissingResourceException e) {
-                System.err.println(e);
-            }
-        }
-
-        return format(format, args);
+        if (args!= null) return format(getString(msg), args);
+        return getString(msg);
     }
     
     /**
@@ -229,30 +243,5 @@ public class Messages {
         }
         return answer.toString();
     }
-
-    /**
-     * Changes the locale of the messages.
-     * 
-     * @param locale
-     *            Locale the locale to change to.
-     */
-    @SuppressWarnings("removal")
-    static public ResourceBundle setLocale(final Locale locale,
-            final String resource) {
-        try {
-            final ClassLoader loader = null;
-            return (ResourceBundle) AccessController
-                    .doPrivileged(new PrivilegedAction<Object>() {
-                        public Object run() {
-                            return ResourceBundle.getBundle(resource, locale,
-                                    loader != null ? loader : ClassLoader.getSystemClassLoader());
-                        }
-                    });
-        } catch (MissingResourceException e) {
-            System.err.println(e);
-        }
-        return null;
-    }
-
 
 }

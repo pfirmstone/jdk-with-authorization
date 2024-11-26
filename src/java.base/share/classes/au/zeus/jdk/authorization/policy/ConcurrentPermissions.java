@@ -18,6 +18,7 @@
 
 package au.zeus.jdk.authorization.policy;
 
+import java.lang.reflect.InvocationTargetException;
 import java.security.AllPermission;
 import java.security.Permission;
 import java.security.PermissionCollection;
@@ -36,6 +37,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ConcurrentSkipListSet;
 import java.util.concurrent.atomic.AtomicInteger;
+import sun.security.util.Debug;
 
 
 /**
@@ -77,7 +79,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  * @serial permsMap
  */
 @SuppressWarnings({"rawtypes","serial"})
-final class ConcurrentPermissions extends PermissionCollection {
+public final class ConcurrentPermissions extends PermissionCollection {
 
     /* unresolved is never returned or allowed to escape, it's elements() method
      * isn't used to return an Enumeration yet 
@@ -91,6 +93,7 @@ final class ConcurrentPermissions extends PermissionCollection {
     private final PermissionPendingResolutionCollection unresolved;
     private final ConcurrentMap<Class<?>, PermissionCollection> permsMap;
     private volatile boolean allPermission;
+    private static final Debug DEBUG = Debug.getInstance("access");
     
     /* Let Permissions, UnresolvedPermission and 
      * UnresolvedPermissionCollection resolve all unresolved permission's
@@ -98,19 +101,23 @@ final class ConcurrentPermissions extends PermissionCollection {
      * a Permissions object instance to handle all UnresolvedPermissions.
      */    
     
-    ConcurrentPermissions(){
+    public ConcurrentPermissions(){
         permsMap = new ConcurrentHashMap<Class<?>, PermissionCollection>();
         // Bite the bullet, get the pain out of the way in the beginning!
         unresolved = new PermissionPendingResolutionCollection();
         allPermission = false;      
     }
     
-    ConcurrentPermissions(int initialCapacity, float loadFactor, int concurrencyLevel, int unresolvedClassCount){
+    public ConcurrentPermissions(int initialCapacity, float loadFactor, int concurrencyLevel, int unresolvedClassCount){
         permsMap = new ConcurrentHashMap<Class<?>, PermissionCollection>
                 (initialCapacity, loadFactor, concurrencyLevel);
         // Bite the bullet, get the pain out of the way in the beginning!
         unresolved = new PermissionPendingResolutionCollection(unresolvedClassCount, loadFactor, concurrencyLevel);
         allPermission = false;
+    }
+    
+    public boolean allPermission(){
+        return allPermission;
     }
     
     /**
@@ -322,13 +329,13 @@ final class ConcurrentPermissions extends PermissionCollection {
     
     private static class PermissionPendingResolution extends Permission {
             private static final long serialVersionUID = 1L;
-            private String name; //Target name of underlying permission
-            private String actions;
+            private final String name; //Target name of underlying permission
+            private final String actions;
             /* We have our own array copy of certs, prevents unnecessary 
              * array creation every time .getUnresolvedCerts() is called.
              */ 
-            private Certificate [] targetCerts;
-            private UnresolvedPermission unresolvedPermission;
+            private final Certificate [] targetCerts;
+            private final UnresolvedPermission unresolvedPermission;
 
         PermissionPendingResolution(UnresolvedPermission up){
             super(up.getUnresolvedType());
@@ -344,8 +351,20 @@ final class ConcurrentPermissions extends PermissionCollection {
             if (PolicyUtils.matchSubset( targetCerts, targetType.getSigners())) {
                 try {
                      return PolicyUtils.instantiatePermission(targetType, name, actions);
-                } catch (Exception ignore) {
-                    //TODO log warning?
+                } catch (IllegalAccessException | IllegalArgumentException |
+                        InstantiationException | InvocationTargetException ignore) 
+                {
+                    if (DEBUG != null){
+                        ignore.fillInStackTrace();
+                        StringBuilder sb = new StringBuilder();
+                        sb.append("ConcurrentPermissions unable to instantiate permission");
+                        sb.append('\n');
+                        sb.append(targetType.toString());
+                        sb.append('\n');
+                        sb.append(ignore.getMessage());
+                        DEBUG.println(sb.toString());
+                    }
+                    
                 }
             }
             return null;
@@ -387,11 +406,11 @@ final class ConcurrentPermissions extends PermissionCollection {
     
     private static class PermissionPendingResolutionCollection  extends PermissionCollection {
         private static final long serialVersionUID = 1L;
-        private ConcurrentHashMap<String,Collection<PermissionPendingResolution>> klasses;
+        private final ConcurrentHashMap<String,Collection<PermissionPendingResolution>> klasses;
         // This is a best effort counter, it doesn't try to identify duplicates.
         // If it equals 0, it definitely has no pendings, however it may be greater
         // than 0 and have no pending Permission's for resolution.
-        private AtomicInteger pending;
+        private final AtomicInteger pending;
         PermissionPendingResolutionCollection(){
             klasses = new ConcurrentHashMap<String,Collection<PermissionPendingResolution>>(2);
             pending = new AtomicInteger(0);
@@ -447,6 +466,9 @@ final class ConcurrentPermissions extends PermissionCollection {
             String klass = target.getClass().getName();
             Collection<PermissionPendingResolution> klassMates = klasses.remove(klass);
             if (klassMates != null) {       
+                if (DEBUG != null) {
+                    DEBUG.println("Resolving Unresolved Permission " + klass);
+                }
                 for (Iterator<PermissionPendingResolution> iter = klassMates.iterator(); iter.hasNext();) {
                     PermissionPendingResolution element = iter.next();
                     Permission resolved = element.resolve(target.getClass());

@@ -51,12 +51,6 @@ import java.util.List;
 import java.util.Properties;
 import java.util.Set;
 import java.util.StringTokenizer;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.LinkedBlockingQueue;
-import java.util.concurrent.ThreadPoolExecutor;
-import java.util.concurrent.TimeUnit;
-import java.lang.System.Logger;
-import java.lang.System.Logger.Level;
 
 import au.zeus.jdk.net.Uri;
 import au.zeus.jdk.authorization.policy.DefaultPolicyScanner.GrantEntry;
@@ -64,8 +58,8 @@ import au.zeus.jdk.authorization.policy.DefaultPolicyScanner.KeystoreEntry;
 import au.zeus.jdk.authorization.policy.DefaultPolicyScanner.PermissionEntry;
 import au.zeus.jdk.authorization.policy.DefaultPolicyScanner.PrincipalEntry;
 import au.zeus.jdk.authorization.policy.PolicyUtils.ExpansionFailedException;
-import au.zeus.jdk.thread.NamedThreadFactory;
 
+import sun.security.util.Debug;
 
 /**
  * This is a basic loader of policy files. It delegates lexical analysis to 
@@ -89,10 +83,11 @@ import au.zeus.jdk.thread.NamedThreadFactory;
  */
 @SuppressWarnings({"rawtypes", "unchecked", "removal", "deprecation"})
 public class DefaultPolicyParser implements PolicyParser {
-    // Delay logging until after the policy and security manager are constructed.
-    final ExecutorService logExec;
+    
     // Pluggable scanner for a specific file format
     private final DefaultPolicyScanner scanner;
+    
+    private static final Debug DEBUG = Debug.getInstance("policy");
 
     /** 
      * Default constructor, 
@@ -107,12 +102,6 @@ public class DefaultPolicyParser implements PolicyParser {
      * Extension constructor for plugging-in custom scanner.
      */
     DefaultPolicyParser(DefaultPolicyScanner s) {
-	this.logExec = 
-//		Executors.newScheduledThreadPool(0,
-		new ThreadPoolExecutor(0, 1, 1L, TimeUnit.SECONDS,
-		    new LinkedBlockingQueue(),
-		    new NamedThreadFactory("JGDMS Policy logger", true)
-		);
         this.scanner = s;
     }
 
@@ -133,7 +122,7 @@ public class DefaultPolicyParser implements PolicyParser {
      */
     public Collection<PermissionGrant> parse(URL location, Properties system)
             throws Exception {
-	log(Level.DEBUG, "\nDefaultPolicyParser::parse policy: " + location + "\n");
+	if (DEBUG != null) log("\nDefaultPolicyParser::parse policy: " + location + "\n");
         boolean resolve = PolicyUtils.canExpandProperties();
         Reader r = new BufferedReader(new InputStreamReader(
                 AccessController
@@ -167,10 +156,10 @@ public class DefaultPolicyParser implements PolicyParser {
 		// is evident, for example in an operating environment
 		// with a misconfigured policy, it's better to fail 
 		// immediately than to experience a problem later.
-		log(Level.INFO, "security.1A9", new Object[]{ge}, e);
+		log("security.1A9", new Object[]{ge}, e);
 	    }
 	}
-        log(Level.DEBUG, result.toString());
+        if (DEBUG != null) log(result.toString());
         return result;
     }
 
@@ -225,7 +214,7 @@ public class DefaultPolicyParser implements PolicyParser {
                         codebases.add(getURI(it.next()));
                     }
                 } catch (ExpansionFailedException e) {
-                    log(Level.INFO, "security.1A7", new Object[]{e.getMessage()});
+                    if (DEBUG != null) log("security.1A7", new Object[]{e.getMessage()});
                 }
             } else {
                 codebases.add(getURI(cb));
@@ -238,7 +227,7 @@ public class DefaultPolicyParser implements PolicyParser {
 		    signerString = PolicyUtils.expand(signerString, system);
 		}
 	    } catch (ExpansionFailedException e){
-		log(Level.INFO, "security.1A6", new Object[]{e.getMessage()});
+		if (DEBUG != null) log("security.1A6", new Object[]{e.getMessage()});
 	    }
             
 	    StringTokenizer snt = new StringTokenizer(signerString, ",");
@@ -260,7 +249,7 @@ public class DefaultPolicyParser implements PolicyParser {
 			principalName = PolicyUtils.expand(principalName, system);
 		    }
 		} catch (ExpansionFailedException e){
-		    log(Level.INFO, "security.1A4", new Object[]{e.getMessage()});
+		    if (DEBUG != null) log("security.1A4", new Object[]{e.getMessage()});
 		}
 		if (principalClass == null) {
 		    principals.add(getPrincipalByAlias(ks, principalName));
@@ -277,10 +266,10 @@ public class DefaultPolicyParser implements PolicyParser {
                 try {
                     permissions.add(resolvePermission(pe, ge, ks, system, resolve));
                 } catch (ExpansionFailedException e){
-		    log(Level.INFO, "security.1A5", new Object[]{pe.toString(),e.getMessage()});
+		    if (DEBUG != null) log("security.1A5", new Object[]{pe.toString(),e.getMessage()});
 		} catch (Exception e) {
                     if ( e instanceof SecurityException ) throw (SecurityException) e;
-                    log(Level.INFO, "security.1A5", new Object[]{pe.toString(),e.getMessage()});
+                    if (DEBUG != null) log("security.1A5", new Object[]{pe.toString(),e.getMessage()});
                 }
             }
         }
@@ -584,60 +573,45 @@ public class DefaultPolicyParser implements PolicyParser {
 		return ks;
 	    }
 	    catch (ExpansionFailedException e) {
-		log(Level.INFO, "security.8A", e);
+		if (DEBUG != null) log("security.8A", e);
 	    } catch (KeyStoreException e) {
-		log(Level.INFO, "security.8A", e);
+		if (DEBUG != null) log("security.8A", e);
 	    } catch (PrivilegedActionException e) {
-		log(Level.INFO, "security.8A", e);
+		if (DEBUG != null) log("security.8A", e);
 	    } catch (IOException e) {
-		log(Level.INFO, "security.8A", e);
+		if (DEBUG != null) log("security.8A", e);
 	    } catch (NoSuchAlgorithmException e) {
-		log(Level.INFO, "security.8A", e);
+		if (DEBUG != null) log("security.8A", e);
 	    } catch (CertificateException e) {
-		log(Level.INFO, "security.8A", e);
+		if (DEBUG != null) log("security.8A", e);
 	    }
 	}
         return null;
     }
     
-    void log(Level level, String message){
-        log(level, message, null, null);
+    void log(String message){
+        log(message, null, null);
     }
     
-    void log(Level level, String message, Throwable thrown){
-        log(level, message, null, thrown);
+    void log(String message, Throwable thrown){
+        log(message, null, thrown);
     }
     
-    void log(Level level, String message, Object[] parameters){
-        log(level, message, parameters, null);
+    void log(String message, Object[] parameters){
+        log(message, parameters, null);
     }
     
-    void log(final Level level,
-		    final String message,
-		    final Object[] parameters,
-		    final Throwable thrown)
+    void log(   final String message,
+                final Object[] parameters,
+                final Throwable thrown)
     {
-	logExec.submit(
-	    new Runnable(){
-		public void run() {
-                    try {
-		    Logger logger = System.getLogger("au.zeus.jdk.authorization.policy");
-		    if (logger.isLoggable(level)){
-			logger.log(
-			    level,
-			    Messages.getString(message, parameters),
-			    thrown);
-                    }
-                    } catch (SecurityException e){
-                        // If there's a syntax error in the policy file that
-                        // grants permission to access the logger, there will
-                        // be no information for debugging.
-                        System.err.println(Messages.getString(message, parameters));
-                        if (thrown != null) thrown.printStackTrace(System.err);
-                    }
-                }
-	    }
-	);
+        if (DEBUG != null){
+            StringBuilder sb = new StringBuilder();
+            sb.append(Messages.getString(message, parameters));
+            sb.append('\n');
+            if (thrown != null ) sb.append(thrown.getMessage());
+            DEBUG.println(sb.toString());
+        }
     }
-    
+            
 }

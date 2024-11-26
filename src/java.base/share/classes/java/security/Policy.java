@@ -32,6 +32,7 @@ import java.util.Objects;
 import sun.security.jca.GetInstance;
 import sun.security.util.Debug;
 import sun.security.util.SecurityConstants;
+import au.zeus.jdk.authorization.policy.ConcurrentPolicyFile;
 
 
 /**
@@ -131,7 +132,7 @@ public abstract class Policy {
 
     // Default policy provider
     private static final String DEFAULT_POLICY =
-        "sun.security.provider.PolicyFile";
+        "au.zeus.jdk.authorization.policy.ConcurrentPolicyFile";
 
     // Cache mapping ProtectionDomain.Key to PermissionCollection
     private WeakHashMap<ProtectionDomain.Key, PermissionCollection> pdMapping;
@@ -222,9 +223,18 @@ public abstract class Policy {
         if (policyProvider == null || policyProvider.isEmpty() ||
             policyProvider.equals(DEFAULT_POLICY))
         {
-            Policy polFile = new sun.security.provider.PolicyFile();
-            policyInfo = new PolicyInfo(polFile, true);
-            return polFile;
+            Policy polFile;
+            try {        
+                polFile = new ConcurrentPolicyFile();
+                policyInfo = new PolicyInfo(polFile, true);
+                return polFile;
+            } catch (Exception e){
+                if (debug != null) {
+                    debug.println("policy provider " + policyProvider +
+                                  " not available");
+                    e.printStackTrace();
+                }
+            }
         }
 
         /*
@@ -232,8 +242,17 @@ public abstract class Policy {
          * the system class loader. While doing so, install the bootstrap
          * provider to avoid potential recursion.
          */
-        Policy polFile = new sun.security.provider.PolicyFile();
-        policyInfo = new PolicyInfo(polFile, false);
+        Policy polFile = null;
+        try {        
+            polFile = new ConcurrentPolicyFile();
+            policyInfo = new PolicyInfo(polFile, false);
+        } catch (Exception e){
+            if (debug != null) {
+                debug.println("policy provider " + policyProvider +
+                              " not available");
+                e.printStackTrace();
+            }
+        }
 
         @SuppressWarnings("removal")
         Policy pol = AccessController.doPrivileged(new PrivilegedAction<>() {
