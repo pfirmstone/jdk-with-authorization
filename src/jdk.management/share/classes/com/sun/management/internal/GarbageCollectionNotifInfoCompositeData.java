@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2011, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2011, 2021, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -33,6 +33,8 @@ import javax.management.openmbean.CompositeDataSupport;
 import javax.management.openmbean.OpenDataException;
 import javax.management.openmbean.OpenType;
 import javax.management.openmbean.SimpleType;
+import java.security.AccessController;
+import java.security.PrivilegedAction;
 import java.lang.reflect.Field;
 import java.util.HashMap;
 import sun.management.LazyCompositeData;
@@ -63,17 +65,19 @@ public class GarbageCollectionNotifInfoCompositeData extends LazyCompositeData {
     }
 
     private CompositeType getCompositeTypeByBuilder() {
-
-        GcInfoBuilder builder = null;
-        try {
-            Class<?> cl = Class.forName("com.sun.management.GcInfo");
-            Field f = cl.getDeclaredField("builder");
-            f.setAccessible(true);
-            builder = (GcInfoBuilder) f.get(gcNotifInfo.getGcInfo());
-        } catch (ClassNotFoundException | NoSuchFieldException | IllegalAccessException e) {
-            // ignore
-        }
-
+        @SuppressWarnings("removal")
+        final GcInfoBuilder builder = AccessController.doPrivileged (new PrivilegedAction<GcInfoBuilder>() {
+                public GcInfoBuilder run() {
+                    try {
+                        Class<?> cl = Class.forName("com.sun.management.GcInfo");
+                        Field f = cl.getDeclaredField("builder");
+                        f.setAccessible(true);
+                        return (GcInfoBuilder)f.get(gcNotifInfo.getGcInfo());
+                    } catch(ClassNotFoundException | NoSuchFieldException | IllegalAccessException e) {
+                        return null;
+                    }
+                }
+            });
         CompositeType gict = null;
         synchronized(compositeTypeByBuilder) {
             gict = compositeTypeByBuilder.get(builder);
