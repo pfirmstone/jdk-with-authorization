@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2015, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2015, 2022, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -28,6 +28,8 @@ package sun.security.ssl;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.charset.Charset;
+import java.security.AccessController;
+import java.security.PrivilegedAction;
 import java.security.Security;
 import java.util.*;
 import javax.net.ssl.SSLEngine;
@@ -61,7 +63,10 @@ final class AlpnExtension {
     static final Charset alpnCharset;
 
     static {
-        String alpnCharsetString = Security.getProperty("jdk.tls.alpnCharset");
+        @SuppressWarnings("removal")
+        String alpnCharsetString = AccessController.doPrivileged(
+                (PrivilegedAction<String>) ()
+                        -> Security.getProperty("jdk.tls.alpnCharset"));
         if ((alpnCharsetString == null)
                 || (alpnCharsetString.length() == 0)) {
             alpnCharsetString = "ISO_8859_1";

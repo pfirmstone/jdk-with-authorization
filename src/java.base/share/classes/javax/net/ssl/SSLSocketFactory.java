@@ -33,6 +33,8 @@ import java.io.InputStream;
 import java.security.*;
 import java.util.Locale;
 
+import sun.security.action.GetPropertyAction;
+
 /**
  * <code>SSLSocketFactory</code>s create <code>SSLSocket</code>s.
  *
@@ -44,7 +46,7 @@ public abstract class SSLSocketFactory extends SocketFactory {
     static final boolean DEBUG;
 
     static {
-        String s = System.getProperty(
+        String s = GetPropertyAction.privilegedGetProperty(
                 "javax.net.debug", "").toLowerCase(Locale.ENGLISH);
         DEBUG = s.contains("all") || s.contains("ssl");
     }
@@ -84,15 +86,18 @@ public abstract class SSLSocketFactory extends SocketFactory {
         }
     }
 
+    @SuppressWarnings("removal")
     static String getSecurityProperty(final String name) {
-        String s = Security.getProperty(name);
-        if (s != null) {
-            s = s.trim();
-            if (s.isEmpty()) {
-                s = null;
+        return AccessController.doPrivileged((PrivilegedAction<String>) () -> {
+            String s = Security.getProperty(name);
+            if (s != null) {
+                s = s.trim();
+                if (s.isEmpty()) {
+                    s = null;
+                }
             }
-        }
-        return s;
+            return s;
+        });
     }
 
     /**
