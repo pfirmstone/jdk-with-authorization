@@ -21,6 +21,8 @@ This project's objectives are to maintain a community fork of OpenJDK that retai
 ### Auditing
 - Audit your policy file for possible security issues.
 - Deploy using your automatically generated and audited policy files.
+- When auditing your policy files, identify permissions with limited scope that will need expanding, such as FilePermission of temporary files, or SocketPermission.
+- Run the auditing tool multiple times, each time marking where the last policy was updated, this will help identify permissions that require a wider scope as these permissions will be added each audit test cycle.
 
 ### Deploy with high scaling, efficient implementations of SecurityManager and Policy.
 -Djava.security.manager=default,
