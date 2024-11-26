@@ -694,6 +694,7 @@ public abstract class SunToolkit extends Toolkit
     static final SoftCache urlImgCache = new SoftCache();
 
     static Image getImageFromHash(Toolkit tk, URL url) {
+        checkPermissions(url);
         synchronized (urlImgCache) {
             String key = url.toString();
             Image img = (Image)urlImgCache.get(key);
@@ -772,6 +773,7 @@ public abstract class SunToolkit extends Toolkit
 
     @Override
     public Image createImage(URL url) {
+        checkPermissions(url);
         return createImage(new URLImageSource(url));
     }
 
@@ -888,6 +890,7 @@ public abstract class SunToolkit extends Toolkit
     @SuppressWarnings("try")
     protected static boolean imageExists(URL url) {
         if (url != null) {
+            checkPermissions(url);
             try (InputStream is = url.openStream()) {
                 return true;
             }catch(IOException e){
@@ -902,6 +905,22 @@ public abstract class SunToolkit extends Toolkit
         SecurityManager security = System.getSecurityManager();
         if (security != null) {
             security.checkRead(filename);
+        }
+    }
+
+    private static void checkPermissions(URL url) {
+        @SuppressWarnings("removal")
+        SecurityManager sm = System.getSecurityManager();
+        if (sm != null) {
+            try {
+                java.security.Permission perm =
+                    URLUtil.getConnectPermission(url);
+                if (perm != null) {
+                    sm.checkPermission(perm);
+                }
+            } catch (java.io.IOException ioe) {
+                sm.checkConnect(url.getHost(), url.getPort());
+            }
         }
     }
 
