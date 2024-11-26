@@ -620,40 +620,6 @@ public final class Loader extends SecureClassLoader {
         }
     }
 
-
-    // -- permissions
-
-    /**
-     * Returns the permissions for the given CodeSource.
-     */
-    @Override
-    protected PermissionCollection getPermissions(CodeSource cs) {
-        PermissionCollection perms = super.getPermissions(cs);
-
-        URL url = cs.getLocation();
-        if (url == null)
-            return perms;
-
-        // add the permission to access the resource
-        try {
-            Permission p = url.openConnection().getPermission();
-            if (p != null) {
-                // for directories then need recursive access
-                if (p instanceof FilePermission) {
-                    String path = p.getName();
-                    if (path.endsWith(File.separator)) {
-                        path += "-";
-                        p = new FilePermission(path, "read");
-                    }
-                }
-                perms.add(p);
-            }
-        } catch (IOException ioe) { }
-
-        return perms;
-    }
-
-
     // -- miscellaneous supporting methods
 
     /**

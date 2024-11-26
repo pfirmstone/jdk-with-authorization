@@ -998,16 +998,6 @@ public class BuiltinClassLoader
         return "true".equalsIgnoreCase(sealed);
     }
 
-    // -- permissions
-
-    /**
-     * Returns the permissions for the given CodeSource.
-     */
-    @Override
-    protected PermissionCollection getPermissions(CodeSource cs) {
-        return new LazyCodeSourcePermissionCollection(super.getPermissions(cs), cs);
-    }
-
     // -- miscellaneous supporting methods
 
     /**

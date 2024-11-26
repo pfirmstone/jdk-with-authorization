@@ -193,12 +193,6 @@ public final class MethodUtil extends SecureClassLoader {
         return defineClass(name, b, 0, b.length, cs);
     }
 
-    protected PermissionCollection getPermissions(CodeSource codesource) {
-        PermissionCollection perms = super.getPermissions(codesource);
-        perms.add(new AllPermission());
-        return perms;
-    }
-
     private static Class<?> getTrampolineClass() {
         try {
             return Class.forName(TRAMPOLINE, true, new MethodUtil());
