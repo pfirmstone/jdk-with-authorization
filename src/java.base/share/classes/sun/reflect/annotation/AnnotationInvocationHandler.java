@@ -31,6 +31,8 @@ import java.lang.reflect.*;
 import java.io.Serializable;
 import java.util.*;
 import java.util.stream.*;
+import java.security.AccessController;
+import java.security.PrivilegedAction;
 
 /**
  * InvocationHandler for dynamic proxy implementation of Annotation.
@@ -479,11 +481,16 @@ class AnnotationInvocationHandler implements InvocationHandler, Serializable {
         return value;
     }
 
+    @SuppressWarnings("removal")
     private Method[] computeMemberMethods() {
-        final Method[] methods = type.getDeclaredMethods();
-        validateAnnotationMethods(methods);
-        AccessibleObject.setAccessible(methods, true);
-        return methods;
+        return AccessController.doPrivileged(
+            new PrivilegedAction<Method[]>() {
+                public Method[] run() {
+                    final Method[] methods = type.getDeclaredMethods();
+                    validateAnnotationMethods(methods);
+                    AccessibleObject.setAccessible(methods, true);
+                    return methods;
+                }});
     }
 
     private transient volatile Method[] memberMethods;
