@@ -27,7 +27,7 @@ package java.beans;
 import java.util.*;
 import java.lang.reflect.*;
 import java.util.Objects;
-import sun.reflect.misc.MethodUtil;
+import sun.reflect.misc.*;
 
 
 /**
@@ -222,6 +222,9 @@ public class DefaultPersistenceDelegate extends PersistenceDelegate {
     // Write out the properties of this instance.
     private void initBean(Class<?> type, Object oldInstance, Object newInstance, Encoder out) {
         for (Field field : type.getFields()) {
+            if (!ReflectUtil.isPackageAccessible(field.getDeclaringClass())) {
+                continue;
+            }
             int mod = field.getModifiers();
             if (Modifier.isFinal(mod) || Modifier.isStatic(mod) || Modifier.isTransient(mod)) {
                 continue;

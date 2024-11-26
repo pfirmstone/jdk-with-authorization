@@ -54,6 +54,7 @@ import java.security.AccessControlContext;
 import java.security.PrivilegedAction;
 
 import sun.reflect.misc.MethodUtil;
+import sun.reflect.misc.ReflectUtil;
 import sun.swing.SwingAccessor;
 import sun.swing.SwingUtilities2;
 
@@ -710,6 +711,7 @@ public class UIDefaults extends Hashtable<Object,Object>
         try {
             String className = (String)get(uiClassID);
             if (className != null) {
+                ReflectUtil.checkPackageAccess(className);
 
                 Class<?> cls = (Class)get(className);
                 if (cls == null) {

@@ -24,6 +24,8 @@
  */
 package com.sun.beans.finder;
 
+import static sun.reflect.misc.ReflectUtil.checkPackageAccess;
+
 /**
  * This is utility class that provides {@code static} methods
  * to find a class with the specified name using the specified class loader.
@@ -54,6 +56,7 @@ public final class ClassFinder {
      * @see Thread#getContextClassLoader()
      */
     public static Class<?> findClass(String name) throws ClassNotFoundException {
+        checkPackageAccess(name);
         try {
             ClassLoader loader = Thread.currentThread().getContextClassLoader();
             if (loader == null) {
@@ -92,6 +95,7 @@ public final class ClassFinder {
      * @see Class#forName(String,boolean,ClassLoader)
      */
     public static Class<?> findClass(String name, ClassLoader loader) throws ClassNotFoundException {
+        checkPackageAccess(name);
         if (loader != null) {
             try {
                 return Class.forName(name, false, loader);

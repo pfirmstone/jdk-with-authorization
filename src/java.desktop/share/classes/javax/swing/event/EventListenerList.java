@@ -33,6 +33,8 @@ import java.io.Serializable;
 import java.lang.reflect.Array;
 import java.util.EventListener;
 
+import sun.reflect.misc.ReflectUtil;
+
 /**
  * A class that holds a list of EventListeners.  A single instance
  * can be used to hold all listeners (of all types) for the instance
@@ -301,6 +303,7 @@ public class EventListenerList implements Serializable {
             ClassLoader cl = Thread.currentThread().getContextClassLoader();
             EventListener l = (EventListener)s.readObject();
             String name = (String) listenerTypeOrNull;
+            ReflectUtil.checkPackageAccess(name);
             @SuppressWarnings("unchecked")
             Class<EventListener> tmp = (Class<EventListener>)Class.forName(name, true, cl);
             add(tmp, l);

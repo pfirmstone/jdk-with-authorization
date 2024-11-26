@@ -29,6 +29,8 @@ import java.lang.ref.SoftReference;
 import java.lang.ref.WeakReference;
 import java.lang.reflect.Method;
 
+import static sun.reflect.misc.ReflectUtil.isPackageAccessible;
+
 final class MethodRef {
     private String signature;
     private SoftReference<Method> methodRef;
@@ -66,7 +68,7 @@ final class MethodRef {
             }
             this.methodRef = new SoftReference<>(method);
         }
-        return method;
+        return isPackageAccessible(method.getDeclaringClass()) ? method : null;
     }
 
     private static Method find(Class<?> type, String signature) {
