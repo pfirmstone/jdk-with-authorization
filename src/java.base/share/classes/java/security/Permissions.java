@@ -16,7 +16,7 @@
  * limitations under the License.
  */
 
-package au.zeus.jdk.authorization.policy;
+package java.security;
 
 import java.lang.reflect.InvocationTargetException;
 import java.security.AllPermission;
@@ -41,7 +41,10 @@ import sun.security.util.Debug;
 
 
 /**
- * ConcurrentPermissions is a drop in replacement for java.security.Permissions
+ * ConcurrentPermissions was a drop in replacement for java.security.Permissions
+ * 
+ * Its a PermissionCollection capable of containing various PermissionCollection
+ * types and resolving UnresolvedPermission.
  * 
  * ConcurrentPermissions was originally intended to be used as a policy cache, it turns out
  * that a policy cache was not needed, due to the efficiency of package private
@@ -58,7 +61,8 @@ import sun.security.util.Debug;
  * a method in AbstractPolicy is provided so external policy providers can 
  * take advantage, without this class being public.
  * 
- * This class may be removed in a future version of River.
+ * This class was stolen from Apache River, which stole it from Apache Harmony 
+ * and now it is included in OpenJDK with Authorization.
  * 
  * If there is heavy contention for one Permission class
  * type, concurrency may suffer due to internal synchronization.
@@ -75,7 +79,7 @@ import sun.security.util.Debug;
  * @version 0.6 2018/05/15
  * 
  * @author Peter Firmstone
- * @since 3.0.0
+ * @since 24
  * @serial permsMap
  */
 @SuppressWarnings({"rawtypes","serial"})
@@ -101,14 +105,21 @@ public final class Permissions extends PermissionCollection {
      * a Permissions object instance to handle all UnresolvedPermissions.
      */    
     
-    public ConcurrentPermissions(){
+    /**
+     * Creates a Permissions instance.
+     */
+    public Permissions(){
         permsMap = new ConcurrentHashMap<Class<?>, PermissionCollection>();
         // Bite the bullet, get the pain out of the way in the beginning!
         unresolved = new PermissionPendingResolutionCollection();
         allPermission = false;      
     }
     
-    public ConcurrentPermissions(int initialCapacity, float loadFactor, int concurrencyLevel, int unresolvedClassCount){
+    /**
+     * This constructor allows <code>ConcurrentHashMap</code> optimisation.
+     * @see ConcurrentHashMap
+     */
+    public Permissions(int initialCapacity, float loadFactor, int concurrencyLevel, int unresolvedClassCount){
         permsMap = new ConcurrentHashMap<Class<?>, PermissionCollection>
                 (initialCapacity, loadFactor, concurrencyLevel);
         // Bite the bullet, get the pain out of the way in the beginning!
@@ -116,6 +127,10 @@ public final class Permissions extends PermissionCollection {
         allPermission = false;
     }
     
+    /**
+     * Return true if this Permissions contains AllPermission.
+     * @return true if this Permissions contains AllPermission.
+     */
     public boolean allPermission(){
         return allPermission;
     }
@@ -357,7 +372,7 @@ public final class Permissions extends PermissionCollection {
                     if (DEBUG != null){
                         ignore.fillInStackTrace();
                         StringBuilder sb = new StringBuilder();
-                        sb.append("ConcurrentPermissions unable to instantiate permission");
+                        sb.append("Permissions unable to instantiate permission");
                         sb.append('\n');
                         sb.append(targetType.toString());
                         sb.append('\n');

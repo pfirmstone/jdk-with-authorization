@@ -39,7 +39,7 @@ import sun.security.provider.PolicyFile;
 import sun.security.util.Debug;
 import sun.security.util.FilePermCompat;
 import sun.security.util.SecurityConstants;
-import au.zeus.jdk.authorization.policy.ConcurrentPermissions;
+import java.security.Permissions;
 
 /**
  * The {@code ProtectionDomain} class encapsulates the characteristics of a
@@ -167,8 +167,8 @@ public class ProtectionDomain {
         boolean hasAllP = false;
         if (permissions != null) permissions.setReadOnly();
         this.permissions = permissions;
-        if (permissions instanceof ConcurrentPermissions &&
-            ((ConcurrentPermissions)permissions).allPermission()) {
+        if (permissions instanceof Permissions &&
+            ((Permissions)permissions).allPermission()) {
             hasAllP = true;
         }
         this.hasAllPerm = hasAllP;
@@ -212,8 +212,8 @@ public class ProtectionDomain {
         boolean hasAllPerm = false;
         if (permissions != null) permissions.setReadOnly();
         this.permissions = permissions;
-        if (permissions instanceof ConcurrentPermissions &&
-            ((ConcurrentPermissions)permissions).allPermission()) {
+        if (permissions instanceof Permissions &&
+            ((Permissions)permissions).allPermission()) {
             hasAllPerm = true;
         }
         this.hasAllPerm = hasAllPerm;

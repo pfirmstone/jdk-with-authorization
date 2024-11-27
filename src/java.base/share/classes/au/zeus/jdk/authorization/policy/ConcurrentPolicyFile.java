@@ -305,7 +305,7 @@ public class ConcurrentPolicyFile extends Policy implements ScalableNestedPolicy
     }
     
     private PermissionCollection convert(NavigableSet<Permission> permissions){
-        PermissionCollection pc = new ConcurrentPermissions();
+        PermissionCollection pc = new Permissions();
         // The descending iterator is for SocketPermission.
         Iterator<Permission> it = permissions.descendingIterator();
         while (it.hasNext()) {
@@ -344,7 +344,7 @@ public class ConcurrentPolicyFile extends Policy implements ScalableNestedPolicy
             PermissionGrant ge = grantRefCopy[j];
             if (ge.isPrivileged()){
                 if (ge.implies(pd)){
-                    PermissionCollection pc = new ConcurrentPermissions();
+                    PermissionCollection pc = new Permissions();
                     pc.add(ALL_PERMISSION);
                     return pc;
                 }
@@ -359,7 +359,7 @@ public class ConcurrentPolicyFile extends Policy implements ScalableNestedPolicy
                 while (e.hasMoreElements()){
                     Permission p = e.nextElement();
                     if (p instanceof AllPermission) {
-                        PermissionCollection pc = new ConcurrentPermissions();
+                        PermissionCollection pc = new Permissions();
                         pc.add(p);
                         return pc;
                     }
@@ -408,7 +408,7 @@ public class ConcurrentPolicyFile extends Policy implements ScalableNestedPolicy
             PermissionGrant ge = grantRefCopy[j];
             if (ge.implies(cs, null)){ // No Principal's
                 if (ge.isPrivileged()){
-                    PermissionCollection pc = new ConcurrentPermissions();
+                    PermissionCollection pc = new Permissions();
                     pc.add(ALL_PERMISSION);
                     return pc;
                 }
