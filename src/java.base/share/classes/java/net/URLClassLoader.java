@@ -341,11 +341,7 @@ public class URLClassLoader extends SecureClassLoader implements Closeable {
     * @since 1.7
     */
     public void close() throws IOException {
-        @SuppressWarnings("removal")
-        SecurityManager security = System.getSecurityManager();
-        if (security != null) {
-            security.checkPermission(new RuntimePermission("closeClassLoader"));
-        }
+        new RuntimePermission("closeClassLoader").checkGuard(null);
         List<IOException> errors = ucp.closeLoaders();
 
         // now close any remaining streams.
