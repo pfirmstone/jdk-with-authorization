@@ -38,6 +38,8 @@ import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ConcurrentSkipListSet;
 import java.util.concurrent.atomic.AtomicInteger;
 import sun.security.util.Debug;
+import au.zeus.jdk.authorization.policy.PolicyUtils;
+import au.zeus.jdk.authorization.policy.PermissionComparator;
 
 
 /**
@@ -106,7 +108,7 @@ public final class Permissions extends PermissionCollection {
      */    
     
     /**
-     * Creates a Permissions instance.
+     * Creates a Permissions instance using the default settings.
      */
     public Permissions(){
         permsMap = new ConcurrentHashMap<Class<?>, PermissionCollection>();
@@ -116,9 +118,21 @@ public final class Permissions extends PermissionCollection {
     }
     
     /**
-     * This constructor allows <code>ConcurrentHashMap</code> optimisation.
+     * This constructor allows optimization based on the contained
+     * <code>ConcurrentHashMap</code>.  This constructor may be removed
+     * in future and is not part of the Java API.  It is marked
+     * deprecated to discourage use, it's public as it's used
+     * by implementation code.
+     * 
      * @see ConcurrentHashMap
+     * 
+     * @param initialCapacity - initial capacity in ConcurrentHashMap
+     * @param loadFactor - loadFactor in ConcurrentHashMap
+     * @param concurrencyLevel - concurrencyLevel in ConcurrentHashMap
+     * @param unresolvedClassCount - initial capacity for unresolvedClasses.
+     * @deprecated
      */
+    @Deprecated
     public Permissions(int initialCapacity, float loadFactor, int concurrencyLevel, int unresolvedClassCount){
         permsMap = new ConcurrentHashMap<Class<?>, PermissionCollection>
                 (initialCapacity, loadFactor, concurrencyLevel);
@@ -136,8 +150,10 @@ public final class Permissions extends PermissionCollection {
     }
     
     /**
+     * {@inheritDoc}
+     * 
      * @Threadsafe
-     * @param permission
+     * @param permission {@inheritDoc}
      */   
     @Override
     public void add(Permission permission) {
@@ -176,12 +192,13 @@ public final class Permissions extends PermissionCollection {
     }
     
     /**
+     * {@inheritDoc}
+     * 
      * Returns true if Permission is implied for this PermissionDomain.
      * @Threadsafe this method is also a mutator method for internal state
      * 
-     * @see Permission
-     * @param permission
-     * @return boolean
+     * @param permission {@inheritDoc}
+     * @return boolean {@inheritDoc}
      */
     @Override
     public boolean implies(Permission permission) {
@@ -202,6 +219,8 @@ public final class Permissions extends PermissionCollection {
     }
     
     /**
+     * {@inheritDoc}
+     * 
      * This Enumeration is not intended for concurrent access, modification
      * of the underlying PermissionCollection will not cause a 
      * ConcurrentModificationException, but modifications made after this call

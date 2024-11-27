@@ -50,7 +50,7 @@ import au.zeus.jdk.net.Uri;
  * for various policy and configuration providers. 
  * 
  */
- class PolicyUtils {
+ public class PolicyUtils {
 
     // No reason to instantiate
     private PolicyUtils() {}
@@ -457,7 +457,7 @@ import au.zeus.jdk.net.Uri;
      * @throws InstantiationException any exception thrown by Constructor.newInstance()
      */
     @SuppressWarnings("rawtypes")
-    static Permission instantiatePermission(Class<?> targetType,
+    public static Permission instantiatePermission(Class<?> targetType,
             String targetName, String targetActions)
             throws InstantiationException, IllegalAccessException, 
             IllegalArgumentException, InvocationTargetException 
