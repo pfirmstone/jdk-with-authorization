@@ -79,7 +79,7 @@ import sun.security.util.Debug;
  * @serial permsMap
  */
 @SuppressWarnings({"rawtypes","serial"})
-public final class ConcurrentPermissions extends PermissionCollection {
+public final class Permissions extends PermissionCollection {
 
     /* unresolved is never returned or allowed to escape, it's elements() method
      * isn't used to return an Enumeration yet 
