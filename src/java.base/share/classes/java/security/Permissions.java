@@ -42,16 +42,16 @@ import sun.security.util.Debug;
 
 /**
  * ConcurrentPermissions was a drop in replacement for java.security.Permissions
- * 
+ * <p>
  * Its a PermissionCollection capable of containing various PermissionCollection
  * types and resolving UnresolvedPermission.
- * 
+ * <p>
  * ConcurrentPermissions was originally intended to be used as a policy cache, it turns out
  * that a policy cache was not needed, due to the efficiency of package private
  * URIGrant.implies(ProtectionDomain pd).  Scalability is better without
  * a policy cache because PermissionGrant's are immutable, have no mutable shared 
  * state and are therefore not likely to cause cache misses.
- * 
+ * <p>
  * The first reason this class exists is due to an unknown bug in
  * java.security.Permissions not resolving 
  * permission org.apache.river.phoenix.ExecOptionPermission "*";
@@ -60,16 +60,16 @@ import sun.security.util.Debug;
  * tuning for concurrency or to avoid unnecessary collection resizing, 
  * a method in AbstractPolicy is provided so external policy providers can 
  * take advantage, without this class being public.
- * 
+ * <p>
  * This class was stolen from Apache River, which stole it from Apache Harmony 
  * and now it is included in OpenJDK with Authorization.
- * 
+ * <p>
  * If there is heavy contention for one Permission class
  * type, concurrency may suffer due to internal synchronization.
  * This is due to the original PermissionsCollection spec requiring
  * that all implementations do their own synchronization, this is a design
  * mistake, similar to Vector. 
- * 
+ * <p>
  * ConcurrentPermission's defined behaviour for #elements() differs from
  * PermissionCollection.  It is safe to alter ConcurrentPermissions while
  * Enumerating through it's elements.  ConcurrentPermission's keeps a cache
