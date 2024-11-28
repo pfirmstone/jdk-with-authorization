@@ -4,6 +4,7 @@ This project's objectives are to maintain a community fork of OpenJDK that retai
 - Maintain guard hooks throughout OpenJDK for permission checks and add additional where necessary.
 - Research improvements to Authorization.
 - High performance and scalability.
+- Provide a workable practical implementation to improve Java security against injection style attacks using POLP whitelisting, rather than theoretical vapourware.
 
 ## Principle of Least Privilege Policy Writer
 - This tool automates writing of your policy files, using principles of least privilege, this creates a minefield of SecurityException's for attackers to navigate inside your perimeter defences.
