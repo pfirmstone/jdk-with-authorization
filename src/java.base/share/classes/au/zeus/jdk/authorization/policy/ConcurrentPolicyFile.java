@@ -201,7 +201,7 @@ public class ConcurrentPolicyFile extends Policy implements ScalableNestedPolicy
     // If created with defined policy.
     private final URL[] policies;
     
-    private static final Guard guard = new SecurityPermission("createPolicy.JiniPolicy");
+//    private static final Guard guard = new SecurityPermission("createPolicy.JiniPolicy");
     
     @SuppressWarnings("removal")
     private static final ProtectionDomain myDomain = 
@@ -244,7 +244,9 @@ public class ConcurrentPolicyFile extends Policy implements ScalableNestedPolicy
      * super() call to Object and prior to any final fields being assigned.
      */
     private static PermissionGrant [] readPolicyPermissionGrants(PolicyParser parser, URL[] policies) throws PolicyInitializationException{
-        guard.checkGuard(null);
+        // Causes recursion or OME in compiler/jvmci/SecurityRestrictionsTest.java
+        // This policy isn't exported outside the java.base module, so we don't need this here.
+        //guard.checkGuard(null);
         try {
             // Bug 4911907, do we need to do anything more?
             // The permissions for this domain must be retrieved before
