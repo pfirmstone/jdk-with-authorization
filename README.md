@@ -1,6 +1,8 @@
 # OpenJDK with Authorization (SecurityManager)
 This project's objectives are to maintain a community fork of OpenJDK that retains Authorization functionality, no attempt will be made to sandbox untrusted code, instead, the goals of the project are:
 - Prevent loading of untrusted code.
+- Prevent gadget attack chains completing.
+- Prevent injection attacks, eg whitelist URL's.
 - Maintain guard hooks throughout OpenJDK for permission checks and add additional where necessary.
 - Research improvements to Authorization.
 - High performance and scalability.
