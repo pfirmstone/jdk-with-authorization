@@ -28,8 +28,8 @@ import java.net.URL;
 import java.security.BasicPermission;
 
 /**
- * When a {@link java.lang.SecurityManager} is in force, this {@link Permission}
- * is required to load classes with {@link SecureClassLoader}.   This allows
+ * When a {@link java.lang.SecurityManager} is in force, this {@link java.security.Permission}
+ * is required to load classes with {@link java.security.SecureClassLoader}.   This allows
  * an administrator to prevent class loading from unsigned jar files or other
  * untrusted {@link java.net.URL}.  
  * <p>

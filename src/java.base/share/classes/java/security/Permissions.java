@@ -152,7 +152,6 @@ public final class Permissions extends PermissionCollection {
     /**
      * {@inheritDoc}
      * 
-     * @Threadsafe
      * @param permission {@inheritDoc}
      */   
     @Override
@@ -193,9 +192,6 @@ public final class Permissions extends PermissionCollection {
     
     /**
      * {@inheritDoc}
-     * 
-     * Returns true if Permission is implied for this PermissionDomain.
-     * @Threadsafe this method is also a mutator method for internal state
      * 
      * @param permission {@inheritDoc}
      * @return boolean {@inheritDoc}
