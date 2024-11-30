@@ -101,6 +101,9 @@ public class ImageRepresentation extends ImageWatched implements ImageConsumer
 
     /* REMIND: Only used for Frame.setIcon - should use ImageWatcher instead */
     public synchronized void reconstruct(int flags) {
+        if (src != null) {
+            src.checkSecurity(null, false);
+        }
         int missinginfo = flags & ~availinfo;
         if ((availinfo & ImageObserver.ERROR) == 0 && missinginfo != 0) {
             numWaiters++;
@@ -125,6 +128,9 @@ public class ImageRepresentation extends ImageWatched implements ImageConsumer
     }
 
     public void setDimensions(int w, int h) {
+        if (src != null) {
+            src.checkSecurity(null, false);
+        }
 
         image.setDimensions(w, h);
 
@@ -184,11 +190,17 @@ public class ImageRepresentation extends ImageWatched implements ImageConsumer
     }
 
     public void setProperties(Hashtable<?,?> props) {
+        if (src != null) {
+            src.checkSecurity(null, false);
+        }
         image.setProperties(props);
         newInfo(image, ImageObserver.PROPERTIES, 0, 0, 0, 0);
     }
 
     public void setColorModel(ColorModel model) {
+        if (src != null) {
+            src.checkSecurity(null, false);
+        }
         srcModel = model;
 
         // Check to see if model is INT_RGB
@@ -311,6 +323,9 @@ public class ImageRepresentation extends ImageWatched implements ImageConsumer
     }
 
     public void setHints(int h) {
+        if (src != null) {
+            src.checkSecurity(null, false);
+        }
         hints = h;
     }
 
@@ -329,6 +344,10 @@ public class ImageRepresentation extends ImageWatched implements ImageConsumer
         int lineOff=off;
         int poff;
         int[] newLUT=null;
+
+        if (src != null) {
+            src.checkSecurity(null, false);
+        }
 
         // REMIND: What if the model doesn't fit in default color model?
         synchronized (this) {
@@ -523,6 +542,10 @@ public class ImageRepresentation extends ImageWatched implements ImageConsumer
         int lineOff=off;
         int poff;
 
+        if (src != null) {
+            src.checkSecurity(null, false);
+        }
+
         // REMIND: What if the model doesn't fit in default color model?
         synchronized (this) {
             if (bimage == null) {
@@ -654,6 +677,9 @@ public class ImageRepresentation extends ImageWatched implements ImageConsumer
     private boolean consuming = false;
 
     public void imageComplete(int status) {
+        if (src != null) {
+            src.checkSecurity(null, false);
+        }
         boolean done;
         int info;
         switch (status) {
@@ -723,6 +749,9 @@ public class ImageRepresentation extends ImageWatched implements ImageConsumer
     }
 
     public boolean prepare(ImageObserver iw) {
+        if (src != null) {
+            src.checkSecurity(null, false);
+        }
         if ((availinfo & ImageObserver.ERROR) != 0) {
             if (iw != null) {
                 iw.imageUpdate(image, ImageObserver.ERROR|ImageObserver.ABORT,
@@ -741,6 +770,10 @@ public class ImageRepresentation extends ImageWatched implements ImageConsumer
     }
 
     public int check(ImageObserver iw) {
+
+        if (src != null) {
+            src.checkSecurity(null, false);
+        }
         if ((availinfo & (ImageObserver.ERROR | ImageObserver.ALLBITS)) == 0) {
             addWatcher(iw);
         }
@@ -752,6 +785,9 @@ public class ImageRepresentation extends ImageWatched implements ImageConsumer
                                   int x, int y, Color bg,
                                   ImageObserver iw) {
 
+        if (src != null) {
+            src.checkSecurity(null, false);
+        }
         if ((availinfo & ImageObserver.ERROR) != 0) {
             if (iw != null) {
                 iw.imageUpdate(image, ImageObserver.ERROR|ImageObserver.ABORT,
@@ -780,6 +816,9 @@ public class ImageRepresentation extends ImageWatched implements ImageConsumer
                                   int x, int y, int w, int h,
                                   Color bg, ImageObserver iw) {
 
+        if (src != null) {
+            src.checkSecurity(null, false);
+        }
         if ((availinfo & ImageObserver.ERROR) != 0) {
             if (iw != null) {
                 iw.imageUpdate(image, ImageObserver.ERROR|ImageObserver.ABORT,
@@ -810,6 +849,9 @@ public class ImageRepresentation extends ImageWatched implements ImageConsumer
                                   int sx1, int sy1, int sx2, int sy2,
                                   Color bg, ImageObserver iw) {
 
+        if (src != null) {
+            src.checkSecurity(null, false);
+        }
         if ((availinfo & ImageObserver.ERROR) != 0) {
             if (iw != null) {
                 iw.imageUpdate(image, ImageObserver.ERROR|ImageObserver.ABORT,
@@ -843,6 +885,9 @@ public class ImageRepresentation extends ImageWatched implements ImageConsumer
     {
         Graphics2D g2 = (Graphics2D) g;
 
+        if (src != null) {
+            src.checkSecurity(null, false);
+        }
         if ((availinfo & ImageObserver.ERROR) != 0) {
             if (iw != null) {
                 iw.imageUpdate(image, ImageObserver.ERROR|ImageObserver.ABORT,

@@ -33,6 +33,8 @@ class ImageConsumerQueue {
     ImageConsumer consumer;
     boolean interested;
 
+    Object securityContext;
+    boolean secure;
 
     static ImageConsumerQueue removeConsumer(ImageConsumerQueue cqbase,
                                              ImageConsumer ic,
@@ -66,11 +68,20 @@ class ImageConsumerQueue {
     ImageConsumerQueue(InputStreamImageSource src, ImageConsumer ic) {
         consumer = ic;
         interested = true;
-        // Leaving this code throwing SecurityException for compatibility
+        // ImageReps do their own security at access time.
         if (ic instanceof ImageRepresentation) {
             ImageRepresentation ir = (ImageRepresentation) ic;
             if (ir.image.source != src) {
                 throw new SecurityException("ImageRep added to wrong image source");
+            }
+            secure = true;
+        } else {
+            @SuppressWarnings("removal")
+            SecurityManager security = System.getSecurityManager();
+            if (security != null) {
+                securityContext = security.getSecurityContext();
+            } else {
+                securityContext = null;
             }
         }
     }
@@ -78,6 +89,7 @@ class ImageConsumerQueue {
     public String toString() {
         return ("[" + consumer +
                 ", " + (interested ? "" : "not ") + "interested" +
+                (securityContext != null ? ", " + securityContext : "") +
                 "]");
     }
 }

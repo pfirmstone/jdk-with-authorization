@@ -40,6 +40,8 @@ public abstract class InputStreamImageSource implements ImageProducer,
 
     boolean awaitingFetch = false;
 
+    abstract boolean checkSecurity(Object context, boolean quiet);
+
     int countConsumers(ImageConsumerQueue cq) {
         int i = 0;
         while (cq != null) {
@@ -81,6 +83,7 @@ public abstract class InputStreamImageSource implements ImageProducer,
     }
 
     synchronized void addConsumer(ImageConsumer ic, boolean produce) {
+        checkSecurity(null, false);
         for (ImageDecoder id = decoders; id != null; id = id.next) {
             if (id.isConsumer(ic)) {
                 // This consumer is already being fed.
@@ -96,6 +99,25 @@ public abstract class InputStreamImageSource implements ImageProducer,
             cq.next = consumers;
             consumers = cq;
         } else {
+            if (!cq.secure) {
+                Object context = null;
+                @SuppressWarnings("removal")
+                SecurityManager security = System.getSecurityManager();
+                if (security != null) {
+                    context = security.getSecurityContext();
+                }
+                if (cq.securityContext == null) {
+                    cq.securityContext = context;
+                } else if (!cq.securityContext.equals(context)) {
+                    // If there are two different security contexts that both
+                    // have a handle on the same ImageConsumer, then there has
+                    // been a security breach and whether or not they trade
+                    // image data is small fish compared to what they could be
+                    // trading.  Throw a Security exception anyway...
+                    errorConsumer(cq, false);
+                    throw new SecurityException("Applets are trading image data!");
+                }
+            }
             cq.interested = true;
         }
         if (produce && decoder == null) {
@@ -281,6 +303,13 @@ public abstract class InputStreamImageSource implements ImageProducer,
             awaitingFetch = false;
         }
         while (cq != null) {
+            if (cq.interested) {
+                // Now that there is a decoder, security may have changed
+                // so reverify it here, just in case.
+                if (!checkSecurity(cq.securityContext, true)) {
+                    errorConsumer(cq, false);
+                }
+            }
             cq = cq.next;
         }
     }
