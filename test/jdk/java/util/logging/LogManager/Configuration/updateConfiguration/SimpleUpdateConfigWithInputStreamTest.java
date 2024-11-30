@@ -47,6 +47,7 @@ import java.util.logging.LogManager;
 import java.util.logging.LogRecord;
 import java.util.logging.Logger;
 import java.util.logging.LoggingPermission;
+import au.zeus.jdk.authorization.guards.LoadClassPermission;
 
 /**
  * @test
@@ -645,8 +646,10 @@ public class SimpleUpdateConfigWithInputStreamTest {
         };
         public SimplePolicy(TestCase test) {
             basic = new Permissions();
+            basic.add(new LoadClassPermission());
             control = new Permissions();
             control.add(new LoggingPermission("control", null));
+            control.add(new LoadClassPermission());
 
             // these are used for configuring the test itself...
             all = new Permissions();

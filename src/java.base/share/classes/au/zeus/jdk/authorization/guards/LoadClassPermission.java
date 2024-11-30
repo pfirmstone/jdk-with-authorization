@@ -49,4 +49,11 @@ public class LoadClassPermission extends BasicPermission {
         super("ALLOW");
     }
     
+    /**
+     * String name is ignored, only "ALLOW".
+     */
+    public LoadClassPermission(String name){
+        super("ALLOW");
+    }
+    
 }

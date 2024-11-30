@@ -1,3 +1,4 @@
 grant {
     permission java.lang.RuntimePermission "localeServiceProvider";
+    permission au.zeus.jdk.authorization.guards.LoadClassPermission;
 };

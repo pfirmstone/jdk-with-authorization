@@ -27,7 +27,7 @@
  * @summary Supplementary test cases needed for doclint
  * @modules jdk.javadoc/jdk.javadoc.internal.doclint
  *          jdk.compiler/com.sun.tools.javac.api
- * @run main/othervm -Djava.security.manager=allow RunTest
+ * @run main/othervm/java.security.policy=security.policy -Djava.security.manager=allow RunTest
  */
 
 import java.io.ByteArrayOutputStream;

@@ -785,6 +785,8 @@ jdk/jfr/jvm/TestWaste.java                                      8282427 generic-
 
 # jdk_foreign
 
+java/foreign/TestLinker.java 0000000 generic-all		 
+
 ############################################################################
 # Client manual tests
 

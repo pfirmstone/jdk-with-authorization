@@ -27,7 +27,7 @@
  * @summary Make sure that resource bundles in the jdk.localedata module are
  *          loaded under a security manager.
  * @modules jdk.localedata
- * @run main/othervm -Djava.security.manager=allow
+ * @run main/othervm/java.security.policy=security.policy -Djava.security.manager=allow
  *      -Djava.security.debug=access,failure,codebase=jrt:/jdk.localedata Bug8152817
  */
 

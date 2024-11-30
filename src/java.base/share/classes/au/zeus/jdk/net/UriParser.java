@@ -222,7 +222,7 @@ final class UriParser {
         // first char needs to be an alpha char
         char ch = scheme.charAt(0);
         if (!((ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z'))) {
-            throw new URISyntaxException(uri, Messages.getString("luni.85"), 0); //$NON-NLS-1$
+            throw new URISyntaxException(uri, Messages.getString("luni.85A", scheme), 0); //$NON-NLS-1$
         }
         try {
             URIEncoderDecoder.validateSimple(scheme, "+-."); //$NON-NLS-1$

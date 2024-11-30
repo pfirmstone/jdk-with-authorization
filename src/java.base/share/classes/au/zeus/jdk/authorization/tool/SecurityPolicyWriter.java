@@ -212,6 +212,8 @@ public class SecurityPolicyWriter extends CombinerSecurityManager{
         }
         pathReplacements = paths;
         String policy = System.getProperty("java.security.policy");
+        // One policy file only ==
+        if (policy.startsWith("=")) policy= policy.substring(1);
 	Uri polLocation = null;
         try {
             polLocation = new Uri(policy );

@@ -62,6 +62,8 @@ public class Messages {
         messages.put("security.146","No KeyStore to resolve signers : \"{0}\"");
         messages.put("security.147","No KeyStore to resolve principal by alias : \"{0}\"");
         messages.put("security.148","Invalid certificate for alias \"{0}\" : {1}. Only X509Certificate should be aliased to principals.");
+        messages.put("security.14F", "security.14F=Unknown key: {0} ");
+        messages.put("security.150", "No suitable constructors found in permission class : {0}. Zero, one or two-argument constructor is expected");        
         messages.put("security.8A","Expected syntax is : keystore \"url\"[, \"type\"]");
         messages.put("security.8B","Expected syntax is : signedby \"name1,...,nameN\"");
         messages.put("security.8C","Expected syntax is : codebase \"url\"");
@@ -76,6 +78,7 @@ public class Messages {
         messages.put("luni.83", "Scheme expected");
         messages.put("luni.84", "Scheme-specific part expected");
         messages.put("luni.85", "Illegal character in scheme");
+        messages.put("luni.85A", "Illegal character in scheme: {0}");
         messages.put("luni.86", "{0} in schemeSpecificPart");
         messages.put("luni.87", "{0} in authority");
         messages.put("luni.88", "{0} in path");
