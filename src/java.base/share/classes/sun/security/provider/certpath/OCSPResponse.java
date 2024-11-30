@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2003, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2003, 2023, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -45,6 +45,7 @@ import java.util.Set;
 import javax.security.auth.x500.X500Principal;
 
 import sun.security.util.HexDumpEncoder;
+import sun.security.action.GetIntegerAction;
 import sun.security.x509.*;
 import sun.security.util.*;
 
@@ -160,7 +161,9 @@ public final class OCSPResponse {
      * value is negative, set the skew to the default.
      */
     private static int initializeClockSkew() {
-        Integer tmp = Integer.getInteger("com.sun.security.ocsp.clockSkew");
+        @SuppressWarnings("removal")
+        Integer tmp = java.security.AccessController.doPrivileged(
+                new GetIntegerAction("com.sun.security.ocsp.clockSkew"));
         if (tmp == null || tmp < 0) {
             return DEFAULT_MAX_CLOCK_SKEW;
         }

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2000, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2000, 2022, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -25,9 +25,11 @@
 
 package java.security.cert;
 
+import java.security.AccessController;
 import java.security.InvalidAlgorithmParameterException;
 import java.security.NoSuchAlgorithmException;
 import java.security.NoSuchProviderException;
+import java.security.PrivilegedAction;
 import java.security.Provider;
 import java.security.Security;
 import java.util.Collection;
@@ -424,8 +426,11 @@ public class CertStore {
      * {@code certstore.type} security property, or the string
      * {@literal "LDAP"} if no such property exists.
      */
+    @SuppressWarnings("removal")
     public static final String getDefaultType() {
-        String cstype = Security.getProperty(CERTSTORE_TYPE);
+        String cstype;
+        cstype = AccessController.doPrivileged((PrivilegedAction<String>) () ->
+                Security.getProperty(CERTSTORE_TYPE));
         if (cstype == null) {
             cstype = "LDAP";
         }
