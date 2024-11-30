@@ -64,6 +64,11 @@ public:
     return "Print JVM version information.";
   }
   static const char* impact() { return "Low"; }
+  static const JavaPermission permission() {
+    JavaPermission p = {"java.util.PropertyPermission",
+                        "java.vm.version", "read"};
+    return p;
+  }
   virtual void execute(DCmdSource source, TRAPS);
 };
 
@@ -75,6 +80,11 @@ public:
     return "Print the command line used to start this VM instance.";
   }
   static const char* impact() { return "Low"; }
+  static const JavaPermission permission() {
+    JavaPermission p = {"java.lang.management.ManagementPermission",
+                        "monitor", nullptr};
+    return p;
+  }
   virtual void execute(DCmdSource source, TRAPS) {
     Arguments::print_on(_output);
   }
@@ -90,6 +100,11 @@ public:
     }
     static const char* impact() {
       return "Low";
+    }
+    static const JavaPermission permission() {
+      JavaPermission p = {"java.util.PropertyPermission",
+                          "*", "read"};
+      return p;
     }
     virtual void execute(DCmdSource source, TRAPS);
 };
@@ -107,6 +122,11 @@ public:
   }
   static const char* impact() {
     return "Low";
+  }
+  static const JavaPermission permission() {
+    JavaPermission p = {"java.lang.management.ManagementPermission",
+                        "monitor", nullptr};
+    return p;
   }
   virtual void execute(DCmdSource source, TRAPS);
 };
@@ -126,6 +146,11 @@ public:
   static const char* impact() {
     return "Low";
   }
+  static const JavaPermission permission() {
+    JavaPermission p = {"java.lang.management.ManagementPermission",
+                        "control", nullptr};
+    return p;
+  }
   virtual void execute(DCmdSource source, TRAPS);
 };
 
@@ -138,6 +163,11 @@ public:
   }
   static const char* impact() {
     return "High";
+  }
+  static const JavaPermission permission() {
+    JavaPermission p = {"java.lang.management.ManagementPermission",
+                        "monitor", nullptr};
+    return p;
   }
   virtual void execute(DCmdSource source, TRAPS);
 };
@@ -156,6 +186,11 @@ public:
     return "Load JVMTI native agent.";
   }
   static const char* impact() { return "Low"; }
+  static const JavaPermission permission() {
+    JavaPermission p = {"java.lang.management.ManagementPermission",
+                        "control", nullptr};
+    return p;
+  }
   virtual void execute(DCmdSource source, TRAPS);
 };
 #endif // INCLUDE_JVMTI
@@ -172,6 +207,11 @@ public:
   }
   static const char* impact() {
     return "Low";
+  }
+  static const JavaPermission permission() {
+    JavaPermission p = {"java.lang.management.ManagementPermission",
+                        "monitor", nullptr};
+    return p;
   }
   virtual void execute(DCmdSource source, TRAPS);
 };
@@ -200,6 +240,11 @@ public:
     return "Print information about JVM environment and status.";
   }
   static const char* impact() { return "Low"; }
+  static const JavaPermission permission() {
+    JavaPermission p = {"java.lang.management.ManagementPermission",
+                        "monitor", nullptr};
+    return p;
+  }
   virtual void execute(DCmdSource source, TRAPS);
 };
 
@@ -239,6 +284,11 @@ public:
   static const char* impact() {
     return "Medium";
   }
+  static const JavaPermission permission() {
+    JavaPermission p = {"java.lang.management.ManagementPermission",
+      "monitor", nullptr};
+      return p;
+  }
 
   virtual void execute(DCmdSource source, TRAPS);
 };
@@ -252,6 +302,11 @@ public:
   }
   static const char* impact() {
     return "Medium";
+  }
+  static const JavaPermission permission() {
+    JavaPermission p = {"java.lang.management.ManagementPermission",
+      "monitor", nullptr};
+      return p;
   }
 
   virtual void execute(DCmdSource source, TRAPS);
@@ -279,6 +334,11 @@ public:
     return "High: Depends on Java heap size and content. "
            "Request a full GC unless the '-all' option is specified.";
   }
+  static const JavaPermission permission() {
+    JavaPermission p = {"java.lang.management.ManagementPermission",
+                        "monitor", nullptr};
+    return p;
+  }
   virtual void execute(DCmdSource source, TRAPS);
 };
 #endif // INCLUDE_SERVICES
@@ -299,6 +359,11 @@ public:
   }
   static const char* impact() {
     return "High: Depends on Java heap size and content.";
+  }
+  static const JavaPermission permission() {
+    JavaPermission p = {"java.lang.management.ManagementPermission",
+                        "monitor", nullptr};
+    return p;
   }
   virtual void execute(DCmdSource source, TRAPS);
 };
@@ -322,6 +387,11 @@ public:
   static const char* impact() {
       return "Medium: Depends on number of loaded classes.";
   }
+  static const JavaPermission permission() {
+    JavaPermission p = {"java.lang.management.ManagementPermission",
+                        "monitor", nullptr};
+    return p;
+  }
   virtual void execute(DCmdSource source, TRAPS);
 };
 
@@ -342,6 +412,11 @@ public:
   static const char* impact() {
     return "Medium: Pause time depends on number of loaded classes";
   }
+  static const JavaPermission permission() {
+    JavaPermission p = {"java.lang.management.ManagementPermission",
+                        "monitor", nullptr};
+    return p;
+  }
   virtual void execute(DCmdSource source, TRAPS);
 };
 #endif // INCLUDE_CDS
@@ -360,6 +435,11 @@ public:
   }
   static const char* impact() {
     return "Medium: Depends on the number of threads.";
+  }
+  static const JavaPermission permission() {
+    JavaPermission p = {"java.lang.management.ManagementPermission",
+                        "monitor", nullptr};
+    return p;
   }
   virtual void execute(DCmdSource source, TRAPS);
 };
@@ -466,6 +546,12 @@ public:
     return "Print the management agent status.";
   }
 
+  static const JavaPermission permission() {
+    JavaPermission p = {"java.lang.management.ManagementPermission",
+                        "monitor", nullptr};
+    return p;
+  }
+
   virtual void execute(DCmdSource source, TRAPS);
 
 };
@@ -481,6 +567,11 @@ public:
   }
   static const char* impact() {
     return "Low";
+  }
+  static const JavaPermission permission() {
+    JavaPermission p = {"java.lang.management.ManagementPermission",
+                        "monitor", nullptr};
+    return p;
   }
   virtual void execute(DCmdSource source, TRAPS);
 };
@@ -501,6 +592,11 @@ public:
   static const char* impact() {
     return "Low";
   }
+  static const JavaPermission permission() {
+    JavaPermission p = {"java.lang.management.ManagementPermission",
+                        "monitor", nullptr};
+    return p;
+  }
   virtual void execute(DCmdSource source, TRAPS);
 };
 #endif // LINUX
@@ -517,6 +613,11 @@ public:
   static const char* impact() {
     return "Medium";
   }
+  static const JavaPermission permission() {
+    JavaPermission p = {"java.lang.management.ManagementPermission",
+                        "monitor", nullptr};
+    return p;
+  }
   virtual void execute(DCmdSource source, TRAPS);
 };
 
@@ -531,6 +632,11 @@ public:
   }
   static const char* impact() {
     return "Low";
+  }
+  static const JavaPermission permission() {
+    JavaPermission p = {"java.lang.management.ManagementPermission",
+                        "monitor", nullptr};
+    return p;
   }
   virtual void execute(DCmdSource source, TRAPS);
 };
@@ -553,6 +659,11 @@ public:
     return "Low: Depends on code heap size and content. "
            "Holds CodeCache_lock during analysis step, usually sub-second duration.";
   }
+  static const JavaPermission permission() {
+    JavaPermission p = {"java.lang.management.ManagementPermission",
+                        "monitor", nullptr};
+    return p;
+  }
   virtual void execute(DCmdSource source, TRAPS);
 };
 //---<  END  >--- CodeHeap State Analytics.
@@ -569,6 +680,11 @@ public:
   static const char* impact() {
     return "Low";
   }
+  static const JavaPermission permission() {
+    JavaPermission p = {"java.lang.management.ManagementPermission",
+                        "monitor", nullptr};
+    return p;
+  }
   virtual void execute(DCmdSource source, TRAPS);
 };
 
@@ -583,6 +699,11 @@ public:
   }
   static const char* impact() {
     return "Low";
+  }
+  static const JavaPermission permission() {
+    JavaPermission p = {"java.lang.management.ManagementPermission",
+                        "control", nullptr};
+    return p;
   }
   virtual void execute(DCmdSource source, TRAPS);
 };
@@ -602,6 +723,11 @@ public:
   static const char* impact() {
     return "Low";
   }
+  static const JavaPermission permission() {
+    JavaPermission p = {"java.lang.management.ManagementPermission",
+                        "control", nullptr};
+    return p;
+  }
   virtual void execute(DCmdSource source, TRAPS);
 };
 
@@ -616,6 +742,11 @@ public:
   }
   static const char* impact() {
     return "Low";
+  }
+  static const JavaPermission permission() {
+    JavaPermission p = {"java.lang.management.ManagementPermission",
+                        "control", nullptr};
+    return p;
   }
   virtual void execute(DCmdSource source, TRAPS);
 };
@@ -678,6 +809,11 @@ public:
   static const char* impact() {
     return "Medium: Depends on Java content.";
   }
+  static const JavaPermission permission() {
+    JavaPermission p = {"java.lang.management.ManagementPermission",
+                        "monitor", nullptr};
+    return p;
+  }
   virtual void execute(DCmdSource source, TRAPS);
 };
 
@@ -695,6 +831,11 @@ public:
   }
   static const char* impact() {
     return "Medium: Depends on Java content.";
+  }
+  static const JavaPermission permission() {
+    JavaPermission p = {"java.lang.management.ManagementPermission",
+                        "monitor", nullptr};
+    return p;
   }
   virtual void execute(DCmdSource source, TRAPS);
 };
@@ -714,6 +855,11 @@ public:
   static const char* impact() {
       return "Medium: Depends on Java content.";
   }
+  static const JavaPermission permission() {
+    JavaPermission p = {"java.lang.management.ManagementPermission",
+                        "monitor", nullptr};
+    return p;
+  }
   virtual void execute(DCmdSource source, TRAPS);
 };
 
@@ -731,6 +877,11 @@ public:
   }
   static const char* impact() {
       return "Medium: Depends on number of loaded classes.";
+  }
+  static const JavaPermission permission() {
+    JavaPermission p = {"java.lang.management.ManagementPermission",
+                        "monitor", nullptr};
+    return p;
   }
   virtual void execute(DCmdSource source, TRAPS);
 };
@@ -750,6 +901,11 @@ public:
   }
   static const char* impact() {
     return "Low: Depends on event log size. ";
+  }
+  static const JavaPermission permission() {
+    JavaPermission p = {"java.lang.management.ManagementPermission",
+                        "monitor", nullptr};
+    return p;
   }
   virtual void execute(DCmdSource source, TRAPS);
 };
@@ -773,6 +929,10 @@ public:
   static const char* impact() {
     return "Medium: Depends on the number of threads.";
   }
+  static const JavaPermission permission() {
+    JavaPermission p = {"java.lang.management.ManagementPermission", "monitor", nullptr};
+    return p;
+  }
   virtual void execute(DCmdSource source, TRAPS);
 };
 
@@ -792,6 +952,11 @@ public:
   static const char* impact() {
     return "Medium: Pause time depends on number of compiled methods";
   }
+  static const JavaPermission permission() {
+    JavaPermission p = {"java.lang.management.ManagementPermission",
+                        "monitor", nullptr};
+    return p;
+  }
   virtual void execute(DCmdSource source, TRAPS);
 };
 
@@ -805,6 +970,11 @@ public:
     return "Prints an annotated process memory map of the VM process (linux and Windows only).";
   }
   static const char* impact() { return "Medium; can be high for very large java heaps."; }
+  static const JavaPermission permission() {
+    JavaPermission p = {"java.lang.management.ManagementPermission",
+                        "control", nullptr};
+    return p;
+  }
   virtual void execute(DCmdSource source, TRAPS);
 };
 
@@ -818,6 +988,11 @@ public:
     return "Dumps an annotated process memory map to an output file (linux and Windows only).";
   }
   static const char* impact() { return "Medium; can be high for very large java heaps."; }
+  static const JavaPermission permission() {
+    JavaPermission p = {"java.lang.management.ManagementPermission",
+                        "control", nullptr};
+    return p;
+  }
   virtual void execute(DCmdSource source, TRAPS);
 };
 

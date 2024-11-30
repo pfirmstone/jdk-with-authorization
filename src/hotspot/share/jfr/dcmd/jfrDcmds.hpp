@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2012, 2023, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -59,6 +59,10 @@ class JfrStartFlightRecordingDCmd : public JfrDCmd {
   static const char* impact() {
     return "Medium: Depending on the settings for a recording, the impact can range from low to high.";
   }
+  static const JavaPermission permission() {
+    JavaPermission p = {"java.lang.management.ManagementPermission", "monitor", nullptr};
+    return p;
+  }
   virtual const char* javaClass() const {
     return "jdk/jfr/internal/dcmd/DCmdStart";
   }
@@ -79,6 +83,10 @@ class JfrDumpFlightRecordingDCmd : public JfrDCmd {
   }
   static const char* impact() {
     return "Low";
+  }
+  static const JavaPermission permission() {
+    JavaPermission p = {"java.lang.management.ManagementPermission", "monitor", nullptr};
+    return p;
   }
   virtual const char* javaClass() const {
     return "jdk/jfr/internal/dcmd/DCmdDump";
@@ -101,6 +109,10 @@ class JfrCheckFlightRecordingDCmd : public JfrDCmd {
   static const char* impact() {
     return "Low";
   }
+  static const JavaPermission permission() {
+    JavaPermission p = {"java.lang.management.ManagementPermission", "monitor", nullptr};
+    return p;
+  }
   virtual const char* javaClass() const {
     return "jdk/jfr/internal/dcmd/DCmdCheck";
   }
@@ -121,6 +133,10 @@ class JfrStopFlightRecordingDCmd : public JfrDCmd {
   }
   static const char* impact() {
     return "Low";
+  }
+  static const JavaPermission permission() {
+    JavaPermission p = {"java.lang.management.ManagementPermission", "monitor", nullptr};
+    return p;
   }
   virtual const char* javaClass() const {
     return "jdk/jfr/internal/dcmd/DCmdStop";
@@ -143,6 +159,10 @@ class JfrViewFlightRecordingDCmd : public JfrDCmd {
   static const char* impact() {
     return "Medium";
   }
+  static const JavaPermission permission() {
+    JavaPermission p = {"java.lang.management.ManagementPermission", "monitor", nullptr};
+    return p;
+  }
   virtual const char* javaClass() const {
     return "jdk/jfr/internal/dcmd/DCmdView";
   }
@@ -163,6 +183,10 @@ class JfrQueryFlightRecordingDCmd : public JfrDCmd {
   }
   static const char* impact() {
     return "Medium";
+  }
+  static const JavaPermission permission() {
+    JavaPermission p = {"java.lang.management.ManagementPermission", "monitor", nullptr};
+    return p;
   }
   virtual const char* javaClass() const {
     return "jdk/jfr/internal/dcmd/DCmdQuery";
@@ -200,6 +224,10 @@ class JfrConfigureFlightRecorderDCmd : public DCmdWithParser {
   }
   static const char* impact() {
     return "Low";
+  }
+  static const JavaPermission permission() {
+    JavaPermission p = {"java.lang.management.ManagementPermission", "monitor", nullptr};
+    return p;
   }
   static int num_arguments() { return 10; }
   virtual void execute(DCmdSource source, TRAPS);
