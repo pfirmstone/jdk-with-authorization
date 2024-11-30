@@ -43,6 +43,7 @@ import java.io.BufferedReader;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
+import java.io.FilePermission;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
@@ -759,7 +760,7 @@ search:
             (String.class.equals(flavor.getRepresentationClass()) &&
              DataFlavorUtil.isFlavorCharsetTextType(flavor) && isTextFormat(format))) {
 
-            String str = (String)obj;
+            String str = removeSuspectedData(flavor, contents, (String)obj);
 
             return translateTransferableString(
                 str,
@@ -872,7 +873,9 @@ search:
 
             final List<?> list = (List<?>)obj;
 
-            final ArrayList<String> fileList = castToFiles(list);
+            final ProtectionDomain userProtectionDomain = getUserProtectionDomain(contents);
+
+            final ArrayList<String> fileList = castToFiles(list, userProtectionDomain);
 
             try (ByteArrayOutputStream bos = convertFileListToBytes(fileList)) {
                 theByteArray = bos.toByteArray();
@@ -897,7 +900,8 @@ search:
                 targetCharset = "UTF-8";
             }
             final List<?> list = (List<?>)obj;
-            final ArrayList<String> fileList = castToFiles(list);
+            final ProtectionDomain userProtectionDomain = getUserProtectionDomain(contents);
+            final ArrayList<String> fileList = castToFiles(list, userProtectionDomain);
             final ArrayList<String> uriList = new ArrayList<>(fileList.size());
             for (String fileObject : fileList) {
                 final URI uri = new File(fileObject).toURI();
@@ -1077,6 +1081,43 @@ search:
         }
         return new File(filePath);
     }
+
+    private static final String[] DEPLOYMENT_CACHE_PROPERTIES = {
+        "deployment.system.cachedir",
+        "deployment.user.cachedir",
+        "deployment.javaws.cachedir",
+        "deployment.javapi.cachedir"
+    };
+
+    private static final ArrayList <File> deploymentCacheDirectoryList = new ArrayList<>();
+
+    private static boolean isFileInWebstartedCache(File f) {
+
+        if (deploymentCacheDirectoryList.isEmpty()) {
+            for (String cacheDirectoryProperty : DEPLOYMENT_CACHE_PROPERTIES) {
+                String cacheDirectoryPath = System.getProperty(cacheDirectoryProperty);
+                if (cacheDirectoryPath != null) {
+                    try {
+                        File cacheDirectory = (new File(cacheDirectoryPath)).getCanonicalFile();
+                        if (cacheDirectory != null) {
+                            deploymentCacheDirectoryList.add(cacheDirectory);
+                        }
+                    } catch (IOException ioe) {}
+                }
+            }
+        }
+
+        for (File deploymentCacheDirectory : deploymentCacheDirectoryList) {
+            for (File dir = f; dir != null; dir = dir.getParentFile()) {
+                if (dir.equals(deploymentCacheDirectory)) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
 
     public Object translateBytes(byte[] bytes, DataFlavor flavor,
                                  long format, Transferable localeTransferable)
