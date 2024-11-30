@@ -42,6 +42,7 @@ import java.util.Vector;
 import java.util.concurrent.ConcurrentHashMap;
 import sun.net.util.IPAddressUtil;
 import sun.net.PortConfig;
+import sun.security.action.GetBooleanAction;
 import sun.security.util.RegisteredDomain;
 import sun.security.util.SecurityConstants;
 import sun.security.util.Debug;
@@ -230,8 +231,7 @@ public final class SocketPermission extends Permission
     private transient boolean trusted;
 
     // true if the sun.net.trustNameService system property is set
-    private static final boolean trustNameService =
-            Boolean.getBoolean("sun.net.trustNameService");
+    private static final boolean trustNameService = GetBooleanAction.privilegedGetProperty("sun.net.trustNameService");
 
     private static Debug debug = null;
     private static boolean debugInit = false;
