@@ -44,6 +44,8 @@ import javax.naming.ldap.Control;
 
 import java.lang.reflect.Method;
 import java.lang.reflect.InvocationTargetException;
+import java.security.AccessController;
+import java.security.PrivilegedAction;
 import java.security.cert.Certificate;
 import java.security.cert.X509Certificate;
 import java.util.Arrays;
@@ -181,8 +183,10 @@ public final class Connection implements Runnable {
             = hostnameVerificationDisabledValue();
 
     private static boolean hostnameVerificationDisabledValue() {
-        String prop = System.getProperty(
+        PrivilegedAction<String> act = () -> System.getProperty(
                 "com.sun.jndi.ldap.object.disableEndpointIdentification");
+        @SuppressWarnings("removal")
+        String prop = AccessController.doPrivileged(act);
         if (prop == null) {
             return false;
         }
@@ -255,7 +259,7 @@ public final class Connection implements Runnable {
             throw ce;
         }
 
-        worker = new Thread(this);
+        worker = Obj.helper.createThread(this);
         worker.setDaemon(true);
         worker.start();
     }
@@ -309,8 +313,7 @@ public final class Connection implements Runnable {
             }
             @SuppressWarnings("unchecked")
             Class<? extends SocketFactory> socketFactoryClass =
-                    (Class<? extends SocketFactory>) Class.forName(socketFactoryName,
-                            true, Thread.currentThread().getContextClassLoader());
+                    (Class<? extends SocketFactory>) Obj.helper.loadClass(socketFactoryName);
             Method getDefault =
                     socketFactoryClass.getMethod("getDefault");
             SocketFactory factory = (SocketFactory) getDefault.invoke(null, new Object[]{});

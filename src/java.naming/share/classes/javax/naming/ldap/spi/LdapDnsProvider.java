@@ -53,6 +53,11 @@ import java.util.Optional;
  */
 public abstract class LdapDnsProvider {
 
+    // The {@code RuntimePermission("ldapDnsProvider")} is
+    // necessary to subclass and instantiate the {@code LdapDnsProvider} class.
+    private static final RuntimePermission DNSPROVIDER_PERMISSION =
+            new RuntimePermission("ldapDnsProvider");
+
     /**
      * Creates a new instance of {@code LdapDnsProvider}.
      *
@@ -61,6 +66,20 @@ public abstract class LdapDnsProvider {
      *                           the {@code RuntimePermission("ldapDnsProvider")}.
      */
     protected LdapDnsProvider() {
+        this(checkPermission());
+    }
+
+    private LdapDnsProvider(Void unused) {
+        // nothing to do.
+    }
+
+    private static Void checkPermission() {
+        @SuppressWarnings("removal")
+        final SecurityManager sm = System.getSecurityManager();
+        if (sm != null) {
+            sm.checkPermission(DNSPROVIDER_PERMISSION);
+        }
+        return null;
     }
 
     /**

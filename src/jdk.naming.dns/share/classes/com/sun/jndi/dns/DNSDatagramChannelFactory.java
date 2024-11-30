@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2017, 2022, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -29,6 +29,8 @@ import java.net.DatagramSocket;
 import java.net.ProtocolFamily;
 import java.net.InetSocketAddress;
 import java.nio.channels.DatagramChannel;
+import java.security.AccessController;
+import java.security.PrivilegedExceptionAction;
 import java.util.Objects;
 import java.util.Random;
 
@@ -50,9 +52,11 @@ class DNSDatagramChannelFactory {
     }
 
     private static int findFirstFreePort() {
+        PrivilegedExceptionAction<DatagramSocket> action = () -> new DatagramSocket(0);
         int port;
         try {
-            DatagramSocket ds = new DatagramSocket(0);
+            @SuppressWarnings({"deprecated", "removal"})
+            DatagramSocket ds = AccessController.doPrivileged(action);
             try (DatagramSocket ds1 = ds) {
                 port = ds1.getLocalPort();
             }
