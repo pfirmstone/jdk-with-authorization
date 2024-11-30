@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2005, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2005, 2023, Oracle and/or its affiliates. All rights reserved.
  */
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
@@ -43,7 +43,7 @@ import org.xml.sax.SAXNotSupportedException;
  * @author Rajiv Mordani
  * @author Edwin Goei
  *
- * @LastModified: Nov 2024
+ * @LastModified: July 2023
  */
 public class SAXParserFactoryImpl extends SAXParserFactory {
 
@@ -116,6 +116,7 @@ public class SAXParserFactoryImpl extends SAXParserFactory {
      * Sets the particular feature in the underlying implementation of
      * org.xml.sax.XMLReader.
      */
+    @SuppressWarnings("removal")
     public void setFeature(String name, boolean value)
         throws ParserConfigurationException, SAXNotRecognizedException,
                 SAXNotSupportedException {
@@ -124,6 +125,11 @@ public class SAXParserFactoryImpl extends SAXParserFactory {
         }
         // If this is the secure processing feature, save it then return.
         if (name.equals(XMLConstants.FEATURE_SECURE_PROCESSING)) {
+            if (System.getSecurityManager() != null && (!value)) {
+                throw new ParserConfigurationException(
+                        SAXMessageFormatter.formatMessage(null,
+                        "jaxp-secureprocessing-feature", null));
+            }
             fSecureProcess = value;
             fSecurityManager.setSecureProcessing(fSecureProcess);
             putInFeatures(name, value);

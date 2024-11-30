@@ -46,6 +46,8 @@ import java.io.BufferedReader;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.lang.reflect.InvocationTargetException;
+import java.security.AccessController;
+import java.security.PrivilegedAction;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.StringTokenizer;
@@ -141,6 +143,7 @@ public final class DOMImplementationRegistry {
      *     If any specified class does not implement
      * <code>DOMImplementationSource</code>
      */
+    @SuppressWarnings("removal")
     public static DOMImplementationRegistry newInstance()
         throws
         ClassNotFoundException,
@@ -170,8 +173,15 @@ public final class DOMImplementationRegistry {
             StringTokenizer st = new StringTokenizer(p);
             while (st.hasMoreTokens()) {
                 String sourceName = st.nextToken();
-                Class<?> sourceClass;
-                if (classLoader != null) {
+                // make sure we have access to restricted packages
+                boolean internal = false;
+                if (System.getSecurityManager() != null) {
+                    if (sourceName != null && sourceName.startsWith(DEFAULT_PACKAGE)) {
+                        internal = true;
+                    }
+                }
+                Class<?> sourceClass = null;
+                if (classLoader != null && !internal) {
                     sourceClass = classLoader.loadClass(sourceName);
                 } else {
                     sourceClass = Class.forName(sourceName);
@@ -331,32 +341,63 @@ public final class DOMImplementationRegistry {
      *
      * @return The Context Classloader
      */
+    @SuppressWarnings("removal")
     private static ClassLoader getContextClassLoader() {
-        return Thread.currentThread().getContextClassLoader();
+        return AccessController.doPrivileged(new PrivilegedAction<ClassLoader>() {
+                @Override
+                public ClassLoader run() {
+                    ClassLoader classLoader = null;
+                    try {
+                        classLoader =
+                            Thread.currentThread().getContextClassLoader();
+                    } catch (SecurityException ex) {
+                    }
+                    return classLoader;
+                }
+            });
     }
 
     /**
-     * This method returns the system property indicated by the specified name.
+     * This method returns the system property indicated by the specified name
+     * after checking access control privileges.
      *
      * @param name the name of the system property
      * @return the system property
      */
+    @SuppressWarnings("removal")
     private static String getSystemProperty(final String name) {
-        return System.getProperty(name);
+        return AccessController.doPrivileged(new PrivilegedAction<String>() {
+                    @Override
+                    public String run() {
+                        return System.getProperty(name);
+                    }
+                });
     }
 
     /**
-     * This method returns an InputStream for the reading resource
-     * META_INF/services/org.w3c.dom.DOMImplementationSourceList.
+     * This method returns an Inputstream for the reading resource
+     * META_INF/services/org.w3c.dom.DOMImplementationSourceList after checking
+     * access control privileges.
      *
      * @param classLoader classLoader
      * @param name the resource
-     * @return an InputStream for the resource specified
+     * @return an Inputstream for the resource specified
      */
+    @SuppressWarnings("removal")
     private static InputStream getResourceAsStream(final ClassLoader classLoader,
                                                    final String name) {
-        return (classLoader == null)
-            ? ClassLoader.getSystemResourceAsStream(name)
-            : classLoader.getResourceAsStream(name);
+        return AccessController.doPrivileged(new PrivilegedAction<InputStream>() {
+                @Override
+                public InputStream run() {
+                    InputStream ris;
+                    if (classLoader == null) {
+                        ris =
+                            ClassLoader.getSystemResourceAsStream(name);
+                    } else {
+                        ris = classLoader.getResourceAsStream(name);
+                    }
+                    return ris;
+                }
+            });
     }
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2017, 2021, Oracle and/or its affiliates. All rights reserved.
  */
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
@@ -31,7 +31,7 @@ import java.util.List;
 /**
  * Pool of object of a given type to pick from to help memory usage
  * @xsl.usage internal
- * @LastModified: Nov 2024
+ * @LastModified: Oct 2017
  */
 public class ObjectPool implements java.io.Serializable
 {
@@ -138,7 +138,7 @@ public class ObjectPool implements java.io.Serializable
       {
         return objectType.getConstructor().newInstance();
       }
-      catch (InstantiationException | IllegalAccessException |
+      catch (InstantiationException | IllegalAccessException | SecurityException |
               IllegalArgumentException | InvocationTargetException | NoSuchMethodException ex){}
 
       // Throw unchecked exception for error in pool configuration.

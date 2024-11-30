@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2023, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -41,9 +41,14 @@ public class Utils {
      * and processors
      */
     static {
-        String val = System.getProperty("jaxp.debug");
-        // Allow simply setting the prop to turn on debug
-        debug = val != null && !"false".equals(val);
+        try {
+            String val = SecuritySupport.getSystemProperty("jaxp.debug");
+            // Allow simply setting the prop to turn on debug
+            debug = val != null && !"false".equals(val);
+        }
+        catch (SecurityException se) {
+            debug = false;
+        }
     }
 
     // print out debug information if jaxp.debug is enabled

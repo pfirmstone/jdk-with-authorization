@@ -94,7 +94,7 @@ import org.xml.sax.InputSource;
  * @author K.Venugopal SUN Microsystems
  * @author Neeraj Bajaj SUN Microsystems
  * @author Sunitha Reddy SUN Microsystems
- * @LastModified: Nov 2024
+ * @LastModified: Feb 2024
  */
 public class XMLEntityManager implements XMLComponent, XMLEntityResolver {
 
@@ -2011,7 +2011,12 @@ public class XMLEntityManager implements XMLComponent, XMLEntityResolver {
     // which encoding to use. Leave them for now.
     private static synchronized URI getUserDir() throws URI.MalformedURIException {
         // get the user.dir property
-        String userDir = System.getProperty("user.dir");
+        String userDir = "";
+        try {
+            userDir = SecuritySupport.getSystemProperty("user.dir");
+        }
+        catch (SecurityException se) {
+        }
 
         // return empty string if property value is empty string.
         if (userDir.length() == 0)

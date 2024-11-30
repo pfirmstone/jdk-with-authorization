@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2017, 2021, Oracle and/or its affiliates. All rights reserved.
  */
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
@@ -32,7 +32,7 @@ import jdk.xml.internal.SecuritySupport;
  * class and modified to be used as a general utility for creating objects
  * dynamically.
  *
- * @LastModified: Nov 2024
+ * @LastModified: Oct 2017
  */
 public class ObjectFactory {
 
@@ -57,8 +57,14 @@ public class ObjectFactory {
      * Figure out which ClassLoader to use.  For JDK 1.2 and later use
      * the context ClassLoader.
      */
+    @SuppressWarnings("removal")
     public static ClassLoader findClassLoader()
     {
+        if (System.getSecurityManager()!=null) {
+            //this will ensure bootclassloader is used
+            return null;
+        }
+
         // Figure out which ClassLoader to use for loading the provider
         // class.  If there is a Context ClassLoader then use it.
         ClassLoader context = SecuritySupport.getContextClassLoader();
@@ -117,7 +123,8 @@ public class ObjectFactory {
     public static Object newInstance(String className, boolean doFallback)
         throws ConfigurationError
     {
-        ClassLoader cl = findClassLoader();
+        @SuppressWarnings("removal")
+        ClassLoader cl = System.getSecurityManager()!=null ? null : findClassLoader();
         try{
             Class<?> providerClass = findProviderClass(className, cl, doFallback);
             Object instance = providerClass.getConstructor().newInstance();
@@ -154,6 +161,24 @@ public class ObjectFactory {
     {
         //throw security exception if the calling thread is not allowed to access the
         //class. Restrict the access to the package classes as specified in java.security policy.
+        @SuppressWarnings("removal")
+        SecurityManager security = System.getSecurityManager();
+        try{
+            if (security != null){
+                if (className.startsWith(JAXP_INTERNAL) ||
+                    className.startsWith(STAX_INTERNAL)) {
+                    cl = null;
+                } else {
+                    final int lastDot = className.lastIndexOf(".");
+                    String packageName = className;
+                    if (lastDot != -1) packageName = className.substring(0, lastDot);
+                    security.checkPackageAccess(packageName);
+                }
+             }
+        }catch(SecurityException e){
+            throw e;
+        }
+
         Class<?> providerClass;
         if (cl == null) {
             providerClass = Class.forName(className, false, ObjectFactory.class.getClassLoader());

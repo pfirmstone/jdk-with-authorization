@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2017, Oracle and/or its affiliates. All rights reserved.
  */
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
@@ -32,7 +32,7 @@ import jdk.xml.internal.SecuritySupport;
 /**
  * Execute the SystemProperty() function.
  * @xsl.usage advanced
- * @LastModified: Nov 2024
+ * @LastModified: Sep 2017
  */
 public class FuncSystemProperty extends FunctionOneArg
 {
@@ -96,21 +96,44 @@ public class FuncSystemProperty extends FunctionOneArg
              new Object[]{ namespace,
                            fullName });  //"Don't currently do anything with namespace "+namespace+" in property: "+fullName);
 
-        result = System.getProperty(propName);
-        if (null == result)
+        try
         {
-          // result = System.getenv(propName);
+          result = SecuritySupport.getSystemProperty(propName);
+
+          if (null == result)
+          {
+
+            // result = System.getenv(propName);
+            return XString.EMPTYSTRING;
+          }
+        }
+        catch (SecurityException se)
+        {
+          warn(xctxt, XPATHErrorResources.WG_SECURITY_EXCEPTION,
+               new Object[]{ fullName });  //"SecurityException when trying to access XSL system property: "+fullName);
+
           return XString.EMPTYSTRING;
         }
       }
     }
     else
     {
-      result = System.getProperty(fullName);
-
-      if (null == result)
+      try
       {
-        // result = System.getenv(fullName);
+        result = SecuritySupport.getSystemProperty(fullName);
+
+        if (null == result)
+        {
+
+          // result = System.getenv(fullName);
+          return XString.EMPTYSTRING;
+        }
+      }
+      catch (SecurityException se)
+      {
+        warn(xctxt, XPATHErrorResources.WG_SECURITY_EXCEPTION,
+             new Object[]{ fullName });  //"SecurityException when trying to access XSL system property: "+fullName);
+
         return XString.EMPTYSTRING;
       }
     }
@@ -140,6 +163,7 @@ public class FuncSystemProperty extends FunctionOneArg
   {
     try
     {
+      // Use SecuritySupport class to provide privileged access to property file
       try (InputStream is = SecuritySupport.getResourceAsStream(XSLT_PROPERTIES)) {
           target.load(is);  // and load up the property bag from this
       }

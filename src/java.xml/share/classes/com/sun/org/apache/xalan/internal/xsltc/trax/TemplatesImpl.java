@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2007, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2007, 2021, Oracle and/or its affiliates. All rights reserved.
  */
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
@@ -42,9 +42,11 @@ import java.lang.module.ModuleFinder;
 import java.lang.module.ModuleReader;
 import java.lang.module.ModuleReference;
 import java.lang.reflect.InvocationTargetException;
+import java.security.AccessController;
 import java.security.CodeSigner;
 import java.security.CodeSource;
 import java.security.PermissionCollection;
+import java.security.PrivilegedAction;
 import java.security.ProtectionDomain;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -58,6 +60,7 @@ import javax.xml.transform.Transformer;
 import javax.xml.transform.TransformerConfigurationException;
 import javax.xml.transform.URIResolver;
 import jdk.xml.internal.JdkConstants;
+import jdk.xml.internal.SecuritySupport;
 
 
 /**
@@ -65,7 +68,7 @@ import jdk.xml.internal.JdkConstants;
  * @author G. Todd Millerj
  * @author Jochen Cordes <Jochen.Cordes@t-online.de>
  * @author Santiago Pericas-Geertsen
- * @LastModified: Nov 2024
+ * @LastModified: May 2021
  */
 public final class TemplatesImpl implements Templates, Serializable {
     static final long serialVersionUID = 673094361519270707L;
@@ -259,6 +262,16 @@ public final class TemplatesImpl implements Templates, Serializable {
     private void  readObject(ObjectInputStream is)
       throws IOException, ClassNotFoundException
     {
+        @SuppressWarnings("removal")
+        SecurityManager security = System.getSecurityManager();
+        if (security != null){
+            String temp = SecuritySupport.getSystemProperty(DESERIALIZE_TRANSLET);
+            if (temp == null || !(temp.length()==0 || temp.equalsIgnoreCase("true"))) {
+                ErrorMsg err = new ErrorMsg(ErrorMsg.DESERIALIZE_TRANSLET_ERR);
+                throw new UnsupportedOperationException(err.toString());
+            }
+        }
+
         // We have to read serialized fields first.
         ObjectInputStream.GetField gf = is.readFields();
         _name = (String)gf.get("_name", null);
@@ -428,7 +441,10 @@ public final class TemplatesImpl implements Templates, Serializable {
         Configuration cf = bootLayer.configuration()
                 .resolve(finder, ModuleFinder.of(), Set.of(mn));
 
-        ModuleLayer layer = bootLayer.defineModules(cf, _ -> loader);
+        PrivilegedAction<ModuleLayer> pa = () -> bootLayer.defineModules(cf, name -> loader);
+        @SuppressWarnings("removal")
+        ModuleLayer layer = AccessController.doPrivileged(pa);
+
         Module m = layer.findModule(mn).get();
         assert m.getLayer() == layer;
 
@@ -447,9 +463,14 @@ public final class TemplatesImpl implements Templates, Serializable {
             throw new TransformerConfigurationException(err.toString());
         }
 
+        @SuppressWarnings("removal")
         TransletClassLoader loader =
-                new TransletClassLoader(ObjectFactory.findClassLoader(),
+                AccessController.doPrivileged(new PrivilegedAction<TransletClassLoader>() {
+                public TransletClassLoader run() {
+                    return new TransletClassLoader(ObjectFactory.findClassLoader(),
                             _tfactory.getExternalExtensionsMap());
+                }
+            });
 
         try {
             final int classCount = _bytecodes.length;
