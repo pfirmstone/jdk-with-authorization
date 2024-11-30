@@ -30,6 +30,7 @@ import jdk.internal.util.Architecture;
 import jdk.internal.util.ArraysSupport;
 import jdk.internal.util.ByteArrayLittleEndian;
 import jdk.internal.vm.annotation.ForceInline;
+import jdk.internal.vm.annotation.Stable;
 import sun.security.action.GetIntegerAction;
 
 import java.lang.foreign.MemorySegment;
