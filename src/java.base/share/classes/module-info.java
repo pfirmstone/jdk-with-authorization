@@ -319,7 +319,6 @@ module java.base {
         java.desktop,
         java.datatransfer,
         java.management,
-        java.management.rmi,
         java.rmi,
         java.sql.rowset;
     exports sun.security.action to

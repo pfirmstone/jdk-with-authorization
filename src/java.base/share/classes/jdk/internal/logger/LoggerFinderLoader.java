@@ -176,8 +176,6 @@ public final class LoggerFinderLoader {
     private static System.LoggerFinder loadLoggerFinder() {
         System.LoggerFinder result;
         try {
-            // Iterator iterates with the access control context stored
-            // at ServiceLoader creation time.
             final Iterator<System.LoggerFinder> iterator =
                     findLoggerFinderProviders();
             if (iterator.hasNext()) {
@@ -240,8 +238,6 @@ public final class LoggerFinderLoader {
         }
         DefaultLoggerFinder result = null;
         try {
-            // Iterator iterates with the access control context stored
-            // at ServiceLoader creation time.
             if (iterator.hasNext()) {
                 result = iterator.next();
             }

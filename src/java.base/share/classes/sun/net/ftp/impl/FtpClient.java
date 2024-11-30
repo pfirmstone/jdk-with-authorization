@@ -732,13 +732,13 @@ public class FtpClient extends sun.net.ftp.FtpClient {
         } else if (address.isLoopbackAddress() && s.startsWith("127.")) { // can be 127.0
             return new InetSocketAddress(s, port);
         } else if (address.isLoopbackAddress()) {
-            if (privilegedLocalHost().getHostAddress().equals(s)) {
+            if (getLocalHost().getHostAddress().equals(s)) {
                 return new InetSocketAddress(s, port);
             } else {
                 throw new FtpProtocolException(ERROR_MSG);
             }
         } else if (s.startsWith("127.")) {
-            if (privilegedLocalHost().equals(address)) {
+            if (getLocalHost().equals(address)) {
                 return new InetSocketAddress(s, port);
             } else {
                 throw new FtpProtocolException(ERROR_MSG);
@@ -746,7 +746,7 @@ public class FtpClient extends sun.net.ftp.FtpClient {
         }
         String hostName = address.getHostName();
         if (!(IPAddressUtil.isIPv4LiteralAddress(hostName) || IPAddressUtil.isIPv6LiteralAddress(hostName))) {
-            InetAddress[] names = privilegedGetAllByName(hostName);
+            InetAddress[] names = getAllByName(hostName);
             String resAddress = Arrays
                 .stream(names)
                 .map(InetAddress::getHostAddress)

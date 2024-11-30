@@ -25,9 +25,7 @@
 
 package javax.security.auth;
 
-import java.security.AccessController;
 import java.security.Principal;
-import java.security.PrivilegedAction;
 import java.security.ProtectionDomain;
 import java.util.Set;
 import java.util.WeakHashMap;
@@ -90,11 +88,6 @@ public class SubjectDomainCombiner implements java.security.DomainCombiner {
      *          {@code SubjectDomainCombiner}.
      */
     public Subject getSubject() {
-        java.lang.SecurityManager sm = System.getSecurityManager();
-        if (sm != null) {
-            sm.checkPermission(new AuthPermission
-                ("getSubjectFromDomainCombiner"));
-        }
         return subject;
     }
 
@@ -150,14 +143,7 @@ public class SubjectDomainCombiner implements java.security.DomainCombiner {
             if (subject == null) {
                 debug.println("null subject");
             } else {
-                final Subject s = subject;
-                AccessController.doPrivileged
-                    (new java.security.PrivilegedAction<Void>() {
-                    public Void run() {
-                        debug.println(s.toString());
-                        return null;
-                    }
-                });
+                debug.println(subject.toString());
             }
             printInputDomains(currentDomains, assignedDomains);
         }
@@ -355,11 +341,7 @@ public class SubjectDomainCombiner implements java.security.DomainCombiner {
         if (pd == null) {
             return "null";
         }
-        return AccessController.doPrivileged(new PrivilegedAction<String>() {
-            public String run() {
-                return pd.toString();
-            }
-        });
+        return pd.toString();
     }
 
     /**
