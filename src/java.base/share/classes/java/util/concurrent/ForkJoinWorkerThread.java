@@ -35,6 +35,10 @@
 
 package java.util.concurrent;
 
+import java.security.AccessController;
+import java.security.AccessControlContext;
+import java.security.PrivilegedAction;
+import java.security.ProtectionDomain;
 import jdk.internal.access.JavaLangAccess;
 import jdk.internal.access.SharedSecrets;
 import jdk.internal.misc.Unsafe;
@@ -80,7 +84,7 @@ public class ForkJoinWorkerThread extends Thread {
         super.setDaemon(true);
         if (handler != null)
             super.setUncaughtExceptionHandler(handler);
-        if (useSystemClassLoader && !clearThreadLocals) // else done by Thread ctor
+        if (useSystemClassLoader)
             super.setContextClassLoader(ClassLoader.getSystemClassLoader());
     }
 
@@ -225,7 +229,7 @@ public class ForkJoinWorkerThread extends Thread {
     }
 
     /**
-     * Clears ThreadLocals
+     * Clears ThreadLocals, and if necessary resets ContextClassLoader
      */
     @SuppressWarnings({"removal","unchecked"})
      final void resetThreadLocals() {
@@ -243,13 +247,6 @@ public class ForkJoinWorkerThread extends Thread {
              );
      }
 
-    /**
-     * Performs any further cleanup after ThreadLocals are cleared in
-     * method resetThreadLocals
-     */
-    void onThreadLocalReset() {
-    }
-
     private static final Unsafe U = Unsafe.getUnsafe();
     private static final long THREADLOCALS
         = U.objectFieldOffset(Thread.class, "threadLocals");
@@ -258,10 +255,10 @@ public class ForkJoinWorkerThread extends Thread {
     private static final JavaLangAccess JLA = SharedSecrets.getJavaLangAccess();
 
     /**
-     * A worker thread that is not a member of any user-defined
-     * ThreadGroup, uses the system class loader as thread context
-     * class loader, and clears all ThreadLocals after running each
-     * top-level task.
+     * A worker thread that has no permissions, is not a member of any
+     * user-defined ThreadGroup, uses the system class loader as
+     * thread context class loader, and clears all ThreadLocals after
+     * running each top-level task.
      */
     static final class InnocuousForkJoinWorkerThread extends ForkJoinWorkerThread {
         /** The ThreadGroup for all InnocuousForkJoinWorkerThreads */
@@ -297,12 +294,11 @@ public class ForkJoinWorkerThread extends Thread {
             );
         }
 
-        @Override // to re-establish CCL if necessary
-        final void onThreadLocalReset() {
-            if (resetCCL) {
+        final boolean needCCLReset() { // get and clear
+            boolean needReset;
+            if (needReset = resetCCL)
                 resetCCL = false;
-                super.setContextClassLoader(ClassLoader.getSystemClassLoader());
-            }
+            return needReset;
         }
 
         @SuppressWarnings("removal")
