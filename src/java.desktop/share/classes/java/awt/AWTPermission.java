@@ -171,6 +171,7 @@ import java.security.BasicPermission;
  * @author Marianne Mueller
  * @author Roland Schemers
  */
+//@Deprecated(since="24", forRemoval=true)
 public final class AWTPermission extends BasicPermission {
 
     /**

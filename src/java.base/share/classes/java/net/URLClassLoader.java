@@ -72,9 +72,6 @@ import sun.security.util.SecurityConstants;
  * The AccessControlContext of the thread that created the instance of
  * URLClassLoader will be used when subsequently loading classes and
  * resources.
- * <p>
- * The classes that are loaded are by default granted permission only to
- * access the URLs specified when the URLClassLoader was created.
  *
  * @author  David Connelly
  * @since   1.2

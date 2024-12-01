@@ -130,6 +130,22 @@ public class URLClassPath {
      * URLClassLoader. null implies no additional security restrictions. */
     @SuppressWarnings("removal")
     private final AccessControlContext acc;
+    
+    /**
+     * Creates a new URLClassPath for the given URLs. The URLs will be
+     * searched in the order specified for classes and resources. A URL
+     * ending with a '/' is assumed to refer to a directory. Otherwise,
+     * the URL is assumed to refer to a JAR file.
+     *
+     * @param urls the directory and JAR file URLs to search for classes
+     *        and resources
+     * @param factory the URLStreamHandlerFactory to use when creating new URLs
+     */
+    @SuppressWarnings("removal")
+    public URLClassPath(URL[] urls,
+                        URLStreamHandlerFactory factory){
+        this(urls, factory, DISABLE_ACC_CHECKING ? null : AccessController.getContext());
+    }
 
     /**
      * Creates a new URLClassPath for the given URLs. The URLs will be
@@ -166,6 +182,11 @@ public class URLClassPath {
             this.acc = acc;
     }
 
+    @SuppressWarnings("removal")
+    public URLClassPath(URL[] urls){
+        this(urls, null, DISABLE_ACC_CHECKING ? null : AccessController.getContext());
+    }
+    
     public URLClassPath(URL[] urls, @SuppressWarnings("removal") AccessControlContext acc) {
         this(urls, null, acc);
     }
@@ -276,6 +297,18 @@ public class URLClassPath {
             return path.toArray(new URL[0]);
         }
     }
+    
+    /**
+     * Finds the resource with the specified name on the URL search path
+     * or null if not found or security check fails.
+     *
+     * @param name      the name of the resource
+     * @return a {@code URL} for the resource, or {@code null}
+     * if the resource could not be found.
+     */
+    public URL findResource(String name) {
+        return findResource(name, true);
+    }
 
     /**
      * Finds the resource with the specified name on the URL search path
@@ -318,6 +351,10 @@ public class URLClassPath {
             }
         }
         return null;
+    }
+    
+    public Enumeration<URL> findResources(final String name){
+        return findResources(name, true);
     }
 
     /**
@@ -1048,7 +1085,11 @@ public class URLClassPath {
         private FileLoader(URL url) throws IOException {
             super(url);
             String path = url.getFile().replace('/', File.separatorChar);
-            path = ParseUtil.decode(path);
+            try {
+                path = ParseUtil.decode(path);
+            } catch (IllegalArgumentException iae) {
+                throw new IOException(iae);
+            }
             dir = (new File(path)).getCanonicalFile();
             @SuppressWarnings("deprecation")
             var _unused = normalizedBase = new URL(getBaseURL(), ".");
