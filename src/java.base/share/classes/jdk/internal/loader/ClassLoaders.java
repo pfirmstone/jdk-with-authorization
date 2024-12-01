@@ -143,9 +143,9 @@ public class ClassLoaders {
         ArchivedClassLoaders archivedClassLoaders = ArchivedClassLoaders.get();
         // -Xbootclasspath/a or -javaagent with Boot-Class-Path attribute
         String append = VM.getSavedProperty("jdk.boot.class.path.append");
-        sb.append("jrt:/java.base");
-        if (append!=null && append.isBlank())sb.append(pathSeparator).append(append);
-        URLClassPath bootUcp = new URLClassPath(sb.toString(), true);
+        URLClassPath bootUcp = (append != null && !append.isEmpty())
+                ? new URLClassPath(append, true)
+                : null;
         if (archivedClassLoaders != null) {
             BOOT_LOADER = (BootClassLoader) archivedClassLoaders.bootLoader();
             BOOT_LOADER.setClassPath(bootUcp);
