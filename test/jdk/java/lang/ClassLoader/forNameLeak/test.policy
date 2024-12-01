@@ -4,4 +4,5 @@ grant {
   permission java.lang.RuntimePermission "getClassLoader";
   permission java.lang.RuntimePermission "modifyThread";
   permission java.util.PropertyPermission "*", "read"; /* for Utils */
+  permission au.zeus.jdk.authorization.guards.LoadClassPermission;
 };

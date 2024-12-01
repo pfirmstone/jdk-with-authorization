@@ -25,7 +25,7 @@
  * @test
  * @bug 6997010 7191662
  * @summary Consolidate java.security files into one file with modifications
- * @run main/othervm -Djava.security.manager=allow CheckSecurityProvider
+ * @run main/othervm/policy=security.policy -Djava.security.manager=allow CheckSecurityProvider
  */
 
 import java.security.Provider;

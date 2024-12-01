@@ -1,1 +1,5 @@
 // This is an empty policy
+grant
+{
+   permission au.zeus.jdk.authorization.guards.LoadClassPermission;
+};

@@ -57,6 +57,7 @@ import java.util.PropertyPermission;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
+import au.zeus.jdk.authorization.guards.LoadClassPermission;
 
 import jdk.internal.module.Modules;
 
@@ -409,6 +410,7 @@ public class FieldSetAccessibleTest {
             this(new Permissions());
         }
         public PermissionsBuilder(Permissions perms) {
+            perms.add(new LoadClassPermission()); 
             this.perms = perms;
         }
         public PermissionsBuilder add(Permission p) {
@@ -452,6 +454,7 @@ public class FieldSetAccessibleTest {
             permissions.add(new ReflectPermission("suppressAccessChecks"));
             permissions.add(new PropertyPermission("*", "read"));
             permissions.add(new FilePermission("<<ALL FILES>>", "read"));
+	    permissions.add(new LoadClassPermission());
 
             // these are used for configuring the test itself...
             allPermissions = new Permissions();

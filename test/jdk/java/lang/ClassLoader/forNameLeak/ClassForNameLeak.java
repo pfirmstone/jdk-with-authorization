@@ -31,9 +31,9 @@
  *        jdk.test.lib.util.ForceGC
  *        jdk.test.lib.util.JarUtils
  * @build ClassForName ClassForNameLeak
- * @run main/othervm/policy=test.policy -Djava.security.manager ClassForNameLeak
+ * @run main/othervm/policy=test.policy -Djava.security.manager=java.lang.SecurityManager ClassForNameLeak
  */
-
+// CombinerSecurityManager will cause this test to fail as it uses a time based cache.
 import java.io.IOException;
 import java.lang.ref.WeakReference;
 import java.net.MalformedURLException;
