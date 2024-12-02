@@ -105,7 +105,7 @@ public class ProtectionDomainCacheTest {
                                       "-XX:VerifySubSet=dictionary",
                                       "-XX:+VerifyAfterGC",
                                       "-Xlog:gc+verify,protectiondomain=trace",
-                                      "-Djava.security.manager",
+                                      "-Djava.security.manager=java.lang.SecurityManager",
                                       Test.class.getName());
         OutputAnalyzer output = new OutputAnalyzer(pb.start());
         output.shouldContain("PD in set is not alive");

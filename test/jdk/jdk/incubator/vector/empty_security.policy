@@ -23,3 +23,7 @@
 
 // This policy is used by tests not requiring permissions, to assert that the
 // JDK implementation has the correct privileged blocks.
+grant
+{
+    permission au.zeus.jdk.authorization.guards.LoadClassPermission;
+};
