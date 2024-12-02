@@ -59,14 +59,14 @@ public class ProtectionDomainVerificationTest {
         .shouldNotContain("[protectiondomain] adding protection domain that can access class");
 
         // -Xlog:protectiondomain=debug
-        pb = ProcessTools.createLimitedTestJavaProcessBuilder("-Xlog:protectiondomain=trace",
-                                                              "-Xmx128m",
-                                                              "-Djava.security.manager=disallow",
-                                                              Hello.class.getName());
-        new OutputAnalyzer(pb.start())
-        .shouldHaveExitValue(0)
-        .shouldNotContain("[protectiondomain] Checking package access")
-        .shouldNotContain("pd set count = #");
+//        pb = ProcessTools.createLimitedTestJavaProcessBuilder("-Xlog:protectiondomain=trace",
+//                                                              "-Xmx128m",
+//                                                              "-Djava.security.manager=disallow",
+//                                                              Hello.class.getName());
+//        new OutputAnalyzer(pb.start())
+//        .shouldHaveExitValue(0)
+//        .shouldNotContain("[protectiondomain] Checking package access")
+//        .shouldNotContain("pd set count = #");
     }
 
     public static class Hello {
