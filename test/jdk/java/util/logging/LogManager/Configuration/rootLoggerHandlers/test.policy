@@ -10,4 +10,6 @@ grant {
     permission java.lang.RuntimePermission "setIO";
     permission java.lang.RuntimePermission "shutdownHooks";
     permission java.lang.RuntimePermission "setContextClassLoader";
+    permission au.zeus.jdk.authorization.guards.LoadClassPermission;
+    permission java.lang.RuntimePermission "accessClassInPackage.sun.util.locale.provider";
 };

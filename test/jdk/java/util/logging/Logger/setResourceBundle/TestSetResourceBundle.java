@@ -36,6 +36,7 @@ import java.util.logging.LogRecord;
 import java.util.logging.Logger;
 import java.util.logging.LoggingPermission;
 import resources.ListBundle;
+import au.zeus.jdk.authorization.guards.LoadClassPermission;
 
 /**
  * @test
@@ -471,6 +472,7 @@ public class TestSetResourceBundle {
         final Permissions permissions;
         public SimplePolicy(TestCase test) {
             permissions = new Permissions();
+	    permissions.add(new LoadClassPermission());
             if (test != TestCase.PERMISSION) {
                 permissions.add(new LoggingPermission("control", null));
             }

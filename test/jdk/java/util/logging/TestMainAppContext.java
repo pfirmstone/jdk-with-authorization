@@ -33,7 +33,7 @@ import sun.awt.SunToolkit;
  * @modules java.desktop/sun.awt
  *          java.logging
  * @build TestMainAppContext
- * @run main/othervm -Djava.security.manager=allow TestMainAppContext
+ * @run main/othervm/java.security.policy=security.policy -Djava.security.manager=allow TestMainAppContext
  * @author danielfuchs
  */
 public class TestMainAppContext {

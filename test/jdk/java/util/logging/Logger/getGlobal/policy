@@ -5,4 +5,6 @@ grant {
     permission java.lang.RuntimePermission "setContextClassLoader";
     permission java.lang.RuntimePermission "shutdownHooks";
     permission java.util.logging.LoggingPermission "control";
+    permission au.zeus.jdk.authorization.guards.LoadClassPermission;
+    permission java.lang.RuntimePermission "accessClassInPackage.sun.util.locale.provider";
 };

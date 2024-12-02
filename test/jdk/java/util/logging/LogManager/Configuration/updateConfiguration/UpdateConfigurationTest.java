@@ -56,6 +56,7 @@ import java.util.logging.Logger;
 import java.util.logging.LoggingPermission;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
+import au.zeus.jdk.authorization.guards.LoadClassPermission;
 
 /**
  * @test
@@ -586,6 +587,7 @@ public class UpdateConfigurationTest {
             permissions.add(new LoggingPermission("control", null));
             permissions.add(new FilePermission(PREFIX+".lck", "read,write,delete"));
             permissions.add(new FilePermission(PREFIX, "read,write"));
+	    permissions.add(new LoadClassPermission());
 
             // these are used for configuring the test itself...
             allPermissions = new Permissions();
