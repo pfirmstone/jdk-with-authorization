@@ -27,7 +27,6 @@
  * @summary Test that the allow/disallow options of the java.security.manager
  *          system property work correctly
  * @run main/othervm AllowSecurityManager
- * @run main/othervm -Djava.security.manager=disallow AllowSecurityManager
  * @run main/othervm -Djava.security.manager=allow AllowSecurityManager
  */
 
@@ -38,10 +37,11 @@ public class AllowSecurityManager {
         boolean disallow = !"allow".equals(prop);
         try {
             System.setSecurityManager(new SecurityManager());
-            if (disallow) {
-                throw new Exception("System.setSecurityManager did not " +
-                                    "throw UnsupportedOperationException");
-            }
+// disallow not supported
+//            if (disallow) {
+//                throw new Exception("System.setSecurityManager did not " +
+//                                    "throw UnsupportedOperationException");
+//            }
         } catch (UnsupportedOperationException uoe) {
             if (!disallow) {
                 throw new Exception("UnsupportedOperationException " +

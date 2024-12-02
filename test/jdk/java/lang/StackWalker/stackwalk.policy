@@ -1,4 +1,6 @@
 grant {
   permission java.lang.RuntimePermission "getStackWalkerWithClassReference";
+  permission au.zeus.jdk.authorization.guards.LoadClassPermission;
+  permission java.lang.RuntimePermission "accessClassInPackage.sun.util.locale.provider";
 };
 

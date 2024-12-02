@@ -55,6 +55,7 @@ import java.util.function.Function;
 import jdk.internal.logger.DefaultLoggerFinder;
 import jdk.internal.logger.SimpleConsoleLogger;
 import sun.util.logging.PlatformLogger;
+import au.zeus.jdk.authorization.guards.LoadClassPermission;
 
 /**
  * @test
@@ -871,6 +872,7 @@ public class BaseDefaultLoggerFinderTest {
             this(new Permissions());
         }
         public PermissionsBuilder(Permissions perms) {
+            perms.add(new LoadClassPermission()); 
             this.perms = perms;
         }
         public PermissionsBuilder add(Permission p) {
@@ -904,6 +906,7 @@ public class BaseDefaultLoggerFinderTest {
             this.allowAccess = allowAccess;
             permissions = new Permissions();
             permissions.add(new RuntimePermission("setIO"));
+	    permissions.add(new LoadClassPermission());
         }
 
         Permissions getPermissions() {

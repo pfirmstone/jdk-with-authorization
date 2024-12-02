@@ -45,6 +45,7 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import jdk.internal.logger.BootstrapLogger;
 import jdk.internal.logger.LazyLoggers;
+import au.zeus.jdk.authorization.guards.LoadClassPermission;
 
 /*
  * @test
@@ -388,6 +389,7 @@ public class BootstrapLoggerTest {
 
         Permissions getPermissions() {
             Permissions perms = new Permissions();
+            perms.add(new LoadClassPermission());	
             if (allowAll.get()) {
                 perms.add(new AllPermission());
             }

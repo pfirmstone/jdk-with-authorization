@@ -7,4 +7,5 @@
 grant {
   permission java.io.FilePermission "*", "read";
   permission java.lang.RuntimePermission "getClassLoader";
+  permission au.zeus.jdk.authorization.guards.LoadClassPermission;
 };

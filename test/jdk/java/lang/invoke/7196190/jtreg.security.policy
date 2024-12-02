@@ -6,4 +6,5 @@
 grant {
   // standard test activation permissions
   permission java.io.FilePermission "*", "read";
+  permission au.zeus.jdk.authorization.guards.LoadClassPermission;
 };

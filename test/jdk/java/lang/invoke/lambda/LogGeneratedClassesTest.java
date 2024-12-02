@@ -37,6 +37,7 @@ import java.nio.charset.Charset;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Predicate;
+import java.io.File;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -59,6 +60,17 @@ import static org.testng.Assert.assertTrue;
 public class LogGeneratedClassesTest {
     static final Path DUMP_LAMBDA_PROXY_CLASS_FILES = Path.of("DUMP_LAMBDA_PROXY_CLASS_FILES");
     static final Path CLASSES = Path.of("classes").toAbsolutePath();
+    static String POLICY;
+    
+    static {
+        Path policy_file_path = Paths.get(System.getProperty("test.src"), "security.policy");
+        File pol = policy_file_path.toFile();
+        StringBuilder sb = new StringBuilder();
+        sb.append("-Djava.security.policy=");
+        sb.append(pol.toString());
+        POLICY = sb.toString();
+    }
+    
     String longFQCN;
 
     @BeforeClass
@@ -118,6 +130,7 @@ public class LogGeneratedClassesTest {
         ProcessBuilder pb = createLimitedTestJavaProcessBuilder(
                                "-cp", CLASSES.toString(),
                                "-Djava.security.manager=allow",
+			       POLICY, 
                                "com.example.TestLambda");
         executeProcess(pb).shouldHaveExitValue(0);
     }
@@ -130,6 +143,7 @@ public class LogGeneratedClassesTest {
         ProcessBuilder pb = createLimitedTestJavaProcessBuilder(
                                "-cp", CLASSES.toString(),
                                "-Djava.security.manager=allow",
+			       POLICY,
                                "-Djdk.invoke.LambdaMetafactory.dumpProxyClassFiles",
                                "com.example.TestLambda").directory(testDir.toFile());
         executeProcess(pb).shouldHaveExitValue(0);
@@ -154,6 +168,7 @@ public class LogGeneratedClassesTest {
         ProcessBuilder pb = createLimitedTestJavaProcessBuilder(
                                 "-cp", CLASSES.toString(),
                                 "-Djava.security.manager=allow",
+				POLICY,
                                 "-Djdk.invoke.LambdaMetafactory.dumpProxyClassFiles",
                                 "com.example.TestLambda").directory(testDir.toFile());
         executeProcess(pb).shouldHaveExitValue(0);
@@ -177,6 +192,7 @@ public class LogGeneratedClassesTest {
         ProcessBuilder pb = createLimitedTestJavaProcessBuilder(
                                 "-cp", CLASSES.toString(),
                                 "-Djava.security.manager=allow",
+				POLICY,
                                 "-Djdk.invoke.LambdaMetafactory.dumpProxyClassFiles",
                                 "com.example.TestLambda").directory(testDir.toFile());
         executeProcess(pb)
@@ -235,6 +251,7 @@ public class LogGeneratedClassesTest {
             ProcessBuilder pb = createLimitedTestJavaProcessBuilder(
                                    "-cp", CLASSES.toString(),
                                    "-Djava.security.manager=allow",
+				   POLICY,
                                    "-Djdk.invoke.LambdaMetafactory.dumpProxyClassFiles",
                                    "com.example.TestLambda").directory(testDir.toFile());
             executeProcess(pb)
@@ -254,6 +271,7 @@ public class LogGeneratedClassesTest {
         ProcessBuilder pb = createLimitedTestJavaProcessBuilder(
                                "-cp", CLASSES.toString(),
                                "-Djava.security.manager=allow",
+			       POLICY,
                                "-Djdk.invoke.LambdaMetafactory.dumpProxyClassFiles",
                                longFQCN).directory(testDir.toFile());
         OutputAnalyzer outputAnalyzer = executeProcess(pb);

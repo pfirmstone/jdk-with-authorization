@@ -27,7 +27,7 @@
  * @summary Class::isRecord should check that the current class is final and not abstract
  * @enablePreview
  * @library /test/lib
- * @run testng/othervm IsRecordTest
+ * @run testng/othervm/java.security.policy=security.policy IsRecordTest
  * @run testng/othervm/java.security.policy=allPermissions.policy IsRecordTest
  */
 

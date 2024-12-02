@@ -67,6 +67,18 @@ import toolbox.ToolBox;
 import static jdk.internal.module.ClassFileConstants.WARN_INCUBATING;
 
 public class SourceLauncherTest extends TestRunner {
+
+    static String POLICY;
+    
+    static {
+        Path policy_file_path = Paths.get(System.getProperty("test.src"), "security.policy");
+        File pol = policy_file_path.toFile();
+        StringBuilder sb = new StringBuilder();
+        sb.append("-Djava.security.policy=");
+        sb.append(pol.toString());
+        POLICY = sb.toString();
+    }
+
     public static void main(String... args) throws Exception {
         SourceLauncherTest t = new SourceLauncherTest();
         t.runTests(m -> new Object[] { Paths.get(m.getName()) });
@@ -251,7 +263,7 @@ public class SourceLauncherTest extends TestRunner {
                         "}");
 
         String log = new JavaTask(tb)
-                .vmOptions("-Djava.security.manager=default")
+                .vmOptions("-Djava.security.manager=default", POLICY)
                 .className(sourceFile.toString())
                 .run(Task.Expect.FAIL)
                 .getOutput(Task.OutputKind.STDERR);

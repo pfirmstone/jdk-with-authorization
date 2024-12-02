@@ -50,6 +50,7 @@ import java.util.Iterator;
 import java.util.Locale;
 import java.util.ServiceLoader;
 import java.util.concurrent.atomic.AtomicReference;
+import au.zeus.jdk.authorization.guards.LoadClassPermission;
 
 /**
  * @test
@@ -773,6 +774,7 @@ public class LoggerFinderLoaderTest {
             this(new Permissions());
         }
         public PermissionsBuilder(Permissions perms) {
+            perms.add(new LoadClassPermission());
             this.perms = perms;
         }
         public PermissionsBuilder add(Permission p) {
@@ -806,6 +808,7 @@ public class LoggerFinderLoaderTest {
             this.allowAccess = allowAccess;
             permissions = new Permissions();
             permissions.add(new RuntimePermission("setIO"));
+	    permissions.add(new LoadClassPermission());
         }
 
         Permissions getPermissions() {

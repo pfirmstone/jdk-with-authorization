@@ -224,26 +224,24 @@ public class SecureClassLoader extends ClassLoader {
         // that no nameservice lookup is done on the hostname (String comparison
         // only), and the fragment is not considered.
         CodeSourceKey key = new CodeSourceKey(cs);
-        return pdcache.computeIfAbsent(key, new Function<>() {
-            // Do not turn this into a lambda since it is executed during bootstrap
-            @Override
-            public ProtectionDomain apply(CodeSourceKey key) {
-                PermissionCollection perms
-                        = SecureClassLoader.this.getPermissions(key.cs);
-                ProtectionDomain pd = new ProtectionDomain(
-                        key.cs, perms, SecureClassLoader.this, null);
-                SecurityManager sm = System.getSecurityManager();
-                if (sm != null){
-                    sm.checkPermission(LOAD_CLASS_ALLOW,
-                            new AccessControlContext(new ProtectionDomain []{pd}));
-                }
-                if (DebugHolder.debug != null) {
-                    DebugHolder.debug.println(" getPermissions " + pd);
-                    DebugHolder.debug.println("");
-                }
-                return pd;
-            }
-        });
+        ProtectionDomain domain = pdcache.get(key);
+        if (domain != null) return domain;
+        PermissionCollection perms
+                = SecureClassLoader.this.getPermissions(key.cs);
+        ProtectionDomain pd = new ProtectionDomain(
+                key.cs, perms, SecureClassLoader.this, null);
+        SecurityManager sm = System.getSecurityManager();
+        if (sm != null){
+            sm.checkPermission(LOAD_CLASS_ALLOW,
+                    new AccessControlContext(new ProtectionDomain []{pd}));
+        }
+        if (DebugHolder.debug != null) {
+            DebugHolder.debug.println(" getPermissions " + pd);
+            DebugHolder.debug.println("");
+        }
+        ProtectionDomain existed = pdcache.putIfAbsent(key, pd);
+        if (existed != null) return existed;
+        return pd;
     }
 
     private record CodeSourceKey(CodeSource cs) {

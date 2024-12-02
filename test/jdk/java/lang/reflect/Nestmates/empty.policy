@@ -3,3 +3,7 @@
 // causes jtreg to run under the default system policy
 // and default security manager, with the addition of
 // the permissions jtreg itself needs to run.
+grant
+{
+	permission au.zeus.jdk.authorization.guards.LoadClassPermission;
+};
