@@ -214,14 +214,7 @@ public class SecurityPolicyWriter extends CombinerSecurityManager{
         String policy = System.getProperty("java.security.policy");
         // One policy file only ==
         if (policy.startsWith("=")) policy= policy.substring(1);
-	Uri polLocation = null;
-        try {
-            polLocation = new Uri(policy );
-        } catch (URISyntaxException ex) {
-            throw new RuntimeException("Unable to create URI", ex);
-        }
-        URI poliLoc = Uri.uriToURI(polLocation);
-        policyFile = new File(poliLoc);
+        policyFile = new File(policy);
         if (!policyFile.exists()){
 	    try {
 		policyFile.createNewFile();
