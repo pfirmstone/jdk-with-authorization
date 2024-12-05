@@ -30,7 +30,7 @@ This project's objectives are to maintain a community fork of OpenJDK that retai
 ### Deploy with high scaling, efficient implementations of SecurityManager and Policy.
 -Djava.security.manager=default,
 -Djava.security.policy==path/security.policy
-- Unlike PolicyFile, with double equals "==" specified in "java.security.policy" ConcurrentPolicyFile doesn't include &lt;JAVA_HOME&gt;/lib/security/default.policy.
+- Unlike PolicyFile, with double equals "==" specified in "java.security.policy" ConcurrentPolicyFile doesn't also include &lt;JAVA_HOME&gt;/lib/security/default.policy.
 - &lt;JAVA_HOME&gt;/lib/security/default.policy contains a lot of AllPermission grants, these are undesireable, for now they remain for testing purposes, however this policy should contain only minimal permissions, if any.
 
 ## Development
