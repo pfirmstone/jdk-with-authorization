@@ -63,83 +63,6 @@ public class ClassLoaders {
 
     // Creates the built-in class loaders.
     static {
-        // PlatformClassLoader module's for ProtectionDomain identity to reduce
-        // trusted codebase size.
-        String pathSeparator = System.getProperty("path.separator");
-        StringBuilder sb = new StringBuilder(1680);
-        sb.append("jrt:/java.compiler").append(pathSeparator);
-        sb.append("jrt:/java.datatransfer").append(pathSeparator);
-        sb.append("jrt:/java.desktop").append(pathSeparator);
-        sb.append("jrt:/java.instrument").append(pathSeparator);
-        sb.append("jrt:/java.logging").append(pathSeparator);
-        sb.append("jrt:/java.management").append(pathSeparator);
-        sb.append("jrt:/java.management.rmi").append(pathSeparator);
-        sb.append("jrt:/java.naming").append(pathSeparator);
-        sb.append("jrt:/java.net.http").append(pathSeparator);
-        sb.append("jrt:/java.prefs").append(pathSeparator);
-        sb.append("jrt:/java.rmi").append(pathSeparator);
-        sb.append("jrt:/java.scripting").append(pathSeparator);
-        sb.append("jrt:/java.se").append(pathSeparator);
-        sb.append("jrt:/java.security.jgss").append(pathSeparator);
-        sb.append("jrt:/java.security.sasl").append(pathSeparator);
-        sb.append("jrt:/java.smartcardio").append(pathSeparator);
-        sb.append("jrt:/java.sql").append(pathSeparator);
-        sb.append("jrt:/java.sql.rowset").append(pathSeparator);
-        sb.append("jrt:/java.transaction.xa").append(pathSeparator);
-        sb.append("jrt:/java.xml").append(pathSeparator);
-        sb.append("jrt:/java.xml.crypto").append(pathSeparator);
-        sb.append("jrt:/jdk.accessibility").append(pathSeparator);
-        sb.append("jrt:/jdk.attach").append(pathSeparator);
-        sb.append("jrt:/jdk.authorization").append(pathSeparator);
-        sb.append("jrt:/jdk.charsets").append(pathSeparator);
-        sb.append("jrt:/jdk.compiler").append(pathSeparator);
-        sb.append("jrt:/jdk.crypto.cryptoki").append(pathSeparator);
-        sb.append("jrt:/jdk.crypto.ec").append(pathSeparator);
-        sb.append("jrt:/jdk.crypto.mscapi").append(pathSeparator);
-        sb.append("jrt:/jdk.dynalink").append(pathSeparator);
-        sb.append("jrt:/jdk.editpad").append(pathSeparator);
-        sb.append("jrt:/jdk.graal.compiler").append(pathSeparator);
-        sb.append("jrt:/jdk.graal.compiler.management").append(pathSeparator);
-        sb.append("jrt:/jdk.hotspot.agent").append(pathSeparator);
-        sb.append("jrt:/jdk.httpserver").append(pathSeparator);
-        sb.append("jrt:/jdk.incubator.vector").append(pathSeparator);
-        sb.append("jrt:/jdk.internal.ed").append(pathSeparator);
-        sb.append("jrt:/jdk.internal.jvmstat").append(pathSeparator);
-        sb.append("jrt:/jdk.internal.le").append(pathSeparator);
-        sb.append("jrt:/jdk.internal.md").append(pathSeparator);
-        sb.append("jrt:/jdk.internal.opt").append(pathSeparator);
-        sb.append("jrt:/jdk.internal.vm.ci").append(pathSeparator);
-        sb.append("jrt:/jdk.jartool").append(pathSeparator);
-        sb.append("jrt:/jdk.javadoc").append(pathSeparator);
-        sb.append("jrt:/jdk.jcmd").append(pathSeparator);
-        sb.append("jrt:/jdk.jconsole").append(pathSeparator);
-        sb.append("jrt:/jdk.jdeps").append(pathSeparator);
-        sb.append("jrt:/jdk.jdi").append(pathSeparator);
-        sb.append("jrt:/jdk.jdwp.agent").append(pathSeparator);
-        sb.append("jrt:/jdk.jfr").append(pathSeparator);
-        sb.append("jrt:/jdk.jlink").append(pathSeparator);
-        sb.append("jrt:/jdk.jpackage").append(pathSeparator);
-        sb.append("jrt:/jdk.jshell").append(pathSeparator);
-        sb.append("jrt:/jdk.jsobject").append(pathSeparator);
-        sb.append("jrt:/jdk.jstatd").append(pathSeparator);
-        sb.append("jrt:/jdk.localedata").append(pathSeparator);
-        sb.append("jrt:/jdk.management").append(pathSeparator);
-        sb.append("jrt:/jdk.management.agent").append(pathSeparator);
-        sb.append("jrt:/jdk.management.jfr").append(pathSeparator);
-        sb.append("jrt:/jdk.naming.dns").append(pathSeparator);
-        sb.append("jrt:/jdk.naming.rmi").append(pathSeparator);
-        sb.append("jrt:/jdk.net").append(pathSeparator);
-        sb.append("jrt:/jdk.nio.mapmode").append(pathSeparator);
-        sb.append("jrt:/jdk.sctp").append(pathSeparator);
-        sb.append("jrt:/jdk.security.auth").append(pathSeparator);
-        sb.append("jrt:/jdk.security.jgss").append(pathSeparator);
-        sb.append("jrt:/jdk.unsupported").append(pathSeparator);
-        sb.append("jrt:/jdk.unsupported.desktop").append(pathSeparator);
-        sb.append("jrt:/jdk.xml.dom").append(pathSeparator);
-        sb.append("jrt:/jdk.zipfs");
-        URLClassPath platformUcp = new URLClassPath(sb.toString(), false);
-        sb.delete(0, sb.length());
-        // See vmClassMacros.hpp for bootstrap classes loaded prior to java code.
         ArchivedClassLoaders archivedClassLoaders = ArchivedClassLoaders.get();
         // -Xbootclasspath/a or -javaagent with Boot-Class-Path attribute
         String append = VM.getSavedProperty("jdk.boot.class.path.append");
@@ -151,11 +74,10 @@ public class ClassLoaders {
             BOOT_LOADER.setClassPath(bootUcp);
             setArchivedServicesCatalog(BOOT_LOADER);
             PLATFORM_LOADER = (PlatformClassLoader) archivedClassLoaders.platformLoader();
-            PLATFORM_LOADER.setClassPath(platformUcp);
             setArchivedServicesCatalog(PLATFORM_LOADER);
         } else {
             BOOT_LOADER = new BootClassLoader(bootUcp);
-            PLATFORM_LOADER = new PlatformClassLoader(BOOT_LOADER, platformUcp);
+            PLATFORM_LOADER = new PlatformClassLoader(BOOT_LOADER);
         }
         // A class path is required when no initial module is specified.
         // In this case the class path defaults to "", meaning the current
@@ -231,10 +153,6 @@ public class ClassLoaders {
 
         PlatformClassLoader(BootClassLoader parent) {
             super("platform", parent, null);
-        }
-        
-        PlatformClassLoader(BootClassLoader parent, URLClassPath path){
-            super("platform", parent, path);
         }
     }
 
