@@ -69,6 +69,7 @@ import au.zeus.jdk.net.Uri;
 import au.zeus.jdk.authorization.sm.CombinerSecurityManager;
 import au.zeus.jdk.authorization.policy.ConcurrentPolicyFile;
 import au.zeus.jdk.authorization.policy.PermissionComparator;
+import au.zeus.jdk.authorization.policy.PolicyUtils;
 
 /**
  * This SecurityManager can be used in a simulation environment to generate
@@ -214,6 +215,11 @@ public class SecurityPolicyWriter extends CombinerSecurityManager{
         String policy = System.getProperty("java.security.policy");
         // One policy file only ==
         if (policy.startsWith("=")) policy= policy.substring(1);
+        try {
+            policy = PolicyUtils.expandURL(policy, System.getProperties());
+        } catch (Exception ex){
+            getLogger().log(Level.INFO, "Unable to expand policy file path properties", ex);
+        }
         policyFile = new File(policy);
         if (!policyFile.exists()){
 	    try {

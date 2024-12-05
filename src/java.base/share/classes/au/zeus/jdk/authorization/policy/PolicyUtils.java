@@ -185,7 +185,7 @@ import au.zeus.jdk.net.Uri;
      * <code>expand(str, properties).replace(File.separatorChar, '/')</code>.
      * @see #expand(String, Properties)
      */
-    static String expandURL(String str, Properties properties)
+    public static String expandURL(String str, Properties properties)
             throws ExpansionFailedException {
         return expand(str, properties).replace(File.separatorChar, '/');
     }
