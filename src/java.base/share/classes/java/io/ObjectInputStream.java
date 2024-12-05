@@ -2431,7 +2431,7 @@ public class ObjectInputStream
                          */
                         handles.markException(passHandle, ex);
                     } finally {
-                        curContext.setUsed();
+                        if (curContext != null) curContext.setUsed();
                         if (oldContext!= null)
                             oldContext.check();
                         curContext = oldContext;

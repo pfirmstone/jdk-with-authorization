@@ -1513,7 +1513,7 @@ public class ObjectOutputStream
                     bout.setBlockDataMode(false);
                     bout.writeByte(TC_ENDBLOCKDATA);
                 } finally {
-                    curContext.setUsed();
+                    if (curContext != null) curContext.setUsed();
                     curContext = oldContext;
                     if (extendedDebugInfo) {
                         debugInfoStack.pop();
