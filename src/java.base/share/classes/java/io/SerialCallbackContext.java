@@ -25,10 +25,10 @@
 
 package java.io;
 
-import au.zeus.jdk.authorization.spi.GuardServiceFactory;
 import java.security.Guard;
 import java.util.Iterator;
 import java.util.ServiceLoader;
+import au.zeus.jdk.authorization.guards.SerialObjectPermission;
 
 /**
  * Context during upcalls from object stream to class-defined
@@ -42,18 +42,6 @@ import java.util.ServiceLoader;
  * If not set to the current thread, the getObj method throws NotActiveException.
  */
 final class SerialCallbackContext {
-    private static final GuardServiceFactory FACTORY;
-    
-    static {
-        GuardServiceFactory factory = null;
-        ServiceLoader<GuardServiceFactory> guards = ServiceLoader.load(GuardServiceFactory.class);
-        Iterator<GuardServiceFactory> it = guards.iterator();
-        while (it.hasNext()){
-            factory = it.next();
-            if (factory != null) break;
-        } 
-        FACTORY = factory;
-    }
     
     private final Object obj;
     private final ObjectStreamClass desc;
@@ -69,10 +57,7 @@ final class SerialCallbackContext {
     }
     
     private static Guard getGuard(String className){
-        return FACTORY.newInstance(
-            "au.zeus.jdk.authorization.guards.SerialObjectPermission",
-            className
-        );
+        return new SerialObjectPermission(className);
     }
 
     SerialCallbackContext(Object obj, ObjectStreamClass desc) {
