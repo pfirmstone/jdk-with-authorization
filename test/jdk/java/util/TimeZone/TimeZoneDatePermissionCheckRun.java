@@ -73,7 +73,7 @@ public class TimeZoneDatePermissionCheckRun {
             sb.append(System.getProperty("file.separator"));
             sb.append("security.policy");
             ProcessBuilder pb = ProcessTools.createTestJavaProcessBuilder(
-                    "-Djava.security.manager",
+                    "-Djava.security.manager=java.lang.SecurityManager",
                     sb.toString(),
                     "-Djava.security.debug=access,failure,policy",
                     "-ea", "-esa",
