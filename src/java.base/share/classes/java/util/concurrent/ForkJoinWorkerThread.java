@@ -87,7 +87,7 @@ public class ForkJoinWorkerThread extends Thread {
         if (useSystemClassLoader)
             super.setContextClassLoader(ClassLoader.getSystemClassLoader());
     }
-
+    
     /**
      * Creates a ForkJoinWorkerThread operating in the given thread group and
      * pool, and with the given policy for preserving ThreadLocals.
@@ -107,7 +107,7 @@ public class ForkJoinWorkerThread extends Thread {
                                    boolean preserveThreadLocals) {
         this(group, pool, false, !preserveThreadLocals);
     }
-
+    
     /**
      * Creates a ForkJoinWorkerThread operating in the given pool.
      *
@@ -237,15 +237,31 @@ public class ForkJoinWorkerThread extends Thread {
              U.putReference(this, THREADLOCALS, null);
          if (U.getReference(this, INHERITABLETHREADLOCALS) != null)
              U.putReference(this, INHERITABLETHREADLOCALS, null);
-         if ((this instanceof InnocuousForkJoinWorkerThread) &&
-             ((InnocuousForkJoinWorkerThread)this).needCCLReset())
+         if (needCCLReset() && System.getSecurityManager() != null){
              AccessController.doPrivileged((PrivilegedAction)()->
                  {
                      super.setContextClassLoader(ClassLoader.getSystemClassLoader());
                      return null;
                  }
              );
-     }
+         }
+    }
+     
+    private boolean resetCCL;
+    
+    @Override // paranoically
+    @SuppressWarnings({"removal", "unchecked"})
+    public void setContextClassLoader(ClassLoader cl) {
+        resetCCL = true;
+        super.setContextClassLoader(cl);
+    }
+    
+    final boolean needCCLReset() { // get and clear
+        boolean needReset;
+        if (needReset = resetCCL)
+            resetCCL = false;
+        return needReset;
+    }
 
     private static final Unsafe U = Unsafe.getUnsafe();
     private static final long THREADLOCALS
@@ -263,7 +279,7 @@ public class ForkJoinWorkerThread extends Thread {
     static final class InnocuousForkJoinWorkerThread extends ForkJoinWorkerThread {
         /** The ThreadGroup for all InnocuousForkJoinWorkerThreads */
         private static final ThreadGroup innocuousThreadGroup;
-        private boolean resetCCL;
+        
         @SuppressWarnings("removal")
         private static final AccessControlContext innocuousACC;
         InnocuousForkJoinWorkerThread(ForkJoinPool pool) {
@@ -285,20 +301,12 @@ public class ForkJoinWorkerThread extends Thread {
             if (System.getSecurityManager() != null &&
                 cl != null && ClassLoader.getSystemClassLoader() != cl)
                 throw new SecurityException("setContextClassLoader");
-            resetCCL = true;
             AccessController.doPrivileged((PrivilegedAction)()->
                 {
                     super.setContextClassLoader(cl);
                     return null;
                 }
             );
-        }
-
-        final boolean needCCLReset() { // get and clear
-            boolean needReset;
-            if (needReset = resetCCL)
-                resetCCL = false;
-            return needReset;
         }
 
         @SuppressWarnings("removal")

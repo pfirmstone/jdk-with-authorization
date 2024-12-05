@@ -34,6 +34,7 @@
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.LongAdder;
+import java.util.concurrent.ForkJoinPool;
 
 import junit.framework.Test;
 import junit.framework.TestSuite;
@@ -266,11 +267,17 @@ public class ThreadLocalRandom8Test extends JSR166TestCase {
             ThreadLocalRandom.current(),
             serialClone(ThreadLocalRandom.current()));
         // In the current implementation, there is exactly one shared instance
-        if (testImplementationDetails)
-            assertSame(
-                ThreadLocalRandom.current(),
-                java.util.concurrent.CompletableFuture.supplyAsync(
-                    () -> serialClone(ThreadLocalRandom.current())).join());
+        if (testImplementationDetails){
+            ForkJoinPool pool = new ForkJoinPool(true);
+            try {
+                assertSame(
+                    ThreadLocalRandom.current(),
+                    java.util.concurrent.CompletableFuture.supplyAsync(
+                        () -> serialClone(ThreadLocalRandom.current()), pool).join());
+            } finally {
+                pool.close();
+            }
+        }
     }
 
 }

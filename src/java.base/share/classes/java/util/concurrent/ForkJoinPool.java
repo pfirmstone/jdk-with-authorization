@@ -1107,13 +1107,7 @@ public class ForkJoinPool extends AbstractExecutorService {
      */
     @SuppressWarnings("removal")
     private static void checkPermission() {
-        SecurityManager security; RuntimePermission perm;
-        if ((security = System.getSecurityManager()) != null) {
-            if ((perm = modifyThreadPermission) == null)
-                modifyThreadPermission = perm = // races OK
-                    new RuntimePermission("modifyThread");
-            security.checkPermission(perm);
-        }
+        modifyThreadPermission.checkGuard(null);
     }
 
     // Nested classes
@@ -1141,6 +1135,33 @@ public class ForkJoinPool extends AbstractExecutorService {
          * @throws NullPointerException if the pool is null
          */
         public ForkJoinWorkerThread newThread(ForkJoinPool pool);
+    }
+    
+    /**
+     * A ForkJoinWorkerThreadFactory that captures the caller's context
+     * and uses it for thread creation.  The context ClassLoader and
+     * thread locals are cleared after execution of each worker task.
+     */
+    public static final class CallerContextForkJoinWorkerThreadFactory 
+            implements ForkJoinWorkerThreadFactory {
+        
+        AccessControlContext context;
+         
+        /**
+         * This constructor captures and stores the caller's context.
+         */
+        public CallerContextForkJoinWorkerThreadFactory(){
+            this.context = AccessController.getContext();
+        }
+        
+        @Override
+        public final ForkJoinWorkerThread newThread(ForkJoinPool pool) {
+            return AccessController.doPrivileged(
+                (PrivilegedAction<ForkJoinWorkerThread>)()-> 
+                    new ForkJoinWorkerThread(null, pool, true, true),
+                context
+            );
+        }
     }
 
     /**
@@ -1178,10 +1199,11 @@ public class ForkJoinPool extends AbstractExecutorService {
                 Permissions ps = new Permissions();
                 ps.add(new RuntimePermission("getClassLoader"));
                 ps.add(new RuntimePermission("setContextClassLoader"));
+                ps.add(new RuntimePermission("enableContextClassLoaderOverride"));
                 regularACC = acc =
                     new AccessControlContext(new ProtectionDomain[] {
                             new ProtectionDomain(null, ps) });
-            }
+    }
             return AccessController.doPrivileged(
                 new PrivilegedAction<>() {
                     public ForkJoinWorkerThread run() {
@@ -1654,7 +1676,7 @@ public class ForkJoinPool extends AbstractExecutorService {
      * Permission required for callers of methods that may start or
      * kill threads. Lazily constructed.
      */
-    static volatile RuntimePermission modifyThreadPermission;
+    static final RuntimePermission modifyThreadPermission = new RuntimePermission("modifyThread");
 
     /**
      * Cached for faster type tests.
@@ -2899,6 +2921,32 @@ public class ForkJoinPool extends AbstractExecutorService {
     public ForkJoinPool() {
         this(Math.min(MAX_CAP, Runtime.getRuntime().availableProcessors()),
              defaultForkJoinWorkerThreadFactory, null, false,
+             0, MAX_CAP, 1, null, DEFAULT_KEEPALIVE, TimeUnit.MILLISECONDS);
+    }
+    
+    /**
+     * Creates a {@code ForkJoinPool} with parallelism equal to {@link
+     * java.lang.Runtime#availableProcessors}, using defaults for all
+     * other parameters (see {@link #ForkJoinPool(int,
+     * ForkJoinWorkerThreadFactory, UncaughtExceptionHandler, boolean,
+     * int, int, int, Predicate, long, TimeUnit)}).
+     * 
+     * The context ClassLoader and thread locals are cleared after each worker task
+     * completes execution.
+     * 
+     * @param useContext if true, uses the callers context when creating threads,
+     * allowing privileged execution, if false, it uses defaultForkJoinWorkerThreadFactory
+     *
+     * @throws SecurityException if a security manager exists and
+     *         the caller is not permitted to modify threads
+     *         because it does not hold {@link
+     *         java.lang.RuntimePermission}{@code ("modifyThread")}
+     */
+    public ForkJoinPool(boolean useContext){
+        this(Math.min(MAX_CAP, Runtime.getRuntime().availableProcessors()),
+             useContext ? new CallerContextForkJoinWorkerThreadFactory() :
+                     defaultForkJoinWorkerThreadFactory,
+             null, false,
              0, MAX_CAP, 1, null, DEFAULT_KEEPALIVE, TimeUnit.MILLISECONDS);
     }
 

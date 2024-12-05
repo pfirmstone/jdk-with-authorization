@@ -155,6 +155,7 @@ import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.regex.Pattern;
+import au.zeus.jdk.authorization.guards.LoadClassPermission;
 
 import junit.framework.Test;
 import junit.framework.TestCase;
@@ -1552,7 +1553,8 @@ public class JSR166TestCase extends TestCase {
              // Permissions needed by the junit test harness
              new RuntimePermission("accessDeclaredMembers"),
              new PropertyPermission("*", "read"),
-             new java.io.FilePermission("<<ALL FILES>>", "read"));
+             new java.io.FilePermission("<<ALL FILES>>", "read"),
+             new LoadClassPermission());
     }
 
     /**
