@@ -67,8 +67,14 @@ public class TimeZoneDatePermissionCheckRun {
             //will go into infinite recursion trying to get enough permissions for
             //printing Date of failing certificate unless fix is applied.
             // Build process (with VM flags)
+            StringBuilder sb = new StringBuilder();
+            sb.append("-Djava.security.policy=");
+            sb.append(System.getProperty("test.src"));
+            sb.append(System.getProperty("file.separator"));
+            sb.append("security.policy");
             ProcessBuilder pb = ProcessTools.createTestJavaProcessBuilder(
                     "-Djava.security.manager",
+                    sb.toString(),
                     "-Djava.security.debug=access,failure,policy",
                     "-ea", "-esa",
                     "-cp", jarPath,
