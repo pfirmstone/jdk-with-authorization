@@ -393,14 +393,13 @@ import au.zeus.jdk.net.Uri;
                     final File f = new File(location);
                     if (f.exists()) {
                         dynamicURL = f.toURI().toURL();
-                    } else {
-                        throw new Error(
-                        "System Base Policy must be a file, not a URL, you may only decorate a file policy using a URL policy.");
+                    }
+                    if (dynamicURL == null) {
+                        dynamicURL = new URL(location);
                     }
                 } catch (Exception e) {
                     if ( e instanceof SecurityException ) throw (SecurityException) e;
-                    // TODO: log error
-                    System.err.println("Error detecting system policy location: "+e);
+                    throw new SecurityException("Unable to load policy url", e);
                 }
             }
         }
