@@ -26,7 +26,7 @@
  * @test
  * @bug 8012453 8016046
  * @requires (os.family == "windows")
- * @run testng/othervm -Djava.security.manager=allow ExecCommand
+ * @run testng/othervm/policy=security.policy -Djava.security.manager=allow ExecCommand
  * @summary workaround for legacy applications with Runtime.getRuntime().exec(String command)
  */
 
