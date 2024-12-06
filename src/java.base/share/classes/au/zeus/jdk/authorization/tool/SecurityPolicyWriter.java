@@ -29,12 +29,15 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.ObjectStreamException;
 import java.io.PrintWriter;
+import java.io.Writer;
+import java.io.OutputStreamWriter;
 import java.net.MalformedURLException;
 import java.net.SocketPermission;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.net.URL;
 import java.net.URLPermission;
+import java.net.URLConnection;
 import java.security.CodeSource;
 import java.security.GeneralSecurityException;
 import java.security.KeyStore;
@@ -147,7 +150,7 @@ public class SecurityPolicyWriter extends CombinerSecurityManager{
     private static Logger logger;
     private static final Object loggerLock = new Object();
     private final Policy POLICY;
-    private final File policyFile;
+    private final URL policyLocation;
 
     /**
      * @return the logger
@@ -169,6 +172,7 @@ public class SecurityPolicyWriter extends CombinerSecurityManager{
     private final Map<String,String> pathReplacements;
     private final String hostname;
     
+    @SuppressWarnings("deprecation")
     private SecurityPolicyWriter(
 	    ConcurrentMap<ProtectionDomain,Collection<Permission>> map) 
     {
@@ -190,9 +194,9 @@ public class SecurityPolicyWriter extends CombinerSecurityManager{
                     System.setProperty((String) entry.getKey(), (String) entry.getValue());
                 }
             } catch (FileNotFoundException ex) {
-                getLogger().log(Level.INFO, "Unable to read properties file", ex);
+                getLogger().log(Level.ERROR, "Unable to read properties file", ex);
             } catch (IOException ex) {
-                getLogger().log(Level.INFO, "Unable to read properties file", ex);
+                getLogger().log(Level.ERROR, "Unable to read properties file", ex);
             }
         }
         p.put("java.io.tmpdir", System.getProperty("java.io.tmpdir"));
@@ -218,23 +222,44 @@ public class SecurityPolicyWriter extends CombinerSecurityManager{
         try {
             policy = PolicyUtils.expandURL(policy, System.getProperties());
         } catch (Exception ex){
-            getLogger().log(Level.INFO, "Unable to expand policy file path properties", ex);
+            getLogger().log(Level.ERROR, "Unable to expand policy file path properties", ex);
         }
-        policyFile = new File(policy);
+        URL dynamicURL = null;
+        File policyFile = new File(policy);
         if (!policyFile.exists()){
 	    try {
 		policyFile.createNewFile();
 	    } catch (IOException ex) {
-		throw new RuntimeException("Unable to create a policy file: "+ policy, ex);
+                try {
+                    dynamicURL = new URL(policy);
+                } catch (MalformedURLException mex){
+                    getLogger().log(Level.ERROR, "Unable to load policy", ex);
+                    RuntimeException e = new RuntimeException("Unable to load policy");
+                    e.addSuppressed(ex);
+                    e.addSuppressed(mex);
+                    throw e;
+                }
+            }
+        } else {
+            if (policyFile.isDirectory()) throw new RuntimeException("Directory found instead of file.");
+        }
+        if (dynamicURL == null){
+            try {
+                dynamicURL = policyFile.toURI().toURL();
+            } catch (MalformedURLException mex){
+                getLogger().log(Level.ERROR, "Unable to load policy", mex);
+                RuntimeException e = new RuntimeException("Unable to load policy");
+                e.addSuppressed(mex);
+                throw e;
             }
         }
+        getLogger().log(Level.INFO, "policy location: "+ dynamicURL.toString());
+        policyLocation = dynamicURL;
         Policy polcy = null;
         try {
-            polcy = new ConcurrentPolicyFile(new URL[]{policyFile.toURI().toURL()});
+            polcy = new ConcurrentPolicyFile(new URL[]{dynamicURL});
         } catch (PolicyInitializationException ex) {
-            getLogger().log(Level.INFO,"Unable to create Policy instance", ex);
-        } catch (MalformedURLException ex) {
-            getLogger().log(Level.INFO, "Unable to create URL", ex);
+            getLogger().log(Level.ERROR, "Unable to create Policy instance", ex);
         }
         POLICY = polcy;
     } 
@@ -244,8 +269,8 @@ public class SecurityPolicyWriter extends CombinerSecurityManager{
         Runtime.getRuntime().addShutdownHook(shutdownHook());
     }
     
-    private File policyFile() throws URISyntaxException{
-        return policyFile;
+    private URL policyLocation() {
+        return policyLocation;
     }
     
     private static KeyStore keyStore(){
@@ -254,9 +279,9 @@ public class SecurityPolicyWriter extends CombinerSecurityManager{
 		try {
 		    keyStore = initStore();
 		} catch (IOException ex) {
-		    getLogger().log(Level.DEBUG, "Unable to create KeyStore instance", ex);
+		    getLogger().log(Level.ERROR, "Unable to create KeyStore instance", ex);
 		} catch (GeneralSecurityException ex) {
-		    getLogger().log(Level.DEBUG, "Unable to create KeyStore instance", ex);
+		    getLogger().log(Level.ERROR, "Unable to create KeyStore instance", ex);
 		}
 	    }
 	    return keyStore;
@@ -283,9 +308,9 @@ public class SecurityPolicyWriter extends CombinerSecurityManager{
 	try {
 	    url = new Uri(path).toURL();
 	} catch (MalformedURLException e) {
-	    getLogger().log(Level.DEBUG, "Keystore initialization failed", e);
+	    getLogger().log(Level.ERROR, "Keystore initialization failed", e);
 	} catch (URISyntaxException ex) {
-	    getLogger().log(Level.DEBUG, "Keystore initialization failed", ex);
+	    getLogger().log(Level.ERROR, "Keystore initialization failed", ex);
 	}
 	if (url != null) {
 	    in = url.openStream();
@@ -332,21 +357,21 @@ public class SecurityPolicyWriter extends CombinerSecurityManager{
         Thread t = new Thread ( new Runnable(){
             @Override
             public void run (){
+                // File will append, URL is assumed to handle output appropriately.
                 PrintWriter pw = null;
                 try {
-		    File policyFile = policyFile();
-		    pw = new PrintWriter(new BufferedWriter(new FileWriter(policyFile, true)));
-                } catch (IOException ex) {
-                    getLogger().log(Level.DEBUG, "unable to write to policy file ", ex);
-                    return;
-                } catch (URISyntaxException ex) {
-		    getLogger().log(Level.DEBUG, "unable to write to policy file ", ex);
-		    return;
-                } 
-//		catch (PolicyInitializationException ex) {
-//		    getLogger().log(Level.SEVERE, "unable to parse to policy file ", ex);
-//		    return;
-//		}
+                    Writer w;
+		    URL policyURL = policyLocation();
+                    File policyFile = new File(policyURL.toURI());
+                    if (policyFile.exists()){
+                        w = new FileWriter(policyFile, true);
+                    } else {
+                        URLConnection con = policyURL.openConnection();
+                        con.setDoOutput(true);
+                        w = new OutputStreamWriter(con.getOutputStream());
+                    }
+		    pw = new PrintWriter(new BufferedWriter(w));
+                
                 //REMIND: keystore "some_keystore_url", "keystore_type", "keystore_provider";
                 //        keystorePasswordURL "some_password_url";
                 
@@ -363,141 +388,152 @@ public class SecurityPolicyWriter extends CombinerSecurityManager{
 //                  };
 
                 
-                Iterator<Entry<ProtectionDomain,Collection<Permission>>> it 
-                        = domainPermissions.entrySet().iterator();
-                while (it.hasNext()){
-                    Entry<ProtectionDomain,Collection<Permission>> entry = it.next();
-                    ProtectionDomain pd = entry.getKey();
-		    Collection<Permission> perms = entry.getValue();
-                    Collection<Permission> permsToPrint = new ArrayList<Permission>();
-                    PermissionCollection pc = new Permissions();
-                    Iterator<Permission> pIt = perms.iterator();
-                    while (pIt.hasNext()){
-                        Permission p = pIt.next();
-                        if (POLICY != null && POLICY.implies(pd, p) || pc.implies(p)) continue;
-                        pc.add(p);
-                        permsToPrint.add(p);
-                    }
-		    if (permsToPrint.isEmpty()) continue;
-                    CodeSource cs = null; 
-                    Principal [] principals = null;
-		    try {
-			cs = pd.getCodeSource();
-			principals = pd.getPrincipals();
-		    } catch (NullPointerException e){
-			// On some occassions ProtectionDomain hasn't been
-			// safely published.
-			System.err.println(
-			    "ProtectionDomain wasn't safely published: " 
-			    + pd.toString()
-			);
-		    }
-		    // Delegate tasks to an executor so we don't cause recursive calls / stack overflow.		    
-		    if (cs != null){
-			Certificate [] signers = cs.getCertificates();
-			if (signers != null && signers.length > 0){
-			     if (keyStore() != null){
-				for (int i=0, l=signers.length; i<l; i++){
-				    aliases.computeIfAbsent(signers[i], certFunc);
-				}
-			    }
-			}
-		    }
-                    if (cs != null || (principals != null && principals.length > 0)){
-                        URL codebase = cs != null ? cs.getLocation() : null;
-                        pw.print("grant ");
-                        if (keyStore != null){
-                            Certificate [] signers = cs != null ? cs.getCertificates() : null;
-                            if (signers != null && signers.length > 0) {
-                                List<String> alia = new ArrayList<String>(signers.length);
-                                for (int i=0, l=signers.length; i<l; i++){
-                                    alia.add(aliases.get(signers[i]));
-                                }
-                                if (!alia.isEmpty()){
-                                    pw.print("signedBy \"");
-                                    for (int i=0, l=alia.size(); i<l; i++){
-                                       if (i != 0) pw.print(",");
-                                       pw.print(alia.get(i));
+                    Iterator<Entry<ProtectionDomain,Collection<Permission>>> it 
+                            = domainPermissions.entrySet().iterator();
+                    while (it.hasNext()){
+                        Entry<ProtectionDomain,Collection<Permission>> entry = it.next();
+                        ProtectionDomain pd = entry.getKey();
+                        Collection<Permission> perms = entry.getValue();
+                        Collection<Permission> permsToPrint = new ArrayList<Permission>();
+                        PermissionCollection pc = new Permissions();
+                        Iterator<Permission> pIt = perms.iterator();
+                        while (pIt.hasNext()){
+                            Permission p = pIt.next();
+                            if (POLICY != null && POLICY.implies(pd, p) || pc.implies(p)) continue;
+                            pc.add(p);
+                            permsToPrint.add(p);
+                        }
+                        if (permsToPrint.isEmpty()) continue;
+                        CodeSource cs = null; 
+                        Principal [] principals = null;
+                        try {
+                            cs = pd.getCodeSource();
+                            principals = pd.getPrincipals();
+                        } catch (NullPointerException e){
+                            // On some occassions ProtectionDomain hasn't been
+                            // safely published.
+                            System.err.println(
+                                "ProtectionDomain wasn't safely published: " 
+                                + pd.toString()
+                            );
+                        }
+                        // Delegate tasks to an executor so we don't cause recursive calls / stack overflow.		    
+                        if (cs != null){
+                            Certificate [] signers = cs.getCertificates();
+                            if (signers != null && signers.length > 0){
+                                 if (keyStore() != null){
+                                    for (int i=0, l=signers.length; i<l; i++){
+                                        aliases.computeIfAbsent(signers[i], certFunc);
                                     }
-                                    pw.print("\", ");
                                 }
                             }
                         }
-			if (codebase != null){
-			    pw.print("codebase \"");
-			    String codebaseStr = replaceValuesWithProperties(codebase.toString());
-			    pw.print(codebaseStr);
-			    pw.print("\"");
-			    if (principals != null && principals.length >0) pw.print(",\n");
-			}
-                        if (principals != null && principals.length > 0){
-                            for (int i=0, l=principals.length; i<l; i++){
-                                if (i!=0 || codebase != null) pw.print("    ");
-                                pw.print("principal ");
-                                pw.print(principals[i].getClass().getCanonicalName());
-                                pw.print(" \"");
-                                pw.print(principals[i].getName());
-                                if (i<l-1) pw.print("\",\n");
-                                else pw.print("\"\n");
+                        if (cs != null || (principals != null && principals.length > 0)){
+                            URL codebase = cs != null ? cs.getLocation() : null;
+                            pw.print("grant ");
+                            if (keyStore != null){
+                                Certificate [] signers = cs != null ? cs.getCertificates() : null;
+                                if (signers != null && signers.length > 0) {
+                                    List<String> alia = new ArrayList<String>(signers.length);
+                                    for (int i=0, l=signers.length; i<l; i++){
+                                        alia.add(aliases.get(signers[i]));
+                                    }
+                                    if (!alia.isEmpty()){
+                                        pw.print("signedBy \"");
+                                        for (int i=0, l=alia.size(); i<l; i++){
+                                           if (i != 0) pw.print(",");
+                                           pw.print(alia.get(i));
+                                        }
+                                        pw.print("\", ");
+                                    }
+                                }
                             }
-                        } else {
-                            pw.print("\n");
-                        }
-                        pw.print("{\n");
-
-                        Iterator<Permission> permIt = permsToPrint.iterator();
-                        while (permIt.hasNext()){
-                            Permission p = permIt.next();
-                            pw.print("    permission ");
-                            pw.print(p.getClass().getCanonicalName());
-                            pw.print(" \"");
-			    if (p instanceof PrivateCredentialPermission){
-				PrivateCredentialPermission pcp = (PrivateCredentialPermission) p;
-				String credential = pcp.getCredentialClass();
-				String [][] princpals = pcp.getPrincipals();
-				StringBuilder sb = new StringBuilder();
-				sb.append(credential);
-				sb.append(" ");
-				for (int i=0,l=princpals.length; i<l; i++){
-				    String [] pals = princpals [i];
-				    for (int j=0,m=pals.length; j<m; j++){
-					sb.append(pals[j]);
-					if (j < m-1) sb.append(" \\\"");
-					else sb.append("\\\"");
-				    }
-				    if (i < l-1) sb.append(" ");
-				}
-				pw.print(sb.toString());
-			    } else {
-				/* Some complex permissions have quoted strings embedded or
-				literal carriage returns that must be escaped.  */
-				String name = p.getName();
-				if (p instanceof FilePermission){
-                                    name = replaceValuesWithProperties(name);
-                                    name = name.replace("/", "${/}");
-				} else if (p instanceof SocketPermission || p instanceof URLPermission){
-                                    name = name.replace(hostname, "${HOST}");
-                                } else {
-				    name = name.replace("\\\"", "\\\\\"").replace("\"","\\\"").replace("\r","\\\r");
-				}
-				pw.print(name);
-			    }
-                            String actions = p.getActions();
-                            if (actions != null && !"".equals(actions)){
-                                pw.print("\", \"");
-                                pw.print(actions);
+                            if (codebase != null){
+                                pw.print("codebase \"");
+                                String codebaseStr = replaceValuesWithProperties(codebase.toString());
+                                pw.print(codebaseStr);
                                 pw.print("\"");
+                                if (principals != null && principals.length >0) pw.print(",\n");
+                            }
+                            if (principals != null && principals.length > 0){
+                                for (int i=0, l=principals.length; i<l; i++){
+                                    if (i!=0 || codebase != null) pw.print("    ");
+                                    pw.print("principal ");
+                                    pw.print(principals[i].getClass().getCanonicalName());
+                                    pw.print(" \"");
+                                    pw.print(principals[i].getName());
+                                    if (i<l-1) pw.print("\",\n");
+                                    else pw.print("\"\n");
+                                }
                             } else {
-                                pw.print("\"");
+                                pw.print("\n");
                             }
-                            // REMIND signedBy?
-                            pw.print(";\n");
+                            pw.print("{\n");
+
+                            Iterator<Permission> permIt = permsToPrint.iterator();
+                            while (permIt.hasNext()){
+                                Permission p = permIt.next();
+                                pw.print("    permission ");
+                                pw.print(p.getClass().getCanonicalName());
+                                pw.print(" \"");
+                                if (p instanceof PrivateCredentialPermission){
+                                    PrivateCredentialPermission pcp = (PrivateCredentialPermission) p;
+                                    String credential = pcp.getCredentialClass();
+                                    String [][] princpals = pcp.getPrincipals();
+                                    StringBuilder sb = new StringBuilder();
+                                    sb.append(credential);
+                                    sb.append(" ");
+                                    for (int i=0,l=princpals.length; i<l; i++){
+                                        String [] pals = princpals [i];
+                                        for (int j=0,m=pals.length; j<m; j++){
+                                            sb.append(pals[j]);
+                                            if (j < m-1) sb.append(" \\\"");
+                                            else sb.append("\\\"");
+                                        }
+                                        if (i < l-1) sb.append(" ");
+                                    }
+                                    pw.print(sb.toString());
+                                } else {
+                                    /* Some complex permissions have quoted strings embedded or
+                                    literal carriage returns that must be escaped.  */
+                                    String name = p.getName();
+                                    if (p instanceof FilePermission){
+                                        name = replaceValuesWithProperties(name);
+                                        name = name.replace("/", "${/}");
+                                    } else if (p instanceof SocketPermission || p instanceof URLPermission){
+                                        name = name.replace(hostname, "${HOST}");
+                                    } else {
+                                        name = name.replace("\\\"", "\\\\\"").replace("\"","\\\"").replace("\r","\\\r");
+                                    }
+                                    pw.print(name);
+                                }
+                                String actions = p.getActions();
+                                if (actions != null && !"".equals(actions)){
+                                    pw.print("\", \"");
+                                    pw.print(actions);
+                                    pw.print("\"");
+                                } else {
+                                    pw.print("\"");
+                                }
+                                // REMIND signedBy?
+                                pw.print(";\n");
+                            }
+                            pw.print("};\n\n");
                         }
-                        pw.print("};\n\n");
+                    }
+                    getLogger().log(Level.INFO, "Finished writing additional permissions, if any, to policy file.");
+                } catch (IOException ex) {
+                    getLogger().log(Level.ERROR, "unable to write to policy file ", ex);
+                    return;
+                } catch (URISyntaxException ex) {
+                    getLogger().log(Level.ERROR, "unable to write to policy file ", ex);
+                    return;
+                } finally {
+                    if (pw != null) {
+                        pw.flush();
+                        pw.close();
                     }
                 }
-                pw.flush();
-                pw.close();
             }
         },"SecurityPolicyWriter policy creation thread");
         if (t.isDaemon()) t.setDaemon(false);
@@ -523,7 +559,7 @@ public class SecurityPolicyWriter extends CombinerSecurityManager{
             String key = path.getKey();
             s = s.replace(key, sb.toString());
             if ("java.io.tmpdir".equals(value) && key.endsWith("/") ){
-                getLogger().log(Level.DEBUG, "temp directory: {0}", s);
+                getLogger().log(Level.INFO, "temp directory: {0}", s);
                 s = s.replace(key.substring(0, key.length()-1), sb.toString());
             }
         }
@@ -537,7 +573,7 @@ public class SecurityPolicyWriter extends CombinerSecurityManager{
             try {
                 return keyStore().getCertificateAlias(t);
             } catch (KeyStoreException ex) {
-                getLogger().log(Level.WARNING, "Alias not found in keystore", ex);
+                getLogger().log(Level.ERROR, "Alias not found in keystore", ex);
             }
             return null;
         }
