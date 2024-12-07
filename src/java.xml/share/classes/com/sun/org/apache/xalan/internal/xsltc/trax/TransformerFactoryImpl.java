@@ -75,6 +75,7 @@ import jdk.xml.internal.JdkXmlFeatures;
 import jdk.xml.internal.JdkXmlUtils;
 import jdk.xml.internal.JdkProperty.ImplPropMap;
 import jdk.xml.internal.JdkProperty.State;
+import jdk.xml.internal.SecuritySupport;
 import jdk.xml.internal.TransformErrorListener;
 import jdk.xml.internal.XMLSecurityManager;
 import org.xml.sax.InputSource;
@@ -215,7 +216,7 @@ public class TransformerFactoryImpl
     /**
      * <p>State of secure processing feature.</p>
      */
-    private boolean _isNotSecureProcessing = false;
+    private boolean _isNotSecureProcessing = true;
     /**
      * <p>State of secure mode.</p>
      */

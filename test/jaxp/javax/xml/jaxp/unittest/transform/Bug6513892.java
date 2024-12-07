@@ -40,7 +40,7 @@ import org.w3c.dom.Document;
 
 /*
  * @test
- * @bug 6513892 8343001
+ * @bug 6513892
  * @library /javax/xml/jaxp/libs /javax/xml/jaxp/unittest
  * @run testng/othervm -DrunSecMngr=true -Djava.security.manager=allow transform.Bug6513892
  * @run testng/othervm transform.Bug6513892
@@ -48,11 +48,16 @@ import org.w3c.dom.Document;
  */
 @Listeners({jaxp.library.FilePolicy.class})
 public class Bug6513892 {
+    @BeforeClass
+    public void setup(){
+        if (System.getSecurityManager() != null)
+            System.setSecurityManager(null);
+    }
+
     @Test
     public void test0() {
         try {
             TransformerFactory tf = TransformerFactory.newInstance();
-            tf.setFeature("jdk.xml.enableExtensionFunctions", true);
             Transformer t = tf.newTransformer(new StreamSource(getClass().getResourceAsStream("redirect.xsl"), getClass().getResource("redirect.xsl")
                     .toString()));
 

@@ -37,14 +37,14 @@ import javax.xml.transform.TransformerFactory;
 import javax.xml.transform.URIResolver;
 import javax.xml.transform.stream.StreamResult;
 import javax.xml.transform.stream.StreamSource;
-import static jaxp.library.JAXPTestUtilities.SRC_DIR;
-import static jaxp.library.JAXPTestUtilities.assertDoesNotThrow;
-import static jaxp.library.JAXPTestUtilities.getSystemId;
-import static jaxp.library.JAXPTestUtilities.getSystemProperty;
 import org.testng.Assert;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Listeners;
 import org.testng.annotations.Test;
+import static org.testng.Assert.assertEquals;
+import static jaxp.library.JAXPTestUtilities.clearSystemProperty;
+import static jaxp.library.JAXPTestUtilities.setSystemProperty;
+import static jaxp.library.JAXPTestUtilities.getSystemProperty;
 
 import static org.testng.Assert.assertEquals;
 import static jaxp.library.JAXPTestUtilities.runWithAllPerm;
@@ -54,7 +54,6 @@ import static jaxp.library.JAXPTestUtilities.tryRunWithTmpPermission;
 
 /*
  * @test
- * @bug 8062518 8153082 8165116 8343001
  * @library /javax/xml/jaxp/libs /javax/xml/jaxp/unittest
  * @compile DocumentExtFunc.java
  * @run testng/othervm -DrunSecMngr=true -Djava.security.manager=allow transform.XSLTFunctionsTest
@@ -64,21 +63,6 @@ import static jaxp.library.JAXPTestUtilities.tryRunWithTmpPermission;
 
 @Listeners({jaxp.library.FilePolicy.class})
 public class XSLTFunctionsTest {
-    @DataProvider(name = "propertyName")
-    public static Object[][] getSettings() {
-        return new Object[][] {
-            // legacy property name
-            {ORACLE_ENABLE_EXTENSION_FUNCTION, true, true, null},
-            {ORACLE_ENABLE_EXTENSION_FUNCTION, true, false, TransformerException.class},
-            // legacy system property name
-            {SP_ENABLE_EXTENSION_FUNCTION, false, true, null},
-            {SP_ENABLE_EXTENSION_FUNCTION, false, false, TransformerException.class},
-            // current property and system property name
-            {SP_ENABLE_EXTENSION_FUNCTION_SPEC, true, true, null},
-            {SP_ENABLE_EXTENSION_FUNCTION_SPEC, true, false, TransformerException.class},
-        };
-    }
-
     /**
      * @bug 8165116
      * Verifies that redirect works properly when extension function is enabled
@@ -114,50 +98,59 @@ public class XSLTFunctionsTest {
     }
 
     /**
-     * @bug 8161454 8343001
-     * Verifies that legacy property names are continually supported for compatibility.
-     *
-     * @param property the property name
-     * @param isAPIProperty indicates whether the property can be set via the factory
-     * @param value the property value
-     * @param expectedThrow the expected throw if the specified DTD can not be
-     *                      resolved.
-     * @throws Exception if the test fails
+     * @bug 8161454
+     * Verifies that the new / correct name is supported, as is the old / incorrect
+     * one for compatibility
      */
-    @Test(dataProvider = "propertyName")
-    public void testNameChange(String property, boolean isAPIProperty,
-            boolean value, Class<Throwable> expectedThrow)
-            throws Exception {
-        if (expectedThrow == null) {
-            assertDoesNotThrow(() -> runTransform(property, isAPIProperty, value),
-                    "Extension Functions property is set to " + value + " but exception is thrown.");
+    @Test
+    public void testNameChange() {
+
+        boolean feature;
+        TransformerFactory tf = TransformerFactory.newInstance();
+        feature = tf.getFeature(ORACLE_ENABLE_EXTENSION_FUNCTION);
+        System.out.println("Default setting: " + feature);
+        // The default: true if no SecurityManager, false otherwise
+        Assert.assertTrue(feature == getDefault());
+
+        setSystemProperty(SP_ENABLE_EXTENSION_FUNCTION, getDefaultOpposite());
+        tf = TransformerFactory.newInstance();
+        feature = tf.getFeature(ORACLE_ENABLE_EXTENSION_FUNCTION);
+        System.out.println("After setting " + SP_ENABLE_EXTENSION_FUNCTION + ": " + feature);
+        clearSystemProperty(SP_ENABLE_EXTENSION_FUNCTION);
+        // old/incorrect name is still supported
+        Assert.assertTrue(feature != getDefault());
+
+        setSystemProperty(SP_ENABLE_EXTENSION_FUNCTION_SPEC, getDefaultOpposite());
+        tf = TransformerFactory.newInstance();
+        feature = tf.getFeature(ORACLE_ENABLE_EXTENSION_FUNCTION);
+        System.out.println("After setting " + SP_ENABLE_EXTENSION_FUNCTION_SPEC + ": " + feature);
+        clearSystemProperty(SP_ENABLE_EXTENSION_FUNCTION_SPEC);
+        // new/correct name is effective
+        Assert.assertTrue(feature != getDefault());
+    }
+
+    final boolean isSecure;
+    {
+        String runSecMngr = getSystemProperty("runSecMngr");
+        isSecure = runSecMngr != null && runSecMngr.equals("true");
+    }
+
+    // The default: true if no SecurityManager, false otherwise
+    private boolean getDefault() {
+        if (isSecure) {
+            return false;
         } else {
-            Assert.assertThrows(expectedThrow,
-                () -> runTransform(property, isAPIProperty, value));
+            return true;
         }
     }
 
-    private void runTransform(String property, boolean isAPIProperty, boolean value)
-            throws Exception {
-        StreamSource xslSource = new StreamSource(getSystemId(SRC_DIR + "/SecureProcessingTest.xsl"));
-        StreamSource xmlSource = new StreamSource(getSystemId(SRC_DIR + "/SecureProcessingTest.xml"));
-
-        // the xml result
-        StringWriter xmlResultString = new StringWriter();
-        StreamResult xmlResultStream = new StreamResult(xmlResultString);
-
-        if (!isAPIProperty) {
-            System.setProperty(property, Boolean.toString(value));
+    // Gets a String value that is opposite to the default value
+    private String getDefaultOpposite() {
+        if (isSecure) {
+            return "true";
+        } else {
+            return "false";
         }
-        TransformerFactory tf = TransformerFactory.newInstance();
-        if (isAPIProperty) {
-            tf.setFeature(property, value);
-        }
-        Transformer transformer = tf.newTransformer(xslSource);
-        if (!isAPIProperty) {
-            System.clearProperty(property);
-        }
-        transformer.transform(xmlSource, xmlResultStream);
     }
 
     /**

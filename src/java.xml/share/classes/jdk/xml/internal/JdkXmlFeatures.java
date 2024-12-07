@@ -52,7 +52,7 @@ public class JdkXmlFeatures {
          * function is disabled.
          */
         ENABLE_EXTENSION_FUNCTION(ImplPropMap.ENABLEEXTFUNC, null, null, true,
-                null, null, false, false, true, true),
+                null, null, true, false, true, true),
         /**
          * The {@link javax.xml.XMLConstants.USE_CATALOG} feature.
          * FSP: USE_CATALOG is not enforced by FSP.
@@ -382,7 +382,13 @@ public class JdkXmlFeatures {
      */
     private void readSystemProperties() {
         for (XmlFeature feature : XmlFeature.values()) {
-            getSystemProperty(feature, feature.systemProperty());
+            if (!getSystemProperty(feature, feature.systemProperty())) {
+                //if system property is not found, try the older form if any
+                String oldName = feature.systemPropertyOld();
+                if (oldName != null) {
+                    getSystemProperty(feature, oldName);
+                }
+            }
         }
     }
 

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2015, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2015, 2017, Oracle and/or its affiliates. All rights reserved.
  */
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
@@ -62,7 +62,7 @@ import jdk.xml.internal.JdkXmlFeatures;
  * @author Morten Jorgensen
  * @author Erwin Bolwidt <ejb@klomp.org>
  * @author Todd Miller
- * @LastModified: Dec 2024
+ * @LastModified: Nov 2017
  */
 class FunctionCall extends Expression {
 
@@ -958,12 +958,12 @@ class FunctionCall extends Expression {
      * after stripping its namespace or <code>null</code>
      * if no such methods exist.
      */
-    private List<Method> findMethods() throws TypeCheckError {
+    private List<Method> findMethods() {
 
-        List<Method> result = null;
-        final String namespace = _fname.getNamespace();
+          List<Method> result = null;
+          final String namespace = _fname.getNamespace();
 
-        if (_className != null && _className.length() > 0) {
+          if (_className != null && _className.length() > 0) {
             final int nArgs = _arguments.size();
             try {
                 if (_clazz == null) {
@@ -971,45 +971,48 @@ class FunctionCall extends Expression {
                     final boolean isExtensionFunctionEnabled = getXSLTC()
                             .getFeature(JdkXmlFeatures.XmlFeature.ENABLE_EXTENSION_FUNCTION);
 
-                    // the property has the precedence
-                    if (isExtensionFunctionEnabled) {
-                        if (getXSLTC().hasExtensionClassLoader()) {
-                            _clazz = getXSLTC().loadExternalFunction(_className);
-                        } else {
-                            _clazz = ObjectFactory.findProviderClass(_className, true);
-                        }
-                        if (_clazz == null) {
-                            final ErrorMsg msg
-                                    = new ErrorMsg(ErrorMsg.CLASS_NOT_FOUND_ERR, _className);
-                            getParser().reportError(Constants.ERROR, msg);
-                            return null;
-                        }
+                    //Check if FSP and SM - only then process with loading
+                    if (namespace != null && isSecureProcessing
+                            && isExtensionFunctionEnabled
+                            && (namespace.startsWith(JAVA_EXT_XALAN)
+                            || namespace.startsWith(JAVA_EXT_XSLTC)
+                            || namespace.startsWith(JAVA_EXT_XALAN_OLD)
+                            || namespace.startsWith(XALAN_CLASSPACKAGE_NAMESPACE))) {
+                        _clazz = getXSLTC().loadExternalFunction(_className);
                     } else {
-                        throw new TypeCheckError(ErrorMsg.UNSUPPORTED_EXT_FUNC_ERR, _className);
+                        _clazz = ObjectFactory.findProviderClass(_className, true);
                     }
-                }
 
-                final String methodName = _fname.getLocalPart();
-                final Method[] methods = _clazz.getMethods();
-
-                for (int i = 0; i < methods.length; i++) {
-                    final int mods = methods[i].getModifiers();
-                    // Is it public and same number of args ?
-                    if (Modifier.isPublic(mods)
-                            && methods[i].getName().equals(methodName)
-                            && methods[i].getParameterTypes().length == nArgs) {
-                        if (result == null) {
-                            result = new ArrayList<>();
-                        }
-                        result.add(methods[i]);
-                    }
+                if (_clazz == null) {
+                  final ErrorMsg msg =
+                        new ErrorMsg(ErrorMsg.CLASS_NOT_FOUND_ERR, _className);
+                  getParser().reportError(Constants.ERROR, msg);
                 }
-            } catch (ClassNotFoundException e) {
-                final ErrorMsg msg = new ErrorMsg(ErrorMsg.CLASS_NOT_FOUND_ERR, _className);
-                getParser().reportError(Constants.ERROR, msg);
+              }
+
+              final String methodName = _fname.getLocalPart();
+              final Method[] methods = _clazz.getMethods();
+
+              for (int i = 0; i < methods.length; i++) {
+                final int mods = methods[i].getModifiers();
+                // Is it public and same number of args ?
+                if (Modifier.isPublic(mods)
+                    && methods[i].getName().equals(methodName)
+                    && methods[i].getParameterTypes().length == nArgs)
+                {
+                  if (result == null) {
+                    result = new ArrayList<>();
+                  }
+                  result.add(methods[i]);
+                }
+              }
             }
-        }
-        return result;
+            catch (ClassNotFoundException e) {
+                  final ErrorMsg msg = new ErrorMsg(ErrorMsg.CLASS_NOT_FOUND_ERR, _className);
+                  getParser().reportError(Constants.ERROR, msg);
+            }
+          }
+          return result;
     }
 
     /**
