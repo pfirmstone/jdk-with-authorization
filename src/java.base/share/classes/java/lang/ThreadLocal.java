@@ -33,6 +33,7 @@ import java.util.stream.Collectors;
 
 import jdk.internal.misc.CarrierThreadLocal;
 import jdk.internal.misc.TerminatingThreadLocal;
+import sun.security.action.GetPropertyAction;
 
 /**
  * This class provides thread-local variables.  These variables differ from
@@ -803,7 +804,7 @@ public class ThreadLocal<T> {
      * a stack trace should be printed when a virtual thread sets a thread local.
      */
     private static boolean traceVirtualThreadLocals() {
-        String propValue = System.getProperty("jdk.traceVirtualThreadLocals");
+        String propValue = GetPropertyAction.privilegedGetProperty("jdk.traceVirtualThreadLocals");
         return (propValue != null)
                 && (propValue.isEmpty() || Boolean.parseBoolean(propValue));
     }
