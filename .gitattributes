@@ -8,3 +8,5 @@
 *.sh	diff=bash
 *.html	diff=html
 *.css	diff=css
+* text=auto
+* text eol=lf
