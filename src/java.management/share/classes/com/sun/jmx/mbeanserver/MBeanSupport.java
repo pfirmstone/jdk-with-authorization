@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2005, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2005, 2022, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -38,6 +38,7 @@ import javax.management.NotCompliantMBeanException;
 import javax.management.ObjectName;
 import javax.management.ReflectionException;
 import com.sun.jmx.mbeanserver.MXBeanMappingFactory;
+import sun.reflect.misc.ReflectUtil;
 
 /**
  * Base class for MBeans.  There is one instance of this class for
@@ -131,6 +132,7 @@ public abstract class MBeanSupport<M>
                 " is not an instance of " + mbeanInterfaceType.getName();
             throw new NotCompliantMBeanException(msg);
         }
+        ReflectUtil.checkPackageAccess(mbeanInterfaceType);
         this.resource = resource;
         MBeanIntrospector<M> introspector = getMBeanIntrospector();
         this.perInterface = introspector.getPerInterface(mbeanInterfaceType);

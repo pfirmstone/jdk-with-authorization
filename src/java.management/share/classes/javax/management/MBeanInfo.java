@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 1999, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 1999, 2022, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -34,6 +34,8 @@ import java.lang.reflect.Method;
 import java.util.Arrays;
 import java.util.Map;
 import java.util.WeakHashMap;
+import java.security.AccessController;
+import java.security.PrivilegedAction;
 import java.util.Objects;
 
 import static javax.management.ImmutableDescriptor.nonNullDescriptor;
@@ -549,8 +551,10 @@ public class MBeanInfo implements Cloneable, Serializable, DescriptorRead {
             Boolean safe = arrayGettersSafeMap.get(subclass);
             if (safe == null) {
                 try {
-                    safe = arrayGettersSafeHelper(subclass, immutableClass);
-                } catch (Exception e) {
+                    ArrayGettersSafeAction action =
+                        new ArrayGettersSafeAction(subclass, immutableClass);
+                    safe = AccessController.doPrivileged(action);
+                } catch (Exception e) { // e.g. SecurityException
                     /* We don't know, so we assume it isn't.  */
                     safe = false;
                 }
@@ -560,7 +564,25 @@ public class MBeanInfo implements Cloneable, Serializable, DescriptorRead {
         }
     }
 
-    private static boolean arrayGettersSafeHelper(Class<?> subclass, Class<?> immutableClass) {
+    /*
+     * The PrivilegedAction stuff is probably overkill.  We can be
+     * pretty sure the caller does have the required privileges -- a
+     * JMX user that can't do reflection can't even use Standard
+     * MBeans!  But there's probably a performance gain by not having
+     * to check the whole call stack.
+     */
+    private static class ArrayGettersSafeAction
+            implements PrivilegedAction<Boolean> {
+
+        private final Class<?> subclass;
+        private final Class<?> immutableClass;
+
+        ArrayGettersSafeAction(Class<?> subclass, Class<?> immutableClass) {
+            this.subclass = subclass;
+            this.immutableClass = immutableClass;
+        }
+
+        public Boolean run() {
             Method[] methods = immutableClass.getMethods();
             for (int i = 0; i < methods.length; i++) {
                 Method method = methods[i];
@@ -579,6 +601,7 @@ public class MBeanInfo implements Cloneable, Serializable, DescriptorRead {
                 }
             }
             return true;
+        }
     }
 
     private static boolean isEqual(String s1, String s2) {

@@ -33,6 +33,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Executor;
 
+import java.security.AccessControlContext;
+import java.security.AccessController;
+import java.security.PrivilegedAction;
 import javax.security.auth.Subject;
 
 import javax.management.Notification;
@@ -52,6 +55,9 @@ import java.util.concurrent.RejectedExecutionException;
 
 
 public abstract class ClientNotifForwarder {
+
+    @SuppressWarnings("removal")
+    private final AccessControlContext acc;
 
     public ClientNotifForwarder(Map<String, ?> env) {
         this(null, env);
@@ -133,6 +139,7 @@ public abstract class ClientNotifForwarder {
 
         this.defaultClassLoader = defaultClassLoader;
         this.executor = ex;
+        this.acc = AccessController.getContext();
     }
 
     /**
@@ -412,14 +419,40 @@ public abstract class ClientNotifForwarder {
         }
 
         // Set new context class loader, returns previous one.
+        @SuppressWarnings("removal")
         private final ClassLoader setContextClassLoader(final ClassLoader loader) {
-            final ClassLoader previous = Thread.currentThread().getContextClassLoader();
+            final AccessControlContext ctxt = ClientNotifForwarder.this.acc;
+            // if ctxt is null, log a config message and throw a
+            // SecurityException.
+            if (ctxt == null) {
+                logOnce("AccessControlContext must not be null.",null);
+                throw new SecurityException("AccessControlContext must not be null");
+            }
+            return AccessController.doPrivileged(
+                new PrivilegedAction<>() {
+                    public ClassLoader run() {
+                        try {
+                            // get context class loader - may throw
+                            // SecurityException - though unlikely.
+                            final ClassLoader previous =
+                                Thread.currentThread().getContextClassLoader();
 
-            // if nothing needs to be done, break here...
-            if (loader == previous) return previous;
+                            // if nothing needs to be done, break here...
+                            if (loader == previous) return previous;
 
-            Thread.currentThread().setContextClassLoader(loader);
-            return previous;
+                            // reset context class loader - may throw
+                            // SecurityException
+                            Thread.currentThread().setContextClassLoader(loader);
+                            return previous;
+                        } catch (SecurityException x) {
+                            logOnce("Permission to set ContextClassLoader missing. " +
+                                    "Notifications will not be dispatched. " +
+                                    "Please check your Java policy configuration: " +
+                                    x, x);
+                            throw x;
+                        }
+                    }
+                }, ctxt);
         }
 
         public void run() {

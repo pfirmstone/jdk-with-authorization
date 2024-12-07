@@ -129,6 +129,7 @@ public class ThreadImpl implements ThreadMXBean {
 
     @Override
     public long[] getAllThreadIds() {
+        Util.checkMonitorAccess();
         Thread[] threads = getThreads();
         return threadIds(threads);
     }
@@ -177,6 +178,8 @@ public class ThreadImpl implements ThreadMXBean {
         // an empty array of ids should return an empty array of ThreadInfos
         if (ids.length == 0) return new ThreadInfo[0];
 
+        Util.checkMonitorAccess();
+
         ThreadInfo[] infos = new ThreadInfo[ids.length]; // nulls
         if (maxDepth == Integer.MAX_VALUE) {
             getThreadInfo1(ids, -1, infos);
@@ -192,6 +195,8 @@ public class ThreadImpl implements ThreadMXBean {
             throw new UnsupportedOperationException(
                 "Thread contention monitoring is not supported");
         }
+
+        Util.checkControlAccess();
 
         synchronized (this) {
             if (contentionMonitoringEnabled != enable) {
@@ -327,6 +332,7 @@ public class ThreadImpl implements ThreadMXBean {
                 "Thread CPU time measurement is not supported");
         }
 
+        Util.checkControlAccess();
         synchronized (this) {
             if (cpuTimeEnabled != enable) {
                 // notify VM of the state change
@@ -395,6 +401,7 @@ public class ThreadImpl implements ThreadMXBean {
     protected void setThreadAllocatedMemoryEnabled(boolean enable) {
         ensureThreadAllocatedMemorySupported();
 
+        Util.checkControlAccess();
         synchronized (this) {
             if (allocatedMemoryEnabled != enable) {
                 // notify VM of the state change
@@ -419,6 +426,7 @@ public class ThreadImpl implements ThreadMXBean {
 
     @Override
     public long[] findMonitorDeadlockedThreads() {
+        Util.checkMonitorAccess();
         Thread[] threads = findMonitorDeadlockedThreads0();
         return threadsToIds(threads);
     }
@@ -430,12 +438,15 @@ public class ThreadImpl implements ThreadMXBean {
                 "Monitoring of Synchronizer Usage is not supported.");
         }
 
+        Util.checkMonitorAccess();
+
         Thread[] threads = findDeadlockedThreads0();
         return threadsToIds(threads);
     }
 
     @Override
     public void resetPeakThreadCount() {
+        Util.checkControlAccess();
         resetPeakThreadCount0();
     }
 
@@ -460,6 +471,8 @@ public class ThreadImpl implements ThreadMXBean {
             throw new UnsupportedOperationException(
                 "Monitoring of Synchronizer Usage is not supported.");
         }
+
+        Util.checkMonitorAccess();
     }
 
     @Override

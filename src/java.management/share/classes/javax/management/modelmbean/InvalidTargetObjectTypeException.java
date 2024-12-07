@@ -30,10 +30,13 @@
 
 package javax.management.modelmbean;
 
+import com.sun.jmx.mbeanserver.GetPropertyAction;
+
 import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.io.ObjectStreamField;
+import java.security.AccessController;
 
 /**
  * Exception thrown when an invalid target object type is specified.

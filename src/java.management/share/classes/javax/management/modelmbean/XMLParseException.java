@@ -31,10 +31,13 @@
 
 package javax.management.modelmbean;
 
+import com.sun.jmx.mbeanserver.GetPropertyAction;
+
 import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.io.ObjectStreamField;
+import java.security.AccessController;
 
 /**
 * This exception is thrown when an XML formatted string is being parsed into ModelMBean objects

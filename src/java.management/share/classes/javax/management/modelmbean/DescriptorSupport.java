@@ -32,6 +32,7 @@ package javax.management.modelmbean;
 
 import static com.sun.jmx.defaults.JmxProperties.MODELMBEAN_LOGGER;
 import static com.sun.jmx.mbeanserver.Util.cast;
+import com.sun.jmx.mbeanserver.GetPropertyAction;
 import com.sun.jmx.mbeanserver.Util;
 
 import java.io.IOException;
@@ -41,6 +42,7 @@ import java.io.ObjectStreamField;
 
 import java.lang.reflect.Constructor;
 
+import java.security.AccessController;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Locale;
@@ -55,6 +57,8 @@ import javax.management.Descriptor;
 import javax.management.ImmutableDescriptor;
 import javax.management.MBeanException;
 import javax.management.RuntimeOperationsException;
+
+import sun.reflect.misc.ReflectUtil;
 
 /**
  * This class represents the metadata set for a ModelMBean element.  A
@@ -1136,6 +1140,7 @@ public class DescriptorSupport
 
         final Constructor<?> constr;
         try {
+            ReflectUtil.checkPackageAccess(className);
             final ClassLoader contextClassLoader =
                 Thread.currentThread().getContextClassLoader();
             final Class<?> c =
