@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2005, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2005, 2018, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -24,6 +24,8 @@
  */
 
 package sun.security.internal.spec;
+
+import sun.security.action.GetBooleanAction;
 
 import java.security.spec.AlgorithmParameterSpec;
 
@@ -52,8 +54,8 @@ public class TlsRsaPremasterSecretParameterSpec
      * Default is "false" (old behavior) for compatibility reasons in
      * SSLv3/TLSv1.  Later protocols (TLSv1.1+) do not use this property.
      */
-    private static final boolean rsaPreMasterSecretFix =
-            Boolean.getBoolean("com.sun.net.ssl.rsaPreMasterSecretFix");
+    private static final boolean rsaPreMasterSecretFix = GetBooleanAction
+            .privilegedGetProperty("com.sun.net.ssl.rsaPreMasterSecretFix");
 
     private final int clientVersion;
     private final int serverVersion;

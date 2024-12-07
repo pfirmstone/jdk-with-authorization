@@ -95,6 +95,7 @@ import sun.reflect.generics.repository.ClassRepository;
 import sun.reflect.generics.repository.MethodRepository;
 import sun.reflect.generics.repository.ConstructorRepository;
 import sun.reflect.generics.scope.ClassScope;
+import sun.security.util.SecurityConstants;
 import sun.reflect.annotation.*;
 import sun.reflect.misc.ReflectUtil;
 
@@ -3261,7 +3262,7 @@ public final class Class<T> implements java.io.Serializable,
         private static final ProtectionDomain allPermDomain;
         static {
             Permissions perms = new Permissions();
-            perms.add(new AllPermission());
+            perms.add(SecurityConstants.ALL_PERMISSION);
             allPermDomain = new ProtectionDomain(null, perms);
         }
     }

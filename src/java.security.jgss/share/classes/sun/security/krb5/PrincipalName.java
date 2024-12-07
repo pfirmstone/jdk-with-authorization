@@ -109,7 +109,7 @@ public class PrincipalName implements Cloneable {
 
     private static final boolean NAME_CASE_SENSITIVE_IN_MATCH
             = "true".equalsIgnoreCase(
-                    SecurityProperties.getOverridableProperty(
+                    SecurityProperties.privilegedGetOverridable(
                             "jdk.security.krb5.name.case.sensitive"));
 
 

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2017, 2022, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -34,6 +34,7 @@ import java.security.ProviderException;
 import java.security.NoSuchAlgorithmException;
 import javax.crypto.Cipher;
 import javax.crypto.spec.DHParameterSpec;
+import sun.security.action.GetPropertyAction;
 
 /**
  * Various constants such as version number, default key length, used by
@@ -174,7 +175,8 @@ public final class SecurityProviderConstants {
         "jdk.security.defaultKeySize";
 
     static {
-        String keyLengthStr = System.getProperty(KEY_LENGTH_PROP);
+        String keyLengthStr = GetPropertyAction.privilegedGetProperty
+            (KEY_LENGTH_PROP);
         int dsaKeySize = 2048;
         int rsaKeySize = 3072;
         int rsaSsaPssKeySize = rsaKeySize; // default to same value as RSA

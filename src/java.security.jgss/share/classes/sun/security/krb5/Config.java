@@ -76,7 +76,7 @@ public class Config {
 
     static {
         String disableReferralsProp =
-                SecurityProperties.getOverridableProperty(
+                SecurityProperties.privilegedGetOverridable(
                         "sun.security.krb5.disableReferrals");
         if (disableReferralsProp != null) {
             DISABLE_REFERRALS = "true".equalsIgnoreCase(disableReferralsProp);
@@ -86,7 +86,7 @@ public class Config {
 
         int maxReferralsValue = 5;
         String maxReferralsProp =
-                SecurityProperties.getOverridableProperty(
+                SecurityProperties.privilegedGetOverridable(
                         "sun.security.krb5.maxReferrals");
         try {
             maxReferralsValue = Integer.parseInt(maxReferralsProp);

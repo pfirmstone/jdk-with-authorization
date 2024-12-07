@@ -942,7 +942,11 @@ public class SecureRandom extends java.util.Random {
     public static SecureRandom getInstanceStrong()
             throws NoSuchAlgorithmException {
 
-        String property = Security.getProperty("securerandom.strongAlgorithms");
+        @SuppressWarnings("removal")
+        String property = AccessController.doPrivileged(
+                (PrivilegedAction<String>) () -> Security.getProperty(
+                    "securerandom.strongAlgorithms"));
+
         if (property == null || property.isEmpty()) {
             throw new NoSuchAlgorithmException(
                 "Null/empty securerandom.strongAlgorithms Security Property");

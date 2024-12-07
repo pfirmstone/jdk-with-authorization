@@ -67,7 +67,7 @@ public class Credentials {
     private static boolean alreadyTried = false;
 
     public static final boolean S4U2PROXY_ACCEPT_NON_FORWARDABLE
-            = "true".equalsIgnoreCase(SecurityProperties.getOverridableProperty(
+            = "true".equalsIgnoreCase(SecurityProperties.privilegedGetOverridable(
                     "jdk.security.krb5.s4u2proxy.acceptNonForwardableServiceTicket"));
 
     private Credentials proxy = null;

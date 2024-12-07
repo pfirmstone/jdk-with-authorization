@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2005, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2005, 2022, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -69,7 +69,13 @@ public final class MD4 extends DigestBase {
             @java.io.Serial
             private static final long serialVersionUID = -8850464997518327965L;
         };
-        md4Provider.put("MessageDigest.MD4", "sun.security.provider.MD4");
+        @SuppressWarnings("removal")
+        var dummy = AccessController.doPrivileged(new PrivilegedAction<Void>() {
+            public Void run() {
+                md4Provider.put("MessageDigest.MD4", "sun.security.provider.MD4");
+                return null;
+            }
+        });
     }
 
     public static MessageDigest getInstance() throws NoSuchAlgorithmException {

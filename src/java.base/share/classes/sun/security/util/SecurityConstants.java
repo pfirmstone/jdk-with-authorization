@@ -25,7 +25,12 @@
 
 package sun.security.util;
 
+import java.lang.reflect.ReflectPermission;
+import java.net.NetPermission;
+import java.net.SocketPermission;
 import java.security.AllPermission;
+import java.security.SecurityPermission;
+import sun.security.action.GetPropertyAction;
 
 /**
  * Permission constants and string constants used to create permissions
@@ -58,7 +63,9 @@ public final class SecurityConstants {
 
     // Permission constants used in the various checkPermission() calls in JDK.
 
-    // java.net.URLConnection, java.security.AllPermission
+    // java.lang.Class, java.lang.SecurityManager, java.lang.System,
+    // java.net.URLConnection, java.security.AllPermission, java.security.Policy,
+    // sun.security.provider.PolicyFile
     public static final AllPermission ALL_PERMISSION = new AllPermission();
 
     // java.net.URL
@@ -142,5 +149,14 @@ public final class SecurityConstants {
         new SocketPermission("localhost:0", SOCKET_LISTEN_ACTION);
 
     public static final String PROVIDER_VER =
-        System.getProperty("java.specification.version");
+        GetPropertyAction.privilegedGetProperty("java.specification.version");
+
+    // java.lang.reflect.AccessibleObject
+    public static final ReflectPermission ACCESS_PERMISSION =
+        new ReflectPermission("suppressAccessChecks");
+
+    // sun.reflect.ReflectionFactory
+    public static final RuntimePermission REFLECTION_FACTORY_ACCESS_PERMISSION =
+        new RuntimePermission("reflectionFactoryAccess");
+
 }

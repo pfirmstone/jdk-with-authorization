@@ -37,6 +37,7 @@ import java.util.jar.Attributes;
 import java.util.jar.Manifest;
 
 import jdk.internal.util.ArraysSupport;
+import sun.security.action.GetIntegerAction;
 import sun.security.jca.Providers;
 import sun.security.pkcs.PKCS7;
 import sun.security.pkcs.SignerInfo;
@@ -846,7 +847,8 @@ public class SignatureFileVerifier {
          * the maximum allowed number of bytes for the signature-related files
          * in a JAR file.
          */
-        int tmp = Integer.getInteger("jdk.jar.maxSignatureFileSize", 16000000);
+        int tmp = GetIntegerAction.privilegedGetProperty(
+                "jdk.jar.maxSignatureFileSize", 16000000);
         if (tmp < 0 || tmp > MAX_ARRAY_SIZE) {
             if (debug != null) {
                 debug.println("The default signature file size of 16000000 bytes " +

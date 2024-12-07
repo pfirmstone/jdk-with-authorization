@@ -34,6 +34,7 @@ import java.util.HexFormat;
 import java.util.regex.Pattern;
 import java.util.regex.Matcher;
 import java.util.Locale;
+import sun.security.action.GetPropertyAction;
 
 /**
  * A utility class for debugging.
@@ -53,9 +54,10 @@ public class Debug {
     private static final String THREAD_OPTION = "+thread";
 
     static {
-        args = System.getProperty("java.security.debug");
+        args = GetPropertyAction.privilegedGetProperty("java.security.debug");
 
-        String args2 = System.getProperty("java.security.auth.debug");
+        String args2 = GetPropertyAction
+                .privilegedGetProperty("java.security.auth.debug");
 
         if (args == null) {
             args = args2;

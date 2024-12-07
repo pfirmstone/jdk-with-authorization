@@ -30,6 +30,8 @@ import java.io.IOException;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.net.URL;
+import java.security.AccessController;
+import java.security.PrivilegedAction;
 import java.security.Provider;
 import java.security.Security;
 import java.util.HashMap;
@@ -37,6 +39,7 @@ import java.util.Iterator;
 import java.util.LinkedHashSet;
 
 import jdk.internal.util.StaticProperty;
+import sun.security.action.GetBooleanAction;
 
 import static sun.security.util.SecurityProviderConstants.getAliases;
 
@@ -349,24 +352,29 @@ public final class SunEntries {
     private static final String PROP_RNDSOURCE = "securerandom.source";
 
     private static final boolean useLegacyDSA =
-        Boolean.getBoolean("jdk.security.legacyDSAKeyPairGenerator");
+        GetBooleanAction.privilegedGetProperty
+            ("jdk.security.legacyDSAKeyPairGenerator");
 
     static final String URL_DEV_RANDOM = "file:/dev/random";
     static final String URL_DEV_URANDOM = "file:/dev/urandom";
 
-    private static final String seedSource = getOverridableSeedSource();
+    @SuppressWarnings("removal")
+    private static final String seedSource = AccessController.doPrivileged(
+                new PrivilegedAction<String>() {
 
-    private static String getOverridableSeedSource() {
-        String egdSource = System.getProperty(PROP_EGD, "");
-        if (egdSource.length() != 0) {
-            return egdSource;
-        }
-        egdSource = Security.getProperty(PROP_RNDSOURCE);
-        if (egdSource == null) {
-            return "";
-        }
-        return egdSource;
-    }
+            @Override
+            public String run() {
+                String egdSource = System.getProperty(PROP_EGD, "");
+                if (egdSource.length() != 0) {
+                    return egdSource;
+                }
+                egdSource = Security.getProperty(PROP_RNDSOURCE);
+                if (egdSource == null) {
+                    return "";
+                }
+                return egdSource;
+            }
+        });
 
     static {
         DEF_SECURE_RANDOM_ALGO  = (NativePRNG.isAvailable() &&
@@ -384,6 +392,8 @@ public final class SunEntries {
      * which is less strict on syntax. If we encounter a
      * URISyntaxException we make a best effort for backwards
      * compatibility. e.g. space character in deviceName string.
+     *
+     * Method called within PrivilegedExceptionAction block.
      *
      * Moved from SeedGenerator to avoid initialization problems with
      * signed providers.
