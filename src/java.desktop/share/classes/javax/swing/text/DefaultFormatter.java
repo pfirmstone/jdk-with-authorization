@@ -258,6 +258,7 @@ public class DefaultFormatter extends JFormattedTextField.AbstractFormatter
 
             if (cons != null) {
                 try {
+                    SwingUtilities2.checkAccess(cons.getModifiers());
                     return cons.newInstance(new Object[] { string });
                 } catch (Throwable ex) {
                     throw new ParseException("Error creating instance", 0);

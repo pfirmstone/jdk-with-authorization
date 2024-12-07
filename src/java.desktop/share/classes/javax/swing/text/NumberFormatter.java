@@ -442,6 +442,7 @@ public class NumberFormatter extends InternationalFormatter {
                         Constructor<?> cons = valueClass.getConstructor(
                                               new Class<?>[] { String.class });
                         if (cons != null) {
+                            SwingUtilities2.checkAccess(cons.getModifiers());
                             return cons.newInstance(new Object[]{string});
                         }
                     } catch (Throwable ex) { }

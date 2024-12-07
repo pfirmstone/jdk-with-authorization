@@ -345,8 +345,10 @@ public interface Synthesizer extends MidiDevice {
      *
      * @throws MidiUnavailableException if the receiver is cannot be opened,
      *         usually because the MIDI device is in use by another application
+     * @throws SecurityException if the receiver cannot be opened due to
+     *         security restrictions
      */
-    //  abstract void open() throws MidiUnavailableException;
+    //  abstract void open() throws MidiUnavailableException, SecurityException;
 
     /**
      * Closes the receiver.

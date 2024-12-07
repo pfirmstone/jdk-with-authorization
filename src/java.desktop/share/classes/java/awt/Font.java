@@ -896,8 +896,23 @@ public class Font implements java.io.Serializable
      * If a thread can create temp files anyway, no point in counting
      * font bytes.
      */
+    @SuppressWarnings("removal")
     private static boolean hasTempPermission() {
-        return true;
+
+        if (System.getSecurityManager() == null) {
+            return true;
+        }
+        File f = null;
+        boolean hasPerm = false;
+        try {
+            f = Files.createTempFile("+~JT", ".tmp").toFile();
+            f.delete();
+            f = null;
+            hasPerm = true;
+        } catch (Throwable t) {
+            /* inc. any kind of SecurityException */
+        }
+        return hasPerm;
     }
 
 
@@ -1777,7 +1792,11 @@ public class Font implements java.io.Serializable
      * @see #decode(String)
      */
     public static Font getFont(String nm, Font font) {
-        String str = System.getProperty(nm);
+        String str = null;
+        try {
+            str =System.getProperty(nm);
+        } catch(SecurityException e) {
+        }
         if (str == null) {
             return font;
         }

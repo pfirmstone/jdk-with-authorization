@@ -1438,6 +1438,8 @@ public class DefaultCaret extends Rectangle implements Caret, FocusListener, Mou
             return component.getToolkit().getSystemSelection();
         } catch (HeadlessException he) {
             // do nothing... there is no system clipboard
+        } catch (SecurityException se) {
+            // do nothing... there is no allowed system clipboard
         }
         return null;
     }

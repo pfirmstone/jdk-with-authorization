@@ -711,6 +711,7 @@ public abstract class SunToolkit extends Toolkit
 
     static Image getImageFromHash(Toolkit tk,
                                                String filename) {
+        checkPermissions(filename);
         synchronized (fileImgCache) {
             Image img = (Image)fileImgCache.get(filename);
             if (img == null) {
@@ -766,6 +767,7 @@ public abstract class SunToolkit extends Toolkit
 
     @Override
     public Image createImage(String filename) {
+        checkPermissions(filename);
         return createImage(new FileImageSource(filename));
     }
 
@@ -879,6 +881,7 @@ public abstract class SunToolkit extends Toolkit
 
     protected static boolean imageExists(String filename) {
         if (filename != null) {
+            checkPermissions(filename);
             return new File(filename).exists();
         }
         return false;

@@ -136,6 +136,11 @@ public class FileManager {
          * @since 1.4
          */
     public static void setFileTypeAndCreator(String filename, int type, int creator) throws IOException {
+        @SuppressWarnings("removal")
+        SecurityManager security = System.getSecurityManager();
+        if (security != null) {
+            security.checkWrite(filename);
+        }
         _setFileTypeAndCreator(filename, type, creator);
     }
         private static native void _setFileTypeAndCreator(String filename, int type, int creator) throws IOException;
@@ -146,6 +151,11 @@ public class FileManager {
          * @since 1.4
          */
     public static void setFileType(String filename, int type) throws IOException {
+        @SuppressWarnings("removal")
+        SecurityManager security = System.getSecurityManager();
+        if (security != null) {
+            security.checkWrite(filename);
+        }
         _setFileType(filename, type);
         }
     private static native void _setFileType(String filename, int type) throws IOException;
@@ -156,6 +166,11 @@ public class FileManager {
          * @since 1.4
          */
     public static void setFileCreator(String filename, int creator) throws IOException {
+        @SuppressWarnings("removal")
+        SecurityManager security = System.getSecurityManager();
+        if (security != null) {
+            security.checkWrite(filename);
+        }
         _setFileCreator(filename, creator);
     }
     private static native void _setFileCreator(String filename, int creator) throws IOException;
@@ -166,6 +181,11 @@ public class FileManager {
          * @since 1.4
          */
     public static int getFileType(String filename) throws IOException {
+        @SuppressWarnings("removal")
+        SecurityManager security = System.getSecurityManager();
+        if (security != null) {
+            security.checkRead(filename);
+        }
         return _getFileType(filename);
     }
     private static native int _getFileType(String filename) throws IOException;
@@ -176,6 +196,11 @@ public class FileManager {
          * @since 1.4
          */
     public static int getFileCreator(String filename) throws IOException {
+        @SuppressWarnings("removal")
+        SecurityManager security = System.getSecurityManager();
+        if (security != null) {
+            security.checkRead(filename);
+        }
         return _getFileCreator(filename);
     }
     private static native int _getFileCreator(String filename) throws IOException;
@@ -356,6 +381,10 @@ public class FileManager {
                 if (file == null) throw new FileNotFoundException();
                 final String fileName = file.getAbsolutePath();
 
+                @SuppressWarnings("removal")
+                final SecurityManager security = System.getSecurityManager();
+                if (security != null) security.checkDelete(fileName);
+
                 return _moveToTrash(fileName);
         }
 
@@ -375,6 +404,10 @@ public class FileManager {
         public static boolean revealInFinder(final File file) throws FileNotFoundException {
                 if (file == null || !file.exists()) throw new FileNotFoundException();
                 final String fileName = file.getAbsolutePath();
+
+                @SuppressWarnings("removal")
+                final SecurityManager security = System.getSecurityManager();
+                if (security != null) security.checkRead(fileName);
 
                 return _revealInFinder(fileName);
         }

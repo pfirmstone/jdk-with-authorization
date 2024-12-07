@@ -89,6 +89,8 @@ public interface AudioSynthesizer extends Synthesizer {
      *
      * @throws MidiUnavailableException thrown if the synthesizer cannot be
      * opened due to resource restrictions.
+     * @throws SecurityException thrown if the synthesizer cannot be
+     * opened due to security restrictions.
      *
      * @see #close
      * @see #isOpen
@@ -117,6 +119,8 @@ public interface AudioSynthesizer extends Synthesizer {
      *
      * @throws MidiUnavailableException thrown if the synthesizer cannot be
      * opened due to resource restrictions.
+     * @throws SecurityException thrown if the synthesizer cannot be
+     * opened due to security restrictions.
      *
      * @see #close
      * @see #isOpen

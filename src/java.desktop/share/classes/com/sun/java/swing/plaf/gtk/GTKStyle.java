@@ -27,6 +27,7 @@ package com.sun.java.swing.plaf.gtk;
 
 import java.awt.*;
 import java.lang.reflect.*;
+import java.security.*;
 import java.util.*;
 import javax.swing.*;
 import javax.swing.plaf.*;

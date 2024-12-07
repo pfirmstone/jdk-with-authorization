@@ -57,6 +57,7 @@ implements ListCellRenderer<Object>, Serializable {
     * the <code>setBorder</code> method.
     */
     protected static Border noFocusBorder = new EmptyBorder(1, 1, 1, 1);
+    private static final Border SAFE_NO_FOCUS_BORDER = new EmptyBorder(1, 1, 1, 1);
 
     /**
      * Constructs a new instance of {@code BasicComboBoxRenderer}.
@@ -67,8 +68,13 @@ implements ListCellRenderer<Object>, Serializable {
         setBorder(getNoFocusBorder());
     }
 
+    @SuppressWarnings("removal")
     private static Border getNoFocusBorder() {
-        return noFocusBorder;
+        if (System.getSecurityManager() != null) {
+            return SAFE_NO_FOCUS_BORDER;
+        } else {
+            return noFocusBorder;
+        }
     }
 
     public Dimension getPreferredSize() {

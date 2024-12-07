@@ -189,7 +189,12 @@ public class Beans {
         // Note that calls on the system class loader will
         // look in the bootstrap class loader first.
         if (cls == null) {
-            cls = ClassLoader.getSystemClassLoader();
+            try {
+                cls = ClassLoader.getSystemClassLoader();
+            } catch (SecurityException ex) {
+                // We're not allowed to access the system class loader.
+                // Drop through.
+            }
         }
 
         // Try to find a serialized object with this name

@@ -1115,7 +1115,7 @@ public final class SoftSynthesizer implements AudioSynthesizer,
                         line = testline;
                     } else {
                         // can throw LineUnavailableException,
-                        // IllegalArgumentException
+                        // IllegalArgumentException, SecurityException
                         line = AudioSystem.getSourceDataLine(getFormat());
                     }
                 }
@@ -1126,7 +1126,7 @@ public final class SoftSynthesizer implements AudioSynthesizer,
                     int bufferSize = getFormat().getFrameSize()
                         * (int)(getFormat().getFrameRate() * (latency/1000000f));
                     // can throw LineUnavailableException,
-                    // IllegalArgumentException
+                    // IllegalArgumentException, SecurityException
                     line.open(getFormat(), bufferSize);
 
                     // Remember that we opened that line
@@ -1170,7 +1170,8 @@ public final class SoftSynthesizer implements AudioSynthesizer,
                     weakstream.sourceDataLine = sourceDataLine;
                 }
 
-            } catch (final LineUnavailableException | IllegalArgumentException e) {
+            } catch (final LineUnavailableException | SecurityException
+                    | IllegalArgumentException e) {
                 if (isOpen()) {
                     close();
                 }

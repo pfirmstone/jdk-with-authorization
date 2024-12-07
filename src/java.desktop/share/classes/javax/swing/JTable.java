@@ -5561,6 +5561,7 @@ public class JTable extends JComponent implements TableModelListener, Scrollable
                     return super.stopCellEditing();
                 }
 
+                SwingUtilities2.checkAccess(constructor.getModifiers());
                 value = constructor.newInstance(new Object[]{s});
             }
             catch (Exception e) {
@@ -6378,6 +6379,9 @@ public class JTable extends JComponent implements TableModelListener, Scrollable
             }
         }
 
+        // Get a PrinterJob.
+        // Do this before anything with side-effects since it may throw a
+        // security exception - in which case we don't want to do anything else.
         final PrinterJob job = PrinterJob.getPrinterJob();
 
         if (isEditing()) {

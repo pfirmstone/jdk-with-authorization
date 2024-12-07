@@ -105,6 +105,9 @@ public class MetalSliderUI extends BasicSliderUI {
     */
     protected static Icon vertThumbIcon;
 
+    private static Icon SAFE_HORIZ_THUMB_ICON;
+    private static Icon SAFE_VERT_THUMB_ICON;
+
     /**
      * Property for {@code JSlider.isFilled}.
      */
@@ -127,19 +130,31 @@ public class MetalSliderUI extends BasicSliderUI {
         super( null );
     }
 
+    @SuppressWarnings("removal")
     private static Icon getHorizThumbIcon() {
-        return horizThumbIcon;
+        if (System.getSecurityManager() != null) {
+            return SAFE_HORIZ_THUMB_ICON;
+        } else {
+            return horizThumbIcon;
+        }
     }
 
+    @SuppressWarnings("removal")
     private static Icon getVertThumbIcon() {
-        return vertThumbIcon;
+        if (System.getSecurityManager() != null) {
+            return SAFE_VERT_THUMB_ICON;
+        } else {
+            return vertThumbIcon;
+        }
     }
 
     public void installUI( JComponent c ) {
         trackWidth = ((Integer)UIManager.get( "Slider.trackWidth" )).intValue();
         tickLength = safeLength = ((Integer)UIManager.get( "Slider.majorTickLength" )).intValue();
-        horizThumbIcon = UIManager.getIcon( "Slider.horizontalThumbIcon" );
-        vertThumbIcon = UIManager.getIcon( "Slider.verticalThumbIcon" );
+        horizThumbIcon = SAFE_HORIZ_THUMB_ICON =
+                UIManager.getIcon( "Slider.horizontalThumbIcon" );
+        vertThumbIcon = SAFE_VERT_THUMB_ICON =
+                UIManager.getIcon( "Slider.verticalThumbIcon" );
 
         super.installUI( c );
 

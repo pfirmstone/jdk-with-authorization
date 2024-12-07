@@ -648,7 +648,10 @@ public class Window extends Container implements Accessible {
         if (owner != null) {
             owner.addOwnedWindow(weakThis);
             if (owner.isAlwaysOnTop()) {
-                setAlwaysOnTop(true);
+                try {
+                    setAlwaysOnTop(true);
+                } catch (SecurityException ignore) {
+                }
             }
         }
 
@@ -1352,7 +1355,10 @@ public class Window extends Container implements Accessible {
     // to insure that it cannot be overridden by client subclasses.
     final void toBack_NoClientCode() {
         if(isAlwaysOnTop()) {
-            setAlwaysOnTop(false);
+            try {
+                setAlwaysOnTop(false);
+            }catch(SecurityException e) {
+            }
         }
         if (visible) {
             WindowPeer peer = (WindowPeer)this.peer;
@@ -2285,7 +2291,10 @@ public class Window extends Container implements Accessible {
         for (WeakReference<Window> ref : ownedWindowArray) {
             Window window = ref.get();
             if (window != null) {
-                window.setAlwaysOnTop(alwaysOnTop);
+                try {
+                    window.setAlwaysOnTop(alwaysOnTop);
+                } catch (SecurityException ignore) {
+                }
             }
         }
     }
@@ -3124,7 +3133,7 @@ public class Window extends Container implements Accessible {
          setModalExclusionType(et); // since 6.0
          boolean aot = f.get("alwaysOnTop", false);
          if(aot) {
-             setAlwaysOnTop(aot);
+             setAlwaysOnTop(aot); // since 1.5; subject to permission check
          }
          shape = (Shape)f.get("shape", null);
          opacity = (Float)f.get("opacity", 1.0f);
