@@ -104,6 +104,7 @@ final class ProxyGenerator {
     /**
      * debugging flag for saving generated class files
      */
+    @SuppressWarnings("removal")
     private static final boolean SAVE_GENERATED_FILES =
             java.security.AccessController.doPrivileged(
                     new GetBooleanAction(

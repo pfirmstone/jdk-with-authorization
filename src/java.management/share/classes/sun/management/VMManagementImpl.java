@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2003, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2003, 2022, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -35,6 +35,8 @@ import java.net.UnknownHostException;
 import java.util.List;
 import java.util.Arrays;
 import java.util.Collections;
+import java.security.AccessController;
+import java.security.PrivilegedAction;
 
 /**
  * Implementation of VMManagement interface that accesses the management
@@ -201,7 +203,14 @@ class VMManagementImpl implements VMManagement {
 
     // Compilation Subsystem
     public String   getCompilerName() {
-        return System.getProperty("sun.management.compiler");
+        @SuppressWarnings("removal")
+        String name =  AccessController.doPrivileged(
+            new PrivilegedAction<>() {
+                public String run() {
+                    return System.getProperty("sun.management.compiler");
+                }
+            });
+        return name;
     }
     public native long getTotalCompileTime();
 
@@ -246,7 +255,8 @@ class VMManagementImpl implements VMManagement {
         }
 
         // construct PerfInstrumentation object
-        Perf perf = Perf.getPerf();
+        @SuppressWarnings("removal")
+        Perf perf =  AccessController.doPrivileged(new Perf.GetPerfAction());
         try {
             ByteBuffer bb = perf.attach(0);
             if (bb.capacity() == 0) {

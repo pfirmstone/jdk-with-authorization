@@ -305,6 +305,7 @@ final class JceSecurity {
         }
     }
 
+    // This is called from within an doPrivileged block.
     private static void setupJurisdictionPolicies() throws Exception {
 
         // Sanity check the crypto.policy Security property.  Single

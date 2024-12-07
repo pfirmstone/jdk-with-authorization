@@ -1415,6 +1415,7 @@ public abstract class URLConnection {
         return UnknownContentHandler.INSTANCE;
     }
 
+    @SuppressWarnings("removal")
     private ContentHandler lookupContentHandlerViaProvider(String contentType) {
         return AccessController.doPrivileged(
                 new PrivilegedAction<>() {
