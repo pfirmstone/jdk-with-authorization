@@ -766,6 +766,7 @@ public class Socket implements java.io.Closeable {
         }
 
         InetAddress addr = epoint.getAddress();
+        int port = epoint.getPort();
         checkAddress(addr, "connect");
 
         @SuppressWarnings("removal")
