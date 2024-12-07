@@ -142,7 +142,7 @@ public final class SunNativeProvider extends Provider {
                     putService(new Service(this, "GssApiMechanism",
                             mech.toString(), MF_CLASS, null, null));
                 }
-                return;
+                return null;
             });
         }
     }
