@@ -37,7 +37,6 @@ import java.util.StringJoiner;
 import jdk.internal.util.ByteArray;
 import jdk.internal.access.JavaLangAccess;
 import jdk.internal.access.SharedSecrets;
-import sun.reflect.misc.ReflectUtil;
 
 import static jdk.internal.util.ModifiedUtf.putChar;
 import static jdk.internal.util.ModifiedUtf.utfLen;
@@ -1256,12 +1255,6 @@ public class ObjectOutputStream
         }
     }
 
-    private boolean isCustomSubclass() {
-        // Return true if this class is a custom subclass of ObjectOutputStream
-        return getClass().getClassLoader()
-                   != ObjectOutputStream.class.getClassLoader();
-    }
-
     /**
      * Writes class descriptor representing a dynamic proxy class to stream.
      */
@@ -1279,9 +1272,6 @@ public class ObjectOutputStream
         }
 
         bout.setBlockDataMode(true);
-        if (isCustomSubclass()) {
-            ReflectUtil.checkPackageAccess(cl);
-        }
         annotateProxyClass(cl);
         bout.setBlockDataMode(false);
         bout.writeByte(TC_ENDBLOCKDATA);
@@ -1308,9 +1298,6 @@ public class ObjectOutputStream
 
         Class<?> cl = desc.forClass();
         bout.setBlockDataMode(true);
-        if (cl != null && isCustomSubclass()) {
-            ReflectUtil.checkPackageAccess(cl);
-        }
         annotateClass(cl);
         bout.setBlockDataMode(false);
         bout.writeByte(TC_ENDBLOCKDATA);

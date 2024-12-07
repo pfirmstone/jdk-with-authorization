@@ -79,11 +79,6 @@ public class PropertyEditorManager {
      * @see SecurityManager#checkPropertiesAccess
      */
     public static void registerEditor(Class<?> targetType, Class<?> editorClass) {
-        @SuppressWarnings("removal")
-        SecurityManager sm = System.getSecurityManager();
-        if (sm != null) {
-            sm.checkPropertiesAccess();
-        }
         ThreadGroupContext.getContext().getPropertyEditorFinder().register(targetType, editorClass);
     }
 
@@ -124,11 +119,6 @@ public class PropertyEditorManager {
      * @see SecurityManager#checkPropertiesAccess
      */
     public static void setEditorSearchPath(String[] path) {
-        @SuppressWarnings("removal")
-        SecurityManager sm = System.getSecurityManager();
-        if (sm != null) {
-            sm.checkPropertiesAccess();
-        }
         ThreadGroupContext.getContext().getPropertyEditorFinder().setPackages(path);
     }
 }

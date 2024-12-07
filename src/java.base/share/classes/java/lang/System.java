@@ -66,6 +66,7 @@ import java.util.ResourceBundle;
 import java.util.Set;
 import java.util.WeakHashMap;
 import java.util.concurrent.Executor;
+import java.util.concurrent.ScheduledExecutorService;
 import java.util.function.Supplier;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Stream;
@@ -1766,7 +1767,6 @@ public final class System {
 
 
         private static volatile LoggerFinder service;
-        @SuppressWarnings("removal")
         static LoggerFinder accessProvider() {
             // We do not need to synchronize: LoggerFinderLoader will
             // always return the same instance, so if we don't have it,
@@ -1873,7 +1873,6 @@ public final class System {
      *
      * @since 9
      */
-    @SuppressWarnings("removal")
     @CallerSensitive
     public static Logger getLogger(String name, ResourceBundle bundle) {
         final ResourceBundle rb = Objects.requireNonNull(bundle);
@@ -2772,6 +2771,10 @@ public final class System {
 
             public Executor virtualThreadDefaultScheduler() {
                 return VirtualThread.defaultScheduler();
+            }
+
+            public Stream<ScheduledExecutorService> virtualThreadDelayedTaskSchedulers() {
+                return VirtualThread.delayedTaskSchedulers();
             }
 
             public StackWalker newStackWalkerInstance(Set<StackWalker.Option> options,

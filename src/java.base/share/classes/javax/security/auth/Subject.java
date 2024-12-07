@@ -636,7 +636,7 @@ public final class Subject implements java.io.Serializable {
     }
 
     /**
-     * Perform privileged work as a particular {@code Subject}.
+     * Perform work as a particular {@code Subject}.
      *
      * <p> If a security manager is <a href=#sm-allowed>allowed</a>,
      * this method behaves exactly as {@code Subject.doAs},
@@ -726,7 +726,7 @@ public final class Subject implements java.io.Serializable {
     }
 
     /**
-     * Perform privileged work as a particular {@code Subject}.
+     * Perform work as a particular {@code Subject}.
      *
      * <p> If a security manager is <a href=#sm-allowed>allowed</a>,
      * this method behaves exactly as {@code Subject.doAs},

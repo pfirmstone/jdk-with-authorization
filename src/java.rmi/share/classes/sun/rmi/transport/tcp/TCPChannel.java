@@ -43,7 +43,6 @@ import java.util.concurrent.Future;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import sun.rmi.runtime.Log;
-import sun.rmi.runtime.NewThreadAction;
 import sun.rmi.runtime.RuntimeUtil;
 import sun.rmi.transport.Channel;
 import sun.rmi.transport.Connection;

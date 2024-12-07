@@ -164,7 +164,6 @@ public final class IIORegistry extends ServiceRegistry {
      * @see javax.imageio.ImageIO#scanForPlugins
      * @see ClassLoader#getResources
      */
-    @SuppressWarnings("removal")
     public void registerApplicationClasspathSpis() {
         // FIX: load only from application classpath
 
@@ -177,22 +176,8 @@ public final class IIORegistry extends ServiceRegistry {
             Iterator<IIOServiceProvider> riter =
                     ServiceLoader.load(c, loader).iterator();
             while (riter.hasNext()) {
-                try {
-                    // Note that the next() call is required to be inside
-                    // the try/catch block; see 6342404.
-                    IIOServiceProvider r = riter.next();
-                    registerServiceProvider(r);
-                } catch (ServiceConfigurationError err) {
-                    if (System.getSecurityManager() != null) {
-                        // In the applet case, we will catch the  error so
-                        // registration of other plugins can  proceed
-                        err.printStackTrace();
-                    } else {
-                        // In the application case, we will  throw the
-                        // error to indicate app/system  misconfiguration
-                        throw err;
-                    }
-                }
+                IIOServiceProvider r = riter.next();
+                registerServiceProvider(r);
             }
         }
     }

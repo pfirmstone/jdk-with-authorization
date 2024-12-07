@@ -849,10 +849,7 @@ public abstract class RasterPrinterJob extends PrinterJob {
                                            DocFlavor.SERVICE_FORMATTED.PAGEABLE,
                                            attributes, w);
         if (setOnTop) {
-            try {
-                pageDialog.setAlwaysOnTop(true);
-            } catch (SecurityException e) {
-            }
+            pageDialog.setAlwaysOnTop(true);
         }
 
         Rectangle dlgBounds = pageDialog.getBounds();
@@ -982,15 +979,6 @@ public abstract class RasterPrinterJob extends PrinterJob {
 
         }
 
-        /* A security check has already been performed in the
-         * java.awt.print.printerJob.getPrinterJob method.
-         * So by the time we get here, it is OK for the current thread
-         * to print either to a file (from a Dialog we control!) or
-         * to a chosen printer.
-         *
-         * We raise privilege when we put up the dialog, to avoid
-         * the "warning applet window" banner.
-         */
         GraphicsConfiguration grCfg = null;
         Window w = KeyboardFocusManager.getCurrentKeyboardFocusManager().getActiveWindow();
         if (w != null) {
@@ -1361,11 +1349,7 @@ public abstract class RasterPrinterJob extends PrinterJob {
             (!fidelity && userName != null)) {
             userNameAttr = userName.getValue();
         } else {
-            try {
-                userNameAttr = getUserName();
-            } catch (SecurityException e) {
-                userNameAttr = "";
-            }
+            userNameAttr = getUserName();
         }
 
         /* OpenBook is used internally only when app uses Printable.
@@ -1704,11 +1688,6 @@ public abstract class RasterPrinterJob extends PrinterJob {
         } catch (IOException ioe) {
             throw new PrinterException("Cannot write to file:"+
                                        dest);
-        } catch (SecurityException se) {
-            //There is already file read/write access so at this point
-            // only delete access is denied.  Just ignore it because in
-            // most cases the file created in createNewFile gets overwritten
-            // anyway.
         }
 
         File pFile = f.getParentFile();
@@ -1868,7 +1847,6 @@ public abstract class RasterPrinterJob extends PrinterJob {
 
     /**
      * Get the name of the printing user.
-     * The caller must have security permission to read system properties.
      */
     public String getUserName() {
         return System.getProperty("user.name");
@@ -1881,11 +1859,7 @@ public abstract class RasterPrinterJob extends PrinterJob {
         if  (userNameAttr != null) {
             return userNameAttr;
         } else {
-            try {
-                return  getUserName();
-            } catch (SecurityException e) {
-                return "";
-            }
+            return getUserName();
         }
     }
 

@@ -79,22 +79,6 @@ public class ReflectionFactory {
     }
 
     /**
-     * A convenience class for acquiring the capability to instantiate
-     * reflective objects.  Use this instead of a raw call to {@link
-     * #getReflectionFactory} in order to avoid being limited by the
-     * permissions of your callers.
-     *
-     * <p>An instance of this class can be used as the argument of
-     * <code>AccessController.doPrivileged</code>.
-     */
-    public static final class GetReflectionFactoryAction
-        implements PrivilegedAction<ReflectionFactory> {
-        public ReflectionFactory run() {
-            return getReflectionFactory();
-        }
-    }
-
-    /**
      * Provides the caller with the capability to instantiate reflective
      * objects.
      *
