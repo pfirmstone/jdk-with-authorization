@@ -26,7 +26,6 @@
 package sun.security.jgss.wrapper;
 
 import java.io.Serial;
-import java.util.HashMap;
 import java.security.Provider;
 import java.security.AccessController;
 import java.security.PrivilegedAction;
@@ -35,7 +34,6 @@ import jdk.internal.util.OperatingSystem;
 import jdk.internal.util.StaticProperty;
 import org.ietf.jgss.Oid;
 import sun.security.action.GetBooleanAction;
-import sun.security.action.PutAllAction;
 import static sun.security.util.SecurityConstants.PROVIDER_VER;
 
 /**
@@ -69,69 +67,8 @@ public final class SunNativeProvider extends Provider {
     }
 
     @SuppressWarnings({"removal", "restricted"})
-    private static final HashMap<String, String> MECH_MAP =
-            AccessController.doPrivileged(
-                new PrivilegedAction<>() {
-                    public HashMap<String, String> run() {
-                        try {
-                            // Ensure the InetAddress class is loaded before
-                            // loading j2gss. The library will access this class
-                            // and a deadlock might happen. See JDK-8210373.
-                            Class.forName("java.net.InetAddress");
-                            System.loadLibrary("j2gss");
-                        } catch (ClassNotFoundException | Error err) {
-                            if (DEBUG) {
-                                debug("No j2gss library found!");
-                                err.printStackTrace();
-                            }
-                            return null;
-                        }
-                        String[] gssLibs;
-                        String defaultLib
-                                = System.getProperty("sun.security.jgss.lib");
-                        if (defaultLib == null || defaultLib.trim().equals("")) {
-                            gssLibs = switch (OperatingSystem.current()) {
-                                case LINUX -> new String[]{
-                                        "libgssapi.so",
-                                        "libgssapi_krb5.so",
-                                        "libgssapi_krb5.so.2",
-                                };
-                                case MACOS -> new String[]{
-                                        "libgssapi_krb5.dylib",
-                                        "/usr/lib/sasl2/libgssapiv2.2.so",
-                                };
-                                case WINDOWS -> new String[]{
-                                        // Full path needed, DLL is in jre/bin
-                                        StaticProperty.javaHome() + "\\bin\\sspi_bridge.dll",
-                                };
-                                case AIX -> new String[]{
-                                        "/opt/freeware/lib64/libgssapi_krb5.so",
-                                };
-                                default -> new String[0];
-                            };
-                        } else {
-                            gssLibs = new String[]{ defaultLib };
-                        }
-                        for (String libName: gssLibs) {
-                            if (GSSLibStub.init(libName, DEBUG)) {
-                                if (DEBUG) {
-                                    debug("Loaded GSS library: " + libName);
-                                }
-                                Oid[] mechs = GSSLibStub.indicateMechs();
-                                HashMap<String,String> map = new HashMap<>();
-                                for (int i = 0; i < mechs.length; i++) {
-                                    if (DEBUG) {
-                                        debug("Native MF for " + mechs[i]);
-                                    }
-                                    map.put("GssApiMechanism." + mechs[i],
-                                            MF_CLASS);
-                                }
-                                return map;
-                            }
-                        }
-                        return null;
-                    }
-                });
+    private static final Oid[] MECH_OIDS = AccessController.doPrivileged(
+            (PrivilegedAction<Oid[]>)()->getMechOIDs());
 
     @SuppressWarnings("restricted")
     private static Oid[] getMechOIDs() {
@@ -192,14 +129,21 @@ public final class SunNativeProvider extends Provider {
 
     // initialize INSTANCE after MECH_OIDS is constructed
     static final Provider INSTANCE = new SunNativeProvider();
-
+    
     @SuppressWarnings("removal")
     public SunNativeProvider() {
         /* We are the Sun NativeGSS provider */
         super(NAME, PROVIDER_VER, INFO);
 
-        if (MECH_MAP != null) {
-            AccessController.doPrivileged(new PutAllAction(this, MECH_MAP));
+        if (MECH_OIDS != null) {
+            AccessController.doPrivileged((PrivilegedAction<Void>)()->
+            {
+                for (Oid mech : MECH_OIDS) {
+                    putService(new Service(this, "GssApiMechanism",
+                            mech.toString(), MF_CLASS, null, null));
+                }
+                return;
+            });
         }
     }
 }
