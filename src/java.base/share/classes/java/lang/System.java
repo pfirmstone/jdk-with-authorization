@@ -376,13 +376,11 @@ public final class System {
      * <p> Deprecated since 17, removed or disabled since 24,
      * retained and maintained operational for Authorization.
      *
-     * @param  sm the security manager or {@code null}
+     * @param  sm the security manager
      * @throws SecurityException
      *         if the security manager has already been set and its {@code
      *         checkPermission} method doesn't allow it to be replaced
-     * @throws UnsupportedOperationException
-     *         if {@code sm} is non-null and a security manager is not allowed
-     *         to be set dynamically
+     * @throws NullPointerException when SecurityManager is already installed and sm is null.
      * @see #getSecurityManager
      * @see SecurityManager#checkPermission
      * @see java.lang.RuntimePermission
@@ -397,6 +395,8 @@ public final class System {
 //    @Deprecated(since="17", forRemoval=true)
     @CallerSensitive
     public static void setSecurityManager(@SuppressWarnings("removal") SecurityManager sm) {
+        if (security != null && sm == null) throw new NullPointerException(
+            "A SecurityManager has been installed and cannot be set to null");
         if (security == null) {
             // ensure image reader is initialized
             Object.class.getResource("java/lang/ANY");
