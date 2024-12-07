@@ -1146,7 +1146,7 @@ public class Proxy implements java.io.Serializable {
         return ih;
     }
 
-    private static final String PROXY_PACKAGE_PREFIX = "com.sun.proxy";
+    private static final String PROXY_PACKAGE_PREFIX = ReflectUtil.PROXY_PACKAGE;
 
     /**
      * A cache of Method -> MethodHandle for default methods.
