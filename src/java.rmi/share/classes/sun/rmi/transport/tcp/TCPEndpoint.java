@@ -47,7 +47,7 @@ import java.util.LinkedList;
 import java.util.Map;
 import java.util.Set;
 import sun.rmi.runtime.Log;
-import sun.rmi.runtime.RuntimeUtil;
+import sun.rmi.runtime.NewThreadAction;
 import sun.rmi.transport.Channel;
 import sun.rmi.transport.Endpoint;
 import sun.rmi.transport.Target;

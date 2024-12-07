@@ -45,7 +45,7 @@ import java.rmi.dgc.VMID;
 import java.rmi.server.ObjID;
 
 import sun.rmi.runtime.Log;
-import sun.rmi.runtime.RuntimeUtil;
+import sun.rmi.runtime.NewThreadAction;
 import sun.rmi.server.UnicastRef;
 import sun.rmi.server.Util;
 

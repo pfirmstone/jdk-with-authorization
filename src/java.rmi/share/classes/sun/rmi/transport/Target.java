@@ -34,7 +34,7 @@ import java.security.AccessController;
 import java.security.PrivilegedAction;
 import java.util.*;
 import sun.rmi.runtime.Log;
-import sun.rmi.runtime.RuntimeUtil;
+import sun.rmi.runtime.NewThreadAction;
 import sun.rmi.server.Dispatcher;
 
 /**

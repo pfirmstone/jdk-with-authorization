@@ -35,7 +35,7 @@ import java.security.PrivilegedAction;
 import java.util.HashMap;
 import java.util.Map;
 import sun.rmi.runtime.Log;
-import sun.rmi.runtime.RuntimeUtil;
+import sun.rmi.runtime.NewThreadAction;
 
 /**
  * Object table shared by all implementors of the Transport interface.

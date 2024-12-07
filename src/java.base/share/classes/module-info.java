@@ -337,6 +337,7 @@ module java.base {
     exports sun.security.pkcs to
         jdk.jartool;
     exports sun.security.provider to
+        java.rmi,
         java.security.jgss,
         jdk.crypto.cryptoki,
         jdk.security.auth;
@@ -352,6 +353,7 @@ module java.base {
     exports sun.security.util to
         java.desktop,
         java.naming,
+        java.rmi,
         java.security.jgss,
         java.security.sasl,
         java.smartcardio,
