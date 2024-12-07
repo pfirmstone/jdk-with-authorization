@@ -26,6 +26,7 @@
 package sun.security.jgss.wrapper;
 
 import java.io.Serial;
+import java.util.HashMap;
 import java.security.Provider;
 import java.security.AccessController;
 import java.security.PrivilegedAction;
