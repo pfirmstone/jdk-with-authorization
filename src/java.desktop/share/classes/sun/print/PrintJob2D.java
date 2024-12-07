@@ -311,6 +311,12 @@ public class PrintJob2D extends PrintJob implements Printable, Runnable {
                                 JobAttributes jobAttributes,
                                 PageAttributes pageAttributes) {
 
+        @SuppressWarnings("removal")
+        SecurityManager security = System.getSecurityManager();
+        if (security != null) {
+            security.checkPrintJobAccess();
+        }
+
         if (frame == null &&
             (jobAttributes == null ||
              jobAttributes.getDialog() == DialogType.NATIVE)) {
@@ -362,6 +368,11 @@ public class PrintJob2D extends PrintJob implements Printable, Runnable {
                 } catch (IOException ioe) {
                     throw new IllegalArgumentException("Cannot write to file:"+
                                                        destStr);
+                } catch (SecurityException se) {
+                    //There is already file read/write access so at this point
+                    // only delete access is denied.  Just ignore it because in
+                    // most cases the file created in createNewFile gets overwritten
+                    // anyway.
                 }
 
                  File pFile = f.getParentFile();
@@ -667,18 +678,29 @@ public class PrintJob2D extends PrintJob implements Printable, Runnable {
                 attributes.add(defaultDest);
             } else {
                 URI uri = null;
-                if (fileName != null) {
-                    if (fileName.isEmpty()) {
-                        fileName = ".";
+                try {
+                    if (fileName != null) {
+                        if (fileName.isEmpty()) {
+                            fileName = ".";
+                        }
+                    } else {
+                        // defaultDest should not be null.  The following code
+                        // is only added to safeguard against a possible
+                        // buggy implementation of a PrintService having a
+                        // null default Destination.
+                        fileName = "out.prn";
                     }
-                } else {
-                    // defaultDest should not be null.  The following code
-                    // is only added to safeguard against a possible
-                    // buggy implementation of a PrintService having a
-                    // null default Destination.
-                    fileName = "out.prn";
+                    uri = (new File(fileName)).toURI();
+                } catch (SecurityException se) {
+                    try {
+                        // '\\' file separator is illegal character in opaque
+                        // part and causes URISyntaxException, so we replace
+                        // it with '/'
+                        fileName = fileName.replace('\\', '/');
+                        uri = new URI("file:"+fileName);
+                    } catch (URISyntaxException e) {
+                    }
                 }
-                uri = (new File(fileName)).toURI();
                 if (uri != null) {
                     attributes.add(new Destination(uri));
                 }

@@ -434,7 +434,12 @@ public class PSStreamPrintJob implements CancelablePrintJob {
         }
 
         /* add the user name to the job */
-        String userName = System.getProperty("user.name");
+        String userName = "";
+        try {
+          userName = System.getProperty("user.name");
+        } catch (SecurityException se) {
+        }
+
         if (userName == null || userName.isEmpty()) {
             RequestingUserName ruName =
                 (RequestingUserName)reqSet.get(RequestingUserName.class);

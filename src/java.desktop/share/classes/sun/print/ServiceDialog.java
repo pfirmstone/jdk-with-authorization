@@ -170,7 +170,10 @@ public class ServiceDialog extends JDialog implements ActionListener {
              * on top property
              */
             if ((getOwner() == null) || (owner.getOwner() != getOwner())) {
-                setAlwaysOnTop(true);
+                try {
+                    setAlwaysOnTop(true);
+                } catch (SecurityException e) {
+                }
             }
         }
         Container c = getContentPane();
@@ -253,7 +256,10 @@ public class ServiceDialog extends JDialog implements ActionListener {
             /* See comments in same block in initPrintDialog */
             DialogOwner owner = (DialogOwner)attributes.get(DialogOwner.class);
             if ((getOwner() == null) || (owner.getOwner() != getOwner())) {
-                setAlwaysOnTop(true);
+                try {
+                    setAlwaysOnTop(true);
+                } catch (SecurityException e) {
+                }
             }
         }
 
@@ -2984,7 +2990,13 @@ public class ServiceDialog extends JDialog implements ActionListener {
     private static class ValidatingFileChooser extends JFileChooser {
         public void approveSelection() {
             File selected = getSelectedFile();
-            boolean exists = selected.exists();
+            boolean exists;
+
+            try {
+                exists = selected.exists();
+            } catch (SecurityException e) {
+                exists = false;
+            }
 
             if (exists) {
                 int val;
@@ -3007,6 +3019,11 @@ public class ServiceDialog extends JDialog implements ActionListener {
                                    getMsg("dialog.owtitle"),
                                    JOptionPane.WARNING_MESSAGE);
                 return;
+            } catch (SecurityException se) {
+                //There is already file read/write access so at this point
+                // only delete access is denied.  Just ignore it because in
+                // most cases the file created in createNewFile gets
+                // overwritten anyway.
             }
             File pFile = selected.getParentFile();
             if ((selected.exists() &&

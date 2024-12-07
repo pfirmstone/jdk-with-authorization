@@ -203,7 +203,10 @@ public class ServiceUI {
                                                  flavor, attributes,
                                                  owner);
         if (setOnTop) {
-            dialog.setAlwaysOnTop(true);
+            try {
+                dialog.setAlwaysOnTop(true);
+            } catch (SecurityException e) {
+            }
         }
         Rectangle dlgBounds = dialog.getBounds();
 

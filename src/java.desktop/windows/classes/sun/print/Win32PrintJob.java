@@ -592,7 +592,11 @@ public class Win32PrintJob implements CancelablePrintJob {
         }
 
         /* add the user name to the job */
-        String userName = System.getProperty("user.name");
+        String userName = "";
+        try {
+          userName = System.getProperty("user.name");
+        } catch (SecurityException se) {
+        }
 
         if (userName == null || userName.isEmpty()) {
             RequestingUserName ruName =
@@ -669,6 +673,17 @@ public class Win32PrintJob implements CancelablePrintJob {
                   mDestination = (new File(uri)).getPath();
                 } catch (Exception e) {
                   throw new PrintException(e);
+                }
+                // check write access
+                @SuppressWarnings("removal")
+                SecurityManager security = System.getSecurityManager();
+                if (security != null) {
+                  try {
+                    security.checkWrite(mDestination);
+                  } catch (SecurityException se) {
+                    notifyEvent(PrintJobEvent.JOB_FAILED);
+                    throw new PrintException(se);
+                  }
                 }
               }
             } else if (category == JobName.class) {

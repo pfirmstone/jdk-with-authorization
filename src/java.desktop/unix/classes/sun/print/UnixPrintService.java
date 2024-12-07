@@ -418,6 +418,11 @@ public class UnixPrintService implements PrintService, AttributeUpdater,
     }
 
     public DocPrintJob createPrintJob() {
+      @SuppressWarnings("removal")
+      SecurityManager security = System.getSecurityManager();
+      if (security != null) {
+        security.checkPrintJobAccess();
+      }
         return new UnixPrintJob(this);
     }
 
@@ -624,7 +629,15 @@ public class UnixPrintService implements PrintService, AttributeUpdater,
         } else if (category == Chromaticity.class) {
             return Chromaticity.COLOR;
         } else if (category == Destination.class) {
-            return new Destination((new File("out.ps")).toURI());
+            try {
+                return new Destination((new File("out.ps")).toURI());
+            } catch (SecurityException se) {
+                try {
+                    return new Destination(new URI("file:out.ps"));
+                } catch (URISyntaxException e) {
+                    return null;
+                }
+            }
         } else if (category == Fidelity.class) {
             return Fidelity.FIDELITY_FALSE;
         } else if (category == JobName.class) {
@@ -661,7 +674,11 @@ public class UnixPrintService implements PrintService, AttributeUpdater,
         } else if (category == PageRanges.class) {
             return new PageRanges(1, Integer.MAX_VALUE);
         } else if (category == RequestingUserName.class) {
-            String userName = System.getProperty("user.name", "");
+            String userName = "";
+            try {
+              userName = System.getProperty("user.name", "");
+            } catch (SecurityException se) {
+            }
             return new RequestingUserName(userName, null);
         } else if (category == SheetCollate.class) {
             return SheetCollate.UNCOLLATED;
@@ -718,7 +735,15 @@ public class UnixPrintService implements PrintService, AttributeUpdater,
                 return null;
             }
         } else if (category == Destination.class) {
+            try {
                 return new Destination((new File("out.ps")).toURI());
+            } catch (SecurityException se) {
+                try {
+                    return new Destination(new URI("file:out.ps"));
+                } catch (URISyntaxException e) {
+                    return null;
+                }
+            }
         } else if (category == JobName.class) {
             return new JobName("Java Printing", null);
         } else if (category == JobSheets.class) {
@@ -727,7 +752,11 @@ public class UnixPrintService implements PrintService, AttributeUpdater,
             arr[1] = JobSheets.STANDARD;
             return arr;
         } else if (category == RequestingUserName.class) {
-            String userName = System.getProperty("user.name", "");
+            String userName = "";
+            try {
+              userName = System.getProperty("user.name", "");
+            } catch (SecurityException se) {
+            }
             return new RequestingUserName(userName, null);
         } else if (category == OrientationRequested.class) {
             if (flavor == null || isServiceFormattedFlavor(flavor)) {

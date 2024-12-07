@@ -55,9 +55,12 @@ class ServiceNotifier extends Thread {
         super(null, null, service.getName() + " notifier", 0, false);
         this.service = service;
         listeners = new Vector<>();
-        setPriority(Thread.NORM_PRIORITY-1);
-        setDaemon(true);
-        start();
+        try {
+              setPriority(Thread.NORM_PRIORITY-1);
+              setDaemon(true);
+              start();
+        } catch (SecurityException e) {
+        }
     }
 
     void addListener(PrintServiceAttributeListener listener) {
@@ -90,7 +93,10 @@ class ServiceNotifier extends Thread {
      * immediate notification of listeners.
      */
     void wake() {
-        interrupt();
+        try {
+            interrupt();
+        } catch (SecurityException e) {
+        }
     }
 
    /* A heuristic is used to calculate sleep time.
