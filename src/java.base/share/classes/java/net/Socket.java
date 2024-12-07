@@ -557,7 +557,7 @@ public class Socket implements java.io.Closeable {
         this.state = SOCKET_CREATED;
 
         try {
-            if (localAddr != null) {
+            if (localAddr != null)
                 bind(localAddr);
             connect(address);
         } catch (IOException | IllegalArgumentException | SecurityException e) {
