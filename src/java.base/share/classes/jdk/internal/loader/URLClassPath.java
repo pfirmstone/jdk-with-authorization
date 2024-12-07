@@ -92,9 +92,7 @@ public class URLClassPath {
         JAVA_VERSION = props.getProperty("java.version");
         DEBUG = (props.getProperty("sun.misc.URLClassPath.debug") != null);
         String p = props.getProperty("sun.misc.URLClassPath.disableJarChecking");
-        // JAR check is disabled by default and will be enabled only if the "disable JAR check"
-        // system property has been set to "false".
-        JAR_CHECKING_ENABLED = "false".equals(p);
+        DISABLE_JAR_CHECKING = p != null ? p.equals("true") || p.isEmpty() : false;
 
         p = props.getProperty("jdk.net.URLClassPath.disableRestrictedPermissions");
         DISABLE_ACC_CHECKING = p != null ? p.equals("true") || p.isEmpty() : false;
@@ -830,12 +828,11 @@ public class URLClassPath {
             }
         }
 
-        /*
-         * Throws an IOException if the LOC file Header Signature (0x04034b50),
-         * is not found starting at byte 0 of the given jar.
-         */
+        /* Throws if the given jar file is does not start with the correct LOC */
+        @SuppressWarnings("removal")
         static JarFile checkJar(JarFile jar) throws IOException {
-            if (JAR_CHECKING_ENABLED && !zipAccess.startsWithLocHeader(jar)) {
+            if (System.getSecurityManager() != null && !DISABLE_JAR_CHECKING
+                && !zipAccess.startsWithLocHeader(jar)) {
                 IOException x = new IOException("Invalid Jar file");
                 try {
                     jar.close();
@@ -844,6 +841,7 @@ public class URLClassPath {
                 }
                 throw x;
             }
+
             return jar;
         }
 
