@@ -202,12 +202,6 @@ public class Net {
         translateToSocketException(x);
     }
 
-    static void translateException(Exception x)
-        throws IOException
-    {
-        translateException(x, false);
-    }
-
     /**
      * Returns the local address after performing a SecurityManager#checkConnect.
      */
