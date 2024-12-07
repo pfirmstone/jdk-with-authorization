@@ -109,6 +109,7 @@ public abstract class Signer extends Identity {
      * @see SecurityManager#checkSecurityAccess
      */
     public PrivateKey getPrivateKey() {
+        check("getSignerPrivateKey");
         return privateKey;
     }
 
@@ -133,13 +134,24 @@ public abstract class Signer extends Identity {
      */
     public final void setKeyPair(KeyPair pair)
     throws InvalidParameterException, KeyException {
-        PublicKey pub = pair.getPublic();
+        check("setSignerKeyPair");
+        final PublicKey pub = pair.getPublic();
         PrivateKey priv = pair.getPrivate();
 
         if (pub == null || priv == null) {
             throw new InvalidParameterException();
         }
-        setPublicKey(pub);
+        try {
+            AccessController.doPrivileged(
+                new PrivilegedExceptionAction<>() {
+                public Void run() throws KeyManagementException {
+                    setPublicKey(pub);
+                    return null;
+                }
+            });
+        } catch (PrivilegedActionException pae) {
+            throw (KeyManagementException) pae.getException();
+        }
         privateKey = priv;
     }
 
@@ -163,4 +175,12 @@ public abstract class Signer extends Identity {
     public String toString() {
         return "[Signer]" + super.toString();
     }
+
+    private static void check(String directive) {
+        SecurityManager security = System.getSecurityManager();
+        if (security != null) {
+            security.checkSecurityAccess(directive);
+        }
+    }
+
 }

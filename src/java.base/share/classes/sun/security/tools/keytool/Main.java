@@ -981,9 +981,9 @@ public final class Main {
             // if certProtectionAlgorithm and macAlgorithm are both NONE.
             if (storetype.equalsIgnoreCase("pkcs12")) {
                 isPasswordlessKeyStore =
-                        "NONE".equals(SecurityProperties.getOverridableProperty(
+                        "NONE".equals(SecurityProperties.privilegedGetOverridable(
                                 "keystore.pkcs12.certProtectionAlgorithm"))
-                        && "NONE".equals(SecurityProperties.getOverridableProperty(
+                        && "NONE".equals(SecurityProperties.privilegedGetOverridable(
                                 "keystore.pkcs12.macAlgorithm"));
             }
 

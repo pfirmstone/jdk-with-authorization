@@ -187,6 +187,7 @@ public abstract class Identity implements Principal, Serializable {
     /* Should we throw an exception if this is already set? */
     public void setPublicKey(PublicKey key) throws KeyManagementException {
 
+        check("setIdentityPublicKey");
         this.publicKey = key;
         certificates = new Vector<>();
     }
@@ -208,6 +209,7 @@ public abstract class Identity implements Principal, Serializable {
      * @see SecurityManager#checkSecurityAccess
      */
     public void setInfo(String info) {
+        check("setIdentityInfo");
         this.info = info;
     }
 
@@ -246,6 +248,8 @@ public abstract class Identity implements Principal, Serializable {
      */
     public void addCertificate(Certificate certificate)
     throws KeyManagementException {
+
+        check("addIdentityCertificate");
 
         if (certificates == null) {
             certificates = new Vector<>();
@@ -294,6 +298,7 @@ public abstract class Identity implements Principal, Serializable {
      */
     public void removeCertificate(Certificate certificate)
     throws KeyManagementException {
+        check("removeIdentityCertificate");
         if (certificates != null) {
             certificates.removeElement(certificate);
         }
@@ -401,6 +406,7 @@ public abstract class Identity implements Principal, Serializable {
      * @see SecurityManager#checkSecurityAccess
      */
     public String toString() {
+        check("printIdentity");
         String printable = name;
         if (scope != null) {
             printable += "[" + scope.getName() + "]";
@@ -479,5 +485,12 @@ public abstract class Identity implements Principal, Serializable {
     @Override
     public int hashCode() {
         return name.hashCode();
+    }
+
+    private static void check(String directive) {
+        SecurityManager security = System.getSecurityManager();
+        if (security != null) {
+            security.checkSecurityAccess(directive);
+        }
     }
 }
