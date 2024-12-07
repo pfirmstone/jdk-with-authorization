@@ -27,11 +27,14 @@ package sun.net.httpserver;
 
 import java.lang.System.Logger;
 import java.lang.System.Logger.Level;
+import java.security.PrivilegedAction;
 
 /**
  * Parameters that users will not likely need to set
  * but are useful for debugging
  */
+
+@SuppressWarnings("removal")
 class ServerConfig {
 
     private static final int DEFAULT_IDLE_TIMER_SCHEDULE_MILLIS = 10000 ; // 10 sec.
@@ -49,73 +52,94 @@ class ServerConfig {
     private static final int  DEFAULT_MAX_REQ_HEADER_SIZE = 380 * 1024;
     private static final long DEFAULT_DRAIN_AMOUNT = 64 * 1024;
 
-    private static final long idleTimerScheduleMillis;
-    private static final long idleIntervalMillis;
+    private static long idleTimerScheduleMillis;
+    private static long idleIntervalMillis;
     // The maximum number of bytes to drain from an inputstream
-    private static final long drainAmount;
+    private static long drainAmount;
     // the maximum number of connections that the server will allow to be open
     // after which it will no longer "accept()" any new connections, till the
     // current connection count goes down due to completion of processing the requests
-    private static final int maxConnections;
-    private static final int maxIdleConnections;
+    private static int maxConnections;
+    private static int maxIdleConnections;
     // The maximum number of request headers allowable
-    private static final int maxReqHeaders;
+    private static int maxReqHeaders;
     // a maximum value for the header list size. This is the
     // names size + values size + 32 bytes per field line
-    private static final int maxReqHeadersSize;
+    private static int maxReqHeadersSize;
     // max time a request or response is allowed to take
-    private static final long maxReqTime;
-    private static final long maxRspTime;
-    private static final long reqRspTimerScheduleMillis;
-    private static final boolean debug;
+    private static long maxReqTime;
+    private static long maxRspTime;
+    private static long reqRspTimerScheduleMillis;
+    private static boolean debug;
 
     // the value of the TCP_NODELAY socket-level option
-    private static final boolean noDelay;
+    private static boolean noDelay;
 
     static {
+        java.security.AccessController.doPrivileged(
+            new PrivilegedAction<Void>() {
+                @Override
+                public Void run () {
+                    idleIntervalMillis = Long.getLong("sun.net.httpserver.idleInterval",
+                            DEFAULT_IDLE_INTERVAL_IN_SECS) * 1000;
+                    if (idleIntervalMillis <= 0) {
+                        idleIntervalMillis = DEFAULT_IDLE_INTERVAL_IN_SECS * 1000;
+                    }
 
-        long providedIdleIntervalMillis =
-                Long.getLong("sun.net.httpserver.idleInterval", DEFAULT_IDLE_INTERVAL_IN_SECS) * 1000;
-        idleIntervalMillis = providedIdleIntervalMillis > 0
-                ? providedIdleIntervalMillis
-                : Math.multiplyExact(DEFAULT_IDLE_INTERVAL_IN_SECS, 1000);
+                    idleTimerScheduleMillis = Long.getLong("sun.net.httpserver.clockTick",
+                            DEFAULT_IDLE_TIMER_SCHEDULE_MILLIS);
+                    if (idleTimerScheduleMillis <= 0) {
+                        // ignore zero or negative value and use the default schedule
+                        idleTimerScheduleMillis = DEFAULT_IDLE_TIMER_SCHEDULE_MILLIS;
+                    }
 
-        long providedIdleTimerScheduleMillis =
-                Long.getLong("sun.net.httpserver.clockTick", DEFAULT_IDLE_TIMER_SCHEDULE_MILLIS);
-        // Ignore zero or negative value and use the default schedule
-        idleTimerScheduleMillis = providedIdleTimerScheduleMillis > 0
-                ? providedIdleTimerScheduleMillis
-                : DEFAULT_IDLE_TIMER_SCHEDULE_MILLIS;
+                    maxConnections = Integer.getInteger(
+                            "jdk.httpserver.maxConnections",
+                            DEFAULT_MAX_CONNECTIONS);
 
-        maxConnections = Integer.getInteger("jdk.httpserver.maxConnections", DEFAULT_MAX_CONNECTIONS);
+                    maxIdleConnections = Integer.getInteger(
+                            "sun.net.httpserver.maxIdleConnections",
+                            DEFAULT_MAX_IDLE_CONNECTIONS);
 
-        maxIdleConnections = Integer.getInteger("sun.net.httpserver.maxIdleConnections", DEFAULT_MAX_IDLE_CONNECTIONS);
+                    drainAmount = Long.getLong("sun.net.httpserver.drainAmount",
+                            DEFAULT_DRAIN_AMOUNT);
 
-        drainAmount = Long.getLong("sun.net.httpserver.drainAmount", DEFAULT_DRAIN_AMOUNT);
+                    maxReqHeaders = Integer.getInteger(
+                            "sun.net.httpserver.maxReqHeaders",
+                            DEFAULT_MAX_REQ_HEADERS);
+                    if (maxReqHeaders <= 0) {
+                        maxReqHeaders = DEFAULT_MAX_REQ_HEADERS;
+                    }
 
-        int providedMaxReqHeaders = Integer.getInteger("sun.net.httpserver.maxReqHeaders", DEFAULT_MAX_REQ_HEADERS);
-        maxReqHeaders = providedMaxReqHeaders > 0 ? providedMaxReqHeaders : DEFAULT_MAX_REQ_HEADERS;
+                    // a value <= 0 means unlimited
+                    maxReqHeadersSize = Integer.getInteger(
+                            "sun.net.httpserver.maxReqHeaderSize",
+                            DEFAULT_MAX_REQ_HEADER_SIZE);
+                    if (maxReqHeadersSize <= 0) {
+                        maxReqHeadersSize = 0;
+                    }
 
-        // A value <= 0 means unlimited
-        maxReqHeadersSize = Math.max(
-                Integer.getInteger("sun.net.httpserver.maxReqHeaderSize", DEFAULT_MAX_REQ_HEADER_SIZE),
-                0);
+                    maxReqTime = Long.getLong("sun.net.httpserver.maxReqTime",
+                            DEFAULT_MAX_REQ_TIME);
 
-        maxReqTime = Long.getLong("sun.net.httpserver.maxReqTime", DEFAULT_MAX_REQ_TIME);
+                    maxRspTime = Long.getLong("sun.net.httpserver.maxRspTime",
+                            DEFAULT_MAX_RSP_TIME);
 
-        maxRspTime = Long.getLong("sun.net.httpserver.maxRspTime", DEFAULT_MAX_RSP_TIME);
+                    reqRspTimerScheduleMillis = Long.getLong("sun.net.httpserver.timerMillis",
+                            DEFAULT_REQ_RSP_TIMER_TASK_SCHEDULE_MILLIS);
+                    if (reqRspTimerScheduleMillis <= 0) {
+                        // ignore any negative or zero value for this configuration and reset
+                        // to default schedule
+                        reqRspTimerScheduleMillis = DEFAULT_REQ_RSP_TIMER_TASK_SCHEDULE_MILLIS;
+                    }
 
-        long providedReqRspTimerScheduleMillis = Long.getLong(
-                "sun.net.httpserver.timerMillis",
-                DEFAULT_REQ_RSP_TIMER_TASK_SCHEDULE_MILLIS);
-        // Ignore any negative or zero value for this configuration and reset to default schedule
-        reqRspTimerScheduleMillis = providedReqRspTimerScheduleMillis > 0
-                ? providedReqRspTimerScheduleMillis
-                : DEFAULT_REQ_RSP_TIMER_TASK_SCHEDULE_MILLIS;
+                    debug = Boolean.getBoolean("sun.net.httpserver.debug");
 
-        debug = Boolean.getBoolean("sun.net.httpserver.debug");
+                    noDelay = Boolean.getBoolean("sun.net.httpserver.nodelay");
 
-        noDelay = Boolean.getBoolean("sun.net.httpserver.nodelay");
+                    return null;
+                }
+            });
 
     }
 
@@ -124,22 +148,39 @@ class ServerConfig {
         // legacy properties that are no longer used
         // print a warning to logger if they are set.
 
-        if (System.getProperty("sun.net.httpserver.readTimeout") != null) {
-            logger.log(
-                    Level.WARNING,
-                    "sun.net.httpserver.readTimeout property is no longer used. " +
-                            "Use sun.net.httpserver.maxReqTime instead.");
-        }
-        if (System.getProperty("sun.net.httpserver.writeTimeout") != null) {
-            logger.log(
-                    Level.WARNING,
-                    "sun.net.httpserver.writeTimeout property is no longer used. " +
-                            "Use sun.net.httpserver.maxRspTime instead.");
-        }
-        if (System.getProperty("sun.net.httpserver.selCacheTimeout") != null) {
-            logger.log(Level.WARNING, "sun.net.httpserver.selCacheTimeout property is no longer used.");
-        }
-
+        java.security.AccessController.doPrivileged(
+            new PrivilegedAction<Void>() {
+                public Void run () {
+                    if (System.getProperty("sun.net.httpserver.readTimeout")
+                                                !=null)
+                    {
+                        logger.log (Level.WARNING,
+                            "sun.net.httpserver.readTimeout "+
+                            "property is no longer used. "+
+                            "Use sun.net.httpserver.maxReqTime instead."
+                        );
+                    }
+                    if (System.getProperty("sun.net.httpserver.writeTimeout")
+                                                !=null)
+                    {
+                        logger.log (Level.WARNING,
+                            "sun.net.httpserver.writeTimeout "+
+                            "property is no longer used. Use "+
+                            "sun.net.httpserver.maxRspTime instead."
+                        );
+                    }
+                    if (System.getProperty("sun.net.httpserver.selCacheTimeout")
+                                                !=null)
+                    {
+                        logger.log (Level.WARNING,
+                            "sun.net.httpserver.selCacheTimeout "+
+                            "property is no longer used."
+                        );
+                    }
+                    return null;
+                }
+            }
+        );
     }
 
     static boolean debugEnabled() {

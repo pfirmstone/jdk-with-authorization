@@ -31,6 +31,8 @@ import com.sun.net.httpserver.HttpsServer;
 import java.io.IOException;
 import java.lang.reflect.InvocationTargetException;
 import java.net.InetSocketAddress;
+import java.security.AccessController;
+import java.security.PrivilegedAction;
 import java.util.Iterator;
 import java.util.ServiceConfigurationError;
 import java.util.ServiceLoader;
@@ -85,7 +87,12 @@ public abstract class HttpServerProvider {
      *          If a security manager has been installed and it denies
      *          {@link RuntimePermission}{@code ("httpServerProvider")}
      */
-    protected HttpServerProvider() {}
+    protected HttpServerProvider() {
+        @SuppressWarnings("removal")
+        SecurityManager sm = System.getSecurityManager();
+        if (sm != null)
+            sm.checkPermission(new RuntimePermission("httpServerProvider"));
+    }
 
     private static boolean loadProviderFromProperty() {
         String cn = System.getProperty("com.sun.net.httpserver.HttpServerProvider");
@@ -104,7 +111,8 @@ public abstract class HttpServerProvider {
                  NoSuchMethodException |
                  ClassNotFoundException |
                  IllegalAccessException |
-                 InstantiationException x) {
+                 InstantiationException |
+                 SecurityException x) {
             throw new ServiceConfigurationError(null, x);
         }
     }
@@ -114,10 +122,20 @@ public abstract class HttpServerProvider {
             ServiceLoader.load(HttpServerProvider.class,
                                ClassLoader.getSystemClassLoader())
                 .iterator();
-        if (!i.hasNext())
-            return false;
-        provider = i.next();
-        return true;
+        for (;;) {
+            try {
+                if (!i.hasNext())
+                    return false;
+                provider = i.next();
+                return true;
+            } catch (ServiceConfigurationError sce) {
+                if (sce.getCause() instanceof SecurityException) {
+                    // Ignore the security exception, try the next provider
+                    continue;
+                }
+                throw sce;
+            }
+        }
     }
 
     /**
@@ -156,16 +174,22 @@ public abstract class HttpServerProvider {
      *
      * @return  The system-wide default HttpServerProvider
      */
+    @SuppressWarnings("removal")
     public static HttpServerProvider provider () {
         synchronized (lock) {
             if (provider != null)
                 return provider;
-            if (loadProviderFromProperty())
-                return provider;
-            if (loadProviderAsService())
-                return provider;
-            provider = new sun.net.httpserver.DefaultHttpServerProvider();
-            return provider;
+            return (HttpServerProvider)AccessController
+                .doPrivileged(new PrivilegedAction<Object>() {
+                        public Object run() {
+                            if (loadProviderFromProperty())
+                                return provider;
+                            if (loadProviderAsService())
+                                return provider;
+                            provider = new sun.net.httpserver.DefaultHttpServerProvider();
+                            return provider;
+                        }
+                    });
         }
     }
 

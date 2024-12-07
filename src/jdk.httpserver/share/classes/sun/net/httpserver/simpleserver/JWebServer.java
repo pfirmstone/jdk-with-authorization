@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2021, 2022, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -26,6 +26,8 @@
 package sun.net.httpserver.simpleserver;
 
 import java.io.PrintWriter;
+import java.security.AccessController;
+import java.security.PrivilegedAction;
 
 import static java.nio.charset.StandardCharsets.UTF_8;
 
@@ -82,9 +84,15 @@ public class JWebServer {
         }
     }
 
+    @SuppressWarnings("removal")
     static void setMaxConnectionsIfNotSet() {
-        if (System.getProperty(SYS_PROP_MAX_CONNECTIONS) == null) {
+        AccessController.doPrivileged((PrivilegedAction<Void>) () -> {
+            if (System.getProperty(SYS_PROP_MAX_CONNECTIONS) != null) {
+                // an explicit value has already been set, so we don't override it
+                return null;
+            }
             System.setProperty(SYS_PROP_MAX_CONNECTIONS, DEFAULT_JWEBSERVER_MAX_CONNECTIONS);
-        }
+            return null;
+        });
     }
 }
