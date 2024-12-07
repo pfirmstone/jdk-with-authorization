@@ -96,7 +96,8 @@ public interface DomainCombiner {
      * set of Permissions, for example).
      *
      * @param currentDomains the ProtectionDomains associated with the
-     *          current execution thread.
+     *          current execution thread, up to the most recent
+     *          privileged {@code ProtectionDomain}.
      *          The ProtectionDomains are listed in order of execution,
      *          with the most recently executing {@code ProtectionDomain}
      *          residing at the beginning of the array. This parameter may
@@ -104,6 +105,8 @@ public interface DomainCombiner {
      *          has no associated ProtectionDomains.
      *
      * @param assignedDomains an array of inherited ProtectionDomains.
+     *          ProtectionDomains may be inherited from a parent thread,
+     *          or from a privileged {@code AccessControlContext}.
      *          This parameter may be {@code null}
      *          if there are no inherited ProtectionDomains.
      *
