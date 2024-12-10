@@ -76,13 +76,7 @@ import java.security.BasicPermission;
  * @author Kara Kytle
  * @since 1.3
  */
-public class AudioPermission extends BasicPermission {
-
-    /**
-     * Use serialVersionUID from JDK 1.3 for interoperability.
-     */
-    @Serial
-    private static final long serialVersionUID = -5518053473477801126L;
+public class AudioPermission extends BasicPermission<AudioPermission> {
 
     /**
      * Creates a new {@code AudioPermission} object that has the specified

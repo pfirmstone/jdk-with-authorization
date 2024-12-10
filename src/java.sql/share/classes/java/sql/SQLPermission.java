@@ -119,7 +119,7 @@ import java.security.*;
  *
  */
 
-public final class SQLPermission extends BasicPermission {
+public final class SQLPermission extends BasicPermission<SQLPermission> {
 
     /**
      * Creates a new {@code SQLPermission} object with the specified name.
@@ -155,11 +155,4 @@ public final class SQLPermission extends BasicPermission {
     public SQLPermission(String name, String actions) {
         super(name, actions);
     }
-
-    /**
-     * Private serial version unique ID to ensure serialization
-     * compatibility.
-     */
-    static final long serialVersionUID = -1439323187199563495L;
-
 }

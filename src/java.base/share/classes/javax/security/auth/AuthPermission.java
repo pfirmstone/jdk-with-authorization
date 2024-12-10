@@ -127,10 +127,7 @@ package javax.security.auth;
  * @since 1.4
  */
 public final class AuthPermission extends
-java.security.BasicPermission {
-
-    @java.io.Serial
-    private static final long serialVersionUID = 5806031445061587174L;
+java.security.BasicPermission<AuthPermission> {
 
     /**
      * Creates a new AuthPermission with the specified name.

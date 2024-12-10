@@ -85,7 +85,7 @@ import sun.security.util.SecurityConstants;
  * @serial exclude
  */
 
-public final class PropertyPermission extends BasicPermission {
+public final class PropertyPermission extends BasicPermission<PropertyPermission> {
 
     /**
      * Read action.
@@ -369,7 +369,7 @@ public final class PropertyPermission extends BasicPermission {
      * PropertyPermissions.
      */
     @Override
-    public PermissionCollection newPermissionCollection() {
+    public PermissionCollection<PropertyPermission> newPermissionCollection() {
         return new PropertyPermissionCollection();
     }
 
@@ -419,7 +419,7 @@ public final class PropertyPermission extends BasicPermission {
  *
  * @serial include
  */
-final class PropertyPermissionCollection extends PermissionCollection
+final class PropertyPermissionCollection extends PermissionCollection<PropertyPermission>
     implements Serializable
 {
 
@@ -458,7 +458,7 @@ final class PropertyPermissionCollection extends PermissionCollection
      *                                object has been marked readonly
      */
     @Override
-    public void add(Permission permission) {
+    public void add(PropertyPermission permission) {
         if (! (permission instanceof PropertyPermission pp))
             throw new IllegalArgumentException("invalid permission: "+
                                                permission);
@@ -569,7 +569,7 @@ final class PropertyPermissionCollection extends PermissionCollection
      */
     @Override
     @SuppressWarnings("unchecked")
-    public Enumeration<Permission> elements() {
+    public Enumeration<PropertyPermission> elements() {
         /**
          * Casting to rawtype since Enumeration<PropertyPermission>
          * cannot be directly cast to Enumeration<Permission>

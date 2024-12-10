@@ -55,9 +55,8 @@ import java.security.BasicPermission;
  *
  * @since 1.5
  */
-public final class SubjectDelegationPermission extends BasicPermission {
-
-    private static final long serialVersionUID = 1481618113008682343L;
+public final class SubjectDelegationPermission 
+        extends BasicPermission<SubjectDelegationPermission> {
 
     /**
      * Creates a new SubjectDelegationPermission with the specified name.
@@ -88,9 +87,12 @@ public final class SubjectDelegationPermission extends BasicPermission {
      * or <code>actions</code> is not null.
      */
     public SubjectDelegationPermission(String name, String actions) {
-        super(name, actions);
-
+        super(name, check(actions));
+    }
+    
+    private static String check(String actions){
         if (actions != null)
             throw new IllegalArgumentException("Non-null actions");
+        return actions;
     }
 }

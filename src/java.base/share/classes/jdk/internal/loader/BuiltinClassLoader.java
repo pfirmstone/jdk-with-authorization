@@ -62,7 +62,6 @@ import jdk.internal.misc.VM;
 import jdk.internal.module.ModulePatcher.PatchedModuleReader;
 import jdk.internal.module.Resources;
 import jdk.internal.vm.annotation.Stable;
-import sun.security.util.LazyCodeSourcePermissionCollection;
 
 
 /**

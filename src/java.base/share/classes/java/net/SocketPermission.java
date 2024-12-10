@@ -26,10 +26,6 @@
 package java.net;
 
 import java.io.IOException;
-import java.io.ObjectInputStream;
-import java.io.ObjectOutputStream;
-import java.io.ObjectStreamField;
-import java.io.Serializable;
 import java.security.AccessController;
 import java.security.Permission;
 import java.security.PermissionCollection;
@@ -40,7 +36,6 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.StringJoiner;
 import java.util.StringTokenizer;
-import java.util.Vector;
 import java.util.concurrent.ConcurrentHashMap;
 import sun.net.util.IPAddressUtil;
 import sun.net.PortConfig;
@@ -150,10 +145,7 @@ import sun.security.util.Debug;
  */
 
 public final class SocketPermission extends Permission
-    implements java.io.Serializable
 {
-    @java.io.Serial
-    private static final long serialVersionUID = -7204263841984476862L;
 
     /**
      * Connect to host:port
@@ -190,47 +182,44 @@ public final class SocketPermission extends Permission
     private static final int PORT_MAX = 65535;
 
     // the actions mask
-    private transient int mask;
+    private final int mask;
 
     /**
      * the actions string.
-     *
-     * @serial
      */
-
-    private String actions; // Left null as long as possible, then
+    private volatile String actions; // Left null as long as possible, then
                             // created and re-used in the getAction function.
 
     // hostname part as it is passed
-    private transient String hostname;
+    private final String hostname;
 
     // the canonical name of the host
     // in the case of "*.foo.com", cname is ".foo.com".
 
-    private transient String cname;
+    private volatile String cname;
 
     // all the IP addresses of the host
-    private transient InetAddress[] addresses;
+    private volatile InetAddress[] addresses;
 
     // true if the hostname is a wildcard (e.g. "*.example.com")
-    private transient boolean wildcard;
+    private final boolean wildcard;
 
     // true if we were initialized with a single numeric IP address
-    private transient boolean init_with_ip;
+    private volatile boolean init_with_ip;
 
     // true if this SocketPermission represents an invalid/unknown host
     // used for implies when the delayed lookup has already failed
-    private transient boolean invalid;
+    private volatile boolean invalid;
 
     // port range on host
-    private transient int[] portrange;
+    private final int[] portrange;
 
     private transient boolean defaultDeny = false;
 
     // true if this SocketPermission represents a hostname
     // that failed our reverse mapping heuristic test
-    private transient boolean untrusted;
-    private transient boolean trusted;
+    private volatile boolean untrusted;
+    private volatile boolean trusted;
 
     // true if the sun.net.trustNameService system property is set
     private static final boolean trustNameService = GetBooleanAction.privilegedGetProperty("sun.net.trustNameService");
@@ -288,16 +277,13 @@ public final class SocketPermission extends Permission
      *         contains an action other than the specified possible actions
      */
     public SocketPermission(String host, String action) {
-        super(getHost(host));
-        // name initialized to getHost(host); NPE detected in getHost()
-        init(getName(), getMask(action));
+        this(host, getMask(action));
     }
 
 
     SocketPermission(String host, int mask) {
-        super(getHost(host));
+       this(getHost(host), mask, null);
         // name initialized to getHost(host); NPE detected in getHost()
-        init(getName(), mask);
     }
 
     private void setDeny() {
@@ -386,15 +372,16 @@ public final class SocketPermission extends Permission
      * as this point, instead we hold off until the implies method is
      * called.
      */
-    private void init(String host, int mask) {
+    private SocketPermission(String host, int mask, Void unused) {
+        super(host);
         // Set the integer mask that represents the actions
-
+        
         if ((mask & ALL) != mask)
             throw new IllegalArgumentException("invalid actions mask");
 
         // always OR in RESOLVE if we allow any of the others
         this.mask = mask | RESOLVE;
-
+        
         // Parse the host name.  A name has up to three components, the
         // hostname, a port number, or two numbers representing a port
         // range.   "www.example.com:8080-9090" is a valid host name.
@@ -403,7 +390,7 @@ public final class SocketPermission extends Permission
         // An IPv6 address needs to be enclose in []
         // For ex: [2010:836B:4179::836B:4179]:8080-9090
         // Refer to RFC 2732 for more information.
-
+        boolean wildcard = false;
         int rb = 0 ;
         int start = 0, end = 0;
         int sep = -1;
@@ -455,7 +442,7 @@ public final class SocketPermission extends Permission
               throw new
                IllegalArgumentException("invalid host wildcard specification");
             }
-            return;
+            addresses = null;
         } else {
             if (!host.isEmpty()) {
                 // see if we are being initialized with an IP address.
@@ -479,6 +466,7 @@ public final class SocketPermission extends Permission
                 }
             }
         }
+        this.wildcard = wildcard;
     }
 
     /**
@@ -1167,44 +1155,8 @@ public final class SocketPermission extends Permission
      * @return a new PermissionCollection object suitable for storing SocketPermissions.
      */
     @Override
-    public PermissionCollection newPermissionCollection() {
+    public PermissionCollection<SocketPermission> newPermissionCollection() {
         return new SocketPermissionCollection();
-    }
-
-    /**
-     * {@code writeObject} is called to save the state of the
-     * {@code SocketPermission} to a stream. The actions are serialized,
-     * and the superclass takes care of the name.
-     *
-     * @param  s the {@code ObjectOutputStream} to which data is written
-     * @throws IOException if an I/O error occurs
-     */
-    @java.io.Serial
-    private synchronized void writeObject(java.io.ObjectOutputStream s)
-        throws IOException
-    {
-        // Write out the actions. The superclass takes care of the name
-        // call getActions to make sure actions field is initialized
-        if (actions == null)
-            getActions();
-        s.defaultWriteObject();
-    }
-
-    /**
-     * {@code readObject} is called to restore the state of the
-     * {@code SocketPermission} from a stream.
-     *
-     * @param  s the {@code ObjectInputStream} from which data is read
-     * @throws IOException if an I/O error occurs
-     * @throws ClassNotFoundException if a serialized class cannot be loaded
-     */
-    @java.io.Serial
-    private synchronized void readObject(java.io.ObjectInputStream s)
-         throws IOException, ClassNotFoundException
-    {
-        // Read in the action, then initialize the rest
-        s.defaultReadObject();
-        init(getName(),getMask(actions));
     }
 
     /**
@@ -1213,21 +1165,17 @@ public final class SocketPermission extends Permission
      */
     @SuppressWarnings("removal")
     private static int initEphemeralPorts(String suffix) {
-        return AccessController.doPrivileged(
-            new PrivilegedAction<>(){
-                public Integer run() {
-                    int val = Integer.getInteger(
-                            "jdk.net.ephemeralPortRange."+suffix, -1
-                    );
-                    if (val != -1) {
-                        return val;
-                    } else {
-                        return suffix.equals("low") ?
-                            PortConfig.getLower() : PortConfig.getUpper();
-                    }
-                }
+        return AccessController.doPrivileged((PrivilegedAction<Integer>) () -> {
+            int val = Integer.getInteger(
+                    "jdk.net.ephemeralPortRange."+suffix, -1
+            );
+            if (val != -1) {
+                return val;
+            } else {
+                return suffix.equals("low") ?
+                        PortConfig.getLower() : PortConfig.getUpper();
             }
-        );
+        });
     }
 
     /**
@@ -1336,11 +1284,9 @@ else its the cname?
  * @serial include
  */
 
-final class SocketPermissionCollection extends PermissionCollection
-    implements Serializable
+final class SocketPermissionCollection extends PermissionCollection<SocketPermission>
 {
-    // Not serialized; see serialization section at end of class
-    private transient Map<String, SocketPermission> perms;
+    private final Map<String, SocketPermission> perms;
 
     /**
      * Create an empty SocketPermissionCollection object.
@@ -1362,10 +1308,11 @@ final class SocketPermissionCollection extends PermissionCollection
      *                                has been marked readonly
      */
     @Override
-    public void add(Permission permission) {
-        if (! (permission instanceof SocketPermission sp))
+    public void add(SocketPermission sp) {
+        // Left here for old code compiled before introduction of generics.
+        if (! (sp instanceof SocketPermission))
             throw new IllegalArgumentException("invalid permission: "+
-                                               permission);
+                                               sp);
         if (isReadOnly())
             throw new SecurityException(
                 "attempt to add a Permission to a readonly PermissionCollection");
@@ -1441,78 +1388,7 @@ final class SocketPermissionCollection extends PermissionCollection
      * @return an enumeration of all the SocketPermission objects.
      */
     @Override
-    @SuppressWarnings("unchecked")
-    public Enumeration<Permission> elements() {
-        return (Enumeration)Collections.enumeration(perms.values());
-    }
-
-    @java.io.Serial
-    private static final long serialVersionUID = 2787186408602843674L;
-
-    // Need to maintain serialization interoperability with earlier releases,
-    // which had the serializable field:
-
-    //
-    // The SocketPermissions for this set.
-    // @serial
-    //
-    // private Vector permissions;
-
-    /**
-     * @serialField permissions java.util.Vector
-     *     A list of the SocketPermissions for this set.
-     */
-    @java.io.Serial
-    private static final ObjectStreamField[] serialPersistentFields = {
-        new ObjectStreamField("permissions", Vector.class),
-    };
-
-    /**
-     * Writes the state of this object to the stream.
-     * @serialData "permissions" field (a Vector containing the SocketPermissions).
-     *
-     * @param  out the {@code ObjectOutputStream} to which data is written
-     * @throws IOException if an I/O error occurs
-     */
-    /*
-     * Writes the contents of the perms field out as a Vector for
-     * serialization compatibility with earlier releases.
-     */
-    @java.io.Serial
-    private void writeObject(ObjectOutputStream out) throws IOException {
-        // Don't call out.defaultWriteObject()
-
-        // Write out Vector
-        Vector<SocketPermission> permissions = new Vector<>(perms.values());
-
-        ObjectOutputStream.PutField pfields = out.putFields();
-        pfields.put("permissions", permissions);
-        out.writeFields();
-    }
-
-    /**
-     * Reads in a {@code Vector} of {@code SocketPermission} and saves
-     * them in the perms field.
-     *
-     * @param  in the {@code ObjectInputStream} from which data is read
-     * @throws IOException if an I/O error occurs
-     * @throws ClassNotFoundException if a serialized class cannot be loaded
-     */
-    @java.io.Serial
-    private void readObject(ObjectInputStream in)
-        throws IOException, ClassNotFoundException
-    {
-        // Don't call in.defaultReadObject()
-
-        // Read in serialized fields
-        ObjectInputStream.GetField gfields = in.readFields();
-
-        // Get the one we want
-        @SuppressWarnings("unchecked")
-        Vector<SocketPermission> permissions = (Vector<SocketPermission>)gfields.get("permissions", null);
-        perms = new ConcurrentHashMap<>(permissions.size());
-        for (SocketPermission sp : permissions) {
-            perms.put(sp.getName(), sp);
-        }
+    public Enumeration<SocketPermission> elements() {
+        return Collections.enumeration(perms.values());
     }
 }

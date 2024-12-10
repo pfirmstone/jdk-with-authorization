@@ -157,21 +157,17 @@ import java.util.Objects;
  */
 public final class URLPermission extends Permission {
 
-    @java.io.Serial
-    private static final long serialVersionUID = -2702463814894478682L;
+    private final String scheme;
+    private final String ssp;                 // scheme specific part
+    private final String path;
+    private final List<String> methods;
+    private final List<String> requestHeaders;
+    private final Authority authority;
 
-    private transient String scheme;
-    private transient String ssp;                 // scheme specific part
-    private transient String path;
-    private transient List<String> methods;
-    private transient List<String> requestHeaders;
-    private transient Authority authority;
-
-    // serialized field
     /**
      * The actions string
      */
-    private String actions;
+    private final String actions;
 
     /**
      * Creates a new URLPermission from a url string and which permits the given
@@ -187,8 +183,18 @@ public final class URLPermission extends Permission {
      * @throws    IllegalArgumentException if url is invalid or if actions contains white-space.
      */
     public URLPermission(String url, String actions) {
-        super(normalize(url));
-        init(actions);
+        this(new Init(normalize(url), actions));
+    }
+    
+    private URLPermission(Init i){
+        super(i.name);
+        this.actions = i.actions;
+        this.scheme = i.scheme;
+        this.ssp = i.ssp;
+        this.path = i.path;
+        this.requestHeaders = i.requestHeaders;
+        this.methods = i.methods;
+        this.authority = i.authority;
     }
 
     /**
@@ -206,33 +212,79 @@ public final class URLPermission extends Permission {
         }
         return url;
     }
+    
+    private static class Init {
+        String actions, scheme, ssp, path, name;
+        List<String> requestHeaders, methods;
+        Authority authority;
+        
+        private Init(String name, String actions) {
+            this.name = name;
+            parseURI(name);
+            int colon = actions.indexOf(':');
+            if (actions.lastIndexOf(':') != colon) {
+                throw new IllegalArgumentException(
+                    "Invalid actions string: \"" + actions + "\"");
+            }
 
-    private void init(String actions) {
-        parseURI(getName());
-        int colon = actions.indexOf(':');
-        if (actions.lastIndexOf(':') != colon) {
-            throw new IllegalArgumentException(
-                "Invalid actions string: \"" + actions + "\"");
+            String methods, headers;
+            if (colon == -1) {
+                methods = actions;
+                headers = "";
+            } else {
+                methods = actions.substring(0, colon);
+                headers = actions.substring(colon+1);
+            }
+
+            List<String> l = normalizeMethods(methods);
+            Collections.sort(l);
+            this.methods = Collections.unmodifiableList(l);
+
+            l = normalizeHeaders(headers);
+            Collections.sort(l);
+            this.requestHeaders = Collections.unmodifiableList(l);
+
+            this.actions = actions();
         }
+        
+        private void parseURI(String url) {
+            int len = url.length();
+            int delim = url.indexOf(':');
+            if (delim == -1 || delim + 1 == len) {
+                throw new IllegalArgumentException(
+                    "Invalid URL string: \"" + url + "\"");
+            }
+            scheme = url.substring(0, delim).toLowerCase(Locale.ROOT);
+            this.ssp = url.substring(delim + 1);
 
-        String methods, headers;
-        if (colon == -1) {
-            methods = actions;
-            headers = "";
-        } else {
-            methods = actions.substring(0, colon);
-            headers = actions.substring(colon+1);
+            if (!ssp.startsWith("//")) {
+                if (!ssp.equals("*")) {
+                    throw new IllegalArgumentException(
+                        "Invalid URL string: \"" + url + "\"");
+                }
+                this.authority = new Authority(scheme, "*");
+                return;
+            }
+            String authpath = ssp.substring(2);
+
+            delim = authpath.indexOf('/');
+            String auth;
+            if (delim == -1) {
+                this.path = "";
+                auth = authpath;
+            } else {
+                auth = authpath.substring(0, delim);
+                this.path = authpath.substring(delim);
+            }
+            this.authority = new Authority(scheme, auth.toLowerCase(Locale.ROOT));
         }
-
-        List<String> l = normalizeMethods(methods);
-        Collections.sort(l);
-        this.methods = Collections.unmodifiableList(l);
-
-        l = normalizeHeaders(headers);
-        Collections.sort(l);
-        this.requestHeaders = Collections.unmodifiableList(l);
-
-        this.actions = actions();
+        
+        private String actions() {
+            // The colon separator is optional when the request headers list is
+            // empty.This implementation chooses to include it even when the request
+            // headers list is empty.
+            return String.join(",", methods) + ":" + String.join(",", requestHeaders);
+        }
     }
 
     /**
@@ -260,6 +312,7 @@ public final class URLPermission extends Permission {
      * There is no white space in the returned String. If header-names is empty
      * then the colon separator may not be present.
      */
+    @Override
     public String getActions() {
         return actions;
     }
@@ -303,6 +356,7 @@ public final class URLPermission extends Permission {
      * </tbody>
      * </table>
      */
+    @Override
     public boolean implies(Permission p) {
         if (! (p instanceof URLPermission that)) {
             return false;
@@ -407,7 +461,7 @@ public final class URLPermission extends Permission {
     }
 
 
-    private List<String> normalizeMethods(String methods) {
+    private static List<String> normalizeMethods(String methods) {
         List<String> l = new ArrayList<>();
         StringBuilder b = new StringBuilder();
         for (int i=0; i<methods.length(); i++) {
@@ -433,7 +487,7 @@ public final class URLPermission extends Permission {
         return l;
     }
 
-    private List<String> normalizeHeaders(String headers) {
+    private static List<String> normalizeHeaders(String headers) {
         List<String> l = new ArrayList<>();
         StringBuilder b = new StringBuilder();
         boolean capitalizeNext = true;
@@ -466,61 +520,6 @@ public final class URLPermission extends Permission {
         if (!s.isEmpty())
             l.add(s);
         return l;
-    }
-
-    private void parseURI(String url) {
-        int len = url.length();
-        int delim = url.indexOf(':');
-        if (delim == -1 || delim + 1 == len) {
-            throw new IllegalArgumentException(
-                "Invalid URL string: \"" + url + "\"");
-        }
-        scheme = url.substring(0, delim).toLowerCase(Locale.ROOT);
-        this.ssp = url.substring(delim + 1);
-
-        if (!ssp.startsWith("//")) {
-            if (!ssp.equals("*")) {
-                throw new IllegalArgumentException(
-                    "Invalid URL string: \"" + url + "\"");
-            }
-            this.authority = new Authority(scheme, "*");
-            return;
-        }
-        String authpath = ssp.substring(2);
-
-        delim = authpath.indexOf('/');
-        String auth;
-        if (delim == -1) {
-            this.path = "";
-            auth = authpath;
-        } else {
-            auth = authpath.substring(0, delim);
-            this.path = authpath.substring(delim);
-        }
-        this.authority = new Authority(scheme, auth.toLowerCase(Locale.ROOT));
-    }
-
-    private String actions() {
-        // The colon separator is optional when the request headers list is
-        // empty.This implementation chooses to include it even when the request
-        // headers list is empty.
-        return String.join(",", methods) + ":" + String.join(",", requestHeaders);
-    }
-
-    /**
-     * Restores the state of this object from stream.
-     *
-     * @param  s the {@code ObjectInputStream} from which data is read
-     * @throws IOException if an I/O error occurs
-     * @throws ClassNotFoundException if a serialized class cannot be loaded
-     */
-    @java.io.Serial
-    private void readObject(ObjectInputStream s)
-        throws IOException, ClassNotFoundException {
-        ObjectInputStream.GetField fields = s.readFields();
-        String actions = (String)fields.get("actions", null);
-
-        init(actions);
     }
 
     static class Authority {

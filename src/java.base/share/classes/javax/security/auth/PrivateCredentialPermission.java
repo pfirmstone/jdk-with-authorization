@@ -297,7 +297,7 @@ public final class PrivateCredentialPermission extends Permission {
      *
      * @return null in all cases.
      */
-    public PermissionCollection newPermissionCollection() {
+    public PermissionCollection<PrivateCredentialPermission> newPermissionCollection() {
         return null;
     }
 

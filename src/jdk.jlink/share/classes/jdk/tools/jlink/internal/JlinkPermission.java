@@ -31,9 +31,7 @@ import java.security.BasicPermission;
  * "jlink". e.g.: permission jdk.tools.jlink.plugins.JlinkPermission "jlink";
  *
  */
-public final class JlinkPermission extends BasicPermission {
-
-    private static final long serialVersionUID = -3687912306077727801L;
+public final class JlinkPermission extends BasicPermission<JlinkPermission> {
 
     public JlinkPermission(String name) {
         super(name);

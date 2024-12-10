@@ -110,13 +110,15 @@ public class ProtectionDomain {
         @Override
         public ProtectionDomainCache getProtectionDomainCache() {
             return new ProtectionDomainCache() {
-                private final Map<Key, PermissionCollection> map =
+                private final Map<Key, PermissionCollection<Permission>> map =
                         Collections.synchronizedMap(new WeakHashMap<>());
+                @Override
                 public void put(ProtectionDomain pd,
-                                PermissionCollection pc) {
+                                PermissionCollection<Permission> pc) {
                     map.put((pd == null ? null : pd.key), pc);
                 }
-                public PermissionCollection get(ProtectionDomain pd) {
+                @Override
+                public PermissionCollection<Permission> get(ProtectionDomain pd) {
                     return pd == null ? map.get(null) : map.get(pd.key);
                 }
             };
@@ -138,7 +140,7 @@ public class ProtectionDomain {
     private final Principal[] principals;
 
     /* the rights this protection domain is granted */
-    private final PermissionCollection permissions;
+    private final PermissionCollection<Permission> permissions;
 
     /* if the permissions object has AllPermission */
     private final boolean hasAllPerm;
@@ -161,12 +163,13 @@ public class ProtectionDomain {
      * @param codesource the codesource associated with this domain
      * @param permissions the permissions granted to this domain
      */
+    @SuppressWarnings("unchecked")
     public ProtectionDomain(CodeSource codesource,
-                            PermissionCollection permissions) {
+                            PermissionCollection<? extends Permission> permissions) {
         this.codesource = codesource;
         boolean hasAllP = false;
         if (permissions != null) permissions.setReadOnly();
-        this.permissions = permissions;
+        this.permissions = (PermissionCollection<Permission>) permissions;
         if (permissions instanceof Permissions &&
             ((Permissions)permissions).allPermission()) {
             hasAllP = true;
@@ -204,14 +207,15 @@ public class ProtectionDomain {
      * @see Policy#getPermissions(ProtectionDomain)
      * @since 1.4
      */
+    @SuppressWarnings("unchecked")
     public ProtectionDomain(CodeSource codesource,
-                            PermissionCollection permissions,
+                            PermissionCollection<? extends Permission> permissions,
                             ClassLoader classloader,
                             Principal[] principals) {
         this.codesource = codesource;
         boolean hasAllPerm = false;
         if (permissions != null) permissions.setReadOnly();
-        this.permissions = permissions;
+        this.permissions = (PermissionCollection<Permission>) permissions;
         if (permissions instanceof Permissions &&
             ((Permissions)permissions).allPermission()) {
             hasAllPerm = true;
@@ -262,7 +266,7 @@ public class ProtectionDomain {
      * @see Policy#refresh
      * @see Policy#getPermissions(ProtectionDomain)
      */
-    public final PermissionCollection getPermissions() {
+    public final PermissionCollection<Permission> getPermissions() {
         return permissions;
     }
 
@@ -392,7 +396,7 @@ public class ProtectionDomain {
         // Check if policy is set; we don't want to load
         // the policy prematurely here
         @SuppressWarnings("removal")
-        PermissionCollection pc = Policy.isSet() && seeAllp() ?
+        PermissionCollection<Permission> pc = Policy.isSet() && seeAllp() ?
                                       mergePermissions():
                                       getPermissions();
 
@@ -448,11 +452,11 @@ public class ProtectionDomain {
     }
 
     @SuppressWarnings("removal")
-    private PermissionCollection mergePermissions() {
+    private PermissionCollection<Permission> mergePermissions() {
         // The use of lambda's could cause problems at bootstrap time?
-        PermissionCollection perms =
+        PermissionCollection<Permission> perms =
             java.security.AccessController.doPrivileged
-            ((PrivilegedAction<PermissionCollection>) () ->
+            ((PrivilegedAction<PermissionCollection<Permission>>) () ->
                 Policy.getPolicyNoCheck().getPermissions(ProtectionDomain.this));
         //Policy has responsiblity of merging permissions.
         if (perms != null && perms != Policy.UNSUPPORTED_EMPTY_COLLECTION){

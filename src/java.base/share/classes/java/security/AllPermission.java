@@ -56,9 +56,6 @@ import java.util.Enumeration;
 
 public final class AllPermission extends Permission {
 
-    @java.io.Serial
-    private static final long serialVersionUID = -2916474571451318075L;
-
     /**
      * Creates a new {@code AllPermission} object.
      */
@@ -87,6 +84,7 @@ public final class AllPermission extends Permission {
      *
      * @return return
      */
+    @Override
     public boolean implies(Permission p) {
          return true;
     }
@@ -116,6 +114,7 @@ public final class AllPermission extends Permission {
      *
      * @return the actions.
      */
+    @Override
     public String getActions() {
         return "<all actions>";
     }
@@ -127,7 +126,8 @@ public final class AllPermission extends Permission {
      * @return a new {@code PermissionCollection} suitable for
      * storing {@code AllPermission} objects.
      */
-    public PermissionCollection newPermissionCollection() {
+    @Override
+    public PermissionCollection<AllPermission> newPermissionCollection() {
         return new AllPermissionCollection();
     }
 
@@ -150,13 +150,8 @@ public final class AllPermission extends Permission {
  */
 
 final class AllPermissionCollection
-    extends PermissionCollection
-    implements java.io.Serializable
+    extends PermissionCollection<AllPermission>
 {
-
-    // use serialVersionUID from JDK 1.2.2 for interoperability
-    @java.io.Serial
-    private static final long serialVersionUID = -4023755556366636806L;
 
     /**
      * True if any {@code AllPermissionCollection} objects have been added.
@@ -185,7 +180,8 @@ final class AllPermissionCollection
      *                                object has been marked readonly
      */
 
-    public void add(Permission permission) {
+    @Override
+    public void add(AllPermission permission) {
         if (! (permission instanceof AllPermission))
             throw new IllegalArgumentException("invalid permission: "+
                                                permission);
@@ -204,6 +200,7 @@ final class AllPermissionCollection
      * @return always returns {@code true}.
      */
 
+    @Override
     public boolean implies(Permission permission) {
         return all_allowed; // No sync; staleness OK
     }
@@ -214,15 +211,18 @@ final class AllPermissionCollection
      *
      * @return an enumeration of all the {@code AllPermission} objects.
      */
-    public Enumeration<Permission> elements() {
+    @Override
+    public Enumeration<AllPermission> elements() {
         return new Enumeration<>() {
             private boolean hasMore = all_allowed;
 
+            @Override
             public boolean hasMoreElements() {
                 return hasMore;
             }
 
-            public Permission nextElement() {
+            @Override
+            public AllPermission nextElement() {
                 hasMore = false;
                 return SecurityConstants.ALL_PERMISSION;
             }

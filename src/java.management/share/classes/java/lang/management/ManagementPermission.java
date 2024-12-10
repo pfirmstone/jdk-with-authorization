@@ -90,8 +90,8 @@ package java.lang.management;
  *
  */
 
-public final class ManagementPermission extends java.security.BasicPermission {
-    private static final long serialVersionUID = 1897496590799378737L;
+public final class ManagementPermission extends 
+        java.security.BasicPermission<ManagementPermission> {
 
     /**
      * Constructs a ManagementPermission with the specified name.

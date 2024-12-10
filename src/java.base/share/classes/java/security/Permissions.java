@@ -84,8 +84,8 @@ import au.zeus.jdk.authorization.policy.PermissionComparator;
  * @since 24
  * @serial permsMap
  */
-@SuppressWarnings({"rawtypes","serial"})
-public final class Permissions extends PermissionCollection {
+@SuppressWarnings({"rawtypes"})
+public final class Permissions extends PermissionCollection<Permission> {
 
     /* unresolved is never returned or allowed to escape, it's elements() method
      * isn't used to return an Enumeration yet 
@@ -97,7 +97,7 @@ public final class Permissions extends PermissionCollection {
      * causes it to throw an exception.
      */ 
     private final PermissionPendingResolutionCollection unresolved;
-    private final ConcurrentMap<Class<?>, PermissionCollection> permsMap;
+    private final ConcurrentMap<Class<?>, PermissionCollection<Permission>> permsMap;
     private volatile boolean allPermission;
     private static final Debug DEBUG = Debug.getInstance("access");
     
@@ -111,7 +111,7 @@ public final class Permissions extends PermissionCollection {
      * Creates a Permissions instance using the default settings.
      */
     public Permissions(){
-        permsMap = new ConcurrentHashMap<Class<?>, PermissionCollection>();
+        permsMap = new ConcurrentHashMap<>();
         // Bite the bullet, get the pain out of the way in the beginning!
         unresolved = new PermissionPendingResolutionCollection();
         allPermission = false;      
@@ -134,7 +134,7 @@ public final class Permissions extends PermissionCollection {
      */
     @Deprecated
     public Permissions(int initialCapacity, float loadFactor, int concurrencyLevel, int unresolvedClassCount){
-        permsMap = new ConcurrentHashMap<Class<?>, PermissionCollection>
+        permsMap = new ConcurrentHashMap<>
                 (initialCapacity, loadFactor, concurrencyLevel);
         // Bite the bullet, get the pain out of the way in the beginning!
         unresolved = new PermissionPendingResolutionCollection(unresolvedClassCount, loadFactor, concurrencyLevel);
@@ -154,6 +154,7 @@ public final class Permissions extends PermissionCollection {
      * 
      * @param permission {@inheritDoc}
      */   
+    @SuppressWarnings("unchecked")
     @Override
     public void add(Permission permission) {
         if (permission == null){return;}
@@ -196,6 +197,7 @@ public final class Permissions extends PermissionCollection {
      * @param permission {@inheritDoc}
      * @return boolean {@inheritDoc}
      */
+    @SuppressWarnings("unchecked")
     @Override
     public boolean implies(Permission permission) {
         if (permission == null){return false;}
@@ -282,6 +284,7 @@ public final class Permissions extends PermissionCollection {
             currentPermSet = getNextPermSet();
         }
 
+        @SuppressWarnings("unchecked")
         private Enumeration<Permission> getNextPermSet(){
             Enumeration<Permission> result = null;
             if (epc.hasNext()){
@@ -291,7 +294,7 @@ public final class Permissions extends PermissionCollection {
                  * Each underlying PermissionCollection adds its own Enumeration.
                  */
                 if ( pc instanceof PermissionPendingResolutionCollection ){
-		    Set<Permission> permissionSet = new HashSet<Permission>();
+		    Set<Permission> permissionSet = new HashSet<>();
                     e = pc.elements();
                     while (e.hasMoreElements()) {
                         PermissionPendingResolution p = 
@@ -326,6 +329,7 @@ public final class Permissions extends PermissionCollection {
         }
     }
     
+    @SuppressWarnings("unchecked")
     private static class PC extends PermissionCollection {
         private static final long serialVersionUID = 1L;
         private final Collection<Permission> perms;
@@ -424,6 +428,7 @@ public final class Permissions extends PermissionCollection {
             return "";
         }
 
+        @SuppressWarnings("unchecked")
         @Override
         public PermissionCollection newPermissionCollection(){
             return new PermissionPendingResolutionCollection();
@@ -489,7 +494,8 @@ public final class Permissions extends PermissionCollection {
                 pending.incrementAndGet();
             }
         }
-
+        
+        @SuppressWarnings("unchecked")
         PermissionCollection resolveCollection(Permission target, PermissionCollection holder ){
             if (target == null || holder == null) throw new NullPointerException("target or holder cannot be null");
             if (pending.get() == 0) { return holder; }

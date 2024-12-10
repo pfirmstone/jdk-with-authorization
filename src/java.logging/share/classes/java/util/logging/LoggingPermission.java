@@ -52,9 +52,8 @@ import java.security.*;
  *
  */
 
-public final class LoggingPermission extends java.security.BasicPermission {
-
-    private static final long serialVersionUID = 63564341580231582L;
+public final class LoggingPermission 
+        extends java.security.BasicPermission<LoggingPermission> {
 
     /**
      * Creates a new LoggingPermission object.
@@ -67,12 +66,20 @@ public final class LoggingPermission extends java.security.BasicPermission {
      * arguments are invalid.
      */
     public LoggingPermission(String name, String actions) throws IllegalArgumentException {
-        super(name);
+        this(check(name, actions));
+    }
+    
+    private static String check(String name, String actions){
         if (!name.equals("control")) {
             throw new IllegalArgumentException("name: " + name);
         }
         if (actions != null && actions.length() > 0) {
             throw new IllegalArgumentException("actions: " + actions);
         }
+        return name;
+    }
+    
+    private LoggingPermission(String name){
+        super(name);
     }
 }

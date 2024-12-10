@@ -395,7 +395,7 @@ public class SecurityPolicyWriter extends CombinerSecurityManager{
                         ProtectionDomain pd = entry.getKey();
                         Collection<Permission> perms = entry.getValue();
                         Collection<Permission> permsToPrint = new ArrayList<Permission>();
-                        PermissionCollection pc = new Permissions();
+                        PermissionCollection<Permission> pc = new Permissions();
                         Iterator<Permission> pIt = perms.iterator();
                         while (pIt.hasNext()){
                             Permission p = pIt.next();
@@ -599,7 +599,7 @@ public class SecurityPolicyWriter extends CombinerSecurityManager{
             this(getCodeSource(pd), pd.getPermissions(), pd.getPrincipals());
         }
         
-        ProtectionDomainKey(UriCodeSource urics, PermissionCollection perms, Principal [] p){
+        ProtectionDomainKey(UriCodeSource urics, PermissionCollection<? extends Permission> perms, Principal [] p){
             super(urics, perms, null, p);
             this.codeSource = urics;
             this.princiPals = p;

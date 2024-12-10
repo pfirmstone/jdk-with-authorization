@@ -27,7 +27,7 @@ import java.security.BasicPermission;
 /**
  * This class represents the permission to access JVMCI services.
  */
-public class JVMCIPermission extends BasicPermission {
+public class JVMCIPermission extends BasicPermission<JVMCIPermission> {
 
     private static final long serialVersionUID = 6346818963934448226L;
 

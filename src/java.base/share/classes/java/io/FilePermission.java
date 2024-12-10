@@ -30,7 +30,7 @@ import java.security.*;
 import java.util.Enumeration;
 import java.util.Objects;
 import java.util.StringJoiner;
-import java.util.Vector;
+import java.util.Collections;
 import java.util.concurrent.ConcurrentHashMap;
 
 import jdk.internal.access.JavaIOFilePermissionAccess;
@@ -107,7 +107,7 @@ import sun.security.util.SecurityConstants;
  * @serial exclude
  */
 
-public final class FilePermission extends Permission implements Serializable {
+public final class FilePermission extends Permission {
 
     /**
      * Execute action.
@@ -140,27 +140,26 @@ public final class FilePermission extends Permission implements Serializable {
     private static final int NONE    = 0x0;
 
     // the actions mask
-    private transient int mask;
+    private final int mask;
 
     // does path indicate a directory? (wildcard or recursive)
-    private transient boolean directory;
+    private final boolean directory;
 
     // is it a recursive directory specification?
-    private transient boolean recursive;
+    private final boolean recursive;
 
     /**
      * the actions string.
-     *
-     * @serial
+    
      */
-    private String actions; // Left null as long as possible, then
+    private volatile String actions; // Left null as long as possible, then
                             // created and re-used in the getAction function.
 
     // canonicalized dir path. used by the "old" behavior (nb == false).
     // In the case of directories, it is the name "/blah/*" or "/blah/-"
     // without the last character (the "*" or "-").
 
-    private transient String cpath;
+    private final String cpath;
 
     // Following fields used by the "new" behavior (nb == true), in which
     // input path is not canonicalized. For compatibility (so that granting
@@ -169,10 +168,10 @@ public final class FilePermission extends Permission implements Serializable {
     // the alternative path only deals with absolute/relative path, and does
     // not deal with symlink/target.
 
-    private transient Path npath;       // normalized dir path.
-    private transient Path npath2;      // alternative normalized dir path.
-    private transient boolean allFiles; // whether this is <<ALL FILES>>
-    private transient boolean invalid;  // whether input path is invalid
+    private final Path npath;       // normalized dir path.
+    private final Path npath2;      // alternative normalized dir path.
+    private final boolean allFiles; // whether this is <<ALL FILES>>
+    private final boolean invalid;  // whether input path is invalid
 
     // static Strings used by init(int mask)
     private static final char RECURSIVE_CHAR = '-';
@@ -194,9 +193,6 @@ public final class FilePermission extends Permission implements Serializable {
 //        sb.append("***\n");
 //        return sb.toString();
 //    }
-
-    @java.io.Serial
-    private static final long serialVersionUID = 7930732926638008763L;
 
     /**
      * Use the platform's default file system to avoid recursive initialization
@@ -300,136 +296,156 @@ public final class FilePermission extends Permission implements Serializable {
             }
         );
     }
-
-    /**
-     * initialize a FilePermission object. Common to all constructors.
-     * Also called during de-serialization.
-     *
-     * @param mask the actions mask to use.
-     *
-     */
-    @SuppressWarnings("removal")
-    private void init(int mask) {
-        if ((mask & ALL) != mask)
-                throw new IllegalArgumentException("invalid actions mask");
-
-        if (mask == NONE)
-                throw new IllegalArgumentException("invalid actions mask");
-
-        if (FilePermCompat.nb) {
-            String name = getName();
-
-            if (name == null)
-                throw new NullPointerException("name can't be null");
-
-            this.mask = mask;
-
-            if (name.equals("<<ALL FILES>>")) {
-                allFiles = true;
-                npath = EMPTY_PATH;
-                // other fields remain default
-                return;
-            }
-
-            boolean rememberStar = false;
-            if (name.endsWith("*")) {
-                rememberStar = true;
-                recursive = false;
-                name = name.substring(0, name.length()-1) + "-";
-            }
-
-            try {
-                // new File() can "normalize" some name, for example, "/C:/X" on
-                // Windows. Some JDK codes generate such illegal names.
-                npath = builtInFS.getPath(new File(name).getPath())
-                        .normalize();
-                // lastName should always be non-null now
-                Path lastName = npath.getFileName();
-                if (lastName != null && lastName.equals(DASH_PATH)) {
-                    directory = true;
-                    recursive = !rememberStar;
-                    npath = npath.getParent();
-                }
-                if (npath == null) {
-                    npath = EMPTY_PATH;
-                }
-                invalid = false;
-            } catch (InvalidPathException ipe) {
-                // Still invalid. For compatibility reason, accept it
-                // but make this permission useless.
-                npath = builtInFS.getPath("-u-s-e-l-e-s-s-");
-                invalid = true;
-            }
-
-        } else {
-            if ((cpath = getName()) == null)
-                throw new NullPointerException("name can't be null");
-
-            this.mask = mask;
-
-            if (cpath.equals("<<ALL FILES>>")) {
-                allFiles = true;
-                directory = true;
-                recursive = true;
-                cpath = "";
-                return;
-            }
-
+    
+    private static String validatedByFileSystem(String cpath) throws SecurityException {
+        if (cpath == null) throw new NullPointerException("name can't be null");
+        if (!FilePermCompat.nb) {
+            if (cpath.equals("<<ALL FILES>>")) return null; // no permission check.
             // Validate path by platform's default file system
             try {
                 String name = cpath.endsWith("*") ? cpath.substring(0, cpath.length() - 1) + "-" : cpath;
                 builtInFS.getPath(new File(name).getPath());
+                return name;
             } catch (InvalidPathException ipe) {
-                invalid = true;
-                return;
+                return null;
             }
-
-            // store only the canonical cpath if possible
-            cpath = AccessController.doPrivileged(new PrivilegedAction<>() {
-                public String run() {
-                    try {
-                        String path = cpath;
-                        if (cpath.endsWith("*")) {
-                            // call getCanonicalPath with a path with wildcard character
-                            // replaced to avoid calling it with paths that are
-                            // intended to match all entries in a directory
-                            path = path.substring(0, path.length() - 1) + "-";
-                            path = new File(path).getCanonicalPath();
-                            return path.substring(0, path.length() - 1) + "*";
-                        } else {
-                            return new File(path).getCanonicalPath();
-                        }
-                    } catch (IOException ioe) {
-                        return cpath;
-                    }
-                }
-            });
-
-            int len = cpath.length();
-            char last = ((len > 0) ? cpath.charAt(len - 1) : 0);
-
-            if (last == RECURSIVE_CHAR &&
-                    cpath.charAt(len - 2) == File.separatorChar) {
-                directory = true;
-                recursive = true;
-                cpath = cpath.substring(0, --len);
-            } else if (last == WILD_CHAR &&
-                    cpath.charAt(len - 2) == File.separatorChar) {
-                directory = true;
-                //recursive = false;
-                cpath = cpath.substring(0, --len);
-            } else {
-                // overkill since they are initialized to false, but
-                // commented out here to remind us...
-                //directory = false;
-                //recursive = false;
-            }
-
-            // XXX: at this point the path should be absolute. die if it isn't?
         }
+        return null;
     }
 
-    /**
+    private static String check(String cpath, int mask) throws IllegalArgumentException {
+        if ((mask & ALL) != mask) throw new IllegalArgumentException("invalid actions mask");
+        if (mask == NONE) throw new IllegalArgumentException("invalid actions mask");
+        if (cpath != null){
+            return AccessController.doPrivileged((PrivilegedAction<String>) () -> {
+                try {
+                    String path1 = cpath;
+                    if (cpath.endsWith("*")) {
+                        // call getCanonicalPath with a path with wildcard character
+                        // replaced to avoid calling it with paths that are
+                        // intended to match all entries in a directory
+                        path1 = path1.substring(0, path1.length() - 1) + "-";
+                        path1 = new File(path1).getCanonicalPath();
+                        return path1.substring(0, path1.length() - 1) + "*";
+                    } else {
+                        return new File(path1).getCanonicalPath();
+                    }
+                } catch (IOException ioe) {
+                    return cpath;
+                }
+            });
+        }
+        return null;
+    }
+
+ 
+    
+    // defensive constructor to prevent finalizer attack.
+    private FilePermission(String path, int mask, String validatedByFileSystem) {
+        this(path, check(validatedByFileSystem, mask), mask, validatedByFileSystem);
+    }
+    
+    // defensive constructor to prevent finalizer attack.
+    private FilePermission(String path, String cpath, int mask, String validatedByFileSystem) {
+        super(path);
+        boolean allFileslocal = false;
+        Path npathLocal = null;
+        boolean recursiveLocal = false;
+        boolean directoryLocal = false;
+        boolean invalidLocal = false;
+        try {
+            if (FilePermCompat.nb) {
+                String name = path;
+                this.mask = mask;
+                if (name.equals("<<ALL FILES>>")) {
+                    allFileslocal = true;
+                    npathLocal = EMPTY_PATH;
+                    // other fields remain default
+                    return;
+                }
+
+                boolean rememberStar = false;
+                if (name.endsWith("*")) {
+                    rememberStar = true;
+                    recursiveLocal = false;
+                    name = name.substring(0, name.length()-1) + "-";
+                }
+
+                try {
+                    // new File() can "normalize" some name, for example, "/C:/X" on
+                    // Windows. Some JDK codes generate such illegal names.
+                    npathLocal = builtInFS.getPath(new File(name).getPath())
+                            .normalize();
+                    // lastName should always be non-null now
+                    Path lastName = npathLocal.getFileName();
+                    if (lastName != null && lastName.equals(DASH_PATH)) {
+                        directoryLocal = true;
+                        recursiveLocal = !rememberStar;
+                        npathLocal = npathLocal.getParent();
+                    }
+                    if (npathLocal == null) {
+                        npathLocal = EMPTY_PATH;
+                    }
+                    invalidLocal = false;
+                } catch (InvalidPathException ipe) {
+                    // Still invalid. For compatibility reason, accept it
+                    // but make this permission useless.
+                    npathLocal = builtInFS.getPath("-u-s-e-l-e-s-s-");
+                    invalidLocal = true;
+                }
+
+            } else {
+
+                this.mask = mask;
+
+                if (path.equals("<<ALL FILES>>")) {
+                    allFileslocal = true;
+                    directoryLocal = true;
+                    recursiveLocal = true;
+                    cpath = "";
+                    return;
+                }
+
+                // Validate path by platform's default file system
+                if (validatedByFileSystem == null){
+                    invalidLocal = true;
+                    return;
+                }
+                
+                int len = cpath.length();
+                char last = ((len > 0) ? cpath.charAt(len - 1) : 0);
+
+                if (last == RECURSIVE_CHAR &&
+                        cpath.charAt(len - 2) == File.separatorChar) {
+                    directoryLocal = true;
+                    recursiveLocal = true;
+                    cpath = cpath.substring(0, --len);
+                } else if (last == WILD_CHAR &&
+                        cpath.charAt(len - 2) == File.separatorChar) {
+                    directoryLocal = true;
+                    //recursive = false;
+                    cpath = cpath.substring(0, --len);
+                } else {
+                    // overkill since they are initialized to false, but
+                    // commented out here to remind us...
+                    //directory = false;
+                    //recursive = false;
+                }
+
+                // XXX: at this point the path should be absolute. die if it isn't?
+            }
+        } finally {
+            this.allFiles = allFileslocal;
+            this.npath = npathLocal;
+            this.npath2 = null;
+            this.recursive = recursiveLocal;
+            this.directory = directoryLocal;
+            this.cpath = cpath;
+            this.invalid = invalidLocal;
+        }
+    }
+    
+       /**
      * Creates a new FilePermission object with the specified actions.
      * <i>path</i> is the pathname of a file or directory, and <i>actions</i>
      * contains a comma-separated list of the desired actions granted on the
@@ -486,8 +502,7 @@ public final class FilePermission extends Permission implements Serializable {
      *         possible actions
      */
     public FilePermission(String path, String actions) {
-        super(path);
-        init(getMask(actions));
+        this(path,getMask(actions));
     }
 
     /**
@@ -502,8 +517,7 @@ public final class FilePermission extends Permission implements Serializable {
      */
     // package private for use by the FilePermissionCollection add method
     FilePermission(String path, int mask) {
-        super(path);
-        init(mask);
+        this(path, mask, validatedByFileSystem(path) );
     }
 
     /**
@@ -1044,37 +1058,8 @@ public final class FilePermission extends Permission implements Serializable {
      * FilePermissions.
      */
     @Override
-    public PermissionCollection newPermissionCollection() {
+    public PermissionCollection<FilePermission> newPermissionCollection() {
         return new FilePermissionCollection();
-    }
-
-    /**
-     * WriteObject is called to save the state of the FilePermission
-     * to a stream. The actions are serialized, and the superclass
-     * takes care of the name.
-     */
-    @java.io.Serial
-    private void writeObject(ObjectOutputStream s)
-        throws IOException
-    {
-        // Write out the actions. The superclass takes care of the name
-        // call getActions to make sure actions field is initialized
-        if (actions == null)
-            getActions();
-        s.defaultWriteObject();
-    }
-
-    /**
-     * readObject is called to restore the state of the FilePermission from
-     * a stream.
-     */
-    @java.io.Serial
-    private void readObject(ObjectInputStream s)
-         throws IOException, ClassNotFoundException
-    {
-        // Read in the actions, then restore everything else by calling init.
-        s.defaultReadObject();
-        init(getMask(actions));
     }
 
     /**
@@ -1120,11 +1105,10 @@ public final class FilePermission extends Permission implements Serializable {
  *
  */
 
-final class FilePermissionCollection extends PermissionCollection
-    implements Serializable
+final class FilePermissionCollection extends PermissionCollection<FilePermission>
 {
     // Not serialized; see serialization section at end of class
-    private transient ConcurrentHashMap<String, Permission> perms;
+    private transient ConcurrentHashMap<String, FilePermission> perms;
 
     /**
      * Create an empty FilePermissionCollection object.
@@ -1146,26 +1130,23 @@ final class FilePermissionCollection extends PermissionCollection
      *                                has been marked readonly
      */
     @Override
-    public void add(Permission permission) {
-        if (! (permission instanceof FilePermission fp))
-            throw new IllegalArgumentException("invalid permission: "+
-                                               permission);
+    public void add(FilePermission permission) {
         if (isReadOnly())
             throw new SecurityException(
                 "attempt to add a Permission to a readonly PermissionCollection");
 
         // Add permission to map if it is absent, or replace with new
         // permission if applicable.
-        perms.merge(fp.getName(), fp, (existingVal, newVal) -> {
-                int oldMask = ((FilePermission)existingVal).getMask();
-                int newMask = ((FilePermission)newVal).getMask();
+        perms.merge(permission.getName(), permission, (existingVal, newVal) -> {
+                int oldMask = existingVal.getMask();
+                int newMask = newVal.getMask();
                 if (oldMask != newMask) {
                     int effective = oldMask | newMask;
                     if (effective == newMask) {
                         return newVal;
                     }
                     if (effective != oldMask) {
-                        return ((FilePermission)newVal).withNewActions(effective);
+                        return newVal.withNewActions(effective);
                     }
                 }
                 return existingVal;
@@ -1191,8 +1172,7 @@ final class FilePermissionCollection extends PermissionCollection
         int effective = 0;
         int needed = desired;
 
-        for (Permission perm : perms.values()) {
-            FilePermission fp = (FilePermission)perm;
+        for (FilePermission fp : perms.values()) {
             if (((needed & fp.getMask()) != 0) && fp.impliesIgnoreMask(fperm)) {
                 effective |= fp.getMask();
                 if ((effective & desired) == desired) {
@@ -1211,68 +1191,7 @@ final class FilePermissionCollection extends PermissionCollection
      * @return an enumeration of all the FilePermission objects.
      */
     @Override
-    public Enumeration<Permission> elements() {
+    public Enumeration<FilePermission> elements() {
         return perms.elements();
-    }
-
-    @java.io.Serial
-    private static final long serialVersionUID = 2202956749081564585L;
-
-    // Need to maintain serialization interoperability with earlier releases,
-    // which had the serializable field:
-    //    private Vector permissions;
-
-    /**
-     * @serialField permissions java.util.Vector
-     *     A list of FilePermission objects.
-     */
-    @java.io.Serial
-    private static final ObjectStreamField[] serialPersistentFields = {
-        new ObjectStreamField("permissions", Vector.class),
-    };
-
-    /**
-     * Writes the contents of the perms field out as a Vector for
-     * serialization compatibility with earlier releases.
-     * @serialData "permissions" field (a Vector containing the FilePermissions).
-     *
-     * @param  out the {@code ObjectOutputStream} to which data is written
-     * @throws IOException if an I/O error occurs
-     */
-    @java.io.Serial
-    private void writeObject(ObjectOutputStream out) throws IOException {
-        // Don't call out.defaultWriteObject()
-
-        // Write out Vector
-        Vector<Permission> permissions = new Vector<>(perms.values());
-
-        ObjectOutputStream.PutField pfields = out.putFields();
-        pfields.put("permissions", permissions);
-        out.writeFields();
-    }
-
-    /**
-     * Reads in a Vector of FilePermissions and saves them in the perms field.
-     *
-     * @param  in the {@code ObjectInputStream} from which data is read
-     * @throws IOException if an I/O error occurs
-     * @throws ClassNotFoundException if a serialized class cannot be loaded
-     */
-    @java.io.Serial
-    private void readObject(ObjectInputStream in)
-        throws IOException, ClassNotFoundException
-    {
-        // Don't call defaultReadObject()
-
-        // Read in serialized fields
-        ObjectInputStream.GetField gfields = in.readFields();
-
-        // Get the one we want
-        @SuppressWarnings("unchecked")
-        Vector<Permission> permissions = (Vector<Permission>)gfields.get("permissions", null);
-        perms = new ConcurrentHashMap<>(permissions.size());
-        for (Permission perm : permissions) {
-            perms.put(perm.getName(), perm);
-        }
     }
 }

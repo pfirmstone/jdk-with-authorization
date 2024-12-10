@@ -29,6 +29,7 @@ import java.security.AccessControlContext;
 import java.security.PermissionCollection;
 import java.security.PrivilegedAction;
 import java.security.ProtectionDomain;
+import java.security.Permission;
 
 public interface JavaSecurityAccess {
 
@@ -42,8 +43,8 @@ public interface JavaSecurityAccess {
     ProtectionDomain[] getProtectDomains(@SuppressWarnings("removal") AccessControlContext context);
 
     interface ProtectionDomainCache {
-        void put(ProtectionDomain pd, PermissionCollection pc);
-        PermissionCollection get(ProtectionDomain pd);
+        void put(ProtectionDomain pd, PermissionCollection<Permission> pc);
+        PermissionCollection<Permission> get(ProtectionDomain pd);
     }
 
     /**

@@ -105,11 +105,7 @@ import java.util.Objects;
  */
 
 public final class UnresolvedPermission extends Permission
-implements java.io.Serializable
 {
-
-    @java.io.Serial
-    private static final long serialVersionUID = -4821973115467008846L;
 
     private static final sun.security.util.Debug debug =
         sun.security.util.Debug.getInstance
@@ -118,26 +114,31 @@ implements java.io.Serializable
     /**
      * The class name of the Permission class that will be
      * created when this unresolved permission is resolved.
-     *
-     * @serial
      */
     private final String type;
 
     /**
      * The permission name.
-     *
-     * @serial
      */
     private final String name;
 
     /**
      * The actions of the permission.
-     *
-     * @serial
      */
     private final String actions;
 
-    private transient java.security.cert.Certificate[] certs;
+    private final java.security.cert.Certificate[] certs;
+    
+    /**
+     * Prevents finalizer attack that would bypass invariant checks.
+     * @param name specified name.
+     * @return specified name if invariant checks pass.
+     */
+    private static String check(String name){
+        if (name == null)
+            throw new NullPointerException("name can't be null");
+        return name;
+    }
 
     /**
      * Creates a new {@code UnresolvedPermission} containing the permission
@@ -161,10 +162,7 @@ implements java.io.Serializable
                                 String actions,
                                 java.security.cert.Certificate[] certs)
     {
-        super(type);
-
-        if (type == null)
-                throw new NullPointerException("type can't be null");
+        super(check(type));
 
         // Perform a defensive copy and reassign certs if we have a non-null
         // reference
@@ -223,6 +221,8 @@ implements java.io.Serializable
             this.certs =
                 new java.security.cert.Certificate[signerCerts.size()];
             signerCerts.toArray(this.certs);
+        } else {
+            this.certs = null;
         }
     }
 
@@ -415,117 +415,7 @@ implements java.io.Serializable
      * storing {@code UnresolvedPermissions}.
      */
     @Override
-    public PermissionCollection newPermissionCollection() {
+    public PermissionCollection<UnresolvedPermission> newPermissionCollection() {
         return new UnresolvedPermissionCollection();
-    }
-
-    /**
-     * Writes this object out to a stream (i.e., serializes it).
-     *
-     * @serialData An initial {@code String} denoting the
-     * {@code type} is followed by a {@code String} denoting the
-     * {@code name} is followed by a {@code String} denoting the
-     * {@code actions} is followed by an {@code int} indicating the
-     * number of certificates to follow
-     * (a value of "zero" denotes that there are no certificates associated
-     * with this object).
-     * Each certificate is written out starting with a {@code String}
-     * denoting the certificate type, followed by an
-     * {@code int} specifying the length of the certificate encoding,
-     * followed by the certificate encoding itself which is written out as an
-     * array of bytes.
-     *
-     * @param  oos the {@code ObjectOutputStream} to which data is written
-     * @throws IOException if an I/O error occurs
-     */
-    @java.io.Serial
-    private void writeObject(java.io.ObjectOutputStream oos)
-        throws IOException
-    {
-        oos.defaultWriteObject();
-
-        if (certs==null || certs.length==0) {
-            oos.writeInt(0);
-        } else {
-            // write out the total number of certs
-            oos.writeInt(certs.length);
-            // write out each cert, including its type
-            for (int i=0; i < certs.length; i++) {
-                java.security.cert.Certificate cert = certs[i];
-                try {
-                    oos.writeUTF(cert.getType());
-                    byte[] encoded = cert.getEncoded();
-                    oos.writeInt(encoded.length);
-                    oos.write(encoded);
-                } catch (CertificateEncodingException cee) {
-                    throw new IOException(cee.getMessage());
-                }
-            }
-        }
-    }
-
-    /**
-     * Restores this object from a stream (i.e., deserializes it).
-     *
-     * @param  ois the {@code ObjectInputStream} from which data is read
-     * @throws IOException if an I/O error occurs
-     * @throws ClassNotFoundException if a serialized class cannot be loaded
-     */
-    @java.io.Serial
-    private void readObject(java.io.ObjectInputStream ois)
-        throws IOException, ClassNotFoundException
-    {
-        CertificateFactory cf;
-        Hashtable<String, CertificateFactory> cfs = null;
-        List<Certificate> certList = null;
-
-        ois.defaultReadObject();
-
-        if (type == null)
-                throw new NullPointerException("type can't be null");
-
-        // process any new-style certs in the stream (if present)
-        int size = ois.readInt();
-        if (size > 0) {
-            // we know of 3 different cert types: X.509, PGP, SDSI, which
-            // could all be present in the stream at the same time
-            cfs = new Hashtable<>(3);
-            certList = new ArrayList<>(Math.min(size, 20));
-        } else if (size < 0) {
-            throw new IOException("size cannot be negative");
-        }
-
-        for (int i=0; i<size; i++) {
-            // read the certificate type, and instantiate a certificate
-            // factory of that type (reuse existing factory if possible)
-            String certType = ois.readUTF();
-            if (cfs.containsKey(certType)) {
-                // reuse certificate factory
-                cf = cfs.get(certType);
-            } else {
-                // create new certificate factory
-                try {
-                    cf = CertificateFactory.getInstance(certType);
-                } catch (CertificateException ce) {
-                    throw new ClassNotFoundException
-                        ("Certificate factory for "+certType+" not found");
-                }
-                // store the certificate factory so we can reuse it later
-                cfs.put(certType, cf);
-            }
-            // parse the certificate
-            byte[] encoded = IOUtils.readExactlyNBytes(ois, ois.readInt());
-            ByteArrayInputStream bais = new ByteArrayInputStream(encoded);
-            try {
-                certList.add(cf.generateCertificate(bais));
-            } catch (CertificateException ce) {
-                throw new IOException(ce.getMessage());
-            }
-            bais.close();
-        }
-        if (certList != null) {
-            this.certs = certList.toArray(
-                    new java.security.cert.Certificate[size]);
-        }
     }
 }

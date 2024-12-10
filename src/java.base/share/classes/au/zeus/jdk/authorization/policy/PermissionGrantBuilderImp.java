@@ -58,6 +58,7 @@ class PermissionGrantBuilderImp extends PermissionGrantBuilder implements
     @SuppressWarnings("serial")
     private Principal[] principals;
     /*@serial */
+    @SuppressWarnings("serial")
     private Permission[] permissions;
     /*@serial */
     private int context;

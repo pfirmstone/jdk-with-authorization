@@ -115,9 +115,6 @@ public class CardPermission extends Permission {
 
     private transient int mask;
 
-    /**
-     * @serial
-     */
     private final String actions;
 
     /**
@@ -278,17 +275,5 @@ public class CardPermission extends Permission {
      */
     public int hashCode() {
         return getName().hashCode() + 31 * mask;
-    }
-
-    private void writeObject(ObjectOutputStream s) throws IOException {
-        // Write out the actions. The superclass takes care of the name.
-        s.defaultWriteObject();
-    }
-
-    private void readObject(ObjectInputStream s)
-            throws IOException, ClassNotFoundException {
-        // Read in the actions, then restore the mask.
-        s.defaultReadObject();
-        mask = getMask(actions);
     }
 }

@@ -49,6 +49,7 @@ import java.security.PermissionCollection;
 import java.security.PrivilegedActionException;
 import java.security.PrivilegedExceptionAction;
 import java.security.ProtectionDomain;
+import java.security.Permission;
 import java.text.DateFormat;
 import java.text.DateFormatSymbols;
 import java.time.Instant;
@@ -3569,7 +3570,7 @@ public abstract class Calendar implements Serializable, Cloneable, Comparable<Ca
         private static final AccessControlContext INSTANCE;
         static {
             RuntimePermission perm = new RuntimePermission("accessClassInPackage.sun.util.calendar");
-            PermissionCollection perms = perm.newPermissionCollection();
+            PermissionCollection<RuntimePermission> perms = perm.newPermissionCollection();
             perms.add(perm);
             INSTANCE = new AccessControlContext(new ProtectionDomain[] {
                                                     new ProtectionDomain(null, perms)

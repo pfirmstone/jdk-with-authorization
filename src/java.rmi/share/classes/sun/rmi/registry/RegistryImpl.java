@@ -54,6 +54,7 @@ import java.security.PrivilegedActionException;
 import java.security.PrivilegedExceptionAction;
 import java.security.PermissionCollection;
 import java.security.Permissions;
+import java.security.Permission;
 import java.security.ProtectionDomain;
 import java.text.MessageFormat;
 
@@ -579,13 +580,21 @@ public class RegistryImpl extends java.rmi.server.RemoteServer
      * Generates an AccessControlContext with minimal permissions.
      * The approach used here is taken from the similar method
      * getAccessControlContext() in the sun.applet.AppletPanel class.
+     * 
+     * Following Applet design isn't the best idea, as it introduces the
+     * potential for URL injection attacks, in case URL's aren't 
+     * sufficiently scrutinized.
+     * 
+     * The static permissions granted below have been commented out, 
+     * these can be granted dynamically by policy.
+     * 
      */
     @SuppressWarnings("removal")
     private static AccessControlContext getAccessControlContext(int port) {
         // begin with permissions granted to all code in current policy
-        PermissionCollection perms = AccessController.doPrivileged(
-            new java.security.PrivilegedAction<PermissionCollection>() {
-                public PermissionCollection run() {
+        PermissionCollection<Permission> perms = AccessController.doPrivileged(
+            new java.security.PrivilegedAction<PermissionCollection<Permission>>() {
+                public PermissionCollection<Permission> run() {
                     CodeSource codesource = new CodeSource(null,
                         (java.security.cert.Certificate[]) null);
                     Policy p = java.security.Policy.getPolicy();
@@ -602,13 +611,13 @@ public class RegistryImpl extends java.rmi.server.RemoteServer
          * to and possibly download stubs from anywhere. Downloaded stubs and
          * related classes themselves are more tightly limited by RMI.
          */
-        perms.add(new SocketPermission("*", "connect,accept"));
-        perms.add(new SocketPermission("localhost:"+port, "listen,accept"));
+//        perms.add(new SocketPermission("*", "connect,accept"));
+//        perms.add(new SocketPermission("localhost:"+port, "listen,accept"));
 
         perms.add(new RuntimePermission("accessClassInPackage.sun.jvmstat.*"));
         perms.add(new RuntimePermission("accessClassInPackage.sun.jvm.hotspot.*"));
 
-        perms.add(new FilePermission("<<ALL FILES>>", "read"));
+//        perms.add(new FilePermission("<<ALL FILES>>", "read"));
 
         /*
          * Create an AccessControlContext that consists of a single

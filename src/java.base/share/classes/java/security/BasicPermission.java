@@ -25,12 +25,7 @@
 
 package java.security;
 
-import java.io.IOException;
-import java.io.ObjectInputStream;
-import java.io.ObjectOutputStream;
-import java.io.ObjectStreamField;
 import java.util.Enumeration;
-import java.util.Hashtable;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -54,6 +49,8 @@ import java.util.concurrent.ConcurrentHashMap;
  * named permission or you don't.)
  * Subclasses may implement actions on top of {@code BasicPermission},
  * if desired.
+ * 
+ * @param <T> type of Permission.
  *
  * @see java.security.Permission
  * @see java.security.Permissions
@@ -65,26 +62,24 @@ import java.util.concurrent.ConcurrentHashMap;
  * @since 1.2
  */
 
-public abstract class BasicPermission extends Permission
-    implements java.io.Serializable
+public abstract class BasicPermission<T extends Permission> extends Permission
 {
 
-    @java.io.Serial
-    private static final long serialVersionUID = 6279438298436773498L;
-
     // does this permission have a wildcard at the end?
-    private transient boolean wildcard;
+    private final boolean wildcard;
 
     // the name without the wildcard on the end
-    private transient String path;
+    private final String path;
 
     // is this permission the old-style exitVM permission (pre JDK 1.6)?
-    private transient boolean exitVM;
-
+    private final boolean exitVM;
+    
     /**
-     * initialize a {@code BasicPermission} object. Common to all constructors.
+     * Prevents finalizer attack that would bypass invariant checks.
+     * @param name specified name.
+     * @return specified name if invariant checks pass.
      */
-    private void init(String name) {
+    private static String check(String name){
         if (name == null)
             throw new NullPointerException("name can't be null");
 
@@ -93,26 +88,7 @@ public abstract class BasicPermission extends Permission
         if (len == 0) {
             throw new IllegalArgumentException("name can't be empty");
         }
-
-        char last = name.charAt(len - 1);
-
-        // Is wildcard or ends with ".*"?
-        if (last == '*' && (len == 1 || name.charAt(len - 2) == '.')) {
-            wildcard = true;
-            if (len == 1) {
-                path = "";
-            } else {
-                path = name.substring(0, len - 1);
-            }
-        } else {
-            if (name.equals("exitVM")) {
-                wildcard = true;
-                path = "exitVM.";
-                exitVM = true;
-            } else {
-                path = name;
-            }
-        }
+        return name;
     }
 
     /**
@@ -127,8 +103,32 @@ public abstract class BasicPermission extends Permission
      * @throws IllegalArgumentException if {@code name} is empty.
      */
     public BasicPermission(String name) {
-        super(name);
-        init(name);
+        super(check(name));
+        int len = name.length();
+        char last = name.charAt(len - 1);
+        boolean wildcardLocal = false;
+        String pathLocal;
+        boolean exitVMLocal = false;
+        // Is wildcard or ends with ".*"?
+        if (last == '*' && (len == 1 || name.charAt(len - 2) == '.')) {
+            wildcardLocal = true;
+            if (len == 1) {
+                pathLocal = "";
+            } else {
+                pathLocal = name.substring(0, len - 1);
+            }
+        } else {
+            if (name.equals("exitVM")) {
+                wildcardLocal = true;
+                pathLocal = "exitVM.";
+                exitVMLocal = true;
+            } else {
+                pathLocal = name;
+            }
+        }
+        this.wildcard = wildcardLocal;
+        this.path = pathLocal;
+        this.exitVM = exitVMLocal;
     }
 
 
@@ -144,8 +144,7 @@ public abstract class BasicPermission extends Permission
      * @throws IllegalArgumentException if {@code name} is empty.
      */
     public BasicPermission(String name, String actions) {
-        super(name);
-        init(name);
+        this(name);
     }
 
     /**
@@ -165,31 +164,32 @@ public abstract class BasicPermission extends Permission
      * @return {@code true} if the passed permission is equal to or
      * implied by this permission, {@code false} otherwise.
      */
+    @SuppressWarnings("rawtypes")
     @Override
     public boolean implies(Permission p) {
         if ((p == null) || (p.getClass() != getClass()))
             return false;
-
-        BasicPermission that = (BasicPermission) p;
-
-        if (this.wildcard) {
-            if (that.wildcard) {
-                // one wildcard can imply another
-                return that.path.startsWith(path);
+        if ( p instanceof BasicPermission that){
+            if (this.wildcard) {
+                if (that.wildcard) {
+                    // one wildcard can imply another
+                    return that.path.startsWith(path);
+                } else {
+                    // make sure ap.path is longer so a.b.* doesn't imply a.b
+                    return (that.path.length() > this.path.length()) &&
+                        that.path.startsWith(this.path);
+                }
             } else {
-                // make sure ap.path is longer so a.b.* doesn't imply a.b
-                return (that.path.length() > this.path.length()) &&
-                    that.path.startsWith(this.path);
-            }
-        } else {
-            if (that.wildcard) {
-                // a non-wildcard can't imply a wildcard
-                return false;
-            }
-            else {
-                return this.path.equals(that.path);
+                if (that.wildcard) {
+                    // a non-wildcard can't imply a wildcard
+                    return false;
+                }
+                else {
+                    return this.path.equals(that.path);
+                }
             }
         }
+        return false;
     }
 
     /**
@@ -202,17 +202,13 @@ public abstract class BasicPermission extends Permission
      * object's class and has the same name as this {@code BasicPermission}
      * object, {@code false} otherwise.
      */
+    @SuppressWarnings("rawtypes")
     @Override
     public boolean equals(Object obj) {
-        if (obj == this)
-            return true;
-
-        if ((obj == null) || (obj.getClass() != getClass()))
-            return false;
-
-        BasicPermission bp = (BasicPermission) obj;
-
-        return getName().equals(bp.getName());
+        if (obj == this) return true;
+        if ((obj == null) || (obj.getClass() != getClass())) return false;
+        if (obj instanceof BasicPermission bp) return getName().equals(bp.getName());       
+        return false;
     }
 
 
@@ -251,26 +247,10 @@ public abstract class BasicPermission extends Permission
      * @return a new {@code PermissionCollection} object suitable for
      * storing {@code BasicPermission} objects.
      */
+    @SuppressWarnings({"unchecked","rawtypes"})
     @Override
-    public PermissionCollection newPermissionCollection() {
+    public PermissionCollection<T> newPermissionCollection() {
         return new BasicPermissionCollection(this.getClass());
-    }
-
-    /**
-     * {@code readObject} is called to restore the state of the
-     * {@code BasicPermission} from a stream.
-     *
-     * @param  s the {@code ObjectInputStream} from which data is read
-     * @throws IOException if an I/O error occurs
-     * @throws ClassNotFoundException if a serialized class cannot be loaded
-     */
-    @java.io.Serial
-    private void readObject(ObjectInputStream s)
-         throws IOException, ClassNotFoundException
-    {
-        s.defaultReadObject();
-        // init is called to initialize the rest of the values.
-        init(getName());
     }
 
     /**
@@ -305,42 +285,35 @@ public abstract class BasicPermission extends Permission
  * @serial include
  */
 
-final class BasicPermissionCollection
-    extends PermissionCollection
-    implements java.io.Serializable
+final class BasicPermissionCollection<T extends Permission> extends PermissionCollection<T>
 {
-
-    @java.io.Serial
-    private static final long serialVersionUID = 739301742472979399L;
-
+    
     /**
      * Key is name, value is permission. All permission objects in
      * collection must be of the same type.
      * Not serialized; see serialization section at end of class.
      */
-    private transient ConcurrentHashMap<String, Permission> perms;
+    private final ConcurrentHashMap<String, T> perms;
 
     /**
      * This is set to {@code true} if this {@code BasicPermissionCollection}
      * contains a {@code BasicPermission} with '*' as its permission name.
      *
-     * @see #serialPersistentFields
      */
-    private boolean all_allowed;
+    private volatile boolean all_allowed;
 
     /**
      * The class to which all {@code BasicPermission} objects in this
      * BasicPermissionCollection belong.
      *
-     * @see #serialPersistentFields
      */
-    private Class<?> permClass;
+    private final Class<?> permClass;
 
     /**
      * Create an empty BasicPermissionCollection object.
      *
      */
-    public BasicPermissionCollection(Class<?> clazz) {
+    public BasicPermissionCollection(Class<T> clazz) {
         perms = new ConcurrentHashMap<>(11);
         all_allowed = false;
         permClass = clazz;
@@ -361,26 +334,19 @@ final class BasicPermissionCollection
      * @throws    SecurityException   if this {@code BasicPermissionCollection}
      *                                object has been marked readonly
      */
+    @SuppressWarnings("rawtypes")
     @Override
-    public void add(Permission permission) {
+    public void add(T permission) {
         if (!(permission instanceof BasicPermission basicPermission))
             throw new IllegalArgumentException("invalid permission: "+
                                                permission);
         if (isReadOnly())
             throw new SecurityException("attempt to add a Permission to a readonly PermissionCollection");
-
-        // make sure we only add new BasicPermission objects of the same class
-        // Also check null for compatibility with deserialized form from
-        // previous versions.
-        if (permClass == null) {
-            // adding first permission
-            permClass = basicPermission.getClass();
-        } else {
-            if (basicPermission.getClass() != permClass)
+        // Leave the check in place for old implementations that don't use generics.
+        if (permission.getClass() != permClass)
                 throw new IllegalArgumentException("invalid permission: " +
                                                 permission);
-        }
-
+        
         String canonName = basicPermission.getCanonicalName();
         perms.put(canonName, permission);
 
@@ -400,6 +366,7 @@ final class BasicPermissionCollection
      * @return {@code true} if "permission" is a proper subset of a
      * permission in the set, {@code false} if not.
      */
+    @SuppressWarnings("rawtypes")
     @Override
     public boolean implies(Permission permission) {
         if (!(permission instanceof BasicPermission basicPermission))
@@ -457,108 +424,7 @@ final class BasicPermissionCollection
      * @return an enumeration of all the BasicPermission objects.
      */
     @Override
-    public Enumeration<Permission> elements() {
+    public Enumeration<T> elements() {
         return perms.elements();
-    }
-
-    // Need to maintain serialization interoperability with earlier releases,
-    // which had the serializable field:
-    //
-    // @serial the Hashtable is indexed by the BasicPermission name
-    //
-    // private Hashtable permissions;
-    /**
-     * @serialField permissions java.util.Hashtable
-     *    The {@code BasicPermission} objects in this
-     *    {@code BasicPermissionCollection}.
-     *    All {@code BasicPermission} objects in the collection must belong
-     *    to the same class.
-     *    The Hashtable is indexed by the {@code BasicPermission} name;
-     *    the value of the Hashtable entry is the permission.
-     * @serialField all_allowed boolean
-     *   This is set to {@code true} if this {@code BasicPermissionCollection}
-     *   contains a {@code BasicPermission} object
-     *   with '*' as its permission name.
-     * @serialField permClass java.lang.Class
-     *   The class to which all {@code BasicPermission} objectss in this
-     *   {@code BasicPermissionCollection} belongs.
-     */
-    @java.io.Serial
-    private static final ObjectStreamField[] serialPersistentFields = {
-        new ObjectStreamField("permissions", Hashtable.class),
-        new ObjectStreamField("all_allowed", Boolean.TYPE),
-        new ObjectStreamField("permClass", Class.class),
-    };
-
-    /*
-     * @serialData Default fields.
-     */
-
-    /**
-     * Writes the contents of the perms field out as a Hashtable for
-     * serialization compatibility with earlier releases. all_allowed
-     * and permClass unchanged.
-     *
-     * @param  out the {@code ObjectOutputStream} to which data is written
-     * @throws IOException if an I/O error occurs
-     */
-    @java.io.Serial
-    private void writeObject(ObjectOutputStream out) throws IOException {
-        // Don't call out.defaultWriteObject()
-
-        // Copy perms into a Hashtable
-        Hashtable<String, Permission> permissions =
-                new Hashtable<>(perms.size()*2);
-
-        permissions.putAll(perms);
-
-        // Write out serializable fields
-        ObjectOutputStream.PutField pfields = out.putFields();
-        pfields.put("all_allowed", all_allowed);
-        pfields.put("permissions", permissions);
-        pfields.put("permClass", permClass);
-        out.writeFields();
-    }
-
-    /**
-     * readObject is called to restore the state of the
-     * {@code BasicPermissionCollection} from a stream.
-     *
-     * @param  in the {@code ObjectInputStream} from which data is read
-     * @throws IOException if an I/O error occurs
-     * @throws ClassNotFoundException if a serialized class cannot be loaded
-     */
-    @java.io.Serial
-    private void readObject(java.io.ObjectInputStream in)
-         throws IOException, ClassNotFoundException
-    {
-        // Don't call defaultReadObject()
-
-        // Read in serialized fields
-        ObjectInputStream.GetField gfields = in.readFields();
-
-        // Get permissions
-        // writeObject writes a Hashtable<String, Permission> for the
-        // permissions key, so this cast is safe, unless the data is corrupt.
-        @SuppressWarnings("unchecked")
-        Hashtable<String, Permission> permissions =
-                (Hashtable<String, Permission>)gfields.get("permissions", null);
-        perms = new ConcurrentHashMap<>(permissions.size()*2);
-        perms.putAll(permissions);
-
-        // Get all_allowed
-        all_allowed = gfields.get("all_allowed", false);
-
-        // Get permClass
-        permClass = (Class<?>) gfields.get("permClass", null);
-
-        if (permClass == null) {
-            // set permClass
-            Enumeration<Permission> e = permissions.elements();
-            if (e.hasMoreElements()) {
-                Permission p = e.nextElement();
-                permClass = p.getClass();
-            }
-        }
     }
 }

@@ -25,13 +25,14 @@
 
 package javax.crypto;
 
-import java.io.Serial;
 import java.security.*;
 import java.security.spec.AlgorithmParameterSpec;
-import java.io.Serializable;
 import java.util.Enumeration;
+import java.util.Iterator;
 import java.util.Objects;
-import java.util.Vector;
+import java.util.Set;
+import java.util.concurrent.ConcurrentSkipListSet;
+import au.zeus.jdk.authorization.policy.PermissionComparator;
 
 import javax.crypto.spec.*;
 
@@ -50,9 +51,6 @@ import javax.crypto.spec.*;
  * @since 1.4
  */
 class CryptoPermission extends java.security.Permission {
-
-    @java.io.Serial
-    private static final long serialVersionUID = 8987399626114087514L;
 
     private final String alg;
     private int maxKeySize = Integer.MAX_VALUE; // no restriction on maxKeySize
@@ -220,6 +218,7 @@ class CryptoPermission extends java.security.Permission {
      * @return {@code true} if the specified permission is equal to or
      * implied by this permission, {@code false} otherwise.
      */
+    @Override
     public boolean implies(Permission p) {
         if (!(p instanceof CryptoPermission cp))
             return false;
@@ -300,8 +299,8 @@ class CryptoPermission extends java.security.Permission {
      * @return a new {@code PermissionCollection} object suitable for storing
      * CryptoPermissions.
      */
-
-    public PermissionCollection newPermissionCollection() {
+    @Override
+    public PermissionCollection<CryptoPermission> newPermissionCollection() {
         return new CryptoPermissionCollection();
     }
 
@@ -357,6 +356,7 @@ class CryptoPermission extends java.security.Permission {
      *
      * @return information about this {@code CryptoPermission} object.
      */
+    @Override
     public String toString() {
         StringBuilder buf = new StringBuilder(100);
         buf.append("(CryptoPermission " + alg + " " + maxKeySize);
@@ -442,20 +442,17 @@ class CryptoPermission extends java.security.Permission {
  *
  * @author Sharon Liu
  */
-final class CryptoPermissionCollection extends PermissionCollection
-    implements Serializable
+final class CryptoPermissionCollection extends PermissionCollection<CryptoPermission>
 {
-    @Serial
-    private static final long serialVersionUID = -511215555898802763L;
 
-    private final Vector<Permission> permissions;
+    private final Set<CryptoPermission> permissions;
 
     /**
      * Creates an empty CryptoPermissionCollection
      * object.
      */
     CryptoPermissionCollection() {
-        permissions = new Vector<>(3);
+        permissions = new ConcurrentSkipListSet<>(new PermissionComparator());
     }
 
     /**
@@ -467,7 +464,8 @@ final class CryptoPermissionCollection extends PermissionCollection
      * {@code CryptoPermissionCollection} object has been marked
      * <i>readOnly</i>.
      */
-    public void add(Permission permission) {
+    @Override
+    public void add(CryptoPermission permission) {
         if (isReadOnly())
             throw new SecurityException("attempt to add a Permission " +
                                         "to a readonly PermissionCollection");
@@ -475,7 +473,7 @@ final class CryptoPermissionCollection extends PermissionCollection
         if (!(permission instanceof CryptoPermission))
             return;
 
-        permissions.addElement(permission);
+        permissions.add(permission);
     }
 
     /**
@@ -487,6 +485,7 @@ final class CryptoPermissionCollection extends PermissionCollection
      * @return {@code true} if the given permission is implied by this
      * {@code CryptoPermissionCollection}, {@code false} if not.
      */
+    @Override
     public boolean implies(Permission permission) {
         if (!(permission instanceof CryptoPermission cp))
             return false;
@@ -507,7 +506,16 @@ final class CryptoPermissionCollection extends PermissionCollection
      * @return an enumeration of all the {@code CryptoPermission} objects.
      */
 
-    public Enumeration<Permission> elements() {
-        return permissions.elements();
+    @Override
+    public Enumeration<CryptoPermission> elements() {
+        Iterator<CryptoPermission> it = permissions.iterator();
+        return new Enumeration<CryptoPermission>(){
+            public boolean hasMoreElements(){
+                return it.hasNext();
+            }
+            public CryptoPermission nextElement(){
+                return it.next();
+            }
+        };
     }
 }

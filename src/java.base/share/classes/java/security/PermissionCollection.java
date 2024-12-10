@@ -89,6 +89,7 @@ import java.util.stream.StreamSupport;
  * not <em>fail-fast</em>.  Modifications to a collection should not be
  * performed while enumerating over that collection.
  *
+ * @param <T> type of permission
  * @see Permission
  * @see Permissions
  *
@@ -97,10 +98,9 @@ import java.util.stream.StreamSupport;
  * @since 1.2
  */
 
-public abstract class PermissionCollection implements java.io.Serializable {
+public abstract class PermissionCollection<T extends Permission> 
+                                    implements Iterable<T> {
 
-    @java.io.Serial
-    private static final long serialVersionUID = -6727011328946861783L;
 
     /**
      * Whether this permission collection is read-only.
@@ -126,7 +126,7 @@ public abstract class PermissionCollection implements java.io.Serializable {
      *                object is a homogeneous collection and the permission
      *                is not of the correct type.
      */
-    public abstract void add(Permission permission);
+    public abstract void add(T permission);
 
     /**
      * Checks to see if the specified permission is implied by
@@ -146,7 +146,14 @@ public abstract class PermissionCollection implements java.io.Serializable {
      * @return an enumeration of all the Permissions.
      * @see #elementsAsStream()
      */
-    public abstract Enumeration<Permission> elements();
+    public abstract Enumeration<T> elements();
+    
+    @Override
+    public Iterator<T> iterator(){
+        Enumeration<T> enumeration = elements();
+        if (enumeration != null) return enumeration.asIterator();
+        return Collections.emptyIterator();
+    }
 
     /**
      * Returns a stream of all the Permission objects in the collection.
@@ -162,13 +169,13 @@ public abstract class PermissionCollection implements java.io.Serializable {
      * @return a stream of all the Permissions.
      * @since 9
      */
-    public Stream<Permission> elementsAsStream() {
+    public Stream<T> elementsAsStream() {
         int characteristics = isReadOnly()
                 ? Spliterator.NONNULL | Spliterator.IMMUTABLE
                 : Spliterator.NONNULL;
         return StreamSupport.stream(
                 Spliterators.spliteratorUnknownSize(
-                        elements().asIterator(), characteristics),
+                        iterator(), characteristics),
                 false);
     }
 
@@ -220,8 +227,9 @@ public abstract class PermissionCollection implements java.io.Serializable {
      *         as described above.
      *
      */
+    @Override
     public String toString() {
-        Enumeration<Permission> enum_ = elements();
+        Enumeration<T> enum_ = elements();
         StringBuilder sb = new StringBuilder();
         sb.append(super.toString()+" (\n");
         while (enum_.hasMoreElements()) {
@@ -235,5 +243,5 @@ public abstract class PermissionCollection implements java.io.Serializable {
         }
         sb.append(")\n");
         return sb.toString();
-    }
+    } 
 }

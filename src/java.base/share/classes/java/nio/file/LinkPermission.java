@@ -66,14 +66,16 @@ import java.security.BasicPermission;
  * @see Files#createLink
  * @see Files#createSymbolicLink
  */
-public final class LinkPermission extends BasicPermission {
-    @java.io.Serial
-    static final long serialVersionUID = -1441492453772213220L;
+public final class LinkPermission extends BasicPermission<LinkPermission> {
 
-    private void checkName(String name) {
+    private String checkName(String name, String actions) {
         if (!name.equals("hard") && !name.equals("symbolic")) {
             throw new IllegalArgumentException("name: " + name);
         }
+        if (actions != null && !actions.isEmpty()) {
+            throw new IllegalArgumentException("actions: " + actions);
+        }
+        return name;
     }
 
     /**
@@ -86,8 +88,7 @@ public final class LinkPermission extends BasicPermission {
      *          if name is empty or invalid
      */
     public LinkPermission(String name) {
-        super(name);
-        checkName(name);
+        super(checkName(name, null));
     }
 
     /**
@@ -103,10 +104,6 @@ public final class LinkPermission extends BasicPermission {
      *          if name is empty or invalid, or actions is a non-empty string
      */
     public LinkPermission(String name, String actions) {
-        super(name);
-        checkName(name);
-        if (actions != null && !actions.isEmpty()) {
-            throw new IllegalArgumentException("actions: " + actions);
-        }
+        super(checkName(name, actions));
     }
 }

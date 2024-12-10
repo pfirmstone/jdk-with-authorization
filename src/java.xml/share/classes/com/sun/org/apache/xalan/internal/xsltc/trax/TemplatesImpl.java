@@ -499,7 +499,7 @@ public final class TemplatesImpl implements Templates, Serializable {
             Module thisModule = TemplatesImpl.class.getModule();
             // the module also needs permission to access each package
             // that is exported to it
-            PermissionCollection perms =
+            PermissionCollection<RuntimePermission> perms =
                 new RuntimePermission("*").newPermissionCollection();
             Arrays.asList(Constants.PKGS_USED_BY_TRANSLET_CLASSES).forEach(p -> {
                 thisModule.addExports(p, m);

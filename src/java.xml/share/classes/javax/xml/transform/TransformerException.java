@@ -33,6 +33,7 @@ import java.security.CodeSigner;
 import java.security.CodeSource;
 import java.security.PermissionCollection;
 import java.security.Permissions;
+import java.security.Permission;
 import java.security.PrivilegedAction;
 import java.security.ProtectionDomain;
 import java.util.Objects;
@@ -369,7 +370,7 @@ public class TransformerException extends Exception {
      */
     private ProtectionDomain getNonPrivDomain() {
         CodeSource nullSource = new CodeSource(null, (CodeSigner[]) null);
-        PermissionCollection noPermission = new Permissions();
+        PermissionCollection<Permission> noPermission = new Permissions();
         return new ProtectionDomain(nullSource, noPermission);
 }
 }

@@ -394,10 +394,7 @@ import java.lang.module.ModuleFinder;
  * @since 1.2
  */
 
-public final class RuntimePermission extends BasicPermission {
-
-    @java.io.Serial
-    private static final long serialVersionUID = 7399184964622342223L;
+public final class RuntimePermission extends BasicPermission<RuntimePermission> {
 
     /**
      * Creates a new RuntimePermission with the specified name.

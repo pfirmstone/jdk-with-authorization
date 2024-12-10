@@ -31,6 +31,7 @@ import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.security.CodeSource;
 import java.security.PermissionCollection;
+import java.security.Permission;
 import java.util.jar.Manifest;
 
 import jdk.internal.access.JavaLangAccess;
@@ -189,8 +190,8 @@ public class ClassLoaders {
         }
 
         @Override
-        protected PermissionCollection getPermissions(CodeSource cs) {
-            PermissionCollection perms = super.getPermissions(cs);
+        protected PermissionCollection<Permission> getPermissions(CodeSource cs) {
+            PermissionCollection<Permission> perms = super.getPermissions(cs);
             perms.add(new RuntimePermission("exitVM"));
             return perms;
         }

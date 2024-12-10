@@ -99,11 +99,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * @since 1.4
  */
 
-public final class ServicePermission extends Permission
-    implements java.io.Serializable {
-
-    @Serial
-    private static final long serialVersionUID = -1227585031618624935L;
+public final class ServicePermission extends Permission {
 
     /**
      * Initiate a security context to the specified service
@@ -126,7 +122,7 @@ public final class ServicePermission extends Permission
     private static final int NONE    = 0x0;
 
     // the actions mask
-    private transient int mask;
+    private final int mask;
 
     /**
      * the actions string.
@@ -151,8 +147,7 @@ public final class ServicePermission extends Permission
         // Note: servicePrincipal can be "@REALM" which means any principal in
         // this realm implies it. action can be "-" which means any
         // action implies it.
-        super(servicePrincipal);
-        init(servicePrincipal, getMask(action));
+       this(servicePrincipal, getMask(action));
     }
 
     /**
@@ -161,14 +156,18 @@ public final class ServicePermission extends Permission
      * Called by ServicePermissionCollection.
      */
     ServicePermission(String servicePrincipal, int mask) {
+        this(servicePrincipal, init(servicePrincipal, mask), null);
+    }
+    
+    private ServicePermission(String servicePrincipal, int mask, Void unused){
         super(servicePrincipal);
-        init(servicePrincipal, mask);
+        this.mask = mask;
     }
 
     /**
      * Initialize the ServicePermission object.
      */
-    private void init(String servicePrincipal, int mask) {
+    private static int init(String servicePrincipal, int mask) {
 
         if (servicePrincipal == null)
                 throw new NullPointerException("service principal can't be null");
@@ -176,7 +175,7 @@ public final class ServicePermission extends Permission
         if ((mask & ALL) != mask)
             throw new IllegalArgumentException("invalid actions mask");
 
-        this.mask = mask;
+        return mask;
     }
 
 
@@ -302,7 +301,7 @@ public final class ServicePermission extends Permission
      * ServicePermissions.
      */
     @Override
-    public PermissionCollection newPermissionCollection() {
+    public PermissionCollection<ServicePermission> newPermissionCollection() {
         return new KrbServicePermissionCollection();
     }
 
@@ -410,52 +409,15 @@ public final class ServicePermission extends Permission
 
         return mask;
     }
-
-
-    /**
-     * WriteObject is called to save the state of the ServicePermission
-     * to a stream. The actions are serialized, and the superclass
-     * takes care of the name.
-     *
-     * @param  s the {@code ObjectOutputStream} to which data is written
-     * @throws IOException if an I/O error occurs
-     */
-    @Serial
-    private void writeObject(java.io.ObjectOutputStream s)
-        throws IOException
-    {
-        // Write out the actions. The superclass takes care of the name
-        // call getActions to make sure actions field is initialized
-        if (actions == null)
-            getActions();
-        s.defaultWriteObject();
-    }
-
-    /**
-     * readObject is called to restore the state of the
-     * ServicePermission from a stream.
-     *
-     * @param  s the {@code ObjectInputStream} from which data is read
-     * @throws IOException if an I/O error occurs
-     * @throws ClassNotFoundException if a serialized class cannot be loaded
-     */
-    @Serial
-    private void readObject(java.io.ObjectInputStream s)
-         throws IOException, ClassNotFoundException
-    {
-        // Read in the action, then initialize the rest
-        s.defaultReadObject();
-        init(getName(),getMask(actions));
-    }
 }
 
 
-final class KrbServicePermissionCollection extends PermissionCollection
-    implements java.io.Serializable {
+final class KrbServicePermissionCollection 
+       extends PermissionCollection<ServicePermission>{
 
     // Key is the service principal, value is the ServicePermission.
     // Not serialized; see serialization section at end of class
-    private transient ConcurrentHashMap<String, Permission> perms;
+    private final ConcurrentHashMap<String, ServicePermission> perms;
 
     public KrbServicePermissionCollection() {
         perms = new ConcurrentHashMap<>();
@@ -478,9 +440,8 @@ final class KrbServicePermissionCollection extends PermissionCollection
         int desired = np.getMask();
 
         if (desired == 0) {
-            for (Permission p: perms.values()) {
-                ServicePermission sp = (ServicePermission)p;
-                if (sp.impliesIgnoreMask(np)) {
+            for (ServicePermission p: perms.values()) {
+                if (p.impliesIgnoreMask(np)) {
                     return true;
                 }
             }
@@ -489,7 +450,7 @@ final class KrbServicePermissionCollection extends PermissionCollection
 
 
         // first, check for wildcard principal
-        ServicePermission x = (ServicePermission)perms.get("*");
+        ServicePermission x = perms.get("*");
         if (x != null) {
             if ((x.getMask() & desired) == desired) {
                 return true;
@@ -497,7 +458,7 @@ final class KrbServicePermissionCollection extends PermissionCollection
         }
 
         // otherwise, check for match on principal
-        x = (ServicePermission)perms.get(np.getName());
+        x = perms.get(np.getName());
         if (x != null) {
             //System.out.println("  trying "+x);
             return (x.getMask() & desired) == desired;
@@ -518,7 +479,7 @@ final class KrbServicePermissionCollection extends PermissionCollection
      *                                has been marked readonly
      */
     @Override
-    public void add(Permission permission) {
+    public void add(ServicePermission permission) {
         if (! (permission instanceof ServicePermission sp))
             throw new IllegalArgumentException("invalid permission: "+
                                                permission);
@@ -530,8 +491,8 @@ final class KrbServicePermissionCollection extends PermissionCollection
         // Add permission to map if it is absent, or replace with new
         // permission if applicable.
         perms.merge(princName, sp, (existingVal, newVal) -> {
-                int oldMask = ((ServicePermission) existingVal).getMask();
-                int newMask = ((ServicePermission) newVal).getMask();
+                int oldMask = existingVal.getMask();
+                int newMask = newVal.getMask();
                 if (oldMask != newMask) {
                     int effective = oldMask | newMask;
                     if (effective == newMask) {
@@ -553,64 +514,7 @@ final class KrbServicePermissionCollection extends PermissionCollection
      * @return an enumeration of all the ServicePermission objects.
      */
     @Override
-    public Enumeration<Permission> elements() {
+    public Enumeration<ServicePermission> elements() {
         return perms.elements();
-    }
-
-    @Serial
-    private static final long serialVersionUID = -4118834211490102011L;
-
-    // Need to maintain serialization interoperability with earlier releases,
-    // which had the serializable field:
-    // private Vector permissions;
-
-    /**
-     * @serialField permissions java.util.Vector
-     *     A list of ServicePermission objects.
-     */
-    @Serial
-    private static final ObjectStreamField[] serialPersistentFields = {
-        new ObjectStreamField("permissions", Vector.class),
-    };
-
-    /**
-     * @serialData "permissions" field (a Vector containing the ServicePermissions).
-     */
-    /*
-     * Writes the contents of the perms field out as a Vector for
-     * serialization compatibility with earlier releases.
-     */
-    @Serial
-    private void writeObject(ObjectOutputStream out) throws IOException {
-        // Don't call out.defaultWriteObject()
-
-        // Write out Vector
-        Vector<Permission> permissions = new Vector<>(perms.values());
-
-        ObjectOutputStream.PutField pfields = out.putFields();
-        pfields.put("permissions", permissions);
-        out.writeFields();
-    }
-
-    /*
-     * Reads in a Vector of ServicePermissions and saves them in the perms field.
-     */
-    @Serial
-    @SuppressWarnings("unchecked")
-    private void readObject(ObjectInputStream in)
-        throws IOException, ClassNotFoundException
-    {
-        // Don't call defaultReadObject()
-
-        // Read in serialized fields
-        ObjectInputStream.GetField gfields = in.readFields();
-
-        // Get the one we want
-        Vector<Permission> permissions =
-                (Vector<Permission>)gfields.get("permissions", null);
-        perms = new ConcurrentHashMap<>(permissions.size());
-        for (Permission perm : permissions) {
-            perms.put(perm.getName(), perm);
-        }
     }
 }

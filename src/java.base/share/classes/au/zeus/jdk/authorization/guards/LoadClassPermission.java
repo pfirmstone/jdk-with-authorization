@@ -39,8 +39,7 @@ import java.security.BasicPermission;
  * 
  * @author Peter Firmstone.
  */
-public class LoadClassPermission extends BasicPermission {
-    private static final long serialVersionUID = 1L;
+public class LoadClassPermission extends BasicPermission<LoadClassPermission> {
     
     /**
      * Creates a LoadClassPermission, with the name "ALLOW".

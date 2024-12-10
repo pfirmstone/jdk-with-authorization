@@ -43,6 +43,7 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.security.PermissionCollection;
 import java.security.Permissions;
+import java.security.Permission;
 import java.security.PrivilegedAction;
 import java.security.PrivilegedActionException;
 import java.security.PrivilegedExceptionAction;
@@ -478,7 +479,7 @@ public final class ObjectStreamClass implements Serializable {
      * Creates a PermissionDomain that grants no permission.
      */
     private ProtectionDomain noPermissionsDomain() {
-        PermissionCollection perms = new Permissions();
+        PermissionCollection<Permission> perms = new Permissions();
         perms.setReadOnly();
         return new ProtectionDomain(null, perms);
     }

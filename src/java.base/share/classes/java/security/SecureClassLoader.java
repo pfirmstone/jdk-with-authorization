@@ -198,7 +198,7 @@ public class SecureClassLoader extends ClassLoader {
      * @return the permissions granted to the codesource.
      *
      */
-    protected PermissionCollection getPermissions(CodeSource codesource)
+    protected PermissionCollection<Permission> getPermissions(CodeSource codesource)
     {
         return new Permissions(); // ProtectionDomain defers the binding
     }
@@ -226,7 +226,7 @@ public class SecureClassLoader extends ClassLoader {
         CodeSourceKey key = new CodeSourceKey(cs);
         ProtectionDomain domain = pdcache.get(key);
         if (domain != null) return domain;
-        PermissionCollection perms
+        PermissionCollection<Permission> perms
                 = SecureClassLoader.this.getPermissions(key.cs);
         ProtectionDomain pd = new ProtectionDomain(
                 key.cs, perms, SecureClassLoader.this, null);

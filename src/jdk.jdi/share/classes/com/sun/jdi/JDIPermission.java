@@ -83,9 +83,7 @@ package com.sun.jdi;
  *
  */
 
-public final class JDIPermission extends java.security.BasicPermission {
-
-    private static final long serialVersionUID = -6988461416938786271L;
+public final class JDIPermission extends java.security.BasicPermission<JDIPermission> {
 
     /**
      * The {@code JDIPermission} class represents access rights to the
@@ -94,10 +92,7 @@ public final class JDIPermission extends java.security.BasicPermission {
      * @throws IllegalArgumentException if the name argument is invalid.
      */
     public JDIPermission(String name) {
-        super(name);
-        if (!name.equals("virtualMachineManager")) {
-            throw new IllegalArgumentException("name: " + name);
-        }
+        this(name, null);
     }
 
     /**
@@ -108,13 +103,21 @@ public final class JDIPermission extends java.security.BasicPermission {
      * @throws IllegalArgumentException if arguments are invalid.
      */
     public JDIPermission(String name, String actions)
-        throws IllegalArgumentException {
+                                        throws IllegalArgumentException {
+        this(check(name, actions), true);
+    }
+    
+    private JDIPermission(String name, boolean unused){
         super(name);
+    }
+    
+    private static String check(String name, String actions){
         if (!name.equals("virtualMachineManager")) {
             throw new IllegalArgumentException("name: " + name);
         }
         if (actions != null && actions.length() > 0) {
             throw new IllegalArgumentException("actions: " + actions);
         }
+        return name;
     }
 }
