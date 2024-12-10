@@ -68,7 +68,7 @@ import java.security.BasicPermission;
  */
 public final class LinkPermission extends BasicPermission<LinkPermission> {
 
-    private String checkName(String name, String actions) {
+    private static String checkName(String name, String actions) {
         if (!name.equals("hard") && !name.equals("symbolic")) {
             throw new IllegalArgumentException("name: " + name);
         }

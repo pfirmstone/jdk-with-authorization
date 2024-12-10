@@ -106,7 +106,7 @@ public class MBeanServerPermission extends BasicPermission<MBeanServerPermission
      * This mask includes implied bits.  So if it has CREATE_MASK then
      * it necessarily has NEW_MASK too.
      */
-    volatile int mask;
+    final int mask;
 
     /** <p>Create a new MBeanServerPermission with the given name.</p>
         <p>This constructor is equivalent to
@@ -140,20 +140,12 @@ public class MBeanServerPermission extends BasicPermission<MBeanServerPermission
      * if arguments are invalid.
      */
     public MBeanServerPermission(String name, String actions) {
-        super(getCanonicalName(parseMask(name)), actions);
-
-        /* It's annoying to have to parse the name twice, but since
-           Permission.getName() is final and since we can't access "this"
-           until after the call to the superclass constructor, there
-           isn't any very clean way to do this.  MBeanServerPermission
-           objects aren't constructed very often, luckily.  */
-        mask = parseMask(name);
-
-        /* Check that actions is a null empty string */
-        if (actions != null && actions.length() > 0)
-            throw new IllegalArgumentException("MBeanServerPermission " +
-                                               "actions must be null: " +
-                                               actions);
+        this(parseMask(name), actions);
+    }
+    
+    private MBeanServerPermission(int mask, String actions){
+        super(getCanonicalName(mask), checkActions(actions));
+        this.mask = mask;
     }
 
     MBeanServerPermission(int mask) {
@@ -171,6 +163,15 @@ public class MBeanServerPermission extends BasicPermission<MBeanServerPermission
         if ((mask & CREATE_MASK) != 0)
             mask |= NEW_MASK;
         return mask;
+    }
+    
+    static String checkActions(String actions){
+        /* Check that actions is a null empty string */
+        if (actions != null && actions.length() > 0)
+            throw new IllegalArgumentException("MBeanServerPermission " +
+                                               "actions must be null: " +
+                                               actions);
+        return actions;
     }
 
     static String getCanonicalName(int mask) {

@@ -126,11 +126,9 @@ public final class ServicePermission extends Permission {
 
     /**
      * the actions string.
-     *
-     * @serial
      */
 
-    private String actions; // Left null as long as possible, then
+    private final String actions; // Left null as long as possible, then
                             // created and re-used in the getAction function.
 
     /**
@@ -162,6 +160,7 @@ public final class ServicePermission extends Permission {
     private ServicePermission(String servicePrincipal, int mask, Void unused){
         super(servicePrincipal);
         this.mask = mask;
+        actions = getActions(this.mask);
     }
 
     /**
@@ -281,9 +280,6 @@ public final class ServicePermission extends Permission {
      */
     @Override
     public String getActions() {
-        if (actions == null)
-            actions = getActions(this.mask);
-
         return actions;
     }
 

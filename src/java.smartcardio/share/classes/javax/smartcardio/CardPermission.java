@@ -113,7 +113,7 @@ public class CardPermission extends Permission {
         S_TRANSMIT_CONTROL,
     };
 
-    private transient int mask;
+    private final int mask;
 
     private final String actions;
 
@@ -135,12 +135,20 @@ public class CardPermission extends Permission {
      *   specification
      */
     public CardPermission(String terminalName, String actions) {
+        this(checkName(terminalName), getMask(actions));
+    }
+    
+    private CardPermission(String terminalName, int mask){
         super(terminalName);
+        this.mask = mask;
+        this.actions = getActions(mask);
+    }
+    
+    private static String checkName(String terminalName){
         if (terminalName == null) {
             throw new NullPointerException();
         }
-        mask = getMask(actions);
-        this.actions = getActions(mask);
+        return terminalName;
     }
 
     private static int getMask(String actions) {

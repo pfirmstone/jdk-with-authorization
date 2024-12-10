@@ -152,8 +152,7 @@ public final class FilePermission extends Permission {
      * the actions string.
     
      */
-    private volatile String actions; // Left null as long as possible, then
-                            // created and re-used in the getAction function.
+    private final String actions; 
 
     // canonicalized dir path. used by the "old" behavior (nb == false).
     // In the case of directories, it is the name "/blah/*" or "/blah/-"
@@ -442,6 +441,7 @@ public final class FilePermission extends Permission {
             this.directory = directoryLocal;
             this.cpath = cpath;
             this.invalid = invalidLocal;
+            this.actions = getActions(mask);
         }
     }
     
@@ -1020,9 +1020,6 @@ public final class FilePermission extends Permission {
      */
     @Override
     public String getActions() {
-        if (actions == null)
-            actions = getActions(this.mask);
-
         return actions;
     }
 

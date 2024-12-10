@@ -91,7 +91,7 @@ package java.lang.management;
  */
 
 public final class ManagementPermission extends 
-        java.security.BasicPermission<ManagementPermission> {
+                        java.security.BasicPermission<ManagementPermission> {
 
     /**
      * Constructs a ManagementPermission with the specified name.
@@ -102,10 +102,7 @@ public final class ManagementPermission extends
      * @throws IllegalArgumentException if <code>name</code> is empty or invalid.
      */
     public ManagementPermission(String name) {
-        super(name);
-        if (!name.equals("control") && !name.equals("monitor")) {
-            throw new IllegalArgumentException("name: " + name);
-        }
+        super(check(name, null));
     }
 
     /**
@@ -119,13 +116,17 @@ public final class ManagementPermission extends
      * if arguments are invalid.
      */
     public ManagementPermission(String name, String actions)
-        throws IllegalArgumentException {
-        super(name);
+                                            throws IllegalArgumentException {
+        super(check(name, actions));
+    }
+    
+    private static String check(String name, String actions){
         if (!name.equals("control") && !name.equals("monitor")) {
             throw new IllegalArgumentException("name: " + name);
         }
         if (actions != null && actions.length() > 0) {
             throw new IllegalArgumentException("actions: " + actions);
         }
+        return name;
     }
 }

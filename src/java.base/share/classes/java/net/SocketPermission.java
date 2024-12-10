@@ -214,7 +214,7 @@ public final class SocketPermission extends Permission
     // port range on host
     private final int[] portrange;
 
-    private transient boolean defaultDeny = false;
+    private volatile boolean defaultDeny = false;
 
     // true if this SocketPermission represents a hostname
     // that failed our reverse mapping heuristic test
