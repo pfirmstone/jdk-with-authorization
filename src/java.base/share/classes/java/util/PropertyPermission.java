@@ -414,17 +414,14 @@ final class PropertyPermissionCollection extends PermissionCollection<PropertyPe
      *
      * @param permission the Permission object to add.
      *
-     * @throws    IllegalArgumentException   if the permission is not a
+     * @throws    ClassCastException   if the permission is not a
      *                                       PropertyPermission
      *
      * @throws    SecurityException   if this PropertyPermissionCollection
      *                                object has been marked readonly
      */
     @Override
-    public void add(PropertyPermission permission) {
-        if (! (permission instanceof PropertyPermission pp))
-            throw new IllegalArgumentException("invalid permission: "+
-                                               permission);
+    public void add(PropertyPermission pp) {
         if (isReadOnly())
             throw new SecurityException(
                 "attempt to add a Permission to a readonly PermissionCollection");
