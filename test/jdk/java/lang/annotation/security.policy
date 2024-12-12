@@ -1,0 +1,4 @@
+grant
+{
+    permission au.zeus.jdk.authorization.guards.LoadClassPermission "ALLOW";
+};

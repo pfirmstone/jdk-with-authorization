@@ -1220,7 +1220,7 @@ public class JSR166TestCase extends TestCase {
         SecurityManager sm = System.getSecurityManager();
         if (sm != null) {
             try {
-                System.setSecurityManager(null);
+                System.setSecurityManager(new PermissiveSecurityManager());
             } catch (SecurityException giveUp) {
                 return;
             }
@@ -1479,7 +1479,7 @@ public class JSR166TestCase extends TestCase {
             } catch (UnsupportedOperationException ok) {
             } finally {
                 try {
-                    System.setSecurityManager(null);
+                    System.setSecurityManager(new PermissiveSecurityManager());
                     Policy.setPolicy(savedPolicy);
                 } catch (Exception ok) {
                 }
@@ -1497,6 +1497,17 @@ public class JSR166TestCase extends TestCase {
             }
         }
     }
+    
+    static class PermissiveSecurityManager extends SecurityManager
+{
+   
+    @Override
+    public void checkPermission(Permission perm) {}
+    
+    @Override
+    public void checkPermission(Permission perm, Object context) { }
+ 
+}
 
     /**
      * Runs a runnable without any permissions.

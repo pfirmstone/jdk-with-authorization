@@ -92,6 +92,7 @@ public class RecordPermissionsTest {
     @BeforeTest
     public void setup() throws Exception {
         assertTrue(System.getSecurityManager() != null);
+        assertFalse(System.getSecurityManager() instanceof PermissiveSecurityManager);
     }
 
     @DataProvider(name = "isRecordScenarios")
@@ -140,7 +141,7 @@ public class RecordPermissionsTest {
     @Test(dataProvider = "allScenarios")
     public void testWithNoSecurityManager(String description,
                                           PrivilegedAction<?> action) {
-        System.setSecurityManager(null);
+        System.setSecurityManager(new PermissiveSecurityManager());
         try {
             AccessController.doPrivileged(action);
         } finally {
@@ -154,6 +155,7 @@ public class RecordPermissionsTest {
                                        PrivilegedAction<?> action) {
         // Run with all permissions, i.e. no further restrictions than test's AllPermission
         assert System.getSecurityManager() != null;
+        assert (!(System.getSecurityManager() instanceof PermissiveSecurityManager));
         AccessController.doPrivileged(action);
     }
 
@@ -162,6 +164,7 @@ public class RecordPermissionsTest {
     public void testWithNoPermissionsPass(String description,
                                           PrivilegedAction<?> action) {
         assert System.getSecurityManager() != null;
+        assert (!(System.getSecurityManager() instanceof PermissiveSecurityManager));
         AccessController.doPrivileged(action, noPermissions());
     }
 
@@ -177,6 +180,7 @@ public class RecordPermissionsTest {
                                           PrivilegedAction<?> action) {
         // Run with NO permissions, i.e. expect SecurityException
         assert System.getSecurityManager() != null;
+        assert (!(System.getSecurityManager() instanceof PermissiveSecurityManager));
         SecurityException se = expectThrows(SE, () -> AccessController.doPrivileged(action, noPermissions()));
         out.println("Got expected SecurityException: " + se);
     }
@@ -190,6 +194,7 @@ public class RecordPermissionsTest {
                                            PrivilegedAction<?> action) {
         // Run with minimal permissions, i.e. just what is required
         assert System.getSecurityManager() != null;
+        assert (!(System.getSecurityManager() instanceof PermissiveSecurityManager));
         AccessControlContext minimalACC = withPermissions(
                 new RuntimePermission("accessDeclaredMembers"),
                 new RuntimePermission("accessClassInPackage.*")
@@ -208,5 +213,14 @@ public class RecordPermissionsTest {
 
     static AccessControlContext noPermissions() {
         return withPermissions(/*empty*/);
+    }
+    
+    class PermissiveSecurityManager extends SecurityManager
+    {
+        @Override
+        public void checkPermission(Permission perm) {}
+
+        @Override
+        public void checkPermission(Permission perm, Object context) { }
     }
 }

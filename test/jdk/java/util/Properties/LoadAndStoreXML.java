@@ -79,6 +79,17 @@ public class LoadAndStoreXML {
             return perms.implies(p);
         }
     }
+    
+    static class PermissiveSecurityManager extends SecurityManager
+    {
+
+        @Override
+        public void checkPermission(Permission perm) {}
+
+        @Override
+        public void checkPermission(Permission perm, Object context) { }
+
+    }
 
     /**
      * A {@code ByteArrayInputStream} that allows testing if the
@@ -291,6 +302,8 @@ public class LoadAndStoreXML {
         // re-run sanity test with security manager
         Policy orig = Policy.getPolicy();
         Policy p = new SimplePolicy(new RuntimePermission("setSecurityManager"),
+                                    new RuntimePermission("createSecurityManager"),
+                                    new RuntimePermission("exitVM.97"),
                                     new PropertyPermission("line.separator", "read"));
         Policy.setPolicy(p);
         System.setSecurityManager(new SecurityManager());
@@ -298,7 +311,7 @@ public class LoadAndStoreXML {
             testLoadAndStore("UTF-8", false);
         } finally {
             // turn off security manager and restore policy
-            System.setSecurityManager(null);
+            System.setSecurityManager(new PermissiveSecurityManager());
             Policy.setPolicy(orig);
         }
 

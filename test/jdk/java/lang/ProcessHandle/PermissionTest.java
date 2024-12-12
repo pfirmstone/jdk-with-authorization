@@ -33,6 +33,7 @@ import java.security.ProtectionDomain;
 import java.security.SecurityPermission;
 import java.util.Arrays;
 import java.util.PropertyPermission;
+import au.zeus.jdk.authorization.guards.LoadClassPermission;
 
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
@@ -181,9 +182,17 @@ public class PermissionTest {
 
     @AfterClass
     public void tearDownClass() throws Exception {
+        sm = new PermissiveSecurityManager();
         System.setSecurityManager(sm);
         Policy.setPolicy(policy);
     }
+}
+
+class PermissiveSecurityManager extends SecurityManager {
+    @Override
+    public void checkPermission(Permission perm) {}
+    @Override
+    public void checkPermission(Permission perm, Object context) { }
 }
 
 class TestPolicy extends Policy {
@@ -221,6 +230,7 @@ class TestPolicy extends Policy {
         permissions.add(new PropertyPermission("testng.timezone", "read"));
         permissions.add(new ReflectPermission("suppressAccessChecks"));
         permissions.add(new FilePermission("<<ALL FILES>>", "execute"));
+        permissions.add(new LoadClassPermission());
     }
 
     public TestPolicy(Permission... ps) {
