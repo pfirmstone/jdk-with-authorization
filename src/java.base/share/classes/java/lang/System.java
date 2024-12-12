@@ -64,6 +64,7 @@ import java.util.PropertyPermission;
 import java.util.ResourceBundle;
 import java.util.Set;
 import java.util.concurrent.Executor;
+import java.util.concurrent.ScheduledExecutorService;
 import java.util.function.Supplier;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Stream;
@@ -2724,6 +2725,10 @@ public final class System {
 
             public Executor virtualThreadDefaultScheduler() {
                 return VirtualThread.defaultScheduler();
+            }
+
+            public Stream<ScheduledExecutorService> virtualThreadDelayedTaskSchedulers() {
+                return VirtualThread.delayedTaskSchedulers();
             }
 
             public StackWalker newStackWalkerInstance(Set<StackWalker.Option> options,

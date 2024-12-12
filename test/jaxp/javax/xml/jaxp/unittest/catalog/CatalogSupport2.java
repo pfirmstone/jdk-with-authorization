@@ -52,7 +52,7 @@ import org.xml.sax.SAXParseException;
 
 /*
  * @test
- * @bug 8158084 8162438 8162442 8163535 8166220
+ * @bug 8158084 8162438 8162442 8163535 8166220 8344800
  * @library /javax/xml/jaxp/libs /javax/xml/jaxp/unittest
  * @run testng/othervm -DrunSecMngr=true -Djava.security.manager=allow catalog.CatalogSupport2
  * @run testng/othervm catalog.CatalogSupport2
@@ -237,7 +237,7 @@ public class CatalogSupport2 extends CatalogSupportBase {
 
         return new Object[][]{
             // for resolving DTD in xsd
-            {false, true, xml_catalog, xsd_xmlSchema, null},
+            {false, true, xml_catalog, xsd_val_test_dtd, null},
             // for resolving xsd import
             {false, true, xml_catalog, xsd_xmlSchema_import, null},
             // for resolving xsd include

@@ -37,18 +37,20 @@ import javax.xml.transform.TransformerFactory;
 import javax.xml.transform.URIResolver;
 import javax.xml.transform.stream.StreamResult;
 import javax.xml.transform.stream.StreamSource;
-
 import org.testng.Assert;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Listeners;
 import org.testng.annotations.Test;
+import static org.testng.Assert.assertEquals;
+import static jaxp.library.JAXPTestUtilities.clearSystemProperty;
+import static jaxp.library.JAXPTestUtilities.setSystemProperty;
+import static jaxp.library.JAXPTestUtilities.getSystemProperty;
 
 import static org.testng.Assert.assertEquals;
 import static jaxp.library.JAXPTestUtilities.runWithAllPerm;
 import static jaxp.library.JAXPTestUtilities.clearSystemProperty;
 import static jaxp.library.JAXPTestUtilities.setSystemProperty;
 import static jaxp.library.JAXPTestUtilities.tryRunWithTmpPermission;
-import static jaxp.library.JAXPTestUtilities.getSystemProperty;
 
 /*
  * @test
