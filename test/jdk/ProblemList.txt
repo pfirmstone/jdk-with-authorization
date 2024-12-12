@@ -524,6 +524,7 @@ java/lang/Class/forName/modules/TestDriver.java				generic-all
 java/lang/ClassLoader/securityManager/ClassLoaderTest.java		generic-all
 java/lang/SecurityManager/modules/CustomSecurityManagerTest.java	generic-all
 java/lang/constant/methodTypeDesc/ResolveConstantDesc.java		generic-all
+java/lang/invoke/lambda/LogGeneratedClassesTest.java                    generic-all
 
 ############################################################################
 
