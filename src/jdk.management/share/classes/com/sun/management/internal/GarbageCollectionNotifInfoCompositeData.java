@@ -39,6 +39,7 @@ import java.lang.reflect.Field;
 import java.util.HashMap;
 import sun.management.LazyCompositeData;
 import static sun.management.LazyCompositeData.getString;
+import sun.management.Util;
 
 /**
  * A CompositeData for GarbageCollectionNotificationInfo for the local management support.
