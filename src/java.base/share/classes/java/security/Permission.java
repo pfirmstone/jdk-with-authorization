@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 1997, 2023, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 1997, 2024, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -26,9 +26,12 @@
 package java.security;
 
 /**
- * Abstract class for representing access to a system resource.All permissions have a name (whose interpretation depends on the subclass),
- as well as abstract functions for defining the semantics of the
- particular Permission subclass.<p>Most {@code Permission} objects also include an "actions" list that
+ * Abstract class for representing access to a system resource.
+ * All permissions have a name (whose interpretation depends 
+ * on the subclass), as well as abstract functions for defining 
+ * the semantics of the particular Permission subclass.
+ * 
+ * <p>Most {@code Permission} objects also include an "actions" list that
  * tells the actions that are permitted for the object.  For example,
  * for a {@code java.io.FilePermission} object, the permission name is
  * the pathname of a file (or directory), and the actions list
