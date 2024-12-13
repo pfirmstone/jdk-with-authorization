@@ -328,10 +328,7 @@ package java.security;
  * @since 1.2
  */
 
-public final class SecurityPermission extends BasicPermission {
-
-    @java.io.Serial
-    private static final long serialVersionUID = 5236109936224050470L;
+public final class SecurityPermission extends BasicPermission<SecurityPermission> {
 
     /**
      * Creates a new {@code SecurityPermission} with the specified name.

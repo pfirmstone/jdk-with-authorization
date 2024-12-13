@@ -113,11 +113,8 @@ public class CardPermission extends Permission {
         S_TRANSMIT_CONTROL,
     };
 
-    private transient int mask;
+    private final int mask;
 
-    /**
-     * @serial
-     */
     private final String actions;
 
     /**
@@ -138,12 +135,20 @@ public class CardPermission extends Permission {
      *   specification
      */
     public CardPermission(String terminalName, String actions) {
+        this(checkName(terminalName), getMask(actions));
+    }
+    
+    private CardPermission(String terminalName, int mask){
         super(terminalName);
+        this.mask = mask;
+        this.actions = getActions(mask);
+    }
+    
+    private static String checkName(String terminalName){
         if (terminalName == null) {
             throw new NullPointerException();
         }
-        mask = getMask(actions);
-        this.actions = getActions(mask);
+        return terminalName;
     }
 
     private static int getMask(String actions) {
@@ -278,17 +283,5 @@ public class CardPermission extends Permission {
      */
     public int hashCode() {
         return getName().hashCode() + 31 * mask;
-    }
-
-    private void writeObject(ObjectOutputStream s) throws IOException {
-        // Write out the actions. The superclass takes care of the name.
-        s.defaultWriteObject();
-    }
-
-    private void readObject(ObjectInputStream s)
-            throws IOException, ClassNotFoundException {
-        // Read in the actions, then restore the mask.
-        s.defaultReadObject();
-        mask = getMask(actions);
     }
 }

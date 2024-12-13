@@ -36,7 +36,7 @@ import jdk.test.whitebox.parser.DiagnosticCommand;
 
 public class WhiteBox {
   @SuppressWarnings("serial")
-  public static class WhiteBoxPermission extends BasicPermission {
+  public static class WhiteBoxPermission extends BasicPermission<WhiteBoxPermission> {
     public WhiteBoxPermission(String s) {
       super(s);
     }

@@ -32,8 +32,7 @@ import java.security.BasicPermission;
  * 
  * @author Peter Firmstone.
  */
-public class SerialObjectPermission extends BasicPermission {
-    private final static long serialVersionUID = 1L;
+public class SerialObjectPermission extends BasicPermission<SerialObjectPermission> {
 
     /**
      * 

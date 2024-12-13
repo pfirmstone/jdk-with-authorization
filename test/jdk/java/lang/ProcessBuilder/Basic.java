@@ -73,6 +73,7 @@ import static java.lang.Boolean.TRUE;
 import static java.util.AbstractMap.SimpleImmutableEntry;
 
 import jdk.test.lib.Platform;
+import jdk.test.lib.security.PermissiveSecurityManager;
 
 public class Basic {
 
@@ -88,6 +89,8 @@ public class Basic {
     /* Used for regex String matching for long error messages */
     static final String PERMISSION_DENIED_ERROR_MSG = "(Permission denied|error=13)";
     static final String NO_SUCH_FILE_ERROR_MSG = "(No such file|error=2)";
+    
+    static final PermissiveSecurityManager nullSM = new PermissiveSecurityManager();
 
     /**
      * Returns the number of milliseconds since time given by
@@ -1229,6 +1232,7 @@ public class Basic {
 
         final Policy policy = new Policy();
         Policy.setPolicy(policy);
+        
         System.setSecurityManager(new SecurityManager());
         try {
             final Permission xPermission
@@ -1282,7 +1286,7 @@ public class Basic {
 
         } finally {
             policy.setPermissions(new RuntimePermission("setSecurityManager"));
-            System.setSecurityManager(null);
+            System.setSecurityManager(nullSM);
             tmpFile.delete();
             ifile.delete();
             ofile.delete();
@@ -2427,7 +2431,7 @@ public class Basic {
 
         // Restore "normal" state without a security manager
         policy.setPermissions(new RuntimePermission("setSecurityManager"));
-        System.setSecurityManager(null);
+        System.setSecurityManager(nullSM);
 
         //----------------------------------------------------------------
         // Check that Process.isAlive() &

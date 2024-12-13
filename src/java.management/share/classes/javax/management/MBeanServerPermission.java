@@ -66,8 +66,7 @@ import java.util.StringTokenizer;
  *
  * @since 1.5
  */
-public class MBeanServerPermission extends BasicPermission {
-    private static final long serialVersionUID = -5661980843569388590L;
+public class MBeanServerPermission extends BasicPermission<MBeanServerPermission> {
 
     private static final int
         CREATE = 0,
@@ -107,7 +106,7 @@ public class MBeanServerPermission extends BasicPermission {
      * This mask includes implied bits.  So if it has CREATE_MASK then
      * it necessarily has NEW_MASK too.
      */
-    transient int mask;
+    final int mask;
 
     /** <p>Create a new MBeanServerPermission with the given name.</p>
         <p>This constructor is equivalent to
@@ -141,31 +140,17 @@ public class MBeanServerPermission extends BasicPermission {
      * if arguments are invalid.
      */
     public MBeanServerPermission(String name, String actions) {
-        super(getCanonicalName(parseMask(name)), actions);
-
-        /* It's annoying to have to parse the name twice, but since
-           Permission.getName() is final and since we can't access "this"
-           until after the call to the superclass constructor, there
-           isn't any very clean way to do this.  MBeanServerPermission
-           objects aren't constructed very often, luckily.  */
-        mask = parseMask(name);
-
-        /* Check that actions is a null empty string */
-        if (actions != null && actions.length() > 0)
-            throw new IllegalArgumentException("MBeanServerPermission " +
-                                               "actions must be null: " +
-                                               actions);
+        this(parseMask(name), actions);
+    }
+    
+    private MBeanServerPermission(int mask, String actions){
+        super(getCanonicalName(mask), checkActions(actions));
+        this.mask = mask;
     }
 
     MBeanServerPermission(int mask) {
         super(getCanonicalName(mask));
         this.mask = impliedMask(mask);
-    }
-
-    private void readObject(ObjectInputStream in)
-            throws IOException, ClassNotFoundException {
-        in.defaultReadObject();
-        mask = parseMask(getName());
     }
 
     static int simplifyMask(int mask) {
@@ -178,6 +163,15 @@ public class MBeanServerPermission extends BasicPermission {
         if ((mask & CREATE_MASK) != 0)
             mask |= NEW_MASK;
         return mask;
+    }
+    
+    static String checkActions(String actions){
+        /* Check that actions is a null empty string */
+        if (actions != null && actions.length() > 0)
+            throw new IllegalArgumentException("MBeanServerPermission " +
+                                               "actions must be null: " +
+                                               actions);
+        return actions;
     }
 
     static String getCanonicalName(int mask) {
@@ -301,7 +295,7 @@ public class MBeanServerPermission extends BasicPermission {
         return (this.mask == that.mask);
     }
 
-    public PermissionCollection newPermissionCollection() {
+    public PermissionCollection<MBeanServerPermission> newPermissionCollection() {
         return new MBeanServerPermissionCollection();
     }
 }
@@ -330,7 +324,7 @@ public class MBeanServerPermission extends BasicPermission {
  * implementation from defining a PermissionCollection there with an
  * optimized "implies" method.
  */
-class MBeanServerPermissionCollection extends PermissionCollection {
+class MBeanServerPermissionCollection extends PermissionCollection<MBeanServerPermission> {
     /** @serial Null if no permissions in collection, otherwise a
         single permission that is the union of all permissions that
         have been added.  */
@@ -338,7 +332,7 @@ class MBeanServerPermissionCollection extends PermissionCollection {
 
     private static final long serialVersionUID = -5661980843569388590L;
 
-    public synchronized void add(Permission permission) {
+    public synchronized void add(MBeanServerPermission permission) {
         if (!(permission instanceof MBeanServerPermission)) {
             final String msg =
                 "Permission not an MBeanServerPermission: " + permission;
@@ -346,7 +340,7 @@ class MBeanServerPermissionCollection extends PermissionCollection {
         }
         if (isReadOnly())
             throw new SecurityException("Read-only permission collection");
-        MBeanServerPermission mbsp = (MBeanServerPermission) permission;
+        MBeanServerPermission mbsp = permission;
         if (collectionPermission == null)
             collectionPermission = mbsp;
         else if (!collectionPermission.implies(permission)) {
@@ -360,12 +354,12 @@ class MBeanServerPermissionCollection extends PermissionCollection {
                 collectionPermission.implies(permission));
     }
 
-    public synchronized Enumeration<Permission> elements() {
-        Set<Permission> set;
+    public synchronized Enumeration<MBeanServerPermission> elements() {
+        Set<MBeanServerPermission> set;
         if (collectionPermission == null)
             set = Collections.emptySet();
         else
-            set = Collections.singleton((Permission) collectionPermission);
+            set = Collections.singleton( collectionPermission);
         return Collections.enumeration(set);
     }
 }

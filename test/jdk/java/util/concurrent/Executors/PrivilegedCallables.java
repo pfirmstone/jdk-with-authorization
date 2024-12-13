@@ -25,7 +25,7 @@
  * @test
  * @bug 6552961 6558429
  * @summary Test privilegedCallable, privilegedCallableUsingCurrentClassLoader
- * @run main/othervm -Djava.security.manager=allow PrivilegedCallables
+ * @run main/othervm/policy=security.policy -Djava.security.manager=allow PrivilegedCallables
  * @author Martin Buchholz
  */
 
@@ -43,6 +43,16 @@ import java.util.Random;
 import java.util.concurrent.Callable;
 
 public class PrivilegedCallables {
+    class PermissiveSecurityManager extends SecurityManager
+    {
+        @Override
+        public void checkPermission(Permission perm) {}
+
+        @Override
+        public void checkPermission(Permission perm, Object context) { }
+    }
+    
+    
     Callable<Integer> real;
 
     final Callable<Integer> realCaller = new Callable<>() {
@@ -115,7 +125,7 @@ public class PrivilegedCallables {
                new F() {void f(){ privilegedThreadFactory(); }});
 
         policy.setPermissions(new RuntimePermission("setSecurityManager"));
-        System.setSecurityManager(null);
+        System.setSecurityManager(new PermissiveSecurityManager());
     }
 
     void testPrivileged() {

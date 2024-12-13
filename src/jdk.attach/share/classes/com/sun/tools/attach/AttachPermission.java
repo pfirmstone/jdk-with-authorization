@@ -82,10 +82,8 @@ package com.sun.tools.attach;
  * @since 1.6
  */
 
-public final class AttachPermission extends java.security.BasicPermission {
-
-    /** use serialVersionUID for interoperability */
-    static final long serialVersionUID = -4619447669752976181L;
+public final class AttachPermission 
+        extends java.security.BasicPermission<AttachPermission> {
 
     /**
      * Constructs a new AttachPermission object.
@@ -97,10 +95,7 @@ public final class AttachPermission extends java.security.BasicPermission {
      * @throws IllegalArgumentException if the name is invalid.
      */
     public AttachPermission(String name) {
-        super(name);
-        if (!name.equals("attachVirtualMachine") && !name.equals("createAttachProvider")) {
-            throw new IllegalArgumentException("name: " + name);
-        }
+        super(check(name, null));
     }
 
     /**
@@ -116,12 +111,16 @@ public final class AttachPermission extends java.security.BasicPermission {
      * @throws IllegalArgumentException if arguments are invalid.
      */
     public AttachPermission(String name, String actions) {
-        super(name);
+        super(check(name, actions));
+    }
+    
+    private static String check(String name, String actions){
         if (!name.equals("attachVirtualMachine") && !name.equals("createAttachProvider")) {
             throw new IllegalArgumentException("name: " + name);
         }
         if (actions != null && actions.length() > 0) {
             throw new IllegalArgumentException("actions: " + actions);
         }
+        return name;
     }
 }

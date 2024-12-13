@@ -58,6 +58,7 @@ public class AccessControlException extends SecurityException {
     /**
      * The permission that caused the exception to be thrown.
      */
+    @SuppressWarnings("serial")
     private Permission perm;
 
     /**

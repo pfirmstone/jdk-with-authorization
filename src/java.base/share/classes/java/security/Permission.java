@@ -26,12 +26,9 @@
 package java.security;
 
 /**
- * Abstract class for representing access to a system resource.
- * All permissions have a name (whose interpretation depends on the subclass),
- * as well as abstract functions for defining the semantics of the
- * particular Permission subclass.
- *
- * <p>Most {@code Permission} objects also include an "actions" list that
+ * Abstract class for representing access to a system resource.All permissions have a name (whose interpretation depends on the subclass),
+ as well as abstract functions for defining the semantics of the
+ particular Permission subclass.<p>Most {@code Permission} objects also include an "actions" list that
  * tells the actions that are permitted for the object.  For example,
  * for a {@code java.io.FilePermission} object, the permission name is
  * the pathname of a file (or directory), and the actions list
@@ -63,10 +60,7 @@ package java.security;
  * @since 1.2
  */
 
-public abstract class Permission implements Guard, java.io.Serializable {
-
-    @java.io.Serial
-    private static final long serialVersionUID = -5636570222231596674L;
+public abstract class Permission implements Guard {
 
     /**
      * The permission name.
@@ -102,6 +96,7 @@ public abstract class Permission implements Guard, java.io.Serializable {
      * @see SecurityManager#checkPermission
      *
      */
+    @Override
     public void checkGuard(Object object) throws SecurityException {
         @SuppressWarnings("removal")
         SecurityManager sm = System.getSecurityManager();
@@ -214,8 +209,7 @@ public abstract class Permission implements Guard, java.io.Serializable {
      * @return a new {@code PermissionCollection} object for this type of
      * {@code Permission}, or {@code null} if one is not defined.
      */
-
-    public PermissionCollection newPermissionCollection() {
+    public PermissionCollection<? extends Permission> newPermissionCollection() {
         return null;
     }
 
@@ -227,6 +221,7 @@ public abstract class Permission implements Guard, java.io.Serializable {
      *
      * @return information about this {@code Permission}.
      */
+    @Override
     public String toString() {
         String actions = getActions();
         if (actions == null || actions.isEmpty()) { // OPTIONAL

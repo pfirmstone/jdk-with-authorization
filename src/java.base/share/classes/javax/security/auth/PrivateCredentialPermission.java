@@ -105,24 +105,10 @@ import sun.security.util.ResourcesMgr;
  */
 public final class PrivateCredentialPermission extends Permission {
 
-    @java.io.Serial
-    private static final long serialVersionUID = 5284372143517237068L;
-
     private static final CredOwner[] EMPTY_PRINCIPALS = new CredOwner[0];
 
-    /**
-     * @serial
-     */
-    private String credentialClass;
-
-    /**
-     * @serial The Principals associated with this permission.
-     *          The set contains elements of type,
-     *          {@code PrivateCredentialPermission.CredOwner}.
-     */
-    @SuppressWarnings("serial") // Not statically typed as Serializable
-    private Set<Principal> principals;  // ignored - kept around for compatibility
-    private transient CredOwner[] credOwners;
+    private final String credentialClass;
+    private final CredOwner[] credOwners;
 
     /**
      * Create a new {@code PrivateCredentialPermission}
@@ -135,7 +121,7 @@ public final class PrivateCredentialPermission extends Permission {
         this.credentialClass = credentialClass;
 
         synchronized(principals) {
-            if (principals.size() == 0) {
+            if (principals.isEmpty()) {
                 this.credOwners = EMPTY_PRINCIPALS;
             } else {
                 this.credOwners = new CredOwner[principals.size()];
@@ -163,12 +149,13 @@ public final class PrivateCredentialPermission extends Permission {
      *          to the correct syntax or if {@code actions} is not "read".
      */
     public PrivateCredentialPermission(String name, String actions) {
-        super(name);
-
-        if (!"read".equalsIgnoreCase(actions))
-            throw new IllegalArgumentException
-                (ResourcesMgr.getString("actions.can.only.be.read."));
-        init(name);
+        this(new Init(name, actions));
+    }
+    
+    private PrivateCredentialPermission(Init i){
+        super(i.name);
+        credentialClass = i.credentialClass;
+        credOwners = i.credOwners;
     }
 
     /**
@@ -235,6 +222,7 @@ public final class PrivateCredentialPermission extends Permission {
      * @return true if this {@code PrivateCredentialPermission} implies
      * the specified {@code Permission}, false if not.
      */
+    @Override
     public boolean implies(Permission p) {
         if (!(p instanceof PrivateCredentialPermission that))
             return false;
@@ -285,6 +273,7 @@ public final class PrivateCredentialPermission extends Permission {
      *
      * @return the actions (always returns "read").
      */
+    @Override
     public String getActions() {
         return "read";
     }
@@ -297,102 +286,113 @@ public final class PrivateCredentialPermission extends Permission {
      *
      * @return null in all cases.
      */
-    public PermissionCollection newPermissionCollection() {
+    @Override
+    public PermissionCollection<PrivateCredentialPermission> newPermissionCollection() {
         return null;
     }
 
-    private void init(String name) {
+    private static class Init{
+            
+        private String credentialClass, name;
+        CredOwner[] credOwners;
+        
+        private Init(String name, String actions) {
+            
+            if (name == null || name.trim().isEmpty()) {
+                throw new IllegalArgumentException("invalid empty name");
+            }
+            if (!"read".equalsIgnoreCase(actions))
+                throw new IllegalArgumentException
+                    (ResourcesMgr.getString("actions.can.only.be.read."));
+            this.name = name;
 
-        if (name == null || name.trim().isEmpty()) {
-            throw new IllegalArgumentException("invalid empty name");
-        }
+            ArrayList<CredOwner> pList = new ArrayList<>();
+            StringTokenizer tokenizer = new StringTokenizer(name, " ", true);
+            String principalClass;
+            String principalName;
 
-        ArrayList<CredOwner> pList = new ArrayList<>();
-        StringTokenizer tokenizer = new StringTokenizer(name, " ", true);
-        String principalClass;
-        String principalName;
-
-        // get the Credential Class
-        credentialClass = tokenizer.nextToken();
-
-        if (!tokenizer.hasMoreTokens()) {
-            MessageFormat form = new MessageFormat(ResourcesMgr.getString
-                ("permission.name.name.syntax.invalid."));
-            Object[] source = {name};
-            throw new IllegalArgumentException
-                (form.format(source) + ResourcesMgr.getString
-                        ("Credential.Class.not.followed.by.a.Principal.Class.and.Name"));
-        }
-
-        while (tokenizer.hasMoreTokens()) {
-
-            // skip delimiter
-            tokenizer.nextToken();
-
-            // get the Principal Class
-            principalClass = tokenizer.nextToken();
+            // get the Credential Class
+            credentialClass = tokenizer.nextToken();
 
             if (!tokenizer.hasMoreTokens()) {
                 MessageFormat form = new MessageFormat(ResourcesMgr.getString
-                        ("permission.name.name.syntax.invalid."));
+                    ("permission.name.name.syntax.invalid."));
                 Object[] source = {name};
                 throw new IllegalArgumentException
-                        (form.format(source) + ResourcesMgr.getString
-                        ("Principal.Class.not.followed.by.a.Principal.Name"));
+                    (form.format(source) + ResourcesMgr.getString
+                            ("Credential.Class.not.followed.by.a.Principal.Class.and.Name"));
             }
 
-            // skip delimiter
-            tokenizer.nextToken();
+            while (tokenizer.hasMoreTokens()) {
 
-            // get the Principal Name
-            principalName = tokenizer.nextToken();
+                // skip delimiter
+                tokenizer.nextToken();
 
-            if (!principalName.startsWith("\"")) {
-                MessageFormat form = new MessageFormat(ResourcesMgr.getString
-                        ("permission.name.name.syntax.invalid."));
-                Object[] source = {name};
-                throw new IllegalArgumentException
-                        (form.format(source) + ResourcesMgr.getString
-                        ("Principal.Name.must.be.surrounded.by.quotes"));
-            }
+                // get the Principal Class
+                principalClass = tokenizer.nextToken();
 
-            if (!principalName.endsWith("\"")) {
+                if (!tokenizer.hasMoreTokens()) {
+                    MessageFormat form = new MessageFormat(ResourcesMgr.getString
+                            ("permission.name.name.syntax.invalid."));
+                    Object[] source = {name};
+                    throw new IllegalArgumentException
+                            (form.format(source) + ResourcesMgr.getString
+                            ("Principal.Class.not.followed.by.a.Principal.Name"));
+                }
 
-                // we have a name with spaces in it --
-                // keep parsing until we find the end quote,
-                // and keep the spaces in the name
+                // skip delimiter
+                tokenizer.nextToken();
 
-                while (tokenizer.hasMoreTokens()) {
-                    principalName = principalName + tokenizer.nextToken();
-                    if (principalName.endsWith("\""))
-                        break;
+                // get the Principal Name
+                principalName = tokenizer.nextToken();
+
+                if (!principalName.startsWith("\"")) {
+                    MessageFormat form = new MessageFormat(ResourcesMgr.getString
+                            ("permission.name.name.syntax.invalid."));
+                    Object[] source = {name};
+                    throw new IllegalArgumentException
+                            (form.format(source) + ResourcesMgr.getString
+                            ("Principal.Name.must.be.surrounded.by.quotes"));
                 }
 
                 if (!principalName.endsWith("\"")) {
-                    MessageFormat form = new MessageFormat
-                        (ResourcesMgr.getString
-                        ("permission.name.name.syntax.invalid."));
-                    Object[] source = {name};
-                    throw new IllegalArgumentException
-                        (form.format(source) + ResourcesMgr.getString
-                                ("Principal.Name.missing.end.quote"));
+
+                    // we have a name with spaces in it --
+                    // keep parsing until we find the end quote,
+                    // and keep the spaces in the name
+
+                    while (tokenizer.hasMoreTokens()) {
+                        principalName = principalName + tokenizer.nextToken();
+                        if (principalName.endsWith("\""))
+                            break;
+                    }
+
+                    if (!principalName.endsWith("\"")) {
+                        MessageFormat form = new MessageFormat
+                            (ResourcesMgr.getString
+                            ("permission.name.name.syntax.invalid."));
+                        Object[] source = {name};
+                        throw new IllegalArgumentException
+                            (form.format(source) + ResourcesMgr.getString
+                                    ("Principal.Name.missing.end.quote"));
+                    }
                 }
+
+                principalName = principalName.substring
+                                            (1, principalName.length() - 1);
+
+                if (principalClass.equals("*") &&
+                    !principalName.equals("*")) {
+                        throw new IllegalArgumentException(ResourcesMgr.getString
+                            ("PrivateCredentialPermission.Principal.Class.can.not.be.a.wildcard.value.if.Principal.Name.is.not.a.wildcard.value"));
+                }
+
+                pList.add(new CredOwner(principalClass, principalName));
             }
 
-            principalName = principalName.substring
-                                        (1, principalName.length() - 1);
-
-            if (principalClass.equals("*") &&
-                !principalName.equals("*")) {
-                    throw new IllegalArgumentException(ResourcesMgr.getString
-                        ("PrivateCredentialPermission.Principal.Class.can.not.be.a.wildcard.value.if.Principal.Name.is.not.a.wildcard.value"));
-            }
-
-            pList.add(new CredOwner(principalClass, principalName));
+            this.credOwners = new CredOwner[pList.size()];
+            pList.toArray(this.credOwners);
         }
-
-        this.credOwners = new CredOwner[pList.size()];
-        pList.toArray(this.credOwners);
     }
 
     private boolean impliesCredentialClass(String thisC, String thatC) {
@@ -443,35 +443,6 @@ public final class PrivateCredentialPermission extends Permission {
             }
         }
         return true;
-    }
-
-    /**
-     * Reads this object from a stream (i.e., deserializes it)
-     *
-     * @param  s the {@code ObjectInputStream} from which data is read
-     * @throws IOException if an I/O error occurs
-     * @throws ClassNotFoundException if a serialized class cannot be loaded
-     */
-    @java.io.Serial
-    private void readObject(java.io.ObjectInputStream s) throws
-                                        IOException,
-                                        ClassNotFoundException {
-
-        s.defaultReadObject();
-
-        // perform new initialization from the permission name
-
-        if (getName().indexOf(' ') == -1 && getName().indexOf('"') == -1) {
-
-            // name only has a credential class specified
-            credentialClass = getName();
-            credOwners = EMPTY_PRINCIPALS;
-
-        } else {
-
-            // perform regular initialization
-            init(getName());
-        }
     }
 
     /**

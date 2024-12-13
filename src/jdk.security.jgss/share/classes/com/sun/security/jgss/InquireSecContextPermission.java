@@ -37,8 +37,8 @@ import java.security.BasicPermission;
  *
  * @since 1.7
  */
-public final class InquireSecContextPermission extends BasicPermission {
-    private static final long serialVersionUID = -7131173349668647297L;
+public final class InquireSecContextPermission 
+                    extends BasicPermission<InquireSecContextPermission> {
 
     /**
      * Constructs a new {@code InquireSecContextPermission} object with

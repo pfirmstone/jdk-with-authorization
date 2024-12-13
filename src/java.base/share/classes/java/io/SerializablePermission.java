@@ -26,9 +26,6 @@
 package java.io;
 
 import java.security.*;
-import java.util.Enumeration;
-import java.util.Hashtable;
-import java.util.StringTokenizer;
 
 /**
  * This class is for Serializable permissions. A SerializablePermission
@@ -99,16 +96,8 @@ import java.util.StringTokenizer;
 
 /* code was borrowed originally from java.lang.RuntimePermission. */
 
-public final class SerializablePermission extends BasicPermission {
-
-    @java.io.Serial
-    private static final long serialVersionUID = 8537212141160296410L;
-
-    /**
-     * @serial
-     */
-    private String actions;
-
+public final class SerializablePermission extends BasicPermission<SerializablePermission> {
+  
     /**
      * Creates a new SerializablePermission with the specified name.
      * The name is the symbolic name of the SerializablePermission, such as

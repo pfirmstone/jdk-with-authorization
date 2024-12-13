@@ -77,10 +77,7 @@ package java.lang.reflect;
  * @since 1.2
  */
 public final
-class ReflectPermission extends java.security.BasicPermission {
-
-    @java.io.Serial
-    private static final long serialVersionUID = 7412737110241507485L;
+class ReflectPermission extends java.security.BasicPermission<ReflectPermission> {
 
     /**
      * Constructs a ReflectPermission with the specified name.

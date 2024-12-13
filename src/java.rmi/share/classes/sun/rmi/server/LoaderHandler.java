@@ -994,12 +994,19 @@ public final class LoaderHandler {
         /*
          * The approach used here is taken from the similar method
          * getAccessControlContext() in the sun.applet.AppletPanel class.
+         *
+         * Following Applet design isn't the best idea, as it introduces the
+         * potential for URL injection attacks, in case URL's aren't 
+         * sufficiently scrutinized.
+         * 
+         * The static permissions granted below have been commented out, 
+         * these can be granted dynamically by policy.
          */
         // begin with permissions granted to all code in current policy
-        PermissionCollection perms =
+        PermissionCollection<Permission> perms =
             java.security.AccessController.doPrivileged(
-                new java.security.PrivilegedAction<PermissionCollection>() {
-                public PermissionCollection run() {
+                new java.security.PrivilegedAction<PermissionCollection<Permission>>() {
+                public PermissionCollection<Permission> run() {
                     CodeSource codesource = new CodeSource(null,
                         (java.security.cert.Certificate[]) null);
                     Policy p = java.security.Policy.getPolicy();
@@ -1012,13 +1019,13 @@ public final class LoaderHandler {
             });
 
         // createClassLoader permission needed to create loader in context
-        perms.add(new RuntimePermission("createClassLoader"));
+//        perms.add(new RuntimePermission("createClassLoader"));
 
         // add permissions to read any "java.*" property
         perms.add(new java.util.PropertyPermission("java.*","read"));
 
         // add permissions reuiqred to load from codebase URL path
-        addPermissionsForURLs(urls, perms, true);
+//        addPermissionsForURLs(urls, perms, true);
 
         /*
          * Create an AccessControlContext that consists of a single
@@ -1042,7 +1049,7 @@ public final class LoaderHandler {
      * it is not already implied by the collection.
      */
     private static void addPermissionsForURLs(URL[] urls,
-                                             PermissionCollection perms,
+                                             PermissionCollection<Permission> perms,
                                              boolean forLoader)
     {
         for (int i = 0; i < urls.length; i++) {
@@ -1193,8 +1200,8 @@ public final class LoaderHandler {
          * Return the permissions to be granted to code loaded from the
          * given code source.
          */
-        protected PermissionCollection getPermissions(CodeSource codesource) {
-            PermissionCollection perms = super.getPermissions(codesource);
+        protected PermissionCollection<Permission> getPermissions(CodeSource codesource) {
+            PermissionCollection<Permission> perms = super.getPermissions(codesource);
             /*
              * Grant the same permissions that URLClassLoader would grant.
              */

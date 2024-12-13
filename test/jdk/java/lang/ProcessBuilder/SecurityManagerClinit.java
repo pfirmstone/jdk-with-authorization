@@ -85,7 +85,7 @@ public class SecurityManagerClinit {
             p.getErrorStream().close();
             p.waitFor();
         } finally {
-            System.setSecurityManager(null);
+//            System.setSecurityManager(null);
         }
     }
 }

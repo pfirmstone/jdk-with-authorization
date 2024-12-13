@@ -107,7 +107,7 @@ public abstract class Policy {
      * A read-only empty PermissionCollection instance.
      * @since 1.6
      */
-    public static final PermissionCollection UNSUPPORTED_EMPTY_COLLECTION =
+    public static final PermissionCollection<Permission> UNSUPPORTED_EMPTY_COLLECTION =
                         new UnsupportedEmptyCollection();
 
     // Information about the system-wide policy.
@@ -135,7 +135,7 @@ public abstract class Policy {
         "au.zeus.jdk.authorization.policy.ConcurrentPolicyFile";
 
     // Cache mapping ProtectionDomain.Key to PermissionCollection
-    private WeakHashMap<ProtectionDomain.Key, PermissionCollection> pdMapping;
+    private WeakHashMap<ProtectionDomain.Key, PermissionCollection<Permission>> pdMapping;
 
     /** package private for AccessControlContext and ProtectionDomain */
     static boolean isSet() {
@@ -357,7 +357,7 @@ public abstract class Policy {
          * so that the provider can be security checked while processing
          * calls to Policy.implies or Policy.getPermissions.
          */
-        PermissionCollection policyPerms = null;
+        PermissionCollection<Permission> policyPerms = null;
         synchronized (p) {
             if (p.pdMapping == null) {
                 p.pdMapping = new WeakHashMap<>();
@@ -665,7 +665,7 @@ public abstract class Policy {
      *          If this operation is not supported,
      *          Policy.UNSUPPORTED_EMPTY_COLLECTION is returned.
      */
-    public PermissionCollection getPermissions(CodeSource codesource) {
+    public PermissionCollection<Permission> getPermissions(CodeSource codesource) {
         return Policy.UNSUPPORTED_EMPTY_COLLECTION;
     }
 
@@ -703,8 +703,8 @@ public abstract class Policy {
      *
      * @since 1.4
      */
-    public PermissionCollection getPermissions(ProtectionDomain domain) {
-        PermissionCollection pc = null;
+    public PermissionCollection<Permission> getPermissions(ProtectionDomain domain) {
+        PermissionCollection<Permission> pc = null;
 
         if (domain == null)
             return new Permissions();
@@ -739,8 +739,8 @@ public abstract class Policy {
     /**
      * add static permissions to provided permission collection
      */
-    private void addStaticPerms(PermissionCollection perms,
-                                PermissionCollection statics) {
+    private void addStaticPerms(PermissionCollection<Permission> perms,
+                                PermissionCollection<Permission> statics) {
         if (statics != null) {
             synchronized (statics) {
                 Enumeration<Permission> e = statics.elements();
@@ -766,7 +766,7 @@ public abstract class Policy {
      * @since 1.4
      */
     public boolean implies(ProtectionDomain domain, Permission permission) {
-        PermissionCollection pc;
+        PermissionCollection<Permission> pc;
 
         if (pdMapping == null) {
             initPolicy(this);
@@ -831,11 +831,11 @@ public abstract class Policy {
         @Override public Provider getProvider() { return p; }
 
         @Override
-        public PermissionCollection getPermissions(CodeSource codesource) {
+        public PermissionCollection<Permission> getPermissions(CodeSource codesource) {
             return spi.engineGetPermissions(codesource);
         }
         @Override
-        public PermissionCollection getPermissions(ProtectionDomain domain) {
+        public PermissionCollection<Permission> getPermissions(ProtectionDomain domain) {
             return spi.engineGetPermissions(domain);
         }
         @Override
@@ -872,10 +872,7 @@ public abstract class Policy {
      * supported by the Policy implementation.
      */
     private static class UnsupportedEmptyCollection
-        extends PermissionCollection {
-
-        @java.io.Serial
-        private static final long serialVersionUID = -8492269157353014774L;
+        extends PermissionCollection<Permission> {
 
         private Permissions perms;
 

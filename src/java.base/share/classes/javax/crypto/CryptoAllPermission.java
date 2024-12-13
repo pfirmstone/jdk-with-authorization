@@ -42,9 +42,6 @@ import java.util.Vector;
 
 final class CryptoAllPermission extends CryptoPermission {
 
-    @java.io.Serial
-    private static final long serialVersionUID = -5066513634293192112L;
-
     // This class is similar to java.security.AllPermission.
     static final String ALG_NAME = "CryptoAllPermission";
     static final CryptoAllPermission INSTANCE =
@@ -96,7 +93,8 @@ final class CryptoAllPermission extends CryptoPermission {
      * @return a new {@code PermissionCollection} object suitable for
      * storing {@code CryptoAllPermission} objects.
      */
-    public PermissionCollection newPermissionCollection() {
+    @Override
+    public PermissionCollection<CryptoPermission> newPermissionCollection() {
         return new CryptoAllPermissionCollection();
     }
 }
@@ -111,12 +109,8 @@ final class CryptoAllPermission extends CryptoPermission {
  *
  * @author Sharon Liu
  */
-final class CryptoAllPermissionCollection extends PermissionCollection
-    implements java.io.Serializable
+final class CryptoAllPermissionCollection extends PermissionCollection<CryptoPermission>
 {
-
-    @java.io.Serial
-    private static final long serialVersionUID = 7450076868380144072L;
 
     // true if a CryptoAllPermission has been added
     private boolean all_allowed;
@@ -136,7 +130,8 @@ final class CryptoAllPermissionCollection extends PermissionCollection
      * @exception SecurityException if this {@code CryptoAllPermissionCollection}
      * object has been marked readonly
      */
-    public void add(Permission permission) {
+    @Override
+    public void add(CryptoPermission permission) {
         if (isReadOnly())
             throw new SecurityException("attempt to add a Permission to " +
                                         "a readonly PermissionCollection");
@@ -169,8 +164,8 @@ final class CryptoAllPermissionCollection extends PermissionCollection
      *
      * @return an enumeration of all {@code CryptoAllPermission} objects.
      */
-    public Enumeration<Permission> elements() {
-        Vector<Permission> v = new Vector<>(1);
+    public Enumeration<CryptoPermission> elements() {
+        Vector<CryptoPermission> v = new Vector<>(1);
         if (all_allowed) v.add(CryptoAllPermission.INSTANCE);
         return v.elements();
     }

@@ -172,13 +172,7 @@ import java.security.BasicPermission;
  * @author Roland Schemers
  */
 //@Deprecated(since="24", forRemoval=true)
-public final class AWTPermission extends BasicPermission {
-
-    /**
-     * Use serialVersionUID from JDK 1.2 for interoperability.
-     */
-    @Serial
-    private static final long serialVersionUID = 8890392402588814465L;
+public final class AWTPermission extends BasicPermission<AWTPermission> {
 
     /**
      * Creates a new {@code AWTPermission} with the specified name.

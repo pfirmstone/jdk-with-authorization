@@ -32,6 +32,9 @@ import java.security.Policy;
 import java.security.PolicySpi;
 import java.security.ProtectionDomain;
 import java.security.URIParameter;
+import java.net.URL;
+import au.zeus.jdk.authorization.policy.ConcurrentPolicyFile;
+import au.zeus.jdk.authorization.policy.PolicyInitializationException;
 
 import java.net.MalformedURLException;
 
@@ -44,7 +47,7 @@ import java.net.MalformedURLException;
 @SuppressWarnings("removal")
 public final class PolicySpiFile extends PolicySpi {
 
-    private PolicyFile pf;
+    private Policy pf;
 
     public PolicySpiFile(Policy.Parameters params) {
 
@@ -57,25 +60,31 @@ public final class PolicySpiFile extends PolicySpi {
             }
             URIParameter uriParam = (URIParameter)params;
             try {
-                pf = new PolicyFile(uriParam.getURI().toURL());
+                pf = new ConcurrentPolicyFile(new URL[]{uriParam.getURI().toURL()});
             } catch (MalformedURLException mue) {
                 throw new IllegalArgumentException("Invalid URIParameter", mue);
+            } catch (PolicyInitializationException e){
+                throw new IllegalArgumentException("Problem initializing Policy", e);
             }
         }
     }
 
-    protected PermissionCollection engineGetPermissions(CodeSource codesource) {
+    @Override
+    protected PermissionCollection<Permission> engineGetPermissions(CodeSource codesource) {
         return pf.getPermissions(codesource);
     }
 
-    protected PermissionCollection engineGetPermissions(ProtectionDomain d) {
+    @Override
+    protected PermissionCollection<Permission> engineGetPermissions(ProtectionDomain d) {
         return pf.getPermissions(d);
     }
 
+    @Override
     protected boolean engineImplies(ProtectionDomain d, Permission p) {
         return pf.implies(d, p);
     }
 
+    @Override
     protected void engineRefresh() {
         pf.refresh();
     }

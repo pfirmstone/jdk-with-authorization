@@ -32,7 +32,6 @@ import java.net.URL;
 import java.security.AccessController;
 import java.security.AllPermission;
 import java.security.CodeSource;
-import java.security.Guard;
 import java.security.Permission;
 import java.security.PermissionCollection;
 import java.security.Permissions;
@@ -41,7 +40,6 @@ import java.security.PrivilegedAction;
 import java.security.PrivilegedActionException;
 import java.security.PrivilegedExceptionAction;
 import java.security.ProtectionDomain;
-import java.security.SecurityPermission;
 import java.security.UnresolvedPermission;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -215,7 +213,7 @@ public class ConcurrentPolicyFile extends Policy implements ScalableNestedPolicy
     private final Comparator<Permission> comparator;
     
     // reference must be defensively copied before access, once published, never mutated.
-    private volatile PermissionCollection myPermissions;
+    private volatile PermissionCollection<Permission> myPermissions;
     
     /**
      * Default constructor, equivalent to
@@ -306,8 +304,8 @@ public class ConcurrentPolicyFile extends Policy implements ScalableNestedPolicy
 	this.policies = policies == null ? null : policies.clone();
     }
     
-    private PermissionCollection convert(NavigableSet<Permission> permissions){
-        PermissionCollection pc = new Permissions();
+    private PermissionCollection<Permission> convert(NavigableSet<Permission> permissions){
+        PermissionCollection<Permission> pc = new Permissions();
         // The descending iterator is for SocketPermission.
         Iterator<Permission> it = permissions.descendingIterator();
         while (it.hasNext()) {
@@ -328,11 +326,11 @@ public class ConcurrentPolicyFile extends Policy implements ScalableNestedPolicy
      * @see ProtectionDomain
      */
     @Override
-    public PermissionCollection getPermissions(ProtectionDomain pd) {
+    public PermissionCollection<Permission> getPermissions(ProtectionDomain pd) {
         return getP(pd);
     }
     
-    private PermissionCollection getP(ProtectionDomain pd) {
+    private PermissionCollection<Permission> getP(ProtectionDomain pd) {
         NavigableSet<Permission> perms = new TreeSet<Permission>(comparator);
         PermissionGrant [] grantRefCopy = grantArray;
         int l = grantRefCopy.length;
@@ -346,14 +344,14 @@ public class ConcurrentPolicyFile extends Policy implements ScalableNestedPolicy
             PermissionGrant ge = grantRefCopy[j];
             if (ge.isPrivileged()){
                 if (ge.implies(pd)){
-                    PermissionCollection pc = new Permissions();
+                    PermissionCollection<Permission> pc = new Permissions();
                     pc.add(ALL_PERMISSION);
                     return pc;
                 }
             }
         }
         /* Merge  static Permissions and check for AllPermission */
-        PermissionCollection staticPC = null;
+        PermissionCollection<Permission> staticPC = null;
         if (pd != null) {
             staticPC = pd.getPermissions();
             if (staticPC != null){
@@ -361,7 +359,7 @@ public class ConcurrentPolicyFile extends Policy implements ScalableNestedPolicy
                 while (e.hasMoreElements()){
                     Permission p = e.nextElement();
                     if (p instanceof AllPermission) {
-                        PermissionCollection pc = new Permissions();
+                        PermissionCollection<Permission> pc = new Permissions();
                         pc.add(p);
                         return pc;
                     }
@@ -400,7 +398,7 @@ public class ConcurrentPolicyFile extends Policy implements ScalableNestedPolicy
      * @see CodeSource
      */
     @Override
-    public PermissionCollection getPermissions(CodeSource cs) {
+    public PermissionCollection<Permission> getPermissions(CodeSource cs) {
         if (cs == null) throw new NullPointerException("CodeSource cannot be null");
         // for ProtectionDomain AllPermission optimisation.
         /* Infinite recursion is not an issue for CodeSource */
@@ -410,7 +408,7 @@ public class ConcurrentPolicyFile extends Policy implements ScalableNestedPolicy
             PermissionGrant ge = grantRefCopy[j];
             if (ge.implies(cs, null)){ // No Principal's
                 if (ge.isPrivileged()){
-                    PermissionCollection pc = new Permissions();
+                    PermissionCollection<Permission> pc = new Permissions();
                     pc.add(ALL_PERMISSION);
                     return pc;
                 }
@@ -423,7 +421,7 @@ public class ConcurrentPolicyFile extends Policy implements ScalableNestedPolicy
     public boolean implies(ProtectionDomain domain, Permission permission) {
         if (permission == null) throw new NullPointerException("permission not allowed to be null");
         if (domain == myDomain) {
-            PermissionCollection pc = myPermissions;
+            PermissionCollection<Permission> pc = myPermissions;
             return pc.implies(permission);
         }
         @SuppressWarnings("rawtypes")
@@ -443,7 +441,7 @@ public class ConcurrentPolicyFile extends Policy implements ScalableNestedPolicy
             }
         }
         /* Merge the static Permissions, check for Privileged */
-        PermissionCollection staticPC = null;
+        PermissionCollection<Permission> staticPC = null;
         if (domain != null) {
             staticPC =domain.getPermissions();
             if (staticPC != null){
@@ -563,7 +561,7 @@ public class ConcurrentPolicyFile extends Policy implements ScalableNestedPolicy
             }
         }
         /* Merge static permissions and check for privileged */
-        PermissionCollection pc = pd != null ? pd.getPermissions() : null;
+        PermissionCollection<Permission> pc = pd != null ? pd.getPermissions() : null;
         if (pc != null){
             PermissionGrantBuilder pgb = PermissionGrantBuilder.newBuilder();
             pgb.setDomain(new WeakReference<ProtectionDomain>(pd));

@@ -107,8 +107,8 @@ public class SALauncherLoader extends URLClassLoader {
     /**
      * allow any classes loaded from classpath to exit the VM.
      */
-    protected PermissionCollection getPermissions(CodeSource codesource) {
-        PermissionCollection perms = super.getPermissions(codesource);
+    protected PermissionCollection<Permission> getPermissions(CodeSource codesource) {
+        PermissionCollection<Permission> perms = super.getPermissions(codesource);
         perms.add(new RuntimePermission("exitVM"));
         return perms;
     }

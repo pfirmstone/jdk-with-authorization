@@ -91,8 +91,8 @@ import jdk.jfr.internal.management.EventSettingsModifier;
  * @see java.lang.SecurityManager
  *
  */
-@SuppressWarnings("serial")
-public final class FlightRecorderPermission extends java.security.BasicPermission {
+public final class FlightRecorderPermission 
+        extends java.security.BasicPermission<FlightRecorderPermission> {
 
     // Purpose of InternalAccess is to give classes in jdk.jfr.internal
     // access to package private methods in this package (jdk.jfr).

@@ -67,11 +67,21 @@ import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
+import java.security.Permission;
 
 import junit.framework.Test;
 import junit.framework.TestSuite;
 
 public class CompletableFutureTest extends JSR166TestCase {
+    
+    static class PermissiveSecurityManager extends SecurityManager
+    {
+        @Override
+        public void checkPermission(Permission perm) {}
+
+        @Override
+        public void checkPermission(Permission perm, Object context) { }
+    }
 
     public static void main(String[] args) {
         main(suite(), args);
@@ -4086,7 +4096,7 @@ public class CompletableFutureTest extends JSR166TestCase {
         SecurityManager sm = System.getSecurityManager();
         if (sm != null) {
             try {
-                System.setSecurityManager(null);
+                System.setSecurityManager(new PermissiveSecurityManager());
             } catch (SecurityException giveUp) {
                 return "Reflection not available";
             }

@@ -1,0 +1,5 @@
+grant
+{
+    permission au.zeus.jdk.authorization.guards.LoadClassPermission;
+    permission java.lang.RuntimePermission "createSecurityManager";
+};

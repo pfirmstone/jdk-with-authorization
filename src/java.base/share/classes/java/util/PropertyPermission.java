@@ -31,8 +31,6 @@ import java.io.ObjectOutputStream;
 import java.io.ObjectStreamField;
 import java.io.Serializable;
 import java.security.*;
-import java.util.Enumeration;
-import java.util.Hashtable;
 import java.util.concurrent.ConcurrentHashMap;
 import sun.security.util.SecurityConstants;
 
@@ -85,7 +83,7 @@ import sun.security.util.SecurityConstants;
  * @serial exclude
  */
 
-public final class PropertyPermission extends BasicPermission {
+public final class PropertyPermission extends BasicPermission<PropertyPermission> {
 
     /**
      * Read action.
@@ -109,14 +107,13 @@ public final class PropertyPermission extends BasicPermission {
      * The actions mask.
      *
      */
-    private transient int mask;
+    private final int mask;
 
     /**
      * The actions string.
      *
-     * @serial
      */
-    private String actions; // Left null as long as possible, then
+    private final String actions; // Left null as long as possible, then
                             // created and re-used in the getAction function.
 
     /**
@@ -126,17 +123,17 @@ public final class PropertyPermission extends BasicPermission {
      * @param mask the actions mask to use.
      *
      */
-    private void init(int mask) {
+    private static int init(String name, int mask) {
         if ((mask & ALL) != mask)
             throw new IllegalArgumentException("invalid actions mask");
 
         if (mask == NONE)
             throw new IllegalArgumentException("invalid actions mask");
 
-        if (getName() == null)
+        if (name == null)
             throw new NullPointerException("name can't be null");
 
-        this.mask = mask;
+        return mask;
     }
 
     /**
@@ -154,8 +151,7 @@ public final class PropertyPermission extends BasicPermission {
      * {@code actions} is invalid.
      */
     public PropertyPermission(String name, String actions) {
-        super(name,actions);
-        init(getMask(actions));
+        this(name, actions, init(name, getMask(actions)));
     }
 
     /**
@@ -164,8 +160,13 @@ public final class PropertyPermission extends BasicPermission {
      * Called by PropertyPermissionCollection.
      */
     PropertyPermission(String name, int mask) {
-        super(name, getActions(mask));
+        this(name, getActions(mask), mask);
+    }
+    
+    private PropertyPermission(String name, String actions, int mask){
+        super(name, actions);
         this.mask = mask;
+        this.actions = getActions(mask);
     }
 
     /**
@@ -345,9 +346,6 @@ public final class PropertyPermission extends BasicPermission {
      */
     @Override
     public String getActions() {
-        if (actions == null)
-            actions = getActions(this.mask);
-
         return actions;
     }
 
@@ -369,40 +367,8 @@ public final class PropertyPermission extends BasicPermission {
      * PropertyPermissions.
      */
     @Override
-    public PermissionCollection newPermissionCollection() {
+    public PermissionCollection<PropertyPermission> newPermissionCollection() {
         return new PropertyPermissionCollection();
-    }
-
-    @java.io.Serial
-    private static final long serialVersionUID = 885438825399942851L;
-
-    /**
-     * WriteObject is called to save the state of the PropertyPermission
-     * to a stream. The actions are serialized, and the superclass
-     * takes care of the name.
-     */
-    @java.io.Serial
-    private synchronized void writeObject(java.io.ObjectOutputStream s)
-        throws IOException
-    {
-        // Write out the actions. The superclass takes care of the name
-        // call getActions to make sure actions field is initialized
-        if (actions == null)
-            getActions();
-        s.defaultWriteObject();
-    }
-
-    /**
-     * readObject is called to restore the state of the PropertyPermission from
-     * a stream.
-     */
-    @java.io.Serial
-    private synchronized void readObject(java.io.ObjectInputStream s)
-         throws IOException, ClassNotFoundException
-    {
-        // Read in the action, then initialize the rest
-        s.defaultReadObject();
-        init(getMask(actions));
     }
 }
 
@@ -419,23 +385,20 @@ public final class PropertyPermission extends BasicPermission {
  *
  * @serial include
  */
-final class PropertyPermissionCollection extends PermissionCollection
-    implements Serializable
+final class PropertyPermissionCollection extends PermissionCollection<PropertyPermission>
 {
 
     /**
      * Key is property name; value is PropertyPermission.
      * Not serialized; see serialization section at end of class.
      */
-    private transient ConcurrentHashMap<String, PropertyPermission> perms;
+    private final ConcurrentHashMap<String, PropertyPermission> perms;
 
     /**
      * Boolean saying if "*" is in the collection.
      *
-     * @see #serialPersistentFields
      */
-    // No sync access; OK for this to be stale.
-    private boolean all_allowed;
+    private volatile boolean all_allowed;
 
     /**
      * Create an empty PropertyPermissionCollection object.
@@ -451,17 +414,14 @@ final class PropertyPermissionCollection extends PermissionCollection
      *
      * @param permission the Permission object to add.
      *
-     * @throws    IllegalArgumentException   if the permission is not a
+     * @throws    ClassCastException   if the permission is not a
      *                                       PropertyPermission
      *
      * @throws    SecurityException   if this PropertyPermissionCollection
      *                                object has been marked readonly
      */
     @Override
-    public void add(Permission permission) {
-        if (! (permission instanceof PropertyPermission pp))
-            throw new IllegalArgumentException("invalid permission: "+
-                                               permission);
+    public void add(PropertyPermission pp) {
         if (isReadOnly())
             throw new SecurityException(
                 "attempt to add a Permission to a readonly PermissionCollection");
@@ -569,81 +529,11 @@ final class PropertyPermissionCollection extends PermissionCollection
      */
     @Override
     @SuppressWarnings("unchecked")
-    public Enumeration<Permission> elements() {
+    public Enumeration<PropertyPermission> elements() {
         /**
          * Casting to rawtype since Enumeration<PropertyPermission>
          * cannot be directly cast to Enumeration<Permission>
          */
         return (Enumeration)perms.elements();
-    }
-
-    @java.io.Serial
-    private static final long serialVersionUID = 7015263904581634791L;
-
-    // Need to maintain serialization interoperability with earlier releases,
-    // which had the serializable field:
-    //
-    // Table of permissions.
-    //
-    // @serial
-    //
-    // private Hashtable permissions;
-    /**
-     * @serialField permissions java.util.Hashtable
-     *     A table of the PropertyPermissions.
-     * @serialField all_allowed boolean
-     *     boolean saying if "*" is in the collection.
-     */
-    private static final ObjectStreamField[] serialPersistentFields = {
-        new ObjectStreamField("permissions", Hashtable.class),
-        new ObjectStreamField("all_allowed", Boolean.TYPE),
-    };
-
-    /**
-     * @serialData Default fields.
-     */
-    /*
-     * Writes the contents of the perms field out as a Hashtable for
-     * serialization compatibility with earlier releases. all_allowed
-     * unchanged.
-     */
-    @java.io.Serial
-    private void writeObject(ObjectOutputStream out) throws IOException {
-        // Don't call out.defaultWriteObject()
-
-        // Copy perms into a Hashtable
-        Hashtable<String, Permission> permissions =
-            new Hashtable<>(perms.size()*2);
-        permissions.putAll(perms);
-
-        // Write out serializable fields
-        ObjectOutputStream.PutField pfields = out.putFields();
-        pfields.put("all_allowed", all_allowed);
-        pfields.put("permissions", permissions);
-        out.writeFields();
-    }
-
-    /*
-     * Reads in a Hashtable of PropertyPermissions and saves them in the
-     * perms field. Reads in all_allowed.
-     */
-    @java.io.Serial
-    private void readObject(ObjectInputStream in)
-        throws IOException, ClassNotFoundException
-    {
-        // Don't call defaultReadObject()
-
-        // Read in serialized fields
-        ObjectInputStream.GetField gfields = in.readFields();
-
-        // Get all_allowed
-        all_allowed = gfields.get("all_allowed", false);
-
-        // Get permissions
-        @SuppressWarnings("unchecked")
-        Hashtable<String, PropertyPermission> permissions =
-            (Hashtable<String, PropertyPermission>)gfields.get("permissions", null);
-        perms = new ConcurrentHashMap<>(permissions.size()*2);
-        perms.putAll(permissions);
     }
 }

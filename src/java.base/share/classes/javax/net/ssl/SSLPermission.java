@@ -101,10 +101,7 @@ import java.security.*;
  * @author Roland Schemers
  */
 
-public final class SSLPermission extends BasicPermission {
-
-    @java.io.Serial
-    private static final long serialVersionUID = -3456898025505876775L;
+public final class SSLPermission extends BasicPermission<SSLPermission> {
 
     /**
      * Creates a new SSLPermission with the specified name.

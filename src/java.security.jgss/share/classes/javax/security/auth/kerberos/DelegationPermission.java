@@ -61,11 +61,8 @@ import java.util.concurrent.ConcurrentHashMap;
  * @since 1.4
  */
 
-public final class DelegationPermission extends BasicPermission
-    implements java.io.Serializable {
-
-    @Serial
-    private static final long serialVersionUID = 883133252142523922L;
+public final class DelegationPermission 
+        extends BasicPermission<DelegationPermission>{
 
     private transient String subordinate, service;
 
@@ -80,8 +77,7 @@ public final class DelegationPermission extends BasicPermission
      *      or does not contain a pair of principals, or is improperly quoted
      */
     public DelegationPermission(String principals) {
-        super(principals);
-        init(principals);
+        this(principals, null);
     }
 
     /**
@@ -97,49 +93,56 @@ public final class DelegationPermission extends BasicPermission
      *      or does not contain a pair of principals, or is improperly quoted
      */
     public DelegationPermission(String principals, String actions) {
-        super(principals, actions);
-        init(principals);
+        this(new Init(principals), principals, actions);
     }
-
-
+    
+    private DelegationPermission(Init i, String principals, String actions){
+        super(principals, actions);
+        this.subordinate = i.subordinate;
+        this.service = i.service;
+    }
+    
     /**
      * Initialize the DelegationPermission object.
      */
-    private void init(String target) {
-
-        // 7 tokens in a string:
-        //    "subordinate@R1" "service@R2"
-        //    1<------2----->345<----6--->7
-        StringTokenizer t = new StringTokenizer(target, "\"", true);
-        try {
-            if (!t.nextToken().equals("\"")) { // 1
+    private static class Init {
+        private String subordinate, service;
+        
+        Init(String target){
+            // 7 tokens in a string:
+            //    "subordinate@R1" "service@R2"
+            //    1<------2----->345<----6--->7
+            StringTokenizer t = new StringTokenizer(target, "\"", true);
+            try {
+                if (!t.nextToken().equals("\"")) { // 1
+                    throw new IllegalArgumentException("Illegal input [" + target
+                            + "]: improperly quoted");
+                }
+                subordinate = t.nextToken(); // 2
+                if (subordinate.equals("\"")) {
+                    throw new IllegalArgumentException("Illegal input [" + target
+                            + "]: bad subordinate name");
+                }
+                t.nextToken(); // 3
+                if (!t.nextToken().trim().isEmpty()) { // 4
+                    throw new IllegalArgumentException("Illegal input [" + target
+                            + "]: improperly separated");
+                }
+                t.nextToken(); // 5
+                service = t.nextToken(); // 6
+                if (service.equals("\"")) {
+                    throw new IllegalArgumentException("Illegal input [" + target
+                            + "]: bad service name");
+                }
+                t.nextToken(); // 7
+            } catch (NoSuchElementException e) {
                 throw new IllegalArgumentException("Illegal input [" + target
-                        + "]: improperly quoted");
+                        + "]: not enough input");
             }
-            subordinate = t.nextToken(); // 2
-            if (subordinate.equals("\"")) {
+            if (t.hasMoreTokens()) {
                 throw new IllegalArgumentException("Illegal input [" + target
-                        + "]: bad subordinate name");
+                        + "]: extra input");
             }
-            t.nextToken(); // 3
-            if (!t.nextToken().trim().isEmpty()) { // 4
-                throw new IllegalArgumentException("Illegal input [" + target
-                        + "]: improperly separated");
-            }
-            t.nextToken(); // 5
-            service = t.nextToken(); // 6
-            if (service.equals("\"")) {
-                throw new IllegalArgumentException("Illegal input [" + target
-                        + "]: bad service name");
-            }
-            t.nextToken(); // 7
-        } catch (NoSuchElementException e) {
-            throw new IllegalArgumentException("Illegal input [" + target
-                    + "]: not enough input");
-        }
-        if (t.hasMoreTokens()) {
-            throw new IllegalArgumentException("Illegal input [" + target
-                    + "]: extra input");
         }
     }
 
@@ -201,50 +204,17 @@ public final class DelegationPermission extends BasicPermission
      * DelegationPermissions.
      */
     @Override
-    public PermissionCollection newPermissionCollection() {
+    public PermissionCollection<DelegationPermission> newPermissionCollection() {
         return new KrbDelegationPermissionCollection();
     }
-
-    /**
-     * WriteObject is called to save the state of the DelegationPermission
-     * to a stream. The actions are serialized, and the superclass
-     * takes care of the name.
-     *
-     * @param  s the {@code ObjectOutputStream} to which data is written
-     * @throws IOException if an I/O error occurs
-     */
-    @Serial
-    private synchronized void writeObject(java.io.ObjectOutputStream s)
-        throws IOException
-    {
-        s.defaultWriteObject();
-    }
-
-    /**
-     * readObject is called to restore the state of the
-     * DelegationPermission from a stream.
-     *
-     * @param  s the {@code ObjectInputStream} from which data is read
-     * @throws IOException if an I/O error occurs
-     * @throws ClassNotFoundException if a serialized class cannot be loaded
-     */
-    @Serial
-    private synchronized void readObject(java.io.ObjectInputStream s)
-         throws IOException, ClassNotFoundException
-    {
-        // Read in the action, then initialize the rest
-        s.defaultReadObject();
-        init(getName());
-    }
-
 }
 
 
-final class KrbDelegationPermissionCollection extends PermissionCollection
-    implements java.io.Serializable {
+final class KrbDelegationPermissionCollection 
+        extends PermissionCollection<DelegationPermission>{
 
     // Not serialized; see serialization section at end of class.
-    private transient ConcurrentHashMap<Permission, Boolean> perms;
+    private final ConcurrentHashMap<DelegationPermission, Boolean> perms;
 
     public KrbDelegationPermissionCollection() {
         perms = new ConcurrentHashMap<>();
@@ -281,7 +251,7 @@ final class KrbDelegationPermissionCollection extends PermissionCollection
      *                                has been marked readonly
      */
     @Override
-    public void add(Permission permission) {
+    public void add(DelegationPermission permission) {
         if (! (permission instanceof DelegationPermission))
             throw new IllegalArgumentException("invalid permission: "+
                                                permission);
@@ -298,63 +268,7 @@ final class KrbDelegationPermissionCollection extends PermissionCollection
      * @return an enumeration of all the DelegationPermission objects.
      */
     @Override
-    public Enumeration<Permission> elements() {
+    public Enumeration<DelegationPermission> elements() {
         return perms.keys();
-    }
-
-    @Serial
-    private static final long serialVersionUID = -3383936936589966948L;
-
-    // Need to maintain serialization interoperability with earlier releases,
-    // which had the serializable field:
-    //    private Vector permissions;
-    /**
-     * @serialField permissions java.util.Vector
-     *     A list of DelegationPermission objects.
-     */
-    @Serial
-    private static final ObjectStreamField[] serialPersistentFields = {
-        new ObjectStreamField("permissions", Vector.class),
-    };
-
-    /**
-     * @serialData "permissions" field (a Vector containing the DelegationPermissions).
-     */
-    /*
-     * Writes the contents of the perms field out as a Vector for
-     * serialization compatibility with earlier releases.
-     */
-    @Serial
-    private void writeObject(ObjectOutputStream out) throws IOException {
-        // Don't call out.defaultWriteObject()
-
-        // Write out Vector
-        Vector<Permission> permissions = new Vector<>(perms.keySet());
-
-        ObjectOutputStream.PutField pfields = out.putFields();
-        pfields.put("permissions", permissions);
-        out.writeFields();
-    }
-
-    /*
-     * Reads in a Vector of DelegationPermissions and saves them in the perms field.
-     */
-    @Serial
-    @SuppressWarnings("unchecked")
-    private void readObject(ObjectInputStream in)
-        throws IOException, ClassNotFoundException
-    {
-        // Don't call defaultReadObject()
-
-        // Read in serialized fields
-        ObjectInputStream.GetField gfields = in.readFields();
-
-        // Get the one we want
-        Vector<Permission> permissions =
-            (Vector<Permission>)gfields.get("permissions", null);
-        perms = new ConcurrentHashMap<>(permissions.size());
-        for (Permission perm : permissions) {
-            perms.put(perm, Boolean.TRUE);
-        }
     }
 }

@@ -47,9 +47,11 @@ public class PropertyPermissionCollection {
             ("test 1: add throws IllegalArgExc for wrong perm type");
         try {
             perms.add(new SecurityPermission("createAccessControlContext"));
-            System.err.println("Expected IllegalArgumentException");
+            System.err.println("Expected ClassCastException");
             testFail++;
-        } catch (IllegalArgumentException iae) {}
+        } catch (java.lang.ClassCastException iae) {} 
+        // Changed exception from IllegalArgumentException to ClassCastException
+        // due to generics introduced into Permission's.
 
         // test 2
         System.out.println("test 2: implies returns false for wrong perm type");

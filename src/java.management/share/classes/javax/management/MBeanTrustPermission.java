@@ -26,9 +26,6 @@
 package javax.management;
 
 import java.security.BasicPermission;
-import java.io.IOException;
-import java.io.InvalidObjectException;
-import java.io.ObjectInputStream;
 
 /**
  * This permission represents "trust" in a signer or codebase.
@@ -47,9 +44,7 @@ import java.io.ObjectInputStream;
  *
  * @since 1.5
  */
-public class MBeanTrustPermission extends BasicPermission {
-
-    private static final long serialVersionUID = -2952178077029018140L;
+public class MBeanTrustPermission extends BasicPermission<MBeanTrustPermission> {
 
     /** <p>Create a new MBeanTrustPermission with the given name.</p>
         <p>This constructor is equivalent to
@@ -77,11 +72,10 @@ public class MBeanTrustPermission extends BasicPermission {
      * non-empty string.
      */
     public MBeanTrustPermission(String name, String actions) {
-        super(name, actions);
-        validate(name,actions);
+        super(validate(name,actions), actions);
     }
 
-    private static void validate(String name, String actions) {
+    private static String validate(String name, String actions) {
         /* Check that actions is a null empty string */
         if (actions != null && actions.length() > 0) {
             throw new IllegalArgumentException("MBeanTrustPermission actions must be null: " +
@@ -92,17 +86,6 @@ public class MBeanTrustPermission extends BasicPermission {
             throw new IllegalArgumentException("MBeanTrustPermission: Unknown target name " +
                                                "[" + name + "]");
         }
-    }
-
-    private void readObject(ObjectInputStream in)
-         throws IOException, ClassNotFoundException {
-
-        // Reading private fields of base class
-        in.defaultReadObject();
-        try {
-            validate(super.getName(),super.getActions());
-        } catch (IllegalArgumentException e) {
-            throw new InvalidObjectException(e.getMessage());
-        }
+        return name;
     }
 }

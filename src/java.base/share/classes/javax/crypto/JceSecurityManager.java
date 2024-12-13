@@ -144,14 +144,14 @@ final class JceSecurityManager {
         // crypto permission for the requested algorithm that does not require
         // any exemption mechanism to be enforced.
         // Return that permission, if present.
-        PermissionCollection appPc = appPerms.getPermissionCollection(alg);
+        PermissionCollection<CryptoPermission> appPc = appPerms.getPermissionCollection(alg);
         if (appPc == null) {
             return defaultPerm;
         }
-        Enumeration<Permission> enum_ = appPc.elements();
+        Enumeration<CryptoPermission> enum_ = appPc.elements();
         while (enum_.hasMoreElements()) {
-            CryptoPermission cp = (CryptoPermission)enum_.nextElement();
-            if (cp.getExemptionMechanism() == null) {
+            Permission p = enum_.nextElement();
+            if (p instanceof CryptoPermission cp && cp.getExemptionMechanism() == null) {
                 return cp;
             }
         }
@@ -159,7 +159,7 @@ final class JceSecurityManager {
         // Check if the jurisdiction file for exempt applications contains
         // any entries for the requested algorithm.
         // If not, return the default permission.
-        PermissionCollection exemptPc =
+        PermissionCollection<CryptoPermission> exemptPc =
             exemptPolicy.getPermissionCollection(alg);
         if (exemptPc == null) {
             return defaultPerm;
@@ -174,31 +174,33 @@ final class JceSecurityManager {
         //    registered CSPs
         enum_ = exemptPc.elements();
         while (enum_.hasMoreElements()) {
-            CryptoPermission cp = (CryptoPermission)enum_.nextElement();
-            try {
-                ExemptionMechanism.getInstance(cp.getExemptionMechanism());
-                if (cp.getAlgorithm().equals(
-                                      CryptoPermission.ALG_NAME_WILDCARD)) {
-                    CryptoPermission newCp;
-                    if (cp.getCheckParam()) {
-                        newCp = new CryptoPermission(
-                                alg, cp.getMaxKeySize(),
-                                cp.getAlgorithmParameterSpec(),
-                                cp.getExemptionMechanism());
-                    } else {
-                        newCp = new CryptoPermission(
-                                alg, cp.getMaxKeySize(),
-                                cp.getExemptionMechanism());
+            Permission p = enum_.nextElement();
+            if (p instanceof CryptoPermission cp){
+                try {
+                    ExemptionMechanism.getInstance(cp.getExemptionMechanism());
+                    if (cp.getAlgorithm().equals(
+                                          CryptoPermission.ALG_NAME_WILDCARD)) {
+                        CryptoPermission newCp;
+                        if (cp.getCheckParam()) {
+                            newCp = new CryptoPermission(
+                                    alg, cp.getMaxKeySize(),
+                                    cp.getAlgorithmParameterSpec(),
+                                    cp.getExemptionMechanism());
+                        } else {
+                            newCp = new CryptoPermission(
+                                    alg, cp.getMaxKeySize(),
+                                    cp.getExemptionMechanism());
+                        }
+                        if (appPerms.implies(newCp)) {
+                            return newCp;
+                        }
                     }
-                    if (appPerms.implies(newCp)) {
-                        return newCp;
-                    }
-                }
 
-                if (appPerms.implies(cp)) {
-                    return cp;
+                    if (appPerms.implies(cp)) {
+                        return cp;
+                    }
+                } catch (Exception e) {
                 }
-            } catch (Exception e) {
             }
         }
         return defaultPerm;
@@ -219,9 +221,11 @@ final class JceSecurityManager {
      * Returns the default permission for the given algorithm.
      */
     private CryptoPermission getDefaultPermission(String alg) {
-        Enumeration<Permission> enum_ =
+        Enumeration<CryptoPermission> enum_ =
             defaultPolicy.getPermissionCollection(alg).elements();
-        return (CryptoPermission)enum_.nextElement();
+        Permission p = enum_.nextElement();
+        if (p instanceof CryptoPermission cp) return cp;
+        return null;
     }
 
     // Only used by javax.crypto.Cipher constructor to disallow Cipher

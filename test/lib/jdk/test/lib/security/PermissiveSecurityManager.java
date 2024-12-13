@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2024, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -20,18 +20,21 @@
  * or visit www.oracle.com if you need additional information or have any
  * questions.
  */
-package jdk.vm.ci.services;
 
-import java.security.BasicPermission;
+package jdk.test.lib.security;
+
+import java.security.Permission;
 
 /**
- * This class represents the permission to access JVMCI services.
+ * Common library for various security test helper functions.
  */
-public class JVMCIPermission extends BasicPermission<JVMCIPermission> {
-
-    private static final long serialVersionUID = 6346818963934448226L;
-
-    public JVMCIPermission() {
-        super("jvmci");
-    }
+public final class PermissiveSecurityManager extends SecurityManager
+{
+   
+    @Override
+    public void checkPermission(Permission perm) {}
+    
+    @Override
+    public void checkPermission(Permission perm, Object context) { }
+ 
 }

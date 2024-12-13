@@ -41,9 +41,18 @@
  * "createSecurityManager."
  */
 
-
+import java.security.Permission;
 
 public class SecurityRace implements Runnable {
+    
+    static class PermissiveSecurityManager extends SecurityManager
+    {
+        @Override
+        public void checkPermission(Permission perm) {}
+
+        @Override
+        public void checkPermission(Permission perm, Object context) { }
+    }
 
     // Number of iterations to "warm up" and get methods compiled/inlined.
     // (this is conservative)
@@ -144,7 +153,7 @@ public class SecurityRace implements Runnable {
                 // The goal is to catch another thread testing the
                 // value set above and trying to use it after it's
                 // nulled below.
-                System.setSecurityManager(null);
+                System.setSecurityManager(new PermissiveSecurityManager());
             }
         } catch (NullPointerException e) {
             stopthreads = true;

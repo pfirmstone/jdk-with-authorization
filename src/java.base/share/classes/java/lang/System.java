@@ -380,7 +380,7 @@ public final class System {
      * @throws SecurityException
      *         if the security manager has already been set and its {@code
      *         checkPermission} method doesn't allow it to be replaced
-     * @throws NullPointerException when SecurityManager is already installed and sm is null.
+     * @throws IllegalArgumentException when SecurityManager is already installed and sm is null.
      * @see #getSecurityManager
      * @see SecurityManager#checkPermission
      * @see java.lang.RuntimePermission
@@ -395,9 +395,10 @@ public final class System {
 //    @Deprecated(since="17", forRemoval=true)
     @CallerSensitive
     public static void setSecurityManager(@SuppressWarnings("removal") SecurityManager sm) {
-        if (security != null && sm == null) throw new NullPointerException(
+        if (security != null) {
+            if (sm == null) throw new IllegalArgumentException(
             "A SecurityManager has been installed and cannot be set to null");
-        if (security == null) {
+        } else {
             // ensure image reader is initialized
             Object.class.getResource("java/lang/ANY");
             // ensure the default file system is initialized
