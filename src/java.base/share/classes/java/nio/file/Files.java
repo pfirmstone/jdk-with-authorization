@@ -1657,7 +1657,7 @@ public final class Files {
     }
 
     // lazy loading of default and installed file type detectors
-    private static class FileTypeDetectors{
+    private static class FileTypeDetectors {
         static final FileTypeDetector defaultFileTypeDetector =
             createDefaultFileTypeDetector();
         static final List<FileTypeDetector> installedDetectors =
