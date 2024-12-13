@@ -42,7 +42,6 @@ This project's objectives are to maintain a community fork of OpenJDK that retai
 
 ## Plans / Research to Security Harden VM:
 - Replace default policy provider with concurrent policy provider from JGDMS ✔
-- Add httpmd URL handler to allow SHA256+ algorithms to be used to check jar file integrity. 
 - Reduce the size of the trusted platform. ✔
 - Add PolicyWriter tool from JGDMS, to simplify deployment using principles of least privilege. ✔
 - Add policy tests from JGDMS.
