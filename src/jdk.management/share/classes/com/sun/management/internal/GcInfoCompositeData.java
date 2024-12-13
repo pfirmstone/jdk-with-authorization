@@ -43,7 +43,6 @@ import java.security.PrivilegedAction;
 import sun.management.LazyCompositeData;
 import static sun.management.LazyCompositeData.getLong;
 import sun.management.MappedMXBeanType;
-import sun.management.Util;
 
 /**
  * A CompositeData for GcInfo for the local management support.
