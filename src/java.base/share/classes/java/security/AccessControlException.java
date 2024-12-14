@@ -25,6 +25,9 @@
 
 package java.security;
 
+import java.io.ObjectOutputStream;
+import java.io.IOException;
+
 /**
  * <p> This exception is thrown by the {@code AccessController} to indicate
  * that a requested access (to a critical system resource such as the
@@ -92,5 +95,14 @@ public class AccessControlException extends SecurityException {
      */
     public Permission getPermission() {
         return perm;
+    }
+    
+    /**
+     * Permission is no longer Serializable.
+     */
+    private void writeObject(ObjectOutputStream stream) throws IOException {
+        ObjectOutputStream.PutField fields = stream.putFields();
+        fields.put("perm", null);
+        stream.writeFields();
     }
 }
