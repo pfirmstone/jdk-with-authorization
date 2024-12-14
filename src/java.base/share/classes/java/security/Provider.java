@@ -972,7 +972,7 @@ public abstract class Provider extends Properties {
         return o;
     }
 
-    @SuppressWarnings("unchecked") // Function must actually operate over strings
+    // Function must actually operate over strings
     private void implReplaceAll(BiFunction<? super Object, ? super Object,
             ? extends Object> function) {
 
@@ -992,7 +992,7 @@ public abstract class Provider extends Properties {
         }
     }
 
-    @SuppressWarnings("unchecked") // Function must actually operate over strings
+    // Function must actually operate over strings
     private Object implMerge(Object key, Object value,
             BiFunction<? super Object, ? super Object, ? extends Object>
             remappingFunction) {
@@ -1009,7 +1009,7 @@ public abstract class Provider extends Properties {
         return o;
     }
 
-    @SuppressWarnings("unchecked") // Function must actually operate over strings
+    // Function must actually operate over strings
     private Object implCompute(Object key, BiFunction<? super Object,
             ? super Object, ? extends Object> remappingFunction) {
 
@@ -1026,7 +1026,7 @@ public abstract class Provider extends Properties {
         return o;
     }
 
-    @SuppressWarnings("unchecked") // Function must actually operate over strings
+    // Function must actually operate over strings
     private Object implComputeIfAbsent(Object key, Function<? super Object,
             ? extends Object> mappingFunction) {
         if (!checkLegacy(key)) return null;
@@ -1038,7 +1038,7 @@ public abstract class Provider extends Properties {
         return o;
     }
 
-    @SuppressWarnings("unchecked") // Function must actually operate over strings
+    // Function must actually operate over strings
     private Object implComputeIfPresent(Object key, BiFunction<? super Object,
             ? super Object, ? extends Object> remappingFunction) {
         if (!checkLegacy(key)) return null;
