@@ -24,35 +24,23 @@
  */
 package au.zeus.jdk.authorization.guards;
 
-import java.net.URL;
 import java.security.BasicPermission;
 
 /**
- * When a {@link java.lang.SecurityManager} is in force, this {@link java.security.Permission}
- * is required to load classes with {@link java.security.SecureClassLoader}.   This allows
- * an administrator to prevent class loading from unsigned jar files or other
- * untrusted {@link java.net.URL}.  
- * <p>
- * It is advisable to use either signed jar's
- * or a secure hash algorithm with a message digest of the file containing
- * class files.
- * 
- * @author Peter Firmstone.
+ * NativeAccessPermission works similarly to the command line option
+ * <code>--enable-native-access</code>
  */
-public class LoadClassPermission extends BasicPermission<LoadClassPermission> {
+public class NativeAccessPermission extends BasicPermission<NativeAccessPermission> {
     
-    /**
-     * Creates a LoadClassPermission, with the name "ALLOW".
-     */
-    public LoadClassPermission(){
-        super("ALLOW");
+    private final String methodName;
+    
+    public NativeAccessPermission(String owner, String methodName){
+        super(owner, methodName);
+        this.methodName = methodName;
     }
     
-    /**
-     * String name is ignored, only "ALLOW".
-     */
-    public LoadClassPermission(String name){
-        super("ALLOW");
+    @Override
+    public String getActions() {
+        return methodName;
     }
-    
 }

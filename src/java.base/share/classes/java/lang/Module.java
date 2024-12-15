@@ -72,6 +72,7 @@ import jdk.internal.reflect.CallerSensitive;
 import jdk.internal.reflect.Reflection;
 import jdk.internal.vm.annotation.Stable;
 import sun.security.util.SecurityConstants;
+import au.zeus.jdk.authorization.guards.NativeAccessPermission;
 
 /**
  * Represents a run-time module, either {@link #isNamed() named} or unnamed.
@@ -300,6 +301,7 @@ public final class Module implements AnnotatedElement {
     // This is invoked from Reflection.ensureNativeAccess
     void ensureNativeAccess(Class<?> owner, String methodName, Class<?> currentClass, boolean jni) {
         // The target module whose enableNativeAccess flag is ensured
+        new NativeAccessPermission(currentClass.toString(), methodName).checkGuard(null);
         Module target = moduleForNativeAccess();
         ModuleBootstrap.IllegalNativeAccess illegalNativeAccess = ModuleBootstrap.illegalNativeAccess();
         if (illegalNativeAccess != ModuleBootstrap.IllegalNativeAccess.ALLOW &&

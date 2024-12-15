@@ -343,6 +343,10 @@ public interface SymbolLookup {
 
         Objects.requireNonNull(libDesc);
         Objects.requireNonNull(libArena);
+        SecurityManager sm = System.getSecurityManager();
+        if (sm != null){
+            sm.checkLink(libDesc.toString());
+        }
         // attempt to load native library from path or name
         RawNativeLibraries nativeLibraries = RawNativeLibraries.newInstance(MethodHandles.lookup());
         NativeLibrary library = loadLibraryFunc.apply(nativeLibraries, libDesc);
