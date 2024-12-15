@@ -30,4 +30,5 @@ grant
     permission java.util.PropertyPermission "java.vm.version", "read";
     permission java.util.PropertyPermission "java.vm.vendor", "read";
     permission java.util.PropertyPermission "java.vm.name", "read";
+    permission au.zeus.jdk.authorization.guards.NativeAccessPermission "sun.security.mscapi.SunMSCAPI$1", "loadLibrary";
 };

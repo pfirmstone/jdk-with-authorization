@@ -301,7 +301,9 @@ public final class Module implements AnnotatedElement {
     // This is invoked from Reflection.ensureNativeAccess
     void ensureNativeAccess(Class<?> owner, String methodName, Class<?> currentClass, boolean jni) {
         // The target module whose enableNativeAccess flag is ensured
-        new NativeAccessPermission(currentClass.toString(), methodName).checkGuard(null);
+        new NativeAccessPermission(
+                currentClass != null ? currentClass.getName() : "code",
+                methodName).checkGuard(null);
         Module target = moduleForNativeAccess();
         ModuleBootstrap.IllegalNativeAccess illegalNativeAccess = ModuleBootstrap.illegalNativeAccess();
         if (illegalNativeAccess != ModuleBootstrap.IllegalNativeAccess.ALLOW &&

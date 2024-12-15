@@ -9,4 +9,10 @@ grant
 {
     permission au.zeus.jdk.authorization.guards.LoadClassPermission "ALLOW";
     permission java.lang.RuntimePermission "accessClassInPackage.sun.util.locale.provider";
+    permission au.zeus.jdk.authorization.guards.NativeAccessPermission "jdk.internal.foreign.abi.SharedUtils", "withTargetLayout";
+    permission au.zeus.jdk.authorization.guards.NativeAccessPermission "NativeTestHelper", "withTargetLayout";
+    permission au.zeus.jdk.authorization.guards.NativeAccessPermission "jdk.internal.foreign.SystemLookup", "reinterpret";
+    permission au.zeus.jdk.authorization.guards.NativeAccessPermission "jdk.internal.foreign.abi.AbstractLinker", "withTargetLayout";
+    permission au.zeus.jdk.authorization.guards.NativeAccessPermission "TestLinker", "withTargetLayout";
+    permission au.zeus.jdk.authorization.guards.NativeAccessPermission "TestLinker", "downcallHandle";
 };
