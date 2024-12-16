@@ -53,6 +53,7 @@ public:
            "'help all' will show help for all commands.";
   }
   static const char* impact() { return "Low"; }
+  // no permission
   virtual void execute(DCmdSource source, TRAPS);
 };
 
@@ -229,6 +230,7 @@ public:
   static const char* impact() {
     return "Low";
   }
+  // no permission
   virtual void execute(DCmdSource source, TRAPS);
 };
 
@@ -258,6 +260,7 @@ public:
     static const char* impact() {
       return "Medium: Depends on Java heap size and content.";
     }
+    // no permission
     virtual void execute(DCmdSource source, TRAPS);
 };
 
@@ -271,6 +274,7 @@ public:
     static const char* impact() {
       return "Medium: Depends on Java content.";
     }
+    // no permission
     virtual void execute(DCmdSource source, TRAPS);
 };
 
@@ -490,7 +494,7 @@ public:
   static const char *description() {
     return "Start remote management agent.";
   }
-
+  // no permission
   virtual void execute(DCmdSource source, TRAPS);
 };
 
@@ -510,7 +514,7 @@ public:
   static const char *description() {
     return "Start local management agent.";
   }
-
+  // no permission
   virtual void execute(DCmdSource source, TRAPS);
 
 };
@@ -529,7 +533,7 @@ public:
   static const char *description() {
     return "Stop remote management agent.";
   }
-
+  // no permission
   virtual void execute(DCmdSource source, TRAPS);
 };
 
@@ -947,6 +951,10 @@ public:
            "virtual threads doing timed operations.";
   }
   static const char* impact() { return "Low"; }
+  static const JavaPermission permission() {
+    JavaPermission p = {"java.lang.management.ManagementPermission", "monitor", nullptr};
+    return p;
+  }
   virtual void execute(DCmdSource source, TRAPS);
 };
 
@@ -960,6 +968,10 @@ public:
     return "Print the I/O pollers that support virtual threads doing blocking network I/O operations.";
   }
   static const char* impact() { return "Low"; }
+  static const JavaPermission permission() {
+    JavaPermission p = {"java.lang.management.ManagementPermission", "monitor", nullptr};
+    return p;
+  }
   virtual void execute(DCmdSource source, TRAPS);
 };
 
