@@ -89,7 +89,7 @@ public class JAXPPolicyManager {
     }
 
     private void teardown() throws Exception {
-        System.setSecurityManager(smBackup);
+        System.setSecurityManager(smBackup != null ? smBackup : new PermissiveSecurityManager());
         Policy.setPolicy(policyBackup);
     }
 
@@ -112,7 +112,13 @@ public class JAXPPolicyManager {
         addPermission(new SecurityPermission("getPolicy"));
         addPermission(new SecurityPermission("setPolicy"));
         addPermission(new RuntimePermission("setSecurityManager"));
+        addPermission(new RuntimePermission("createSecurityManager"));
         addPermission(new PropertyPermission("test.src", "read"));
+        addPermission(new au.zeus.jdk.authorization.guards.LoadClassPermission());
+        addPermission(new au.zeus.jdk.authorization.guards.SerialObjectPermission(
+                "com.sun.org.apache.xalan.internal.xsltc.trax.TemplatesImpl"));
+        addPermission(new au.zeus.jdk.authorization.guards.SerialObjectPermission(
+                "java.lang.Throwable"));
     }
 
     /*

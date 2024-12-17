@@ -105,7 +105,7 @@ public class Bug6925531Test {
         } catch (IOException e) {
             Assert.fail(e.toString());
         } finally {
-            System.setSecurityManager(null);
+            System.setSecurityManager(new PermissiveSecurityManager());
         }
 
         System.out.println("OK");
@@ -119,7 +119,7 @@ public class Bug6925531Test {
         init();
         AccessController.doPrivileged(new PrivilegedAction() {
             public Object run() {
-                System.setSecurityManager(null);
+                System.setSecurityManager(new PermissiveSecurityManager());
                 return null; // nothing to return
             }
         });
@@ -158,7 +158,7 @@ public class Bug6925531Test {
     @Test
     public void test_Val() {
         init();
-        System.setSecurityManager(null);
+        System.setSecurityManager(new PermissiveSecurityManager());
         SchemaFactory schemaFactory = SchemaFactory.newInstance("http://www.w3.org/2001/XMLSchema");
 
         Schema schema = null;
@@ -208,5 +208,12 @@ public class Bug6925531Test {
             super.checkPermission(perm);
         }
 
+    }
+    
+    static class PermissiveSecurityManager extends SecurityManager {
+        @Override
+        public void checkPermission(Permission perm) {}
+        @Override
+        public void checkPermission(Permission perm, Object context) {}
     }
 }

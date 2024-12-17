@@ -24,6 +24,7 @@
 package transform;
 
 import java.io.File;
+import java.security.Permission;
 
 import javax.xml.parsers.DocumentBuilder;
 import javax.xml.parsers.DocumentBuilderFactory;
@@ -51,7 +52,7 @@ public class Bug6513892 {
     @BeforeClass
     public void setup(){
         if (System.getSecurityManager() != null)
-            System.setSecurityManager(null);
+            System.setSecurityManager(new PermissiveSecurityManager());
     }
 
     @Test
@@ -74,6 +75,13 @@ public class Bug6513892 {
         } catch (Exception e) {
             Assert.fail(e.getMessage());
         }
+    }
+    
+    static class PermissiveSecurityManager extends SecurityManager {
+        @Override
+        public void checkPermission(Permission perm) {}
+        @Override
+        public void checkPermission(Permission perm, Object context) {}
     }
 
 }
