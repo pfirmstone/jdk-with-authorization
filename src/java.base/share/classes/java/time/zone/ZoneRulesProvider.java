@@ -148,50 +148,51 @@ public abstract class ZoneRulesProvider {
         // set then its value is the class name of the default provider
         @SuppressWarnings("removal")
         final List<ZoneRulesProvider> loaded =
-                AccessController.doPrivileged(new PrivilegedAction<List<ZoneRulesProvider>>() {
-                    public List<ZoneRulesProvider> run() {
-                        List<ZoneRulesProvider> result = new ArrayList<>();
-                        String prop = System.getProperty("java.time.zone.DefaultZoneRulesProvider");
-                        if (prop != null) {
-                            try {
-                                Class<?> c = Class.forName(prop, true, ClassLoader.getSystemClassLoader());
-                                @SuppressWarnings("deprecation")
-                                ZoneRulesProvider provider = ZoneRulesProvider.class.cast(c.newInstance());
-                                registerProvider(provider);
-                                result.add(provider);
-                            } catch (Exception x) {
-                                throw new Error(x);
-                            }
-                        } else {
-                            registerProvider(new TzdbZoneRulesProvider());
+            AccessController.doPrivileged(new PrivilegedAction<List<ZoneRulesProvider>>() {
+                public List<ZoneRulesProvider> run() {
+                    List<ZoneRulesProvider> result = new ArrayList<>();
+                    String prop = System.getProperty("java.time.zone.DefaultZoneRulesProvider");
+                    if (prop != null) {
+                        try {
+                            Class<?> c = Class.forName(prop, true, ClassLoader.getSystemClassLoader());
+                            @SuppressWarnings("deprecation")
+                            ZoneRulesProvider provider = ZoneRulesProvider.class.cast(c.newInstance());
+                            registerProvider(provider);
+                            result.add(provider);
+                        } catch (Exception x) {
+                            throw new Error(x);
                         }
-                        return result;
+                    } else {
+                        registerProvider(new TzdbZoneRulesProvider());
                     }
-                });
-
-        ServiceLoader<ZoneRulesProvider> sl = ServiceLoader.load(ZoneRulesProvider.class, ClassLoader.getSystemClassLoader());
-        Iterator<ZoneRulesProvider> it = sl.iterator();
-        while (it.hasNext()) {
-            ZoneRulesProvider provider;
-            try {
-                provider = it.next();
-            } catch (ServiceConfigurationError ex) {
-                if (ex.getCause() instanceof SecurityException) {
-                    continue;  // ignore the security exception, try the next provider
+                    ServiceLoader<ZoneRulesProvider> sl = ServiceLoader.load(
+                    ZoneRulesProvider.class, ClassLoader.getSystemClassLoader());
+                    Iterator<ZoneRulesProvider> it = sl.iterator();
+                    while (it.hasNext()) {
+                        ZoneRulesProvider provider;
+                        try {
+                            provider = it.next();
+                        } catch (ServiceConfigurationError ex) {
+                            if (ex.getCause() instanceof SecurityException) {
+                                continue;  // ignore the security exception, try the next provider
+                            }
+                            throw ex;
+                        }
+                        boolean found = false;
+                        for (ZoneRulesProvider p : result) {
+                            if (p.getClass() == provider.getClass()) {
+                                found = true;
+                            }
+                        }
+                        if (!found) {
+                            registerProvider0(provider);
+                            result.add(provider);
+                        }
+                    }
+                    return result;
                 }
-                throw ex;
             }
-            boolean found = false;
-            for (ZoneRulesProvider p : loaded) {
-                if (p.getClass() == provider.getClass()) {
-                    found = true;
-                }
-            }
-            if (!found) {
-                registerProvider0(provider);
-                loaded.add(provider);
-            }
-        }
+        );
         // CopyOnWriteList could be slow if lots of providers and each added individually
         PROVIDERS.addAll(loaded);
     }
