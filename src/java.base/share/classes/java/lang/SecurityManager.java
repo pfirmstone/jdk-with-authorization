@@ -322,7 +322,7 @@ public class SecurityManager {
     /*
      * Have we been initialized. Effective against finalizer attacks.
      */
-    private boolean initialized = false;
+    private final boolean initialized;
 
     /**
      * Constructs a new {@code SecurityManager}.
@@ -342,17 +342,23 @@ public class SecurityManager {
      * @see java.lang.RuntimePermission
      */
     public SecurityManager() {
-        synchronized(SecurityManager.class) {
-            @SuppressWarnings("removal")
-            SecurityManager sm = System.getSecurityManager();
-            if (sm != null) {
-                // ask the currently installed security manager if we
-                // can create a new one.
-                sm.checkPermission(new RuntimePermission
-                                   ("createSecurityManager"));
-            }
-            initialized = true;
+        this(check());
+    }
+    
+    private static boolean check(){
+        @SuppressWarnings("removal")
+        SecurityManager sm = System.getSecurityManager();
+        if (sm != null) {
+            // ask the currently installed security manager if we
+            // can create a new one.
+            sm.checkPermission(new RuntimePermission
+                               ("createSecurityManager"));
         }
+        return true;
+    }
+    
+    private SecurityManager(boolean initialized){
+        this.initialized = initialized;
     }
 
     /**
@@ -1188,29 +1194,21 @@ public class SecurityManager {
     }
 
     /*
-     * We have an initial invalid bit (initially false) for the class
+     * We have an initial INVALID empty array for the class
      * variables which tell if the cache is valid.  If the underlying
      * java.security.Security property changes via setProperty(), the
      * Security class uses reflection to change the variable and thus
      * invalidate the cache.
-     *
-     * Locking is handled by synchronization to the
-     * packageAccessLock/packageDefinitionLock objects.  They are only
-     * used in this class.
      *
      * Note that cache invalidation as a result of the property change
      * happens without using these locks, so there may be a delay between
      * when a thread updates the property and when other threads updates
      * the cache.
      */
-    private static boolean packageAccessValid = false;
-    private static String[] packageAccess;
-    private static final Object packageAccessLock = new Object();
-
-    private static boolean packageDefinitionValid = false;
-    private static String[] packageDefinition;
-    private static final Object packageDefinitionLock = new Object();
-
+    private static final String [] INVALID = new String [0];
+    private static volatile String[] packageAccess = INVALID;
+    private static volatile String[] packageDefinition = INVALID;
+    
     private static String[] getPackages(String p) {
         String packages[] = null;
         if (p != null && !p.isEmpty()) {
@@ -1261,12 +1259,8 @@ public class SecurityManager {
      * Called by java.security.Security
      */
     static void invalidatePackageAccessCache() {
-        synchronized (packageAccessLock) {
-            packageAccessValid = false;
-        }
-        synchronized (packageDefinitionLock) {
-            packageDefinitionValid = false;
-        }
+        packageAccess = INVALID;
+        packageDefinition = INVALID;
     }
 
     /**
@@ -1338,25 +1332,21 @@ public class SecurityManager {
             return;
         }
 
-        String[] restrictedPkgs;
-        synchronized (packageAccessLock) {
+        String[] restrictedPkgs = packageAccess;
+        while (restrictedPkgs == INVALID){
             /*
              * Do we need to update our property array?
              */
-            if (!packageAccessValid) {
-                @SuppressWarnings("removal")
-                String tmpPropertyStr =
-                    AccessController.doPrivileged(
-                        new PrivilegedAction<>() {
-                            public String run() {
-                                return Security.getProperty("package.access");
-                            }
+            @SuppressWarnings("removal")
+            String tmpPropertyStr =
+                AccessController.doPrivileged(
+                    new PrivilegedAction<>() {
+                        public String run() {
+                            return Security.getProperty("package.access");
                         }
-                    );
-                packageAccess = getPackages(tmpPropertyStr);
-                packageAccessValid = true;
-            }
-
+                    }
+                );
+            if (packageAccess == INVALID) packageAccess = getPackages(tmpPropertyStr);
             // Using a snapshot of packageAccess -- don't care if static field
             // changes afterwards; array contents won't change.
             restrictedPkgs = packageAccess;
@@ -1438,25 +1428,22 @@ public class SecurityManager {
             return;
         }
 
-        String[] pkgs;
-        synchronized (packageDefinitionLock) {
+        String[] pkgs = packageDefinition;
+        while (pkgs == INVALID){
             /*
              * Do we need to update our property array?
              */
-            if (!packageDefinitionValid) {
-                @SuppressWarnings("removal")
-                String tmpPropertyStr =
-                    AccessController.doPrivileged(
-                        new PrivilegedAction<>() {
-                            public String run() {
-                                return java.security.Security.getProperty(
-                                    "package.definition");
-                            }
+            @SuppressWarnings("removal")
+            String tmpPropertyStr =
+                AccessController.doPrivileged(
+                    new PrivilegedAction<>() {
+                        public String run() {
+                            return java.security.Security.getProperty(
+                                "package.definition");
                         }
-                    );
-                packageDefinition = getPackages(tmpPropertyStr);
-                packageDefinitionValid = true;
-            }
+                    }
+                );
+            if (packageDefinition == INVALID) packageDefinition = getPackages(tmpPropertyStr);
             // Using a snapshot of packageDefinition -- don't care if static
             // field changes afterwards; array contents won't change.
             pkgs = packageDefinition;

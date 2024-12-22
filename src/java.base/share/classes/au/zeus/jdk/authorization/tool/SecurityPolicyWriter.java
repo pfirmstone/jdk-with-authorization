@@ -38,6 +38,7 @@ import java.net.URISyntaxException;
 import java.net.URL;
 import java.net.URLPermission;
 import java.net.URLConnection;
+import java.security.AllPermission;
 import java.security.CodeSource;
 import java.security.GeneralSecurityException;
 import java.security.KeyStore;
@@ -349,7 +350,7 @@ public class SecurityPolicyWriter extends CombinerSecurityManager{
 		Collection<Permission> existed = domainPermissions.putIfAbsent(pd, perms);
 		if (existed != null) perms = existed;
 	    }
-	perms.add(p);
+	if (!(p instanceof AllPermission)) perms.add(p);
         return true;
     }
     
