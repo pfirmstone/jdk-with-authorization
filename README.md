@@ -44,6 +44,7 @@ This project's objectives are to maintain a community fork of OpenJDK that retai
 - Replace default policy provider with concurrent policy provider from JGDMS ✔
 - Reduce the size of the trusted platform. ✔
 - Add PolicyWriter tool from JGDMS, to simplify deployment using principles of least privilege. ✔
+- System.setSecurityManager(null) now throws NullPointerException, preventing injection attacks (vulnerabilities) from utilising privileged context to disable SecurityManager. ✔
 - Add policy tests from JGDMS.
 - Add strict RFC3986 RFC6874 and RFC5952 URI support and Remove DNS lookups from CodeSource.
 - Remove DNS lookups from SecureClassLoader, use RFC3986 URI instead.
