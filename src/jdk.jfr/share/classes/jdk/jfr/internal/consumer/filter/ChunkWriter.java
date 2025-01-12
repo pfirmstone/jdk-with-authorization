@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2022, 2025, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2022, 2024, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -38,6 +38,7 @@ import jdk.jfr.consumer.RecordedEvent;
 import jdk.jfr.internal.LongMap;
 import jdk.jfr.internal.Type;
 import jdk.jfr.internal.consumer.ChunkHeader;
+import jdk.jfr.internal.consumer.FileAccess;
 import jdk.jfr.internal.Logger;
 import jdk.jfr.internal.LogLevel;
 import jdk.jfr.internal.LogTag;
@@ -66,7 +67,7 @@ public final class ChunkWriter implements Closeable {
     public ChunkWriter(Path source, Path destination, Predicate<RecordedEvent> filter) throws IOException {
         this.destination = destination;
         this.output = new RecordingOutput(destination.toFile());
-        this.input = new RecordingInput(source.toFile());
+        this.input = new RecordingInput(source.toFile(), FileAccess.UNPRIVILEGED);
         this.filter = filter;
     }
 

@@ -22,13 +22,14 @@
  */
 package jdk.jfr.jvm;
 
-import jdk.jfr.Registered;
+// Purpose of this class is to have something to
+// statically link against for TestGetEventWriter.
+//
+// When the class is loaded "jdk.jfr.jvm.PlaceholderEventWriterFactory"
+// will be replaced with "jdk.jfr.internal.event.EventWriterFactory"
+public class PlaceholderEventWriterFactory {
 
-// Class used by TestGetEventWriter
-@Registered(true)
-public class RegisteredTrueEvent extends E {
-    public void commit() {
-        PlaceholderEventWriterFactory.getEventWriter(4711L);
-        throw new RuntimeException("Should not reach here");
+    public static PlaceholderEventWriter getEventWriter(long value) {
+        throw new RuntimeException("Test error, PlaceholderEventWriterFactory class should have been replaced with EventWriterFactory");
     }
 }

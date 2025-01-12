@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016, 2025, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2016, 2024, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -25,6 +25,7 @@
 
 package jdk.jfr;
 
+import java.security.AccessControlContext;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -33,6 +34,7 @@ import jdk.jfr.internal.PlatformEventType;
 import jdk.jfr.internal.PlatformRecorder;
 import jdk.jfr.internal.PlatformRecording;
 import jdk.jfr.internal.PrivateAccess;
+import jdk.jfr.internal.SecuritySupport;
 import jdk.jfr.internal.Type;
 import jdk.jfr.internal.management.EventSettingsModifier;
 
@@ -191,6 +193,12 @@ public final class FlightRecorderPermission extends java.security.BasicPermissio
             return FlightRecorder.getFlightRecorder().getInternal();
         }
 
+        @SuppressWarnings("removal")
+        @Override
+        public AccessControlContext getContext(SettingControl settingControl) {
+            return settingControl.getContext();
+        }
+
         @Override
         public EventSettings newEventSettings(EventSettingsModifier esm) {
             return new EventSettings.DelegatedEventSettings(esm);
@@ -213,7 +221,7 @@ public final class FlightRecorderPermission extends java.security.BasicPermissio
      */
     public FlightRecorderPermission(String name) {
         super(Objects.requireNonNull(name, "name"));
-        if (!name.equals("accessFlightRecorder") && !name.equals("registerEvent")) {
+        if (!name.equals(SecuritySupport.ACCESS_FLIGHT_RECORDER) && !name.equals(SecuritySupport.REGISTER_EVENT)) {
             throw new IllegalArgumentException("name: " + name);
         }
     }

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016, 2025, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2016, 2024, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -34,6 +34,8 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Consumer;
+import java.security.AccessControlContext;
+
 import jdk.jfr.Configuration;
 import jdk.jfr.EventSettings;
 import jdk.jfr.EventType;
@@ -47,12 +49,15 @@ import jdk.jfr.internal.Logger;
 import jdk.jfr.internal.MetadataRepository;
 import jdk.jfr.internal.PlatformRecording;
 import jdk.jfr.internal.PrivateAccess;
+import jdk.jfr.internal.SecuritySupport;
+import jdk.jfr.internal.SecuritySupport.SafePath;
 import jdk.jfr.internal.util.Utils;
 import jdk.jfr.internal.util.ValueFormatter;
 import jdk.jfr.internal.util.ValueParser;
-import jdk.jfr.internal.WriteablePath;
+import jdk.jfr.internal.WriteableUserPath;
 import jdk.jfr.internal.consumer.AbstractEventStream;
 import jdk.jfr.internal.consumer.EventDirectoryStream;
+import jdk.jfr.internal.consumer.FileAccess;
 
 /**
  * The management API in module jdk.management.jfr should be built on top of the
@@ -79,6 +84,7 @@ public final class ManagementSupport {
     //
     public static List<EventType> getEventTypes() {
         // would normally be checked when a Flight Recorder instance is created
+        SecuritySupport.checkAccessFlightRecorder();
         if (JVMSupport.isNotAvailable()) {
             return List.of();
         }
@@ -115,16 +121,17 @@ public final class ManagementSupport {
     // requires access to jdk.jfr.internal.PlatformRecording
     public static String getDestinationOriginalText(Recording recording) {
         PlatformRecording pr = PrivateAccess.getInstance().getPlatformRecording(recording);
-        WriteablePath wp = pr.getDestination();
-        return wp == null ? null : wp.getPath().toString();
+        WriteableUserPath wup = pr.getDestination();
+        return wup == null ? null : wup.getOriginalText();
     }
 
     // Needed to check if destination can be set, so FlightRecorderMXBean::setRecordingOption
     // can abort if not all data is valid
-    public static void checkSetDestination(Recording recording, String destination) throws IOException {
+    public static void checkSetDestination(Recording recording, String destination) throws IOException{
         PlatformRecording pr = PrivateAccess.getInstance().getPlatformRecording(recording);
         if(destination != null){
-            pr.checkSetDestination(new WriteablePath(Paths.get(destination)));
+            WriteableUserPath wup = new WriteableUserPath(Paths.get(destination));
+            pr.checkSetDestination(wup);
         }
     }
 
@@ -136,7 +143,7 @@ public final class ManagementSupport {
     // Needed callback to detect when a chunk has been parsed.
     public static void removePath(Recording recording, Path path) {
         PlatformRecording pr = PrivateAccess.getInstance().getPlatformRecording(recording);
-        pr.removePath(path);
+        pr.removePath(new SafePath(path));
     }
 
     // Needed callback to detect when a chunk has been parsed.
@@ -162,10 +169,14 @@ public final class ManagementSupport {
     // EventStream::onMetadataData need to supply MetadataEvent
     // with configuration objects
     public static EventStream newEventDirectoryStream(
+            @SuppressWarnings("removal")
+            AccessControlContext acc,
             Path directory,
             List<Configuration> confs) throws IOException {
         return new EventDirectoryStream(
+            acc,
             directory,
+            FileAccess.UNPRIVILEGED,
             null,
             confs,
             false

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012, 2025, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2012, 2024, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -40,8 +40,9 @@ import jdk.jfr.Recording;
 import jdk.jfr.internal.PlatformRecorder;
 import jdk.jfr.internal.PlatformRecording;
 import jdk.jfr.internal.PrivateAccess;
+import jdk.jfr.internal.SecuritySupport.SafePath;
 import jdk.jfr.internal.util.ValueParser;
-import jdk.jfr.internal.WriteablePath;
+import jdk.jfr.internal.WriteableUserPath;
 
 /**
  * JFR.dump
@@ -125,16 +126,17 @@ final class DCmdDump extends AbstractDCmd {
             // If a filename exist, use it
             // if a filename doesn't exist, use destination set earlier
             // if destination doesn't exist, generate a filename
-            WriteablePath wp = null;
+            WriteableUserPath wup = null;
             if (recording != null) {
                 PlatformRecording pRecording = PrivateAccess.getInstance().getPlatformRecording(recording);
-                wp = pRecording.getDestination();
+                wup = pRecording.getDestination();
             }
-            if (filename != null || (filename == null && wp == null) ) {
-                wp = new WriteablePath(resolvePath(recording, filename));
+            if (filename != null || (filename == null && wup == null) ) {
+                SafePath safe = resolvePath(recording, filename);
+                wup = new WriteableUserPath(safe.toPath());
             }
-            r.dumpStopped(wp);
-            reportOperationComplete("Dumped", name, wp.getReal());
+            r.dumpStopped(wup);
+            reportOperationComplete("Dumped", name, new SafePath(wup.getRealPathText()));
         }
     }
 

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016, 2025, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2016, 2024, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -25,18 +25,22 @@
 
 package jdk.jfr.internal;
 
+import java.security.AccessControlContext;
+import java.security.AccessController;
+import java.security.PrivilegedActionException;
+import java.security.PrivilegedExceptionAction;
+
 import jdk.jfr.RecordingState;
 
 /**
  * Class responsible for dumping recordings on exit
  *
  */
-final class ShutdownHook extends Thread {
+final class ShutdownHook implements Runnable {
     private final PlatformRecorder recorder;
     Object tlabDummyObject;
 
     ShutdownHook(PlatformRecorder recorder) {
-        super("JFR Shutdown Hook");
         this.recorder = recorder;
     }
 
@@ -57,7 +61,7 @@ final class ShutdownHook extends Thread {
 
     private void dump(PlatformRecording recording) {
         try {
-            WriteablePath dest = recording.getDestination();
+            WriteableUserPath dest = recording.getDestination();
             if (dest == null) {
                 dest = recording.makeDumpPath();
                 recording.setDestination(dest);

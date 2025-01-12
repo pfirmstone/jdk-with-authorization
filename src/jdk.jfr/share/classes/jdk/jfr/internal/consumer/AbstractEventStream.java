@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019, 2025, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2019, 2024, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -26,6 +26,9 @@
 package jdk.jfr.internal.consumer;
 
 import java.io.IOException;
+import java.security.AccessControlContext;
+import java.security.AccessController;
+import java.security.PrivilegedAction;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
@@ -43,6 +46,7 @@ import jdk.jfr.consumer.RecordedEvent;
 import jdk.jfr.internal.LogLevel;
 import jdk.jfr.internal.LogTag;
 import jdk.jfr.internal.Logger;
+import jdk.jfr.internal.SecuritySupport;
 
 /*
  * Purpose of this class is to simplify the implementation of
@@ -53,6 +57,8 @@ public abstract class AbstractEventStream implements EventStream {
 
     private final CountDownLatch terminated = new CountDownLatch(1);
     private final Runnable flushOperation = () -> dispatcher().runFlushActions();
+    @SuppressWarnings("removal")
+    private final AccessControlContext accessControllerContext;
     private final StreamConfiguration streamConfiguration = new StreamConfiguration();
     private final List<Configuration> configurations;
     private final ParserState parserState = new ParserState();
@@ -61,7 +67,8 @@ public abstract class AbstractEventStream implements EventStream {
     private boolean daemon = false;
 
 
-    AbstractEventStream(List<Configuration> configurations) throws IOException {
+    AbstractEventStream(@SuppressWarnings("removal") AccessControlContext acc, List<Configuration> configurations) throws IOException {
+        this.accessControllerContext = Objects.requireNonNull(acc);
         this.configurations = configurations;
     }
 
@@ -214,20 +221,21 @@ public abstract class AbstractEventStream implements EventStream {
 
     public final void startAsync(long startNanos) {
         startInternal(startNanos);
-        Runnable r = () -> execute();
-        Thread thread = new Thread(r, nextThreadName());
-        thread.setDaemon(daemon);
+        Runnable r = () -> run(accessControllerContext);
+        Thread thread = SecuritySupport.createThreadWitNoPermissions(nextThreadName(), r);
+        SecuritySupport.setDaemonThread(thread, daemon);
         thread.start();
     }
 
     public final void start(long startNanos) {
         startInternal(startNanos);
-        execute();
+        run(accessControllerContext);
     }
 
     protected final Runnable getFlushOperation() {
         return flushOperation;
     }
+
 
     protected final void onFlush() {
        Runnable r = getFlushOperation();
@@ -266,6 +274,17 @@ public abstract class AbstractEventStream implements EventStream {
                 terminated.countDown();
             }
         }
+    }
+
+    @SuppressWarnings("removal")
+    private void run(AccessControlContext accessControlContext) {
+        AccessController.doPrivileged(new PrivilegedAction<Void>() {
+            @Override
+            public Void run() {
+                execute();
+                return null;
+            }
+        }, accessControlContext);
     }
 
     private String nextThreadName() {
