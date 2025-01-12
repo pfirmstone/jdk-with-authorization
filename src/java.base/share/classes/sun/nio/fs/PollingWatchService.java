@@ -51,6 +51,7 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
+import jdk.internal.misc.InnocuousThread;
 import static java.nio.file.LinkOption.NOFOLLOW_LINKS;
 
 /**
@@ -77,7 +78,7 @@ class PollingWatchService
             .newSingleThreadScheduledExecutor(new ThreadFactory() {
                  @Override
                  public Thread newThread(Runnable r) {
-                     Thread t = new Thread(null, r, "FileSystemWatcher", 0, false);
+                     Thread t = InnocuousThread.newThread("FileSystemWatcher", r);
                      t.setDaemon(true);
                      return t;
                  }});

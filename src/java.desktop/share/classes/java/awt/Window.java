@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 1995, 2021, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 1995, 2025, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -244,7 +244,7 @@ public class Window extends Container implements Accessible {
     static boolean systemSyncLWRequests = false;
 
     /**
-     * Focus transfers should be synchronous for lightweight component requests.
+     * @serial Focus transfers should be synchronous for lightweight component requests.
      */
     boolean syncLWRequests = false;
     transient boolean beforeFirstShow = true;
@@ -2886,7 +2886,7 @@ public class Window extends Container implements Accessible {
     }
 
     /**
-     * Window type.
+     * @serial Window type.
      *
      * Synchronization: ObjectLock
      */
@@ -3450,7 +3450,7 @@ public class Window extends Container implements Accessible {
     }
 
     /**
-     * {@code true} if this Window should appear at the default location,
+     * @serial {@code true} if this Window should appear at the default location,
      * {@code false} if at the current location.
      */
     private volatile boolean locationByPlatform = locationByPlatformProp;
