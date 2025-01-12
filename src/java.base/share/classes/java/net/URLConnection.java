@@ -309,7 +309,7 @@ public abstract class URLConnection {
         if (map == null) {
             fileNameMap = map = new FileNameMap() {
                 private final FileNameMap internalMap =
-                    sun.net.www.MimeTable.loadTable();
+                    sun.net.www.MimeTable.getDefaultTable();
 
                 public String getContentTypeFor(String fileName) {
                     return internalMap.getContentTypeFor(fileName);
