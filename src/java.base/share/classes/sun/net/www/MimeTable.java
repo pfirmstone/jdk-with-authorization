@@ -45,19 +45,6 @@ public final class MimeTable implements FileNameMap {
     /** Keyed by file extension (with the .), returns MimeEntries */
     private final Hashtable<String, MimeEntry> extensionMap = new Hashtable<>();
 
-    // Will be reset if in the platform-specific data file
-    @SuppressWarnings("removal")
-    private static String tempFileTemplate =
-        java.security.AccessController.doPrivileged(
-                new java.security.PrivilegedAction<String>() {
-                    public String run() {
-                        return System.getProperty("content.types.temp.file.template",
-                                "/tmp/%s");
-                    }
-                });
-
-    private static final String filePreamble = "sun.net.www MIME content-types table";
-
     private MimeTable() {
         load();
     }
@@ -149,28 +136,6 @@ public final class MimeTable implements FileNameMap {
         return findByFileExtension(fname);
 
     }
-
-    public synchronized Enumeration<MimeEntry> elements() {
-        return entries.elements();
-    }
-
-    // For backward compatibility -- mailcap format files
-    // This is not currently used, but may in the future when we add ability
-    // to read BOTH the properties format and the mailcap format.
-    @SuppressWarnings("removal")
-    protected static String[] mailcapLocations =
-        java.security.AccessController.doPrivileged(
-                new java.security.PrivilegedAction<String[]>() {
-                    public String[] run() {
-                        return new String[]{
-                                System.getProperty("user.mailcap"),
-                                StaticProperty.userHome() + "/.mailcap",
-                                "/etc/mailcap",
-                                "/usr/etc/mailcap",
-                                "/usr/local/etc/mailcap",
-                        };
-                    }
-                });
 
     private synchronized void load() {
         Properties entries = new Properties();
@@ -307,67 +272,4 @@ public final class MimeTable implements FileNameMap {
         return MimeEntry.UNKNOWN;
     }
 
-    public Properties getAsProperties() {
-        Properties properties = new Properties();
-        Enumeration<MimeEntry> e = elements();
-        while (e.hasMoreElements()) {
-            MimeEntry entry = e.nextElement();
-            properties.put(entry.getType(), entry.toProperty());
         }
-
-        return properties;
-    }
-
-    protected boolean saveAsProperties(File file) {
-        try (FileOutputStream os = new FileOutputStream(file)) {
-            Properties properties = getAsProperties();
-            properties.put("temp.file.template", tempFileTemplate);
-            String tag;
-            // Perform the property security check for user.name
-            @SuppressWarnings("removal")
-            SecurityManager sm = System.getSecurityManager();
-            if (sm != null) {
-                sm.checkPropertyAccess("user.name");
-            }
-            String user = StaticProperty.userName();
-            if (user != null) {
-                tag = "; customized for " + user;
-                properties.store(os, filePreamble + tag);
-            }
-            else {
-                properties.store(os, filePreamble);
-            }
-        }
-        catch (IOException e) {
-            e.printStackTrace();
-            return false;
-        }
-
-        return true;
-    }
-    /*
-     * Debugging utilities
-     *
-    public void list(PrintStream out) {
-        Enumeration keys = entries.keys();
-        while (keys.hasMoreElements()) {
-            String key = (String)keys.nextElement();
-            MimeEntry entry = (MimeEntry)entries.get(key);
-            out.println(key + ": " + entry);
-        }
-    }
-
-    public static void main(String[] args) {
-        MimeTable testTable = MimeTable.getDefaultTable();
-
-        Enumeration e = testTable.elements();
-        while (e.hasMoreElements()) {
-            MimeEntry entry = (MimeEntry)e.nextElement();
-            System.out.println(entry);
-        }
-
-        testTable.save(File.separator + "tmp" +
-                       File.separator + "mime_table.save");
-    }
-    */
-}
