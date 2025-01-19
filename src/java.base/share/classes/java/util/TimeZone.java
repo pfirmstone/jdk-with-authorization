@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 1996, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 1996, 2025, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -47,6 +47,7 @@ import sun.security.action.GetPropertyAction;
 import sun.util.calendar.ZoneInfo;
 import sun.util.calendar.ZoneInfoFile;
 import sun.util.locale.provider.TimeZoneNameUtility;
+import sun.util.logging.PlatformLogger;
 
 /**
  * {@code TimeZone} represents a time zone offset, and also figures out daylight
@@ -597,6 +598,11 @@ public abstract class TimeZone implements Serializable, Cloneable {
     }
 
     private static TimeZone getTimeZone(String ID, boolean fallback) {
+        if (ZoneId.SHORT_IDS.containsKey(ID)) {
+            PlatformLogger.getLogger(TimeZone.class.getName())
+                .warning("Use of the three-letter time zone ID \"%s\" is deprecated and it will be removed in a future release"
+                    .formatted(ID));
+        }
         TimeZone tz = ZoneInfo.getTimeZone(ID);
         if (tz == null) {
             tz = parseCustomTimeZone(ID);
