@@ -39,6 +39,8 @@ import java.util.Objects;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
+import java.security.AccessController;
+import java.security.PrivilegedAction;
 
 import static java.net.NetworkInterface.getNetworkInterfaces;
 import static java.util.Collections.list;
@@ -109,7 +111,7 @@ public class NetworkConfiguration {
      * was looked up.
      *
      * @param ni1 A network interface, may be {@code null}
-     * @param ni2 Another network interface, may be {@code null}
+     * @param ni2 An other network interface, may be {@code null}
      * @return {@code true} if the two network interfaces have the same name
      *         and index, {@code false} otherwise.
      */
@@ -445,15 +447,19 @@ public class NetworkConfiguration {
     }
 
     /** Prints all the system interface information to the give stream. */
+    @SuppressWarnings("removal")
     public static void printSystemConfiguration(PrintStream out) {
+        PrivilegedAction<Void> pa = () -> {
         try {
             out.println("*** all system network interface configuration ***");
             for (NetworkInterface nif : list(getNetworkInterfaces())) {
                 out.print(interfaceInformation(nif));
             }
             out.println("*** end ***");
+            return null;
         } catch (IOException e) {
             throw new UncheckedIOException(e);
-        }
+        }};
+        AccessController.doPrivileged(pa);
     }
 }
