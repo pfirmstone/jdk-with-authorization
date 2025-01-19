@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2001, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2008, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -23,27 +23,27 @@
 
 /*
  * @test
- * @bug 4408997
- * @summary Should be able to pass a Provider object to getInstance().
- * @compile StubProvider.java StubProviderImpl.java
- * @run main/othervm/policy=provider.policy GetInstance
- * The test passes if it returns.
- * The test fails if an exception is thrown.
+ * @bug 6648816
+ * @summary REGRESSION: setting -Djava.security.debug=failure result in NPE
+ * in ACC
+ * @run main/othervm -Djava.security.debug=failure FailureDebugOption
  */
-import java.security.cert.CertPathParameters;
-import java.security.cert.CertPathBuilderResult;
-import java.security.cert.CertPathBuilderSpi;
-import java.security.Provider;
+
+import java.security.ProtectionDomain;
 import java.security.AccessController;
-import java.security.cert.CertPathBuilder;
-import java.security.NoSuchAlgorithmException;
+import java.security.AccessControlException;
+import java.security.BasicPermission;
 
+public class FailureDebugOption {
 
-public class GetInstance {
-
-    public static void main(String[] argv) throws Exception {
-        Provider stubProvider = new StubProvider();
-        CertPathBuilder cpb = CertPathBuilder.getInstance("PKIX", stubProvider);
-        System.out.println("Test passed.");
-    }
+   public static void main (String argv[]) throws Exception {
+        try {
+            AccessController.checkPermission(
+                        new BasicPermission("no such permission"){});
+        } catch (NullPointerException npe) {
+           throw new Exception("Unexpected NullPointerException for security" +
+                        " debug option, -Djava.security.debug=failure");
+        } catch (AccessControlException ace) {
+        }
+   }
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 1999, 2025, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 1999, 2024, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -50,7 +50,9 @@ public class AVAEqualsHashCode {
         byte[] ba = deros.toByteArray();
         DerValue dv = new DerValue(ba);
 
-        Constructor c = getAVAConstructor();
+        GetAVAConstructor a = new GetAVAConstructor();
+        java.security.AccessController.doPrivileged(a);
+        Constructor c = a.getCons();
 
         Object[] objs = new Object[2];
         objs[0] = oid;
@@ -71,10 +73,16 @@ public class AVAEqualsHashCode {
         else
             throw new Exception("FAILED equals()/hashCode() contract");
     }
+}
 
-    static Constructor getAVAConstructor() throws Exception {
+class GetAVAConstructor implements java.security.PrivilegedExceptionAction {
+
+    private Class avaClass = null;
+    private Constructor avaCons = null;
+
+    public Object run() throws Exception {
         try {
-            Class avaClass = Class.forName("sun.security.x509.AVA");
+            avaClass = Class.forName("sun.security.x509.AVA");
             Constructor[] cons = avaClass.getDeclaredConstructors();
 
             int i;
@@ -83,16 +91,22 @@ public class AVAEqualsHashCode {
                 if (parms.length == 2) {
                     if (parms[0].getName().equalsIgnoreCase("sun.security.util.ObjectIdentifier") &&
                             parms[1].getName().equalsIgnoreCase("sun.security.util.DerValue")) {
-                        Constructor avaCons = cons[i];
+                        avaCons = cons[i];
                         avaCons.setAccessible(true);
-                        return avaCons;
+                        break;
                     }
                 }
             }
-            return null;
+
         } catch (Exception e) {
             System.out.println("Caught unexpected exception " + e);
             throw e;
         }
+        return avaCons;
     }
+
+    public Constructor getCons(){
+        return avaCons;
+    }
+
 }

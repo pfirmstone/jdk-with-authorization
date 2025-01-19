@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2005, 2025, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2005, 2024, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -48,7 +48,8 @@ public class SimpleSSLContext {
     }
 
     private SimpleSSLContext(Supplier<String> protocols) throws IOException {
-        String proto = protocols.get();
+        final String proto = protocols.get();
+
         String paths = System.getProperty("test.src.path");
         StringTokenizer st = new StringTokenizer(paths, File.pathSeparator);
         while (st.hasMoreTokens()) {
@@ -57,7 +58,6 @@ public class SimpleSSLContext {
             if (f.exists()) {
                 try (FileInputStream fis = new FileInputStream(f)) {
                     init(fis, proto);
-                    break;
                 }
             }
         }
