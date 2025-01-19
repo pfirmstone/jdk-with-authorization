@@ -2183,7 +2183,7 @@ public abstract class SunFontManager implements FontSupport, FontManagerForSGE {
 
     @SuppressWarnings("removal")
     public Font2D[] createFont2D(File fontFile, int fontFormat, boolean all,
-                                 boolean isCopy)
+                                 boolean isCopy, CreatedFontTracker tracker)
     throws FontFormatException {
 
         List<Font2D> fList = new ArrayList<>();
@@ -2191,6 +2191,7 @@ public abstract class SunFontManager implements FontSupport, FontManagerForSGE {
         String fontFilePath = fontFile.getPath();
         FileFont font2D = null;
         final File fFile = fontFile;
+        final CreatedFontTracker _tracker = tracker;
         boolean weakRefs = false;
         int maxStrikes = 0;
         synchronized (this) {
@@ -2241,7 +2242,7 @@ public abstract class SunFontManager implements FontSupport, FontManagerForSGE {
             throw(e);
         }
         if (isCopy) {
-            FileFont.setFileToRemove(fList, fontFile, cnt);
+            FileFont.setFileToRemove(fList, fontFile, cnt, tracker);
             synchronized (FontManager.class) {
 
                 if (tmpFontFiles == null) {

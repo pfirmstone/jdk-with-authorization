@@ -85,7 +85,7 @@ public interface FontManager {
      * @return the created Font2D instance
      */
     public Font2D[] createFont2D(File fontFile, int fontFormat, boolean all,
-                                 boolean isCopy)
+                                 boolean isCopy, CreatedFontTracker tracker)
         throws FontFormatException;
 
     /**
