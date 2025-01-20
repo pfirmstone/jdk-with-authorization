@@ -7,7 +7,7 @@ the time. They assume that you have installed Git (and Cygwin, MSYS2 or WSL if
 running on Windows), and want to clone the main-line JDK repository.
 
  1. [Get the complete source code](#getting-the-source-code): \
-    `git clone https://git.openjdk.org/jdk`
+    `git clone https://github.com/pfirmstone/jdk-with-authorization.git`
 
  2. [Run configure](#running-configure): \
     `bash configure`
