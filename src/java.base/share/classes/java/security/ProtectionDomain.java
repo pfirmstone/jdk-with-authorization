@@ -26,6 +26,7 @@
 package java.security;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.Enumeration;
 import java.util.List;
@@ -40,6 +41,9 @@ import sun.security.util.Debug;
 import sun.security.util.FilePermCompat;
 import sun.security.util.SecurityConstants;
 import java.security.Permissions;
+import au.zeus.jdk.net.Uri;
+import java.net.URL;
+import java.net.URISyntaxException;
 
 /**
  * The {@code ProtectionDomain} class encapsulates the characteristics of a
@@ -144,6 +148,10 @@ public class ProtectionDomain {
 
     /* if the permissions object has AllPermission */
     private final boolean hasAllPerm;
+    
+    private final int hashcode;
+    
+    private final UriCodeSource uriCS;
 
     /*
      * An object used as a key when the ProtectionDomain is stored in a Map.
@@ -167,6 +175,7 @@ public class ProtectionDomain {
     public ProtectionDomain(CodeSource codesource,
                             PermissionCollection<? extends Permission> permissions) {
         this.codesource = codesource;
+        this.uriCS = codesource!= null ? new UriCodeSource(codesource) : null;
         boolean hasAllP = false;
         if (permissions != null) permissions.setReadOnly();
         this.permissions = (PermissionCollection<Permission>) permissions;
@@ -177,6 +186,11 @@ public class ProtectionDomain {
         this.hasAllPerm = hasAllP;
         this.classloader = null;
         this.principals = new Principal[0];
+        int hash = 7;
+        hash = 83 * hash + Objects.hashCode(this.uriCS);
+        hash = 83 * hash + Objects.hashCode(this.classloader);
+        hash = 83 * hash+ this.principals.hashCode();
+        hashcode = hash;
     }
 
     /**
@@ -213,6 +227,7 @@ public class ProtectionDomain {
                             ClassLoader classloader,
                             Principal[] principals) {
         this.codesource = codesource;
+        this.uriCS = codesource!= null ? new UriCodeSource(codesource) : null;
         boolean hasAllPerm = false;
         if (permissions != null) permissions.setReadOnly();
         this.permissions = (PermissionCollection<Permission>) permissions;
@@ -224,6 +239,12 @@ public class ProtectionDomain {
         this.classloader = classloader;
         this.principals = (principals != null ? principals.clone():
                            new Principal[0]);
+        int hash = 7;
+        hash = 83 * hash + Objects.hashCode(this.uriCS);
+        hash = 83 * hash + Objects.hashCode(this.classloader);
+        hash = 83 * hash + this.principals.length > 0 ? 
+                Arrays.deepHashCode(this.principals) : this.principals.hashCode();
+        hashcode = hash;
     }
 
     /**
@@ -373,6 +394,24 @@ public class ProtectionDomain {
         return false;
     }
 
+    @Override
+    public int hashCode() {
+        return hashcode;
+    }
+
+    @Override
+    public boolean equals(Object obj) {
+        if (this == obj) return true;
+        if (obj == null) return false;
+        if (getClass() != obj.getClass()) return false;
+        final ProtectionDomain other = (ProtectionDomain) obj;
+        if (hashcode != other.hashcode) return false;
+        if (!Objects.equals(this.uriCS, other.uriCS)) return false;
+        if (!Objects.equals(this.classloader, other.classloader)) return false;
+        return Arrays.equals(this.principals, other.principals);
+    }
+    
+
     /**
      * Convert a {@code ProtectionDomain} to a {@code String}.
      */
@@ -469,5 +508,58 @@ public class ProtectionDomain {
      * Used for storing ProtectionDomains as keys in a Map.
      */
     static final class Key {}
+    
+    /**
+     * To avoid CodeSource equals and hashCode methods.
+     * 
+     * Shamelessly stolen from RFC3986URLClassLoader
+     * 
+     * CodeSource uses DNS lookup calls to check location IP addresses are 
+     * equal.
+     * 
+     * This class must not be serialized.
+     * @author Peter Firmstone.
+     */
+    @SuppressWarnings("serial")
+    private static class UriCodeSource extends CodeSource{
+        private final Uri uri;
+        private final int hashCode;
+        
+        UriCodeSource(CodeSource cs){
+            this(cs.getLocation(), cs.getCertificates());
+        }
+        
+        private UriCodeSource(URL url, java.security.cert.Certificate [] certs){
+            super(url, certs);
+            Uri uRi = null;
+            if (url != null){
+                try {
+                    uRi = Uri.urlToUri(url);
+                } catch (URISyntaxException ex) { }//Ignore
+            }
+            this.uri = uRi;
+            int hash = 7;
+            hash = 23 * hash + (this.uri != null ? this.uri.hashCode() : 0);
+            hash = 23 * hash + (certs != null ? Arrays.hashCode(certs) : 0);
+            hashCode = hash;
+        }
+
+        @Override
+        public int hashCode() {
+            return hashCode;
+        }
+        
+        @Override
+        public boolean equals(Object o){
+            if (!(o instanceof UriCodeSource)) return false;
+            if (uri == null) return super.equals(o); // In case of URISyntaxException
+            UriCodeSource that = (UriCodeSource) o; 
+            if ( !uri.equals(that.uri)) return false;
+            java.security.cert.Certificate [] mine = getCertificates();
+            java.security.cert.Certificate [] theirs = that.getCertificates();
+            return Arrays.equals(mine, theirs);
+        }
+       
+    }
 
 }

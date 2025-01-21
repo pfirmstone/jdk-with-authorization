@@ -2189,7 +2189,7 @@ public final class System {
 
         // start Finalizer and Reference Handler threads
         SharedSecrets.getJavaLangRefAccess().startThreads();
-
+        
         // system properties, java.lang and other core classes are now initialized
         VM.initLevel(1);
     }
@@ -2285,7 +2285,7 @@ public final class System {
      * @return JNI_OK for success, JNI_ERR for failure
      */
     private static int initPhase2(boolean printToStderr, boolean printStackTrace) {
-
+        
         try {
             bootLayer = ModuleBootstrap.boot();
         } catch (Exception | Error e) {
@@ -2293,7 +2293,19 @@ public final class System {
                              "Error occurred during initialization of boot layer", e);
             return -1; // JNI_ERR
         }
-
+        
+        // Initialize classes required by AccessContoller::getStackContext to avoid potential
+        // bootstrap circularity issues
+        Unsafe.getUnsafe().ensureClassInitialized(jdk.internal.util.random.RandomSupport.class);
+        Unsafe.getUnsafe().ensureClassInitialized(java.lang.Enum.class);
+        Unsafe.getUnsafe().ensureClassInitialized(java.util.EnumSet.class);
+        Unsafe.getUnsafe().ensureClassInitialized(java.util.EnumMap.class);
+        Unsafe.getUnsafe().ensureClassInitialized(java.lang.ScopedValue.class);
+        Unsafe.getUnsafe().ensureClassInitialized(java.lang.ScopedValue.Cache.class);
+        Unsafe.getUnsafe().ensureClassInitialized(java.lang.StackWalker.class);
+        Unsafe.getUnsafe().ensureClassInitialized(java.lang.StackWalker.Option.class);
+        Unsafe.getUnsafe().ensureClassInitialized(java.security.AccessController.Holder.class);
+        
         // module system initialized
         VM.initLevel(2);
 
@@ -2319,7 +2331,7 @@ public final class System {
         // bootstrap circularity issues that could be caused by a custom
         // SecurityManager
         Unsafe.getUnsafe().ensureClassInitialized(StringConcatFactory.class);
-
+        
         // Emit a warning if java.io.tmpdir is set via the command line
         // to a directory that doesn't exist
         if (SystemProps.isBadIoTmpdir()) {

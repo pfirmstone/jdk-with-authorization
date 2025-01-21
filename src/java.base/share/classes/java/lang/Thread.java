@@ -771,7 +771,7 @@ public class Thread implements Runnable {
     Thread(String name, int characteristics, boolean bound) {
         this.tid = ThreadIdentifiers.next();
         this.name = (name != null) ? name : "";
-        this.inheritedAccessControlContext = Constants.NO_PERMISSIONS_ACC;
+        this.inheritedAccessControlContext = AccessController.getContext();
 
         // thread locals
         if ((characteristics & NO_INHERIT_THREAD_LOCALS) == 0) {
