@@ -24,3 +24,5 @@ NashornProfile.txt
 /.lldbinit
 config.log
 configure.log
+.vs/*
+*.vsidx
