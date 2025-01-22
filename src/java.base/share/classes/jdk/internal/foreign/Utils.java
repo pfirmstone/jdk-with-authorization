@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) 2019, 2024, Oracle and/or its affiliates. All rights reserved.
+ *  Copyright (c) 2019, 2025, Oracle and/or its affiliates. All rights reserved.
  *  DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  *  This code is free software; you can redistribute it and/or modify it
@@ -25,6 +25,12 @@
  */
 
 package jdk.internal.foreign;
+
+import jdk.internal.access.SharedSecrets;
+import jdk.internal.foreign.abi.SharedUtils;
+import jdk.internal.misc.Unsafe;
+import jdk.internal.vm.annotation.ForceInline;
+import sun.invoke.util.Wrapper;
 
 import java.lang.foreign.AddressLayout;
 import java.lang.foreign.MemoryLayout;
