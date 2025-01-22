@@ -372,6 +372,12 @@ class SerializeClosure;
   template(asPrimitive_name,                          "asPrimitive")                              \
   template(asPrimitive_int_signature,                 "(I)Ljava/lang/LiveStackFrame$PrimitiveSlot;") \
   template(asPrimitive_long_signature,                "(J)Ljava/lang/LiveStackFrame$PrimitiveSlot;") \
+  /* AccessController Support */                                                                  \
+  template(jdk_internal_util_random_RandomSupport,    "jdk/internal/util/random/RandomSupport")   \
+  template(java_util_EnumMap,                         "java/util/EnumMap")                        \
+  template(java_lang_StackWalker_Option,              "java/lang/StackWalker$Option")             \
+  template(java_lang_ScopedValue_Cache,               "java/lang/ScopedValue$Cache")              \
+  template(java_security_AccessController_Holder,     "java/security/AccessController$Holder")    \
                                                                                                   \
   /* common method and field names */                                                             \
   template(object_initializer_name,                   "<init>")                                   \

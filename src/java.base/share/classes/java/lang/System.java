@@ -2294,18 +2294,6 @@ public final class System {
             return -1; // JNI_ERR
         }
         
-        // Initialize classes required by AccessContoller::getStackContext to avoid potential
-        // bootstrap circularity issues
-        Unsafe.getUnsafe().ensureClassInitialized(jdk.internal.util.random.RandomSupport.class);
-        Unsafe.getUnsafe().ensureClassInitialized(java.lang.Enum.class);
-        Unsafe.getUnsafe().ensureClassInitialized(java.util.EnumSet.class);
-        Unsafe.getUnsafe().ensureClassInitialized(java.util.EnumMap.class);
-        Unsafe.getUnsafe().ensureClassInitialized(java.lang.ScopedValue.class);
-        Unsafe.getUnsafe().ensureClassInitialized(java.lang.ScopedValue.Cache.class);
-        Unsafe.getUnsafe().ensureClassInitialized(java.lang.StackWalker.class);
-        Unsafe.getUnsafe().ensureClassInitialized(java.lang.StackWalker.Option.class);
-        Unsafe.getUnsafe().ensureClassInitialized(java.security.AccessController.Holder.class);
-        
         // module system initialized
         VM.initLevel(2);
 

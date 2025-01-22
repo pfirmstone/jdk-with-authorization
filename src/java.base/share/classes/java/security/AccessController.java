@@ -1204,7 +1204,7 @@ public final class AccessController {
      * Holder for references to ScopedValue and StackWalker instances used by 
      * AccessController. Initialized by java.lang.System during VM init phase 2.
      */
-    public static final class Holder {
+    private static final class Holder {
         
         static final Holder s = new Holder();
         

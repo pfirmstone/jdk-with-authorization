@@ -425,6 +425,20 @@ void Threads::initialize_jsr292_core_classes(TRAPS) {
   }
 }
 
+void Threads::initialize_access_controller_core_classes(TRAPS) {
+  TraceTime timer("Initialize java.security.AccessController::getContext classes", TRACETIME_LOG(Info, startuptime));
+
+  // Initialize classes required by AccessContoller::getStackContext to avoid potential
+  // bootstrap circularity issues
+  initialize_class(vmSymbols::jdk_internal_util_random_RandomSupport(), CHECK);
+  initialize_class(vmSymbols::java_util_EnumMap(), CHECK);
+  initialize_class(vmSymbols::java_lang_ScopedValue(), CHECK);
+  initialize_class(vmSymbols::java_lang_ScopedValue_Cache(), CHECK);
+  initialize_class(vmSymbols::java_lang_StackWalker(), CHECK);
+  initialize_class(vmSymbols::java_lang_StackWalker_Option(), CHECK);
+  initialize_class(vmSymbols::java_security_AccessController_Holder(), CHECK);
+}
+
 jint Threads::create_vm(JavaVMInitArgs* args, bool* canTryAgain) {
   extern void JDK_Version_init();
 
@@ -785,6 +799,9 @@ jint Threads::create_vm(JavaVMInitArgs* args, bool* canTryAgain) {
 
   // Notify JVMTI agents that VM has started (JNI is up) - nop if no agents.
   JvmtiExport::post_vm_start();
+
+  // Initialize classes needed for AccessController::getContext
+  initialize_access_controller_core_classes(CHECK_JNI_ERR);
 
   // Final system initialization including security manager and system class loader
   call_initPhase3(CHECK_JNI_ERR);

@@ -731,7 +731,7 @@ public final class ScopedValue<T> {
     * be public in order to ensure proper static class initialization during
     * VM init phase 2.
     */
-    public static final class Cache {
+    private static final class Cache {
         
         private Cache(){} //prevent instantiation.
         
