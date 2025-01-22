@@ -1,0 +1,7 @@
+grant {
+    permission java.io.FilePermission "<<ALL FILES>>", "read,execute";
+    permission java.util.PropertyPermission "jdk.lang.Process.allowAmbiguousCommands", "read";
+    permission java.lang.RuntimePermission "writeFileDescriptor";
+    permission java.lang.RuntimePermission "readFileDescriptor";
+    permission java.lang.RuntimePermission "createSecurityManager";
+};

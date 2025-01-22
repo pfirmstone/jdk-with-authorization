@@ -29,7 +29,7 @@
  * @summary Basic functionality of File.get-X-Space methods.
  * @library .. /test/lib
  * @build jdk.test.lib.Platform
- * @run main/othervm/native -Djava.security.manager=allow GetXSpace
+ * @run main/othervm/native/policy=security.policy -Djava.security.manager=allow GetXSpace
  */
 
 import java.io.BufferedReader;
@@ -449,8 +449,8 @@ public class GetXSpace {
                 }
             }
         }
-
-        System.setSecurityManager(null);
+        
+        System.setSecurityManager(new PermissiveSM());
 
         if (fail != 0) {
             err.format("%d tests: %d failure(s); first: %s%n",
@@ -540,5 +540,9 @@ public class GetXSpace {
                                            + sb.charAt(j) + "'");
             }
         }
+    }
+    
+    private static class PermissiveSM extends SecurityManager{
+        public void checkPermission(Permission perm) {}
     }
 }
