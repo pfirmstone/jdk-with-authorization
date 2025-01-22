@@ -55,6 +55,7 @@ import au.zeus.jdk.concurrent.RC;
 import au.zeus.jdk.concurrent.Ref;
 import au.zeus.jdk.concurrent.Referrer;
 import java.lang.ScopedValue.CallableOp;
+import java.util.concurrent.Executors;
 
 /**
  * CombinerSecurityManager, is intended to be a highly scalable
@@ -170,37 +171,10 @@ extends SecurityManager implements CachingSecurityManager {
         checked = RC.concurrentMap(refmap, Ref.TIME, Ref.STRONG, 20000L, 20000L);
         g = new SecurityPermission("getPolicy");
         action = new Action();
-        // Make this a tunable property.
-        double blocking_coefficient = 0.6; // 0 CPU intensive to 0.9 IO intensive
-        int numberOfCores = Runtime.getRuntime().availableProcessors();
-        int poolSizeLimit = (int) (numberOfCores / ( 1 - blocking_coefficient));
         // The intent here is to parallelise security checks as well as weed
         // out blocking SocketPermission's to execute them in parallel to 
         // reduce the wait on network IO.
-        // Once the pool size has reached it's maximum, the tasks are handed
-        // back to the calling thread to execute, this strategy also eliminates
-        // the possiblity of deadlock caused by circular dependencies between
-        // permission checks.
-        executor = 
-                new ThreadPoolExecutor(numberOfCores, poolSizeLimit, 20L, 
-                TimeUnit.SECONDS, new SynchronousQueue<Runnable>(), 
-                new ThreadFactory(){
-
-		    public Thread newThread(Runnable r) {
-                        Integer count = TRUSTED_RECURSIVE_CALL.isBound() ? TRUSTED_RECURSIVE_CALL.get() : null;
-                        if (count == null) count = Integer.valueOf(0);
-                        return ScopedValue.where(TRUSTED_RECURSIVE_CALL, count + 1).call(
-                        new CallableOp<Thread, SecurityException>(){
-                            @Override
-                            public Thread call() throws SecurityException {
-                                Thread t = new Thread(r, "CombinerSecurityManager_thread");
-                                t.setDaemon(true);
-                                return t;
-                            }
-                        });
-		    }
-		},
-                new ThreadPoolExecutor.CallerRunsPolicy());
+        executor = Executors.newVirtualThreadPerTaskExecutor();
         permCompare = RC.comparator(new PermissionComparator());
         // This is to avoid unnecessarily refreshing the policy.
 //        Permission createAccPerm = new SecurityPermission("createAccessControlContext");
