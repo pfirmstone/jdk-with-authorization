@@ -47,7 +47,10 @@ This project's objectives are to maintain a community fork of OpenJDK that retai
 - System.setSecurityManager(null) now throws NullPointerException, preventing injection attacks (vulnerabilities) from utilising privileged context to disable SecurityManager. ✔
 - Add policy tests from JGDMS.
 - Add strict RFC3986 RFC6874 and RFC5952 URI support and Remove DNS lookups from CodeSource.
-- Remove DNS lookups from SecureClassLoader, use RFC3986 URI instead.
+- Add support for Virtual threads. ✔
+- Reimplement AccessController::getContext to use StackWalker. ✔
+- Reimplement AccessController::doPrivileged to use ScopedValue for context and make AccessControlContext immutable. ✔
+- Update CombinerSecurityManager to use Virtual threads to hand off permission checks. ✔
 - Add LoadClassPermission to SecureClassLoader, to allow httmpd and jar file signers to control which code can be loaded by policy. ✔
 - Add SerialObjectPermission for Java Serialization, automating class whitelisting. ✔
 - Remove XML parsing from trusted code, to allow authorization decisions to be made on authenticated users instead. - This can be performed now by either preventing loading using LoadClassPermission, or since the xml modules are no longer part of the trusted code, can be assigned permissions. ✔
@@ -55,7 +58,7 @@ This project's objectives are to maintain a community fork of OpenJDK that retai
 - Follow and review OpenJDK changes.
 - Maintain Authorization and Authentication API's.
 - Research improvements and ideas for Authorization and Authentication API's.
-- Sandboxing untrusted code is a non goal, our focus is user authorization, and ensuring users only have authorization when using approved code, prevent loading of untrusted code and provide an auditing tool to assess privileges that third party code intends to use.
+- Sandboxing untrusted code is a non goal, our focus is user authorization, and ensuring users only have authorization when using approved code, prevent loading of untrusted code and provide an auditing tool to assess privileges that third party code intends to use.  Developers interested in sandboxing untrusted code need to consider using Graal process isolation.
 
 ## Relevant Presentations
 - https://www.youtube.com/watch?v=uVob-4aXbxY
