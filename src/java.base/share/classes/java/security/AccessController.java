@@ -1126,7 +1126,7 @@ public final class AccessController {
                           Class<?> caller)
     {
         if (!vmReady()){
-//            return executePrivleged(action, context, caller);
+//            return executePrivileged(action, context, caller);
             return action.run();
         }
         return ScopedValue.where(Holder.s.scopedPrivilegedContext(),
@@ -1139,7 +1139,7 @@ public final class AccessController {
             throws Exception
     {
         if (!vmReady()){
-//            return executePrivleged(action, context, caller);
+//            return executePrivileged(action, context, caller);
             return action.run();
         }
         return ScopedValue.where(Holder.s.scopedPrivilegedContext(),
@@ -1156,7 +1156,7 @@ public final class AccessController {
     private static <T> T execPrivileged(PrivilegedAction<T> action)
     {
         return ScopedValue.where(Holder.s.scopedPrivilegedContext(),
-                                    null).call(new PAContextScope<>(action));
+                                    PrivilegedContext.ACCESS_CONTROLLER).call(new PAContextScope<>(action));
     }
     
     private static AccessControlContext getStackContext(){
@@ -1167,15 +1167,14 @@ public final class AccessController {
                 Holder.s.scopedPrivilegedContext().isBound() ? 
                 Holder.s.scopedPrivilegedContext().get() : null;
 //        if (privileged.bootDetected()) return getStackAccessControlContext();
+        if (privilegedContext == PrivilegedContext.ACCESS_CONTROLLER) return null;
         Class<?> caller = null;
         AccessControlContext acc = null;
         if (privilegedContext!= null) {
             caller = privilegedContext.caller;
             acc = privilegedContext.acc;
-            ProtectionDomain caller_domain = getProtectionDomain(caller);
-            if (caller_domain != null) {
-                domainSet.add(caller_domain);
-            }
+            ProtectionDomain caller_domain = caller != null ? getProtectionDomain(caller) : null;
+            if (caller_domain != null) domainSet.add(caller_domain);
         }
         // either all the domains on the stack were system domains, or
         // we had a privileged system domain
@@ -1229,12 +1228,17 @@ public final class AccessController {
         
     }
     
+    /**
+     * Type of value used in ScopedValue::where
+     */
     private static class PrivilegedContext{
+        
+        private static final PrivilegedContext ACCESS_CONTROLLER = new PrivilegedContext(null, null);
 
         private final AccessControlContext acc;
         private final Class<?> caller;
         
-        PrivilegedContext(AccessControlContext acc, Class<?> caller){
+        private PrivilegedContext(AccessControlContext acc, Class<?> caller){
             this.acc = acc;
             this.caller = caller;
         }
