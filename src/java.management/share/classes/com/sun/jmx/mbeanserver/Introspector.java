@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 1999, 2023, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 1999, 2025, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -531,8 +531,7 @@ public class Introspector {
         Class<?>[] interfaces = c.getInterfaces();
         for (int i = 0;i < interfaces.length; i++) {
             if (interfaces[i].getName().equals(clMBeanName) &&
-                (Modifier.isPublic(interfaces[i].getModifiers()) ||
-                 ALLOW_NONPUBLIC_MBEAN)) {
+                Modifier.isPublic(interfaces[i].getModifiers())) {
                 return Util.cast(interfaces[i]);
             }
         }

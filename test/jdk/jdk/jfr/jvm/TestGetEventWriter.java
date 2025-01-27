@@ -39,7 +39,7 @@ import jdk.vm.ci.runtime.JVMCI;
 
 /**
  * @test id=default
- * @key jfr
+ * @requires vm.flagless
  * @requires vm.hasJFR
  * @library /test/lib
  * @modules jdk.internal.vm.ci/jdk.vm.ci.meta
@@ -72,7 +72,7 @@ import jdk.vm.ci.runtime.JVMCI;
 
 /**
  * @test id=jvmci
- * @key jfr
+ * @requires vm.flagless
  * @requires vm.hasJFR
  * @requires vm.jvmci
  * @library /test/lib

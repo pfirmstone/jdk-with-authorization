@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2000, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2000, 2025, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -155,9 +155,7 @@ public class TabularDataSupport
 
         // Construct the empty contents HashMap
         //
-        this.dataMap = useHashMap ?
-            new HashMap<>(initialCapacity, loadFactor) :
-            new LinkedHashMap<>(initialCapacity, loadFactor);
+        this.dataMap = new LinkedHashMap<>(initialCapacity, loadFactor);
     }
 
 
