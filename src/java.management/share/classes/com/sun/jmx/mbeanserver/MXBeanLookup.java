@@ -151,6 +151,7 @@ public class MXBeanLookup {
             if (!"true".equalsIgnoreCase(multiname)) {
                 throw new InstanceAlreadyExistsException(
                         "MXBean already registered with name " + existing);
+            }
         }
         mxbeanToObjectName.put(mxbean, name);
     }
