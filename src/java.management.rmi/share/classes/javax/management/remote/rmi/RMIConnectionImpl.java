@@ -187,7 +187,7 @@ public class RMIConnectionImpl implements RMIConnection, Unreferenced {
     }
 
     public String getConnectionId() throws IOException {
-        // reqIncoming()/rspOutgoing() could be here, but never have been.
+        // We should call reqIncomming() here... shouldn't we?
         return connectionId;
     }
 
