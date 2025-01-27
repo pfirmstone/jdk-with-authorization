@@ -271,12 +271,6 @@ public class EnvHelp {
             String s = AccessController.doPrivileged(act);
             if (s != null) {
                 defaultQueueSize = Integer.parseInt(s);
-            } else { // try the old one
-                act = new GetPropertyAction(oldP);
-                s = AccessController.doPrivileged(act);
-                if (s != null) {
-                    defaultQueueSize = Integer.parseInt(s);
-                }
             }
         } catch (RuntimeException e) {
             logger.warning("getNotifBufferSize",
