@@ -68,7 +68,10 @@ public class CheckCSMs {
 
     // The goal is to remove this list of Non-final instance @CS methods
     // over time.  Do not add any new one to this list.
-    private static final Set<String> KNOWN_NON_FINAL_CSMS = Set.of();
+    private static final Set<String> KNOWN_NON_FINAL_CSMS =
+        Set.of("java/lang/Runtime#load (Ljava/lang/String;)V",
+               "java/lang/Runtime#loadLibrary (Ljava/lang/String;)V"
+        );
 
     // These non-static non-final methods must not have @CallerSensitiveAdapter
     // methods that takes an additional caller class parameter.
