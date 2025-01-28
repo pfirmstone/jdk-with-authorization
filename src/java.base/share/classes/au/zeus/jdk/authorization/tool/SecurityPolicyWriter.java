@@ -587,6 +587,7 @@ public class SecurityPolicyWriter extends CombinerSecurityManager{
     private static class ProtectionDomainKey extends ProtectionDomain{
         
         private static UriCodeSource getCodeSource(ProtectionDomain pd){
+            if (pd == null) return null; // privileged system code.
             CodeSource cs = pd.getCodeSource();
             if (cs != null) return new UriCodeSource(cs);
             return null;

@@ -422,7 +422,7 @@ extends SecurityManager implements CachingSecurityManager {
             int l = assignedDomains != null ? assignedDomains.length : 0;
             List<ProtectionDomain> list = new ArrayList<ProtectionDomain>(l);
             for (int i = 0; i < l ; i++){
-                if (assignedDomains[i] != privilegedDomain){
+                if (assignedDomains[i] != privilegedDomain && assignedDomains[i] != null){
                     list.add(assignedDomains[i]);
                 }
             }

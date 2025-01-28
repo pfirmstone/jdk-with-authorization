@@ -228,12 +228,19 @@ class ReferenceProcessor<T> implements ReferenceQueuingFactory<T, Referrer<T>> {
 			   try{
 			       // Release any resources held by the referent.
 			       ((AutoCloseable) referent).close();
-			   } catch (Exception ex){} // Ignore
+			   } catch (Exception ex){
+                               if (ex instanceof InterruptedException ie){
+                                   Thread.currentThread().interrupt();
+                               }
+                           } // Ignore
                 }
 		    }
                 }
             }catch(Exception e){
                 e.printStackTrace(System.err);
+                if (e instanceof InterruptedException ie){
+                    Thread.currentThread().interrupt();
+                }
             }
         }
     
