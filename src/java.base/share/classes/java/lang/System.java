@@ -2319,7 +2319,7 @@ public final class System {
         // bootstrap circularity issues that could be caused by a custom
         // SecurityManager
         Unsafe.getUnsafe().ensureClassInitialized(StringConcatFactory.class);
-        
+
         // Emit a warning if java.io.tmpdir is set via the command line
         // to a directory that doesn't exist
         if (SystemProps.isBadIoTmpdir()) {
@@ -2332,16 +2332,20 @@ public final class System {
                 case "disallow":
                     throw new Error("This JVM doesn't support disallowing SecurityManager");
                 case "allow":
+                    enableAccessControlContextCache();
                     break;
                 case "":
                 case "default":
+                    enableAccessControlContextCache();
                     setSecurityManager(new CombinerSecurityManager());
                     break;
                 case "polpAudit":
+                    enableAccessControlContextCache();
                     setSecurityManager(new SecurityPolicyWriter());
                     break;
                 default:
                     try {
+                        enableAccessControlContextCache();
                         ClassLoader cl = ClassLoader.getBuiltinAppClassLoader();
                         Class<?> c = Class.forName(smProp, false, cl);
                         Constructor<?> ctor = c.getConstructor();
@@ -2379,9 +2383,19 @@ public final class System {
 
         // set TCCL
         Thread.currentThread().setContextClassLoader(scl);
-
+        
         // system is fully initialized
         VM.initLevel(4);
+    }
+    
+    private static void enableAccessControlContextCache(){
+        // Initialize AccessControlContext cache.
+        try {
+            ClassLoader loader = ClassLoader.getPlatformClassLoader();
+            Class.forName("java.security.ContextCache", true, loader);
+        } catch (Exception e){
+            throw new Error("Unable to load Context cache for AccessControlContext", e);
+        }
     }
 
     private static void setJavaLangAccess() {

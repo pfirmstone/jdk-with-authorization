@@ -25,9 +25,7 @@
 
 package java.security;
 
-import au.zeus.jdk.authorization.policy.PermissionComparator;
-import au.zeus.jdk.concurrent.RC;
-import au.zeus.jdk.concurrent.Ref;
+
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
@@ -35,11 +33,11 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 import java.util.TreeSet;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 
 import sun.security.util.Debug;
 import sun.security.util.SecurityConstants;
+import jdk.internal.misc.VM;
 
 
 /**
@@ -119,6 +117,12 @@ public final class AccessControlContext {
 
     private static boolean debugInit = false;
     private static Debug debug = null;
+    static volatile ConcurrentMap<ContextKey,AccessControlContext> CONTEXTS;
+    // Called by ContextCache class initalizer, by VM at completion of VM init.
+    static void initCache(ConcurrentMap<ContextKey,AccessControlContext> cache){
+        if (CONTEXTS != null) return;
+        CONTEXTS = cache;
+    }
 
     @SuppressWarnings("removal")
     static Debug getDebug()
@@ -133,8 +137,6 @@ public final class AccessControlContext {
             return debug;
         }
     }
-
-    private static volatile boolean initialized = false; // cache is initialized.
 
     /* Called by the virtual machine native codes. Don't touch */
     static AccessControlContext build(ProtectionDomain [] context,
@@ -280,19 +282,19 @@ public final class AccessControlContext {
                                       boolean isPrivileged,
                                       boolean isAuthorized)
     {
-        if (initialized){
+        if (CONTEXTS != null){
             ContextKey key = 
                     new ContextKey(context, privilegedContext,
                                    combiner, isPrivileged, isAuthorized);
-            AccessControlContext acc = ContextKey.CONTEXTS.get(key);
+            AccessControlContext acc = CONTEXTS.get(key);
             if (acc == null){
-                acc = 
-                    new AccessControlContext(key);
-                AccessControlContext existed = ContextKey.CONTEXTS.putIfAbsent(key, acc);
+                acc = new AccessControlContext(context, privilegedContext,
+                        combiner, isPrivileged, isAuthorized);
+                AccessControlContext existed = CONTEXTS.putIfAbsent(key, acc);
                 if (existed != null) return existed;
             }
             return acc;
-        } else {
+        } else {  
             return new AccessControlContext(context, privilegedContext,
                                         combiner, isPrivileged, isAuthorized);
         }
@@ -441,27 +443,6 @@ public final class AccessControlContext {
         this.combiner = combiner;
         this.isPrivileged = isPrivileged;
         this.isAuthorized = isAuthorized;
-        if (this.context == null) {
-            this.hashCode = 0;
-        } else {
-            int hashCode = 0;
-            for (int i = 0; i < this.context.length; i++) {
-                if (this.context[i] != null) hashCode ^= this.context[i].hashCode();
-            }
-            this.hashCode = hashCode;
-        }
-    }
-
-    /**
-     * Constructor for static builder methods.
-     */
-    private AccessControlContext(ContextKey k){
-        this.k = k;
-        this.context = k.context;
-        this.privilegedContext = k.privilegedContext;
-        this.combiner = k.combiner;
-        this.isPrivileged = k.isPrivileged;
-        this.isAuthorized = k.isAuthorized;
         if (this.context == null) {
             this.hashCode = 0;
         } else {
@@ -870,16 +851,7 @@ public final class AccessControlContext {
     /**
      * Cache for AccessControlContext. Initialized following VM init phase 2.
      */
-    private static class ContextKey{
-
-        private static final ConcurrentMap<ContextKey,AccessControlContext> CONTEXTS;
-
-        static {
-            CONTEXTS = RC.concurrentMap(new ConcurrentHashMap<>(), Ref.WEAK, Ref.STRONG, 20000L, 20000L);
-            AccessControlContext.initialized = true;
-        }
-
-        private static final PermissionComparator pc = new PermissionComparator();
+    static class ContextKey{
 
         private final ProtectionDomain[] context;
         private final AccessControlContext privilegedContext;

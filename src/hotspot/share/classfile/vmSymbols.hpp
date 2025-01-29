@@ -372,8 +372,6 @@ class SerializeClosure;
   template(asPrimitive_name,                          "asPrimitive")                              \
   template(asPrimitive_int_signature,                 "(I)Ljava/lang/LiveStackFrame$PrimitiveSlot;") \
   template(asPrimitive_long_signature,                "(J)Ljava/lang/LiveStackFrame$PrimitiveSlot;") \
-  /* AccessControlContext Cache Support */                                                                  \
-  template(java_security_AccessControlContext_ContextKey,     "java/security/AccessControlContext$ContextKey") \
                                                                                                   \
   /* common method and field names */                                                             \
   template(object_initializer_name,                   "<init>")                                   \
