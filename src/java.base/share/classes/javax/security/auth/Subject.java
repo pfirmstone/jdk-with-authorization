@@ -662,7 +662,7 @@ public final class Subject implements java.io.Serializable {
             // for doPrivileged
             final AccessControlContext callerAcc =
                     (acc == null ?
-                            new AccessControlContext(NULL_PD_ARRAY) :
+                            AccessControlContext.build(NULL_PD_ARRAY) :
                             acc);
 
             // call doPrivileged and push this new context on the stack
@@ -740,7 +740,7 @@ public final class Subject implements java.io.Serializable {
             // set up the new Subject-based AccessControlContext for doPrivileged
             final AccessControlContext callerAcc =
                     (acc == null ?
-                            new AccessControlContext(NULL_PD_ARRAY) :
+                            AccessControlContext.build(NULL_PD_ARRAY) :
                             acc);
 
             // call doPrivileged and push this new context on the stack
@@ -758,9 +758,9 @@ public final class Subject implements java.io.Serializable {
             (new java.security.PrivilegedAction<>() {
             public AccessControlContext run() {
                 if (subject == null) {
-                    return new AccessControlContext(acc, null);
+                    return AccessControlContext.build(acc, null);
                 } else {
-                    return new AccessControlContext
+                    return AccessControlContext.build
                                         (acc,
                                         new SubjectDomainCombiner(subject));
             }

@@ -429,14 +429,19 @@ void Threads::initialize_access_controller_core_classes(TRAPS) {
   TraceTime timer("Initialize java.security.AccessController::getContext classes", TRACETIME_LOG(Info, startuptime));
 
   // Initialize classes required by AccessContoller::getStackContext to avoid potential
-  // bootstrap circularity issues
-  initialize_class(vmSymbols::jdk_internal_util_random_RandomSupport(), CHECK);
-  initialize_class(vmSymbols::java_util_EnumMap(), CHECK);
-  initialize_class(vmSymbols::java_lang_ScopedValue(), CHECK);
-  initialize_class(vmSymbols::java_lang_ScopedValue_Cache(), CHECK);
-  initialize_class(vmSymbols::java_lang_StackWalker(), CHECK);
-  initialize_class(vmSymbols::java_lang_StackWalker_Option(), CHECK);
-  initialize_class(vmSymbols::java_security_AccessController_Holder(), CHECK);
+  // bootstrap circularity issues, these are for StackWalker stackwalk with
+  // ScopedValue to preserve context.
+//  initialize_class(vmSymbols::jdk_internal_util_random_RandomSupport(), CHECK);
+//  initialize_class(vmSymbols::java_util_EnumMap(), CHECK);
+//  initialize_class(vmSymbols::java_lang_ScopedValue(), CHECK);
+//  initialize_class(vmSymbols::java_lang_ScopedValue_Cache(), CHECK);
+//  initialize_class(vmSymbols::java_lang_StackWalker(), CHECK);
+//  initialize_class(vmSymbols::java_lang_StackWalker_Option(), CHECK);
+//  initialize_class(vmSymbols::java_security_AccessController_Holder(), CHECK);
+
+  // Initialize AccessControlContext builder cache.
+  initialize_class(vmSymbols::java_security_AccessControlContext_ContextKey(), CHECK);
+
 }
 
 jint Threads::create_vm(JavaVMInitArgs* args, bool* canTryAgain) {
@@ -800,9 +805,6 @@ jint Threads::create_vm(JavaVMInitArgs* args, bool* canTryAgain) {
   // Notify JVMTI agents that VM has started (JNI is up) - nop if no agents.
   JvmtiExport::post_vm_start();
 
-  // Initialize classes needed for AccessController::getContext
-  initialize_access_controller_core_classes(CHECK_JNI_ERR);
-
   // Final system initialization including security manager and system class loader
   call_initPhase3(CHECK_JNI_ERR);
 
@@ -815,7 +817,7 @@ jint Threads::create_vm(JavaVMInitArgs* args, bool* canTryAgain) {
     // startup with the proper message that CodeCache size is too small.
     initialize_class(vmSymbols::jdk_internal_vm_Continuation(), CHECK_JNI_ERR);
   }
-
+  
 #if INCLUDE_CDS
   // capture the module path info from the ModuleEntryTable
   ClassLoader::initialize_module_path(THREAD);
@@ -867,6 +869,9 @@ jint Threads::create_vm(JavaVMInitArgs* args, bool* canTryAgain) {
   if (HAS_PENDING_EXCEPTION) {
     CLEAR_PENDING_EXCEPTION;
   }
+
+ // Initialize AccessControlContext.ContextKey cache
+  initialize_access_controller_core_classes(CHECK_JNI_ERR);
 
   // Let WatcherThread run all registered periodic tasks now.
   // NOTE:  All PeriodicTasks should be registered by now. If they

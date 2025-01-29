@@ -29,7 +29,12 @@ package java.security;
  * A {@code DomainCombiner} provides a means to dynamically
  * update the ProtectionDomains associated with the current
  * {@code AccessControlContext}.
- *
+ * 
+ * <p> It is advisable for DomainCombiner to be immutable.  In the case that
+ * DomainCombiner is mutable, then it should not implement 
+ * Object::equals or Object::hashCode methods, unless mutable state is
+ * not part of its identity.
+ * 
  * <p> A {@code DomainCombiner} is passed as a parameter to the
  * appropriate constructor for {@code AccessControlContext}.
  * The newly constructed context is then passed to the

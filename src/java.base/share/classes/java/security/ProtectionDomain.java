@@ -28,6 +28,7 @@ package java.security;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.Enumeration;
 import java.util.List;
 import java.util.Map;
@@ -42,8 +43,13 @@ import sun.security.util.FilePermCompat;
 import sun.security.util.SecurityConstants;
 import java.security.Permissions;
 import au.zeus.jdk.net.Uri;
+import au.zeus.jdk.authorization.policy.PermissionComparator;
 import java.net.URL;
 import java.net.URISyntaxException;
+import java.security.Permission;
+import java.util.Set;
+import java.util.SortedSet;
+import java.util.TreeSet;
 
 /**
  * The {@code ProtectionDomain} class encapsulates the characteristics of a
@@ -106,11 +112,12 @@ public class ProtectionDomain {
         private static AccessControlContext getCombinedACC(
             AccessControlContext context, AccessControlContext stack) {
             AccessControlContext acc =
-                new AccessControlContext(context, stack.getCombiner(), true);
+                AccessControlContext.build(context, stack.getCombiner(), true);
 
-            return new AccessControlContext(stack.getContext(), acc).optimize();
+            return AccessControlContext.build(stack.getContext(), acc).optimize();
         }
-
+        
+        // ProtectionDomainCache is only used by the sun PolicyFile implementation.
         @Override
         public ProtectionDomainCache getProtectionDomainCache() {
             return new ProtectionDomainCache() {
@@ -149,6 +156,10 @@ public class ProtectionDomain {
     /* if the permissions object has AllPermission */
     private final boolean hasAllPerm;
     
+    /* the PermissionCollection is static (pre 1.4 constructor)
+       or dynamic (via a policy refresh) */
+    private final boolean staticPermissions;
+    
     private final int hashcode;
     
     private final UriCodeSource uriCS;
@@ -167,8 +178,13 @@ public class ProtectionDomain {
      * The permissions granted to this domain include both the permissions
      * passed to this constructor, and any permissions granted to this domain
      * by the current policy at the time a permission is checked.
+     * <p>
+     * If permissions is not null {@code null} and codesource is null {@code null}
+     * then permissions will be used to identity this domain.
+     * <p>
+     * If no codesource is associated with this domain, then
      * 
-     * @param codesource the codesource associated with this domain
+     * @param codesource the codesource associated with this domain, if any.
      * @param permissions the permissions granted to this domain
      */
     @SuppressWarnings("unchecked")
@@ -188,9 +204,11 @@ public class ProtectionDomain {
         this.principals = new Principal[0];
         int hash = 7;
         hash = 83 * hash + Objects.hashCode(this.uriCS);
-        hash = 83 * hash + Objects.hashCode(this.classloader);
-        hash = 83 * hash+ this.principals.hashCode();
+        if (codesource == null){ // permissions become part of identity.
+            hash = 83 * hash + permissionsHashCode(this.permissions);
+        }
         hashcode = hash;
+        staticPermissions = true;
     }
 
     /**
@@ -245,6 +263,7 @@ public class ProtectionDomain {
         hash = 83 * hash + this.principals.length > 0 ? 
                 Arrays.deepHashCode(this.principals) : this.principals.hashCode();
         hashcode = hash;
+        staticPermissions = false;
     }
 
     /**
@@ -292,16 +311,26 @@ public class ProtectionDomain {
     }
 
     /**
-     * Returns {@code true} if this domain contains only static permissions
-     * and does not check the current {@code Policy} at the time of
-     * permission checking.
+     * Returns {@code true} if this domain contains only static permissions.
+     * 
+     * For performance reasons, Policy performs static permission checks
+     * using thread confined PermissionCollection's, adding
+     * any additional permissions determined by policy for CodeSource,
+     * however Subject Principal's aren't injected into PermissionCollection's
+     * constructed using the two argument ProtectionDomain constructor.
      *
-     * @return {@code false} always returns false.
+     * @return {@code false} if four argument constructor was called and {@code true}
+     * if two argument constructor was called to construct this domain.
      *
      * @since 9
      */
     public final boolean staticPermissionsOnly() {
-        return false;
+        return staticPermissions;
+    }
+    
+    /* Optimization for AccessController */
+    final boolean hasAllPerm(){
+        return hasAllPerm;
     }
 
     /**
@@ -325,7 +354,12 @@ public class ProtectionDomain {
             // no need to go to policy
             return true;
         }
-        return Policy.getPolicyNoCheck().implies(this, perm);
+        if (Policy.getPolicyNoCheck().implies(this, perm)) return true;
+        // Supports AccessController methods with Permission parameter argument.
+        if (staticPermissions && codesource == null && permissions != null){
+            return permissions.implies(perm);
+        }
+        return false;
     }
 
     /**
@@ -364,10 +398,14 @@ public class ProtectionDomain {
         
         @SuppressWarnings("removal")
         Policy policy = Policy.getPolicyNoCheck();
+        // Reminder: Policy cannot check static permissions when a domain has
+        // a null codesource.
         if (policy instanceof PolicyFile) {
             // The PolicyFile implementation supports compatibility
-            // inside, and it also covers the static permissions.
-            return policy.implies(this, perm);
+            // inside, and it also covers the static permissions,
+            // but it cannot check static permissions with a null
+            // codesource.
+            if (policy.implies(this, perm)) return true;
         } else {
             if (policy.implies(this, perm)) {
                 return true;
@@ -378,8 +416,9 @@ public class ProtectionDomain {
                 return true;
             }
         }
-        
-        if (permissions != null) {
+        // Warning: poor scalability, this supports
+        // AccessController methods with a Permission parameter argument.
+        if (staticPermissions && codesource == null && permissions != null) {
             if (permissions.implies(perm)) {
                 return true;
             } else {
@@ -407,9 +446,81 @@ public class ProtectionDomain {
         final ProtectionDomain other = (ProtectionDomain) obj;
         if (hashcode != other.hashcode) return false;
         if (!Objects.equals(this.uriCS, other.uriCS)) return false;
+        if (staticPermissions){
+            if (this.codesource == null && other.codesource == null){ // permissions become part of identity.
+                if (permissions != null && other.permissions != null){
+                    SortedSet<Permission> thisPermSet = permissionsToSet(permissions);
+                    SortedSet<Permission> thatPermSet = permissionsToSet(other.permissions);
+                    return Objects.equals(thisPermSet, thatPermSet);
+                } else if (permissions == null || other.permissions == null){
+                    return false;
+                }
+            } else if (this.codesource == null || other.codesource == null){
+                return false;
+            }
+            return false;
+        }
         if (!Objects.equals(this.classloader, other.classloader)) return false;
         return Arrays.equals(this.principals, other.principals);
     }
+    
+    /**
+     * Generates unique hash codes for Permissions without calling their
+     * hashcode method.
+     * 
+     * @param perms the PermissionCollection
+     * @return hash code.
+     */
+    static int permissionsHashCode(PermissionCollection<Permission> perms){
+        if (perms == null) return 0;
+        int hashCode = 13;
+        Enumeration<Permission> e = perms.elements();
+        while (e.hasMoreElements()){
+            hashCode ^= permissionHashCode(e.nextElement());
+        }
+        return hashCode;
+    }
+
+    /**
+     * Generates unique hash codes for Permission without calling their
+     * hashcode method.
+     * 
+     * @param perm the Permission
+     * @return hash code.
+     */
+    static int permissionHashCode(Permission perm){
+        if (perm == null) return 0;
+        int hashCode = 7;
+        hashCode = (hashCode << 5) - hashCode + perm.getClass().hashCode();
+        hashCode = (hashCode << 5) - hashCode + perm.getName().hashCode();
+        hashCode = (hashCode << 5) - hashCode + perm.getActions().hashCode();
+        if (perm instanceof javax.security.auth.PrivateCredentialPermission pcp){
+            hashCode = (hashCode << 5) - hashCode + Arrays.deepHashCode(pcp.getPrincipals());
+            String credClass = pcp.getCredentialClass();
+            if (credClass != null) hashCode = (hashCode << 5) - hashCode + credClass.hashCode();
+        }
+        return hashCode;   
+    }
+    
+    /**
+     * A SortedSet doesn't call hashCode on elements, this is important to
+     * avoid DNS calls or File system access that occurs with some Permission
+     * implementations like SocketPermission or FilePermission.
+     * 
+     * @param p
+     * @return a SortedSet
+     */
+    static SortedSet<Permission> permissionsToSet(PermissionCollection<Permission> p){
+        SortedSet<Permission> result = new TreeSet<>(PERM_COMPARE);
+        Enumeration<Permission> e = p.elements();
+        while (e.hasMoreElements()){
+            result.add(e.nextElement());
+        }
+        return result;
+    }
+    
+    private static Comparator<Permission> PERM_COMPARE = new PermissionComparator();
+
     
 
     /**

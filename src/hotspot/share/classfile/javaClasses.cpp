@@ -4765,19 +4765,25 @@ void java_security_AccessControlContext::serialize_offsets(SerializeClosure* f) 
 }
 #endif
 
+// Previously this method created an instance and set each field.
+// Now it uses a build method, however we don't initialize the AccessControlContext
+// cache here.  The cache is initialized following VM init Phase 2.
 oop java_security_AccessControlContext::create(objArrayHandle context, bool isPrivileged, Handle privileged_context, TRAPS) {
-  assert(_isPrivileged_offset != 0, "offsets should have been initialized");
-  assert(_isAuthorized_offset != 0, "offsets should have been initialized");
+  Klass* klass = vmClasses::AccessControlContext_klass();
   // Ensure klass is initialized
-  vmClasses::AccessControlContext_klass()->initialize(CHECK_NULL);
-  // Allocate result
-  oop result = vmClasses::AccessControlContext_klass()->allocate_instance(CHECK_NULL);
-  // Fill in values
-  result->obj_field_put(_context_offset, context());
-  result->obj_field_put(_privilegedContext_offset, privileged_context());
-  result->bool_field_put(_isPrivileged_offset, isPrivileged);
-  result->bool_field_put(_isAuthorized_offset, true);
-  return result;
+  klass->initialize(CHECK_NULL);
+  JavaValue result(T_OBJECT);
+  JavaCallArguments args;
+  args.push_oop(context);
+  args.push_oop(privileged_context);
+  args.push_int(isPrivileged);
+  args.push_int(true);
+  JavaCalls::call_static(&result,
+                         klass,
+                         vmSymbols::buildAccessControlContext_name(),
+                         vmSymbols::buildAccessControlContext_signature(),
+                         &args, CHECK_NULL);
+  return result.get_oop();
 }
 
 

@@ -25,36 +25,27 @@
 
 package java.security;
 
-import java.lang.StackWalker.StackFrame;
-import java.lang.StackWalker.Option;
 import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 import java.lang.ref.Reference;
-import java.lang.reflect.AccessibleObject;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
-import java.util.function.BiConsumer;
-import java.util.function.BinaryOperator;
-import java.util.function.Function;
-import java.util.function.Predicate;
-import java.util.function.Supplier;
-import java.util.stream.Collector;
-import java.util.stream.Collectors;
-import java.util.stream.Stream;
 import java.util.Collections;
 
 import jdk.internal.vm.annotation.Hidden;
 import sun.security.util.Debug;
+import sun.security.util.FilePermCompat;
 import sun.security.util.SecurityConstants;
 import jdk.internal.reflect.CallerSensitive;
 import jdk.internal.reflect.Reflection;
 import jdk.internal.vm.annotation.DontInline;
 import jdk.internal.vm.annotation.ForceInline;
 import jdk.internal.vm.annotation.ReservedStackAccess;
-import jdk.internal.misc.VM;
 
 /**
  * <p> The {@code AccessController} class is used for access control operations
@@ -335,7 +326,7 @@ public final class AccessController {
     @CallerSensitive
     public static <T> T doPrivileged(PrivilegedAction<T> action)
     {
-        return execPrivileged(action, null, Reflection.getCallerClass());
+        return executePrivileged(action, null, Reflection.getCallerClass());
     }
 
     /**
@@ -366,14 +357,14 @@ public final class AccessController {
     @CallerSensitive
     public static <T> T doPrivilegedWithCombiner(PrivilegedAction<T> action) {
         @SuppressWarnings("removal")
-        AccessControlContext acc = stackAccessControlContext();
+        AccessControlContext acc = getStackAccessControlContext();
         if (acc == null) {
             return AccessController.doPrivileged(action);
         }
         @SuppressWarnings("removal")
         DomainCombiner dc = acc.getAssignedCombiner();
         return AccessController.doPrivileged(action,
-                                             preserveCombiner(dc, Reflection.getCallerClass()));
+             preserveCombiner(dc, Reflection.getCallerClass()));
     }
 
 
@@ -414,9 +405,10 @@ public final class AccessController {
     public static <T> T doPrivileged(PrivilegedAction<T> action,
                                      @SuppressWarnings("removal") AccessControlContext context)
     {
+        if (action == null) throw new NullPointerException("action cannot be null");
         Class<?> caller = Reflection.getCallerClass();
-        context = checkContext(context, caller);
-        return execPrivileged(action, context, caller);
+        context = checkCallerCanCreateContext(context, caller);
+        return executePrivileged(action, context, caller);
     }
 
 
@@ -467,18 +459,28 @@ public final class AccessController {
     @CallerSensitive
     public static <T> T doPrivileged(PrivilegedAction<T> action,
             @SuppressWarnings("removal") AccessControlContext context,
-            Permission... perms) {
-
-        @SuppressWarnings("removal")
-        AccessControlContext parent = getContext();
+            Permission... perms) 
+    {
+        
+        if (action == null) throw new NullPointerException("action cannot be null");
         if (perms == null) {
             throw new NullPointerException("null permissions parameter");
         }
         Class<?> caller = Reflection.getCallerClass();
-        @SuppressWarnings("removal")
-        DomainCombiner dc = (context == null) ? null : context.getCombiner();
-        return AccessController.doPrivileged(action, createWrapper(dc,
-            caller, parent, context, perms));
+        perms = intersectionWithCallersPermissions(perms, caller);
+        if (context == null){
+            Permissions p = new Permissions();
+            for (int i = 0, len = perms.length; i < len; i++){
+                p.add(perms[i]);
+            }
+            context = AccessControlContext.build(
+                    new ProtectionDomain[]{
+                        new ProtectionDomain(null, p)}, null, true);
+        } else {
+            context = context.intersectionPermissions(perms);
+        }
+        context = checkCallerCanCreateContext(context, caller);
+        return executePrivileged(action, context, caller);
     }
 
 
@@ -534,20 +536,31 @@ public final class AccessController {
     public static <T> T doPrivilegedWithCombiner(PrivilegedAction<T> action,
             @SuppressWarnings("removal") AccessControlContext context,
             Permission... perms) {
-
+        if (action == null) throw new NullPointerException("action cannot be null");
+        if (perms == null) {
+            throw new NullPointerException("null permissions parameter");
+        }
         @SuppressWarnings("removal")
         AccessControlContext parent = getContext();
         @SuppressWarnings("removal")
         DomainCombiner dc = parent.getCombiner();
-        if (dc == null && context != null) {
-            dc = context.getCombiner();
-        }
-        if (perms == null) {
-            throw new NullPointerException("null permissions parameter");
-        }
         Class<?> caller = Reflection.getCallerClass();
-        return AccessController.doPrivileged(action, createWrapper(dc, caller,
-            parent, context, perms));
+        perms = intersectionWithCallersPermissions(perms, caller);
+        if (context == null){
+            Permissions p = new Permissions();
+            for (int i = 0, len = perms.length; i < len; i++){
+                p.add(perms[i]);
+            }
+            context = AccessControlContext.build(
+                    new ProtectionDomain[]{
+                        new ProtectionDomain(null, p)},
+                    dc, true);
+        } else {
+            if (dc == null) dc = context.getCombiner();
+            context = context.intersectionOfPermsDoWithCombiner(dc, perms);
+        }
+        context = checkCallerCanCreateContext(context, caller);
+        return executePrivileged(action, context, caller);
     }
 
     /**
@@ -583,11 +596,11 @@ public final class AccessController {
         doPrivileged(PrivilegedExceptionAction<T> action)
         throws PrivilegedActionException
     {
+        if (action == null) throw new NullPointerException("action cannot be null");
         @SuppressWarnings("removal")
-        AccessControlContext context = null;
         Class<?> caller = Reflection.getCallerClass();
         try {
-            return execPrivileged(action, context, caller);
+            return executePrivileged(action, null, caller);
         } catch (RuntimeException e) {
             throw e;
         } catch (Exception e) {
@@ -628,14 +641,14 @@ public final class AccessController {
         throws PrivilegedActionException
     {
         @SuppressWarnings("removal")
-        AccessControlContext acc = stackAccessControlContext();
+        AccessControlContext acc = getStackAccessControlContext();
         if (acc == null) {
             return AccessController.doPrivileged(action);
         }
         @SuppressWarnings("removal")
         DomainCombiner dc = acc.getAssignedCombiner();
         return AccessController.doPrivileged(action,
-                                             preserveCombiner(dc, Reflection.getCallerClass()));
+             preserveCombiner(dc, Reflection.getCallerClass()));
     }
 
     /**
@@ -645,28 +658,15 @@ public final class AccessController {
     private static AccessControlContext preserveCombiner(DomainCombiner combiner,
                                                          Class<?> caller)
     {
-        return createWrapper(combiner, caller, null, null, null);
-    }
-
-    /**
-     * Create a wrapper to contain the limited privilege scope data.
-     */
-    @SuppressWarnings("removal")
-    private static AccessControlContext
-        createWrapper(DomainCombiner combiner, Class<?> caller,
-                      AccessControlContext parent, AccessControlContext context,
-                      Permission[] perms)
-    {
         ProtectionDomain callerPD = getProtectionDomain(caller);
-        // check if caller is authorized to create context
-        if (System.getSecurityManager() != null &&
-            context != null && !context.isAuthorized() &&
-            !callerPD.implies(SecurityConstants.CREATE_ACC_PERMISSION))
-        {
-            return getInnocuousAcc();
+        // perform 'combine' on the caller of doPrivileged,
+        // even if the caller is from the bootclasspath
+        ProtectionDomain[] pds = new ProtectionDomain[] {callerPD};
+        if (combiner == null) {
+            return AccessControlContext.build(pds, null, true);
         } else {
-            return new AccessControlContext(callerPD, combiner, parent,
-                                            context, perms);
+            return AccessControlContext.build(combiner.combine(pds, null),
+                                            combiner, true);
         }
     }
 
@@ -728,9 +728,9 @@ public final class AccessController {
         throws PrivilegedActionException
     {
         Class<?> caller = Reflection.getCallerClass();
-        context = checkContext(context, caller);
+        context = checkCallerCanCreateContext(context, caller);
         try {
-            return execPrivileged(action, context, caller);
+            return executePrivileged(action, context, caller);
         } catch (RuntimeException e) {
             throw e;
         } catch (Exception e) {
@@ -738,8 +738,12 @@ public final class AccessController {
         }
     }
 
+    /** 
+     * Checks the caller has permission to create the context, and if not
+     * returns an innocuous context, without any permissions.
+     */
     @SuppressWarnings("removal")
-    private static AccessControlContext checkContext(AccessControlContext context,
+    private static AccessControlContext checkCallerCanCreateContext(AccessControlContext context,
         Class<?> caller)
     {
         // check if caller is authorized to create context
@@ -753,6 +757,20 @@ public final class AccessController {
             }
         }
         return context;
+    }
+    
+    private static Permission[] intersectionWithCallersPermissions(Permission[] perms, Class<?> caller){
+        ProtectionDomain callerPD = getProtectionDomain(caller);
+        if (callerPD == null) return perms;
+        if (callerPD.hasAllPerm()) return perms;
+        List<Permission> callerHas = new ArrayList<>(perms.length);
+        for (int i = 0, len = perms.length; i < len; i++){
+            if (callerPD.implies(perms[i])) {
+                callerHas.add(perms[i]);
+                callerHas.add(FilePermCompat.newPermPlusAltPath(perms[i]));
+            }
+        }
+        return callerHas.toArray(new Permission[callerHas.size()]);
     }
 
     /**
@@ -770,7 +788,7 @@ public final class AccessController {
      */
     private static boolean isPrivileged() {
         @SuppressWarnings("removal")
-        AccessControlContext ctx = stackAccessControlContext();
+        AccessControlContext ctx = getStackAccessControlContext();
         return ctx == null || ctx.isPrivileged();
     }
 
@@ -915,15 +933,30 @@ public final class AccessController {
             Permission... perms)
         throws PrivilegedActionException
     {
-        @SuppressWarnings("removal")
-        AccessControlContext parent = getContext();
         if (perms == null) {
             throw new NullPointerException("null permissions parameter");
         }
         Class<?> caller = Reflection.getCallerClass();
-        @SuppressWarnings("removal")
-        DomainCombiner dc = (context == null) ? null : context.getCombiner();
-        return AccessController.doPrivileged(action, createWrapper(dc, caller, parent, context, perms));
+        perms = intersectionWithCallersPermissions(perms, caller);
+        if (context == null){
+            Permissions p = new Permissions();
+            for (int i = 0, len = perms.length; i < len; i++){
+                if (perms[i] == null) throw new NullPointerException("null permission not permitted in array");
+                p.add(perms[i]);
+            }
+            context = AccessControlContext.build(
+                    new ProtectionDomain[]{
+                        new ProtectionDomain(null, p)}, null, true);
+        } else {
+            context = context.intersectionPermissions(perms);
+        }
+        try {
+            return executePrivileged(action, context, caller);
+        } catch (RuntimeException e) {
+            throw e;
+        } catch (Exception e) {
+            throw wrapException(e);
+        }
     }
 
 
@@ -983,19 +1016,38 @@ public final class AccessController {
                                                  Permission... perms)
         throws PrivilegedActionException
     {
+        if (perms == null) {
+            throw new NullPointerException("null permissions parameter");
+        }
         @SuppressWarnings("removal")
         AccessControlContext parent = getContext();
         @SuppressWarnings("removal")
         DomainCombiner dc = parent.getCombiner();
-        if (dc == null && context != null) {
-            dc = context.getCombiner();
-        }
-        if (perms == null) {
-            throw new NullPointerException("null permissions parameter");
-        }
         Class<?> caller = Reflection.getCallerClass();
-        return AccessController.doPrivileged(action, createWrapper(dc, caller,
-            parent, context, perms));
+        perms = intersectionWithCallersPermissions(perms, caller);
+        if (context == null){
+            Permissions p = new Permissions();
+            for (int i = 0, len = perms.length; i < len; i++){
+                if (perms[i] == null)throw new NullPointerException("null permission parameter");
+                p.add(perms[i]);
+            }
+            context = AccessControlContext.build(
+                    new ProtectionDomain[]{
+                        new ProtectionDomain(null, p)},
+                    dc, true);
+        } else {
+            if (dc == null) dc = context.getCombiner();
+            context = checkCallerCanCreateContext(
+                    context.intersectionOfPermsDoWithCombiner(dc, perms),
+                    caller);
+        }
+        try {
+            return executePrivileged(action, context, caller);
+        } catch (RuntimeException e) {
+            throw e;
+        } catch (Exception e) {
+            throw wrapException(e);
+        }
     }
 
     /**
@@ -1010,15 +1062,6 @@ public final class AccessController {
 
     @SuppressWarnings("removal")
     private static native AccessControlContext getStackAccessControlContext();
-
-    @Hidden
-    private static AccessControlContext stackAccessControlContext(){
-        if (!vmReady()){
-//            return getStackAccessControlContext();
-            return null;
-        }
-        return getStackContext();
-    }
 
     /**
      * Returns the "inherited" {@code AccessControlContext}. This is the context
@@ -1044,11 +1087,14 @@ public final class AccessController {
     @SuppressWarnings("removal")
     public static AccessControlContext getContext()
     {
-        AccessControlContext acc = stackAccessControlContext();
+        AccessControlContext acc = getStackAccessControlContext();
         if (acc == null) {
             // all we had was privileged system code. We don't want
             // to return null though, so we construct a real ACC.
-            return new AccessControlContext(null, true);
+            // We can't build an AccessControlContext without causing
+            // an Error during initialization of VM, when using StackWalker 
+            // getContext implementation.
+            return AccessControlContext.build(null, true);
         } else {
             return acc.optimize();
         }
@@ -1083,7 +1129,7 @@ public final class AccessController {
             throw new NullPointerException("permission can't be null");
         }
 
-        AccessControlContext stack = stackAccessControlContext();
+        AccessControlContext stack = getStackAccessControlContext();
         // if context is null, we had privileged system code on the stack.
         if (stack == null) {
             Debug debug = AccessControlContext.getDebug();
@@ -1111,320 +1157,4 @@ public final class AccessController {
         AccessControlContext acc = stack.optimize();
         acc.checkPermission(perm);
     }
-    
-    private static volatile boolean ready = false;
-    
-    private static boolean vmReady(){
-        // Class initializers for getStackContext are run duing VM init phase 2.
-        // Not atomic, just ensures class initializers have run.
-        if (!ready && VM.initLevel() > 2) ready = true;
-        return ready;
-    }
-    
-    private static <T> T execPrivileged(PrivilegedAction<T> action,
-                          @SuppressWarnings("removal") AccessControlContext context,
-                          Class<?> caller)
-    {
-        if (!vmReady()){
-//            return executePrivileged(action, context, caller);
-            return action.run();
-        }
-        return ScopedValue.where(Holder.s.scopedPrivilegedContext(),
-            new PrivilegedContext(context, caller)).call(new PAContextScope<>(action));
-    }
-    
-    private static <T> T execPrivileged(PrivilegedExceptionAction<T> action,
-                          @SuppressWarnings("removal") AccessControlContext context,
-                          Class<?> caller)
-            throws Exception
-    {
-        if (!vmReady()){
-//            return executePrivileged(action, context, caller);
-            return action.run();
-        }
-        return ScopedValue.where(Holder.s.scopedPrivilegedContext(),
-            new PrivilegedContext(context, caller)).call(new PEAContextScope<>(action));
-    }
-    
-    /**
-     * Method only used by AccessController to perform privileged actions for
-     * itself.
-     * @param <T>
-     * @param action
-     * @return 
-     */
-    private static <T> T execPrivileged(PrivilegedAction<T> action)
-    {
-        return ScopedValue.where(Holder.s.scopedPrivilegedContext(),
-                                    PrivilegedContext.ACCESS_CONTROLLER).call(new PAContextScope<>(action));
-    }
-    
-    private static AccessControlContext getStackContext(){
-        Triggered privileged = new Triggered();
-        Set<ProtectionDomain> domainSet = 
-                execPrivileged(new StackWalk(privileged));
-        PrivilegedContext privilegedContext = 
-                Holder.s.scopedPrivilegedContext().isBound() ? 
-                Holder.s.scopedPrivilegedContext().get() : null;
-//        if (privileged.bootDetected()) return getStackAccessControlContext();
-        if (privilegedContext == PrivilegedContext.ACCESS_CONTROLLER) return null;
-        Class<?> caller = null;
-        AccessControlContext acc = null;
-        if (privilegedContext!= null) {
-            caller = privilegedContext.caller;
-            acc = privilegedContext.acc;
-            ProtectionDomain caller_domain = caller != null ? getProtectionDomain(caller) : null;
-            if (caller_domain != null) domainSet.add(caller_domain);
-        }
-        // either all the domains on the stack were system domains, or
-        // we had a privileged system domain
-        if (domainSet.isEmpty()){
-            if ((privileged.get() 
-//                    || privileged.bootDetected()
-                    ) && acc == null) return null;
-            return new AccessControlContext(
-                    null,
-                    privileged.get() 
-//                            || privileged.bootDetected()
-                    ,acc
-            );
-        }
-        
-        return new AccessControlContext(
-                domainSet.toArray(new ProtectionDomain[domainSet.size()]),
-                privileged.get() 
-//                        || privileged.bootDetected()
-                ,acc
-        );
-
-    }
-    
-    /**
-     * Holder for references to ScopedValue and StackWalker instances used by 
-     * AccessController. Initialized by java.lang.System during VM init phase 2.
-     */
-    private static final class Holder {
-        
-        static final Holder s = new Holder();
-        
-        private final ScopedValue<PrivilegedContext> PRIVILEGED_CALL_CONTEXT;
-        private final StackWalker STACK_WALKER;
-        
-        private Holder(){
-            STACK_WALKER =
-                StackWalker.getInstance(
-                Set.of(StackWalker.Option.RETAIN_CLASS_REFERENCE, 
-                        StackWalker.Option.SHOW_HIDDEN_FRAMES), 16);
-            PRIVILEGED_CALL_CONTEXT = ScopedValue.newInstance();
-        }
-        
-        ScopedValue<PrivilegedContext> scopedPrivilegedContext(){
-            return PRIVILEGED_CALL_CONTEXT;
-        }
-        
-        StackWalker stackWalker(){
-            return STACK_WALKER;
-        }
-        
-    }
-    
-    /**
-     * Type of value used in ScopedValue::where
-     */
-    private static class PrivilegedContext{
-        
-        private static final PrivilegedContext ACCESS_CONTROLLER = new PrivilegedContext(null, null);
-
-        private final AccessControlContext acc;
-        private final Class<?> caller;
-        
-        private PrivilegedContext(AccessControlContext acc, Class<?> caller){
-            this.acc = acc;
-            this.caller = caller;
-        }
-    }
-    
-    private static class Triggered {
-        boolean triggered = false;
-//        boolean boot = false;
-        
-        boolean trigger(){
-            boolean result = !triggered;
-            if (result) triggered = true;
-            return result;
-        }
-        
-//        boolean bootDetected(){
-//            return boot;
-//        }
-        
-//        boolean vmBoot(){
-//            boolean result = !boot;
-//            if (result) boot = true;
-//            return result;
-//        }
-        
-        boolean get(){
-            return triggered;
-        }
-    }
-    
-    private static class SafeCollector implements Collector<ProtectionDomain, Set<ProtectionDomain>, Set<ProtectionDomain>> {
-
-        @Override
-        public Supplier<Set<ProtectionDomain>> supplier() {
-            return new Supplier<Set<ProtectionDomain>>(){
-                @Override
-                public Set<ProtectionDomain> get() {
-                    return new HashSet<ProtectionDomain>();
-                }
-            };
-        }
-
-        @Override
-        public BiConsumer<Set<ProtectionDomain>, ProtectionDomain> accumulator() {
-            return new BiConsumer<Set<ProtectionDomain>, ProtectionDomain>(){
-                @Override
-                public void accept(Set<ProtectionDomain> t, ProtectionDomain u){
-                    if (u != null) t.add(u);
-                }
-            };
-        }
-
-        @Override
-        public BinaryOperator<Set<ProtectionDomain>> combiner() {
-            return new BinaryOperator<Set<ProtectionDomain>>() {
-                @Override
-                public Set<ProtectionDomain> apply(Set<ProtectionDomain> set1, Set<ProtectionDomain> set2) {
-                    set1.addAll(set2);
-                    return set1;
-                }
-            };
-        }
-
-        @Override
-        public Function<Set<ProtectionDomain>,Set<ProtectionDomain>> finisher() {
-            return new Function<Set<ProtectionDomain>,Set<ProtectionDomain>>(){
-                @Override
-                public Set<ProtectionDomain> apply(Set<ProtectionDomain> set){
-                    return set;
-                }
-            };
-        }
-
-        @Override
-        public Set<Collector.Characteristics> characteristics() {
-            return Set.of(Characteristics.UNORDERED); 
-        }
-        
-    }
-
-    private static class PAContextScope<T> implements ScopedValue.CallableOp<T, RuntimeException> {
-
-        private final PrivilegedAction<T> action;
-
-        public PAContextScope(PrivilegedAction<T> action) {
-            this.action = action;
-        }
-        
-        @Override
-        public T call() throws RuntimeException {
-            return action.run();
-        }
-    }
-    
-    private static class PEAContextScope<T> implements ScopedValue.CallableOp<T, Exception> {
-
-        private final PrivilegedExceptionAction<T> action;
-
-        public PEAContextScope(PrivilegedExceptionAction<T> action) {
-            this.action = action;
-        }
-
-        @Override
-        public T call() throws Exception {
-            return action.run();
-        }
-    }
-
-    private static class StackWalk implements PrivilegedAction<Set<ProtectionDomain>> {
-
-        private final Triggered foundPrivileged;
-
-        public StackWalk(Triggered foundPrivileged) {
-            this.foundPrivileged = foundPrivileged;
-        }
-        
-        @Override
-        public Set<ProtectionDomain> run(){
-            return Holder.s.stackWalker().walk(new StopAtPrivilegedCall(foundPrivileged));
-        }
-    }
-    
-    /*
-         at java.base@25-internal/java.lang.StackWalker.walk(StackWalker.java:543)
-       1 at java.base@25-internal/java.security.AccessController$StackWalk.run(AccessController.java:1357)
-       2 at java.base@25-internal/java.security.AccessController$StackWalk.run(AccessController.java:1342)
-       3 at java.base@25-internal/java.security.AccessController$PAContextScope.call(AccessController.java:1324)
-       4 at java.base@25-internal/jdk.internal.vm.ScopedValueContainer.callWithoutScope(ScopedValueContainer.java:162)
-       5 at java.base@25-internal/jdk.internal.vm.ScopedValueContainer.call(ScopedValueContainer.java:147)
-       6 at java.base@25-internal/java.lang.ScopedValue$Carrier.call(ScopedValue.java:423)
-       7 at java.base@25-internal/java.security.AccessController.execPrivileged(AccessController.java:1180)
-       8 at java.base@25-internal/java.security.AccessController.getStackContext(AccessController.java:1186)
-       9 at java.base@25-internal/java.security.AccessController.stackAccessControlContext(AccessController.java:1018)
-       10 at java.base@25-internal/java.security.AccessController.getContext(AccessController.java:1054)
-    */
-    
-    private static class StopAtPrivilegedCall 
-            implements Function<Stream<StackFrame>, Set<ProtectionDomain>> {                
-
-        private final Triggered foundPrivileged;
-        
-        public StopAtPrivilegedCall(Triggered foundPrivileged) {
-            this.foundPrivileged = foundPrivileged;
-        }
-
-        @Override
-        public Set<ProtectionDomain> apply(Stream<StackFrame> s) {
-            return s.skip(10L).takeWhile(
-                    new NotPrivileged(foundPrivileged)).map(
-                            new GetProtectionDomain()).collect(
-                                    new SafeCollector());
-        }
-
-        
-    }
-    
-    private static class NotPrivileged implements Predicate<StackFrame> {
-
-        private final Triggered foundPrivileged;
-        public NotPrivileged(Triggered foundPrivileged) {
-            this.foundPrivileged = foundPrivileged;
-        }
-
-        @Override
-        public boolean test(StackFrame f) {
-            return !(f.getClassName().equals("java.security.AccessController")
-                    && (
-                        f.getMethodName().equals("execPrivileged")
-                        && foundPrivileged.trigger() 
-//                        || 
-//                        f.getMethodName().equals("executePrivileged")
-//                        && foundPrivileged.vmBoot()
-                        )
-                    );
-        }
-    }
-    
-    static class GetProtectionDomain implements Function<StackFrame, ProtectionDomain> {
-
-        public GetProtectionDomain() {
-        }
-
-        @Override
-        public ProtectionDomain apply(StackFrame p) {
-            return getProtectionDomain(p.getDeclaringClass());
-        }
-    }
-    
 }

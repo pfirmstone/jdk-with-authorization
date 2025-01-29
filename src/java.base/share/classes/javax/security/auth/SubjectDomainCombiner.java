@@ -30,8 +30,9 @@ import java.security.Principal;
 import java.security.PrivilegedAction;
 import java.security.ProtectionDomain;
 import java.util.Set;
-import java.util.WeakHashMap;
-import java.lang.ref.WeakReference;
+import java.util.HashSet;
+import java.util.Iterator;
+import sun.security.util.SecurityConstants;
 
 /**
  * A {@code SubjectDomainCombiner} updates ProtectionDomains
@@ -53,11 +54,9 @@ import java.lang.ref.WeakReference;
 //@Deprecated(since="17", forRemoval=true)
 public class SubjectDomainCombiner implements java.security.DomainCombiner {
 
-    private Subject subject;
-    private WeakKeyValueMap<ProtectionDomain, ProtectionDomain> cachedPDs =
-                new WeakKeyValueMap<>();
-    private Set<Principal> principalSet;
-    private Principal[] principals;
+    private final Subject subject;
+    private final int hashCode;
+    private final Principal[] principals;
 
     private static final sun.security.util.Debug debug =
         sun.security.util.Debug.getInstance("combiner",
@@ -71,13 +70,26 @@ public class SubjectDomainCombiner implements java.security.DomainCombiner {
      *          this {@code SubjectDomainCombiner}.
      */
     public SubjectDomainCombiner(Subject subject) {
+        this(notNull(subject), true);
+    }
+    
+    private SubjectDomainCombiner(Subject subject, boolean checked){
         this.subject = subject;
 
         if (subject.isReadOnly()) {
-            principalSet = subject.getPrincipals();
+            Set<Principal> principalSet = subject.getPrincipals();
             principals = principalSet.toArray
                         (new Principal[principalSet.size()]);
+            this.hashCode = subject.hashCode();
+        } else {
+            principals = null;
+            this.hashCode = System.identityHashCode(subject);
         }
+    }
+    
+    private static Subject notNull(Subject subject) throws NullPointerException {
+        if (subject == null) throw new NullPointerException("Subject cannot be null");
+        return subject;
     }
 
     /**
@@ -184,7 +196,6 @@ public class SubjectDomainCombiner implements java.security.DomainCombiner {
         // No need to optimize assignedDomains because it should
         // have been previously optimized (when it was set).
 
-        currentDomains = optimize(currentDomains);
         if (debug != null) {
             debug.println("after optimize");
             printInputDomains(currentDomains, assignedDomains);
@@ -196,73 +207,61 @@ public class SubjectDomainCombiner implements java.security.DomainCombiner {
 
         int cLen = (currentDomains == null ? 0 : currentDomains.length);
         int aLen = (assignedDomains == null ? 0 : assignedDomains.length);
+    
+        Set<ProtectionDomain> domainSet = new HashSet<>(cLen + aLen);
 
-        // the ProtectionDomains for the new AccessControlContext
-        // that we will return
-        ProtectionDomain[] newDomains = new ProtectionDomain[cLen + aLen];
+        Principal [] principals;
+        if (subject.isReadOnly()){
+            principals = this.principals;
+        } else { // Mutable Subject, got to check it every time.
+            Set<Principal> newSet = subject.getPrincipals();
 
-        boolean allNew = true;
-        synchronized(cachedPDs) {
-            if (!subject.isReadOnly() &&
-                !subject.getPrincipals().equals(principalSet)) {
+            principals = newSet.toArray
+                    (new Principal[newSet.size()]);
 
-                // if the Subject was mutated, clear the PD cache
-                Set<Principal> newSet = subject.getPrincipals();
-                synchronized(newSet) {
-                    principalSet = new java.util.HashSet<Principal>(newSet);
-                }
-                principals = principalSet.toArray
-                        (new Principal[principalSet.size()]);
-                cachedPDs.clear();
-
-                if (debug != null) {
-                    debug.println("Subject mutated - clearing cache");
-                }
-            }
-
-            ProtectionDomain subjectPd;
-            for (int i = 0; i < cLen; i++) {
-                ProtectionDomain pd = currentDomains[i];
-
-                subjectPd = cachedPDs.getValue(pd);
-
-                if (subjectPd == null) {
-                    if (pd.staticPermissionsOnly()) {
-                        // keep static ProtectionDomain objects static
-                        subjectPd = pd;
-                    } else {
-                        subjectPd = new ProtectionDomain(pd.getCodeSource(),
-                                                pd.getPermissions(),
-                                                pd.getClassLoader(),
-                                                principals);
-                    }
-                    cachedPDs.putValue(pd, subjectPd);
-                } else {
-                    allNew = false;
-                }
-                newDomains[i] = subjectPd;
+            if (debug != null) {
+                debug.println("Subject is mutable");
             }
         }
 
+        for (int i = 0; i < cLen; i++) {
+            ProtectionDomain pd = currentDomains[i];
+            if (pd == null) continue;
+            ProtectionDomain subjectPd;
+            if (pd.staticPermissionsOnly() || pd.implies(SecurityConstants.ALL_PERMISSION)) {
+                // keep static ProtectionDomain objects static, no point
+                // adding Principals to privileged domains.
+                subjectPd = pd;
+            } else {
+                subjectPd = new ProtectionDomain(pd.getCodeSource(),
+                                        pd.getPermissions(),
+                                        pd.getClassLoader(),
+                                        principals);
+            }
+            domainSet.add(subjectPd);
+        }
+        
         if (debug != null) {
             debug.println("updated current: ");
-            for (int i = 0; i < cLen; i++) {
+            Iterator<ProtectionDomain> it = domainSet.iterator();
+            int i = 0;
+            while (it.hasNext()) {
                 debug.println("\tupdated[" + i + "] = " +
-                                printDomain(newDomains[i]));
+                                printDomain(it.next()));
+                i++;
             }
         }
 
         // now add on the assigned domains
-        if (aLen > 0) {
-            System.arraycopy(assignedDomains, 0, newDomains, cLen, aLen);
-
-            // optimize the result (cached PDs might exist in assignedDomains)
-            if (!allNew) {
-                newDomains = optimize(newDomains);
-            }
+        for (int i = 0; i < aLen; i++) {
+            ProtectionDomain domain = assignedDomains[i];
+            if (domain == null) continue;
+            domainSet.add(domain);
         }
 
-        // if aLen == 0 || allNew, no need to further optimize newDomains
+        // the ProtectionDomains for the new AccessControlContext
+        // that we will return
+        ProtectionDomain[] newDomains = domainSet.toArray(new ProtectionDomain[domainSet.size()]);
 
         if (debug != null) {
             if (newDomains == null || newDomains.length == 0) {
@@ -282,45 +281,6 @@ public class SubjectDomainCombiner implements java.security.DomainCombiner {
         } else {
             return newDomains;
         }
-    }
-
-    private static ProtectionDomain[] optimize(ProtectionDomain[] domains) {
-        if (domains == null || domains.length == 0)
-            return null;
-
-        ProtectionDomain[] optimized = new ProtectionDomain[domains.length];
-        ProtectionDomain pd;
-        int num = 0;
-        for (int i = 0; i < domains.length; i++) {
-
-            // skip domains with AllPermission
-            // XXX
-            //
-            //  if (domains[i].implies(ALL_PERMISSION))
-            //  continue;
-
-            // skip System Domains
-            if ((pd = domains[i]) != null) {
-
-                // remove duplicates
-                boolean found = false;
-                for (int j = 0; j < num && !found; j++) {
-                    found = (optimized[j] == pd);
-                }
-                if (!found) {
-                    optimized[num++] = pd;
-                }
-            }
-        }
-
-        // resize the array if necessary
-        if (num > 0 && num < domains.length) {
-            ProtectionDomain[] downSize = new ProtectionDomain[num];
-            System.arraycopy(optimized, 0, downSize, 0, downSize.length);
-            optimized = downSize;
-        }
-
-        return ((num == 0 || optimized.length == 0) ? null : optimized);
     }
 
     private static void printInputDomains(ProtectionDomain[] currentDomains,
@@ -364,41 +324,5 @@ public class SubjectDomainCombiner implements java.security.DomainCombiner {
                 return pd.toString();
             }
         });
-    }
-
-    /**
-     * A HashMap that has weak keys and values.
-     *
-     * Key objects in this map are the "current" ProtectionDomain instances
-     * received via the combine method.  Each "current" PD is mapped to a
-     * new PD instance that holds both the contents of the "current" PD,
-     * as well as the principals from the Subject associated with this combiner.
-     *
-     * The newly created "principal-based" PD values must be stored as
-     * WeakReferences since they contain strong references to the
-     * corresponding key object (the "current" non-principal-based PD),
-     * which will prevent the key from being GC'd.  Specifically,
-     * a "principal-based" PD contains strong references to the CodeSource,
-     * signer certs, PermissionCollection and ClassLoader objects
-     * in the "current PD".
-     */
-    private static class WeakKeyValueMap<K,V> extends
-                                        WeakHashMap<K,WeakReference<V>> {
-
-        public V getValue(K key) {
-            WeakReference<V> wr = super.get(key);
-            if (wr != null) {
-                return wr.get();
-            }
-            return null;
-        }
-
-        public V putValue(K key, V value) {
-            WeakReference<V> wr = super.put(key, new WeakReference<V>(value));
-            if (wr != null) {
-                return wr.get();
-            }
-            return null;
-        }
     }
 }

@@ -372,12 +372,8 @@ class SerializeClosure;
   template(asPrimitive_name,                          "asPrimitive")                              \
   template(asPrimitive_int_signature,                 "(I)Ljava/lang/LiveStackFrame$PrimitiveSlot;") \
   template(asPrimitive_long_signature,                "(J)Ljava/lang/LiveStackFrame$PrimitiveSlot;") \
-  /* AccessController Support */                                                                  \
-  template(jdk_internal_util_random_RandomSupport,    "jdk/internal/util/random/RandomSupport")   \
-  template(java_util_EnumMap,                         "java/util/EnumMap")                        \
-  template(java_lang_StackWalker_Option,              "java/lang/StackWalker$Option")             \
-  template(java_lang_ScopedValue_Cache,               "java/lang/ScopedValue$Cache")              \
-  template(java_security_AccessController_Holder,     "java/security/AccessController$Holder")    \
+  /* AccessControlContext Cache Support */                                                                  \
+  template(java_security_AccessControlContext_ContextKey,     "java/security/AccessControlContext$ContextKey") \
                                                                                                   \
   /* common method and field names */                                                             \
   template(object_initializer_name,                   "<init>")                                   \
@@ -503,6 +499,8 @@ class SerializeClosure;
   template(defineOrCheckPackage_signature,            "(Ljava/lang/String;Ljava/util/jar/Manifest;Ljava/net/URL;)Ljava/lang/Package;") \
   template(getProtectionDomain_name,                  "getProtectionDomain")                      \
   template(getProtectionDomain_signature,             "(Ljava/security/CodeSource;)Ljava/security/ProtectionDomain;") \
+  template(buildAccessControlContext_name,            "build")                                    \
+  template(buildAccessControlContext_signature,       "([Ljava/security/ProtectionDomain;Ljava/security/AccessControlContext;ZZ)Ljava/security/AccessControlContext;") \
   template(java_lang_Integer_array_signature,         "[Ljava/lang/Integer;")                     \
   template(java_lang_Long_array_signature,            "[Ljava/lang/Long;")                        \
   template(java_lang_Character_array_signature,       "[Ljava/lang/Character;")                   \
