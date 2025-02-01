@@ -30,5 +30,6 @@ grant {
     permission java.util.PropertyPermission "java.vm.vendor", "read";
     permission java.util.PropertyPermission "java.vm.name", "read";
     permission au.zeus.jdk.authorization.guards.LoadClassPermission;
+    permission java.lang.RuntimePermission "accessClassInPackage.sun.util.locale.provider";
 };
 

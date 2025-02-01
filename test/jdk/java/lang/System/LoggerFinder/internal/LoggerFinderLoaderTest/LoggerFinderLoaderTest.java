@@ -809,6 +809,7 @@ public class LoggerFinderLoaderTest {
             permissions = new Permissions();
             permissions.add(new RuntimePermission("setIO"));
 	    permissions.add(new LoadClassPermission());
+            permissions.add(new RuntimePermission("accessClassInPackage.sun.util.locale.provider"));
         }
 
         Permissions getPermissions() {

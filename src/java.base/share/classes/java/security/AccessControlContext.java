@@ -32,12 +32,10 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
-import java.util.TreeSet;
 import java.util.concurrent.ConcurrentMap;
 
 import sun.security.util.Debug;
 import sun.security.util.SecurityConstants;
-import jdk.internal.misc.VM;
 
 
 /**
@@ -112,8 +110,6 @@ public final class AccessControlContext {
     private final DomainCombiner combiner;
 
     private final int hashCode;
-
-    private Object k; // ContextKey cache strong reference.
 
     private static boolean debugInit = false;
     private static Debug debug = null;
@@ -431,7 +427,7 @@ public final class AccessControlContext {
         }
     }
 
-    /* Only used during VM initialization prior to cache.*/
+    /* Constructor used by builder methods. */
     private AccessControlContext(ProtectionDomain[] context,
                          AccessControlContext privilegedContext,
                          DomainCombiner combiner,
@@ -899,7 +895,7 @@ public final class AccessControlContext {
                 if (this.isAuthorized != that.isAuthorized) return false;
                 if (this.isPrivileged != that.isPrivileged) return false;
                 if (!Objects.equals(this.combiner,that.combiner)) return false;
-                if (!Arrays.equals((Object[])this.context, (Object[])that.context)) return false;
+                if (!Objects.deepEquals((Object[])this.context, (Object[])that.context)) return false;
                 return !Objects.equals(this.privilegedContext, that.privilegedContext);
             }
             return false;

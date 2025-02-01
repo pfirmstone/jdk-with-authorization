@@ -203,10 +203,9 @@ public class ProtectionDomain {
         this.classloader = null;
         this.principals = new Principal[0];
         int hash = 7;
+        hash = 83 * hash + 1231; // staticPermisions = true;
         hash = 83 * hash + Objects.hashCode(this.uriCS);
-        if (codesource == null){ // permissions become part of identity.
-            hash = 83 * hash + permissionsHashCode(this.permissions);
-        }
+        hash = 83 * hash + permissionsHashCode(this.permissions);
         hashcode = hash;
         staticPermissions = true;
     }
@@ -258,7 +257,9 @@ public class ProtectionDomain {
         this.principals = (principals != null ? principals.clone():
                            new Principal[0]);
         int hash = 7;
+        hash = 83 * hash + 1237; // staticPermisions = false;
         hash = 83 * hash + Objects.hashCode(this.uriCS);
+        hash = 83 * hash + permissionsHashCode(this.permissions);
         hash = 83 * hash + Objects.hashCode(this.classloader);
         hash = 83 * hash + this.principals.length > 0 ? 
                 Arrays.deepHashCode(this.principals) : this.principals.hashCode();
@@ -445,19 +446,13 @@ public class ProtectionDomain {
         if (getClass() != obj.getClass()) return false;
         final ProtectionDomain other = (ProtectionDomain) obj;
         if (hashcode != other.hashcode) return false;
+        if (staticPermissions != other.staticPermissions) return false;
         if (!Objects.equals(this.uriCS, other.uriCS)) return false;
-        if (staticPermissions){
-            if (this.codesource == null && other.codesource == null){ // permissions become part of identity.
-                if (permissions != null && other.permissions != null){
-                    SortedSet<Permission> thisPermSet = permissionsToSet(permissions);
-                    SortedSet<Permission> thatPermSet = permissionsToSet(other.permissions);
-                    return Objects.equals(thisPermSet, thatPermSet);
-                } else if (permissions == null || other.permissions == null){
-                    return false;
-                }
-            } else if (this.codesource == null || other.codesource == null){
-                return false;
-            }
+        if (permissions != null && other.permissions != null){
+            SortedSet<Permission> thisPermSet = permissionsToSet(permissions);
+            SortedSet<Permission> thatPermSet = permissionsToSet(other.permissions);
+            if (!Objects.equals(thisPermSet, thatPermSet)) return false; 
+        } else if (permissions == null || other.permissions == null){
             return false;
         }
         if (!Objects.equals(this.classloader, other.classloader)) return false;

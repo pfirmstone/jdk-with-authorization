@@ -400,6 +400,8 @@ public final class System {
             if (sm == null) throw new IllegalArgumentException(
             "A SecurityManager has been installed and cannot be set to null");
         } else {
+            // enable the AccessControlContext cache
+            enableAccessControlContextCache();
             // ensure image reader is initialized
             Object.class.getResource("java/lang/ANY");
             // ensure the default file system is initialized
@@ -2331,21 +2333,17 @@ public final class System {
             switch (smProp) {               
                 case "disallow":
                     throw new Error("This JVM doesn't support disallowing SecurityManager");
-                case "allow":
-                    enableAccessControlContextCache();
+                case "allow":                   
                     break;
                 case "":
                 case "default":
-                    enableAccessControlContextCache();
                     setSecurityManager(new CombinerSecurityManager());
                     break;
                 case "polpAudit":
-                    enableAccessControlContextCache();
                     setSecurityManager(new SecurityPolicyWriter());
                     break;
                 default:
                     try {
-                        enableAccessControlContextCache();
                         ClassLoader cl = ClassLoader.getBuiltinAppClassLoader();
                         Class<?> c = Class.forName(smProp, false, cl);
                         Constructor<?> ctor = c.getConstructor();

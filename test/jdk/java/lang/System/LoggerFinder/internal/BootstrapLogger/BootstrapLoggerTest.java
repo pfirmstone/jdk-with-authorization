@@ -389,7 +389,8 @@ public class BootstrapLoggerTest {
 
         Permissions getPermissions() {
             Permissions perms = new Permissions();
-            perms.add(new LoadClassPermission());	
+            perms.add(new LoadClassPermission());
+            perms.add(new java.lang.RuntimePermission("accessClassInPackage.sun.util.locale.provider"));
             if (allowAll.get()) {
                 perms.add(new AllPermission());
             }

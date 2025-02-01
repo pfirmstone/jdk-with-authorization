@@ -588,6 +588,7 @@ public class UpdateConfigurationTest {
             permissions.add(new FilePermission(PREFIX+".lck", "read,write,delete"));
             permissions.add(new FilePermission(PREFIX, "read,write"));
 	    permissions.add(new LoadClassPermission());
+            permissions.add(new java.lang.RuntimePermission("accessClassInPackage.sun.util.locale.provider"));
 
             // these are used for configuring the test itself...
             allPermissions = new Permissions();

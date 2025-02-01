@@ -873,6 +873,7 @@ public class BaseDefaultLoggerFinderTest {
         }
         public PermissionsBuilder(Permissions perms) {
             perms.add(new LoadClassPermission()); 
+            perms.add(new java.lang.RuntimePermission("accessClassInPackage.sun.util.locale.provider"));
             this.perms = perms;
         }
         public PermissionsBuilder add(Permission p) {

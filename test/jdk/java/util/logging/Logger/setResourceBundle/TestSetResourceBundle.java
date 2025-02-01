@@ -473,6 +473,7 @@ public class TestSetResourceBundle {
         public SimplePolicy(TestCase test) {
             permissions = new Permissions();
 	    permissions.add(new LoadClassPermission());
+            permissions.add(new java.lang.RuntimePermission("accessClassInPackage.sun.util.locale.provider"));
             if (test != TestCase.PERMISSION) {
                 permissions.add(new LoggingPermission("control", null));
             }

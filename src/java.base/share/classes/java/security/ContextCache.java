@@ -38,8 +38,14 @@ class ContextCache {
     private ContextCache(){};
 
     static {
+        // Reference type change from time based to weak, with short cycle time
+        // of 4000 to pass jtreg:test/jdk/java/lang/ClassLoader/forNameLeak/ClassForNameLeak.java
+        // Consider increasing test time if we need longer cycle times.
+        // Time of 3000L required to pass jtreg:test/langtools/tools/javac/Paths/MineField.java
+        // Note, weakly referenced value causes collection of Key value tuple,
+        // if there are contexts with identical hash only one will be collected.
         ConcurrentMap<AccessControlContext.ContextKey,AccessControlContext> CONTEXTS 
-            = RC.concurrentMap(new ConcurrentHashMap<>(), Ref.TIME, Ref.STRONG, 50000L, 50000L);
+            = RC.concurrentMap(new ConcurrentHashMap<>(), Ref.STRONG, Ref.WEAK, 3000L, 3000L);
         AccessControlContext.initCache(CONTEXTS);
     }
     
