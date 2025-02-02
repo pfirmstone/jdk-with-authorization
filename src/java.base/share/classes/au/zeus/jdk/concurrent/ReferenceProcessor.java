@@ -233,7 +233,7 @@ class ReferenceProcessor<T> implements ReferenceQueuingFactory<T, Referrer<T>> {
                                    Thread.currentThread().interrupt();
                                }
                            } // Ignore
-                }
+                        }
 		    }
                 }
             }catch(Exception e){

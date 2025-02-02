@@ -478,7 +478,7 @@ public final class AccessControlContext {
             domains[i] = context [i];
         }
         domains[context.length] = new ProtectionDomain(null, p);
-        return build(domains, this.privilegedContext, dc, this.isAuthorized, this.isPrivileged);
+        return build(domains, this.privilegedContext, dc, this.isPrivileged, this.isAuthorized);
     }
 
     /**
@@ -754,7 +754,7 @@ public final class AccessControlContext {
             pd = tmp;
         }
 
-        return AccessControlContext.build(pd, privilegedContext, null, isAuthorized, false);
+        return AccessControlContext.build(pd, privilegedContext, null, false, isAuthorized);
     }
 
     private AccessControlContext goCombiner(ProtectionDomain[] current, 
@@ -849,7 +849,7 @@ public final class AccessControlContext {
      */
     static class ContextKey{
 
-        private final ProtectionDomain[] context;
+        private final Set<ProtectionDomain> context;
         private final AccessControlContext privilegedContext;
         private final DomainCombiner combiner;
         private final boolean isPrivileged;
@@ -867,13 +867,15 @@ public final class AccessControlContext {
                    boolean isPrivileged,
                    boolean isAuthorized)
         {
-            this.context = context;
+            this.context = (context != null && context.length > 0 ? 
+                    new HashSet<ProtectionDomain>(context.length) : null);
+            if (this.context != null) this.context.addAll(Arrays.asList(context));
             this.privilegedContext = privilegedContext;
             this.combiner = combiner;
             this.isPrivileged = isPrivileged;
             this.isAuthorized = isAuthorized;
             int hash = 7;
-            hash = 41 * hash + Arrays.deepHashCode(this.context);
+            hash = 41 * hash + Objects.hashCode(this.context);
             hash = 41 * hash + Objects.hashCode(this.privilegedContext);
             hash = 41 * hash + Objects.hashCode(this.combiner);
             hash = 41 * hash + (this.isAuthorized ? 1 : 0);
@@ -895,7 +897,7 @@ public final class AccessControlContext {
                 if (this.isAuthorized != that.isAuthorized) return false;
                 if (this.isPrivileged != that.isPrivileged) return false;
                 if (!Objects.equals(this.combiner,that.combiner)) return false;
-                if (!Objects.deepEquals((Object[])this.context, (Object[])that.context)) return false;
+                if (!Objects.equals(this.context, that.context)) return false;
                 return !Objects.equals(this.privilegedContext, that.privilegedContext);
             }
             return false;
