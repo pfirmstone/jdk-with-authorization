@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002, 2025, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2002, 2024, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -47,7 +47,6 @@ import java.io.ObjectInputStream;
  *
  * @since 1.5
  */
-@Deprecated(since="25", forRemoval=true)
 public class MBeanTrustPermission extends BasicPermission {
 
     private static final long serialVersionUID = -2952178077029018140L;
