@@ -1412,13 +1412,17 @@ class java_lang_invoke_MethodType: AllStatic {
 
 
 // Interface to java.lang.invoke.CallSite objects
+#define CALLSITE_INJECTED_FIELDS(macro) \
+  macro(java_lang_invoke_CallSite, vmdependencies, intptr_signature, false) \
+  macro(java_lang_invoke_CallSite, last_cleanup, long_signature, false)
 
 class java_lang_invoke_CallSite: AllStatic {
   friend class JavaClasses;
 
 private:
   static int _target_offset;
-  static int _context_offset;
+  static int _vmdependencies_offset;
+  static int _last_cleanup_offset;
 
   static void compute_offsets();
 
@@ -1429,7 +1433,7 @@ public:
   static void         set_target(          oop site, oop target);
   static void         set_target_volatile( oop site, oop target);
 
-  static oop context_no_keepalive(oop site);
+  static DependencyContext vmdependencies(oop call_site);
 
   // Testers
   static bool is_subclass(Klass* klass) {
@@ -1439,7 +1443,6 @@ public:
 
   // Accessors for code generation:
   static int target_offset()  { CHECK_INIT(_target_offset); }
-  static int context_offset() { CHECK_INIT(_context_offset); }
 };
 
 // Interface to java.lang.invoke.ConstantCallSite objects
