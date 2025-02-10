@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 1999, 2025, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 1999, 2023, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -49,6 +49,7 @@ private:
   enum SubklassValue { subklass_unknown, subklass_false, subklass_true };
 
   jobject                _loader;
+  jobject                _protection_domain;
 
   InstanceKlass::ClassState _init_state;           // state of class
   bool                   _is_shared;
@@ -83,7 +84,7 @@ private:
 
 protected:
   ciInstanceKlass(Klass* k);
-  ciInstanceKlass(ciSymbol* name, jobject loader);
+  ciInstanceKlass(ciSymbol* name, jobject loader, jobject protection_domain);
 
   InstanceKlass* get_instanceKlass() const {
     return InstanceKlass::cast(get_Klass());
@@ -91,6 +92,9 @@ protected:
 
   oop loader();
   jobject loader_handle();
+
+  oop protection_domain();
+  jobject protection_domain_handle();
 
   const char* type_string() { return "ciInstanceKlass"; }
 
