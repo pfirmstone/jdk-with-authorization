@@ -354,6 +354,22 @@ class FileTreeWalker implements Closeable {
                 }
             }
 
+            // no next entry so close and pop directory,
+            // creating corresponding event
+            if (entry == null) {
+                try {
+                    top.stream().close();
+                } catch (IOException e) {
+                    if (ioe == null) {
+                        ioe = e;
+                    } else {
+                        ioe.addSuppressed(e);
+                    }
+                }
+                stack.pop();
+                return new Event(EventType.END_DIRECTORY, top.directory(), ioe);
+            }
+
             // visit the entry
             ev = visit(entry,
                        true,   // ignoreSecurityException
