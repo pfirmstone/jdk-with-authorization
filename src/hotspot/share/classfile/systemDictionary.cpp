@@ -430,26 +430,25 @@ InstanceKlass* SystemDictionary::resolve_with_circularity_detection(Symbol* clas
 
   ClassLoaderData* loader_data = class_loader_data(class_loader);
 
-  if (is_superclass) {
-    InstanceKlass* klassk = loader_data->dictionary()->find_class(THREAD, class_name);
-    if (klassk != nullptr) {
-      // We can come here for two reasons:
-      // (a) RedefineClasses -- the class is already loaded
-      // (b) Rarely, the class might have been loaded by a parallel thread
-      // We can do a quick check against the already assigned superclass's name and loader.
-      InstanceKlass* superk = klassk->java_super();
-      if (superk != nullptr &&
-          superk->name() == next_name &&
-          superk->class_loader() == class_loader()) {
-        return superk;
-      }
-    }
-  }
-
   // can't throw error holding a lock
   bool throw_circularity_error = false;
   {
     MutexLocker mu(THREAD, SystemDictionary_lock);
+    if (is_superclass) {
+        InstanceKlass* klassk = loader_data->dictionary()->find_class(THREAD, class_name);
+        if (klassk != nullptr) {
+          // We can come here for two reasons:
+          // (a) RedefineClasses -- the class is already loaded
+          // (b) Rarely, the class might have been loaded by a parallel thread
+          // We can do a quick check against the already assigned superclass's name and loader.
+          InstanceKlass* superk = klassk->java_super();
+          if (superk != nullptr &&
+              superk->name() == next_name &&
+              superk->class_loader() == class_loader()) {
+            return superk;
+          }
+        }
+      }
 
     // Must check ClassCircularity before resolving next_name (superclass or interface).
     PlaceholderEntry* probe = PlaceholderTable::get_entry(class_name, loader_data);
