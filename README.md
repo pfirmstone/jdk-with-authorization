@@ -90,6 +90,7 @@ This project's objectives are to maintain a community fork of OpenJDK that retai
 - Removing static Permissions, removal of ClassLoaders directly assigning Permissions during construction, allows full control to be given to Policy and Policy administrators, allowing the administrator to whitelist safe domains for example, it is no longer a code or developer concern and instead becomes an administrative concern.
 - Removal of static Permissions also assists developers in reasoning about what is a user concern, what is a code concern and how to differentiate between what belongs inside a PrivilegedAction and what doesn't.
 - Use PrivilegedThreadFactory's when SecurityManager is active by default, so programmer's don't need to remember to preserve context.
+- A cache of immutable AccessControlContext's would significantly reduce the number of contexts required to support Virtual threads...
 - Stay tuned...
 ## Performance
 - OpenJDK Policy and PermissionCollection implementations are heavily contended and synchronized, DNS calls are made during CodeSource.implies calls, back when the implementations were created in the late 1990's most computers Java 1.2 ran on were single threaded.
