@@ -138,7 +138,7 @@ public final class LoggerFinderLoader {
                         ClassLoader.getSystemClassLoader()).iterator();
             iterator = AccessController.doPrivileged(pa, null,
                         LOGGERFINDER_PERMISSION, CLASSLOADER_PERMISSION,
-                        READ_PERMISSION);
+                        READ_PERMISSION, new RuntimePermission("exitVM"));
         }
         return iterator;
     }

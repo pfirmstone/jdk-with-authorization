@@ -311,7 +311,7 @@ public class ForkJoinWorkerThread extends Thread {
 
         @SuppressWarnings("removal")
         static AccessControlContext createACC() {
-            return new AccessControlContext(
+            return AccessControlContext.build(
                 new ProtectionDomain[] { new ProtectionDomain(null, null) });
         }
         static ThreadGroup createGroup() {

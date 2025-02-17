@@ -26,7 +26,9 @@
 package jdk.internal.logger;
 
 import java.security.AccessController;
+import java.security.Permission;
 import java.security.PrivilegedAction;
+import java.security.UnresolvedPermission;
 import java.util.function.BiFunction;
 import java.lang.System.LoggerFinder;
 import java.lang.System.Logger;
@@ -44,8 +46,13 @@ import sun.util.logging.PlatformLogger;
  */
 public final class LazyLoggers {
 
-    static final RuntimePermission LOGGERFINDER_PERMISSION =
-                new RuntimePermission("loggerFinder");
+    static final Permission [] LOGGERFINDER_PERMISSION =
+                new Permission [] {
+                    new RuntimePermission("loggerFinder"),
+                    new RuntimePermission("exitVM"),
+                    new UnresolvedPermission("java.util.logging.LoggingPermission", "control", null, null),
+                    new RuntimePermission("accessClassInPackage.sun.util.locale.provider")
+                };
 
     private LazyLoggers() {
         throw new InternalError();

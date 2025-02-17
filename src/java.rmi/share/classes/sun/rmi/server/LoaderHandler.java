@@ -1035,7 +1035,7 @@ public final class LoaderHandler {
             new CodeSource((urls.length > 0 ? urls[0] : null),
                 (java.security.cert.Certificate[]) null),
             perms);
-        return new AccessControlContext(new ProtectionDomain[] { pd });
+        return AccessControlContext.build(new ProtectionDomain[] { pd });
     }
 
     /**

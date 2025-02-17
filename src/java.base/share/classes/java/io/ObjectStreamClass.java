@@ -1038,7 +1038,7 @@ public final class ObjectStreamClass implements Serializable {
                     try {
                         return jsa.doIntersectionPrivilege(pea,
                                    AccessController.getContext(),
-                                   new AccessControlContext(domains));
+                                   AccessControlContext.build(domains));
                     } catch (UndeclaredThrowableException x) {
                         Throwable cause = x.getCause();
                         if (cause instanceof InstantiationException ie)

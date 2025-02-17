@@ -176,7 +176,7 @@ public abstract class Monitor
     private volatile Subject subject;
     @SuppressWarnings("removal")
     private static final AccessControlContext noPermissionsACC =
-            new AccessControlContext(
+            AccessControlContext.build(
             new ProtectionDomain[] {new ProtectionDomain(null, null)});
     @SuppressWarnings("removal")
     private volatile AccessControlContext acc = noPermissionsACC;

@@ -30,6 +30,7 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.Enumeration;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -167,7 +168,7 @@ public class ProtectionDomain {
     /*
      * An object used as a key when the ProtectionDomain is stored in a Map.
      */
-    final Key key = new Key();
+    final Key key;
 
     /**
      * Creates a new {@code ProtectionDomain} with the given {@code CodeSource}
@@ -203,11 +204,16 @@ public class ProtectionDomain {
         this.classloader = null;
         this.principals = new Principal[0];
         int hash = 7;
-        hash = 83 * hash + 1231; // staticPermisions = true;
-        hash = 83 * hash + Objects.hashCode(this.uriCS);
-        hash = 83 * hash + permissionsHashCode(this.permissions);
+        hash = 7 * hash + 1231; // staticPermisions = true;
+        hash = 7 * hash + (hasAllPerm ? 1231 : 1237);
+        hash = 7 * hash + getClass().hashCode();
+        hash = 7 * hash + Objects.hashCode(this.uriCS);
+        if (this.uriCS == null && this.codesource != null) hash = 7 * hash +this.codesource.hashCode();
+        hash = 7 * hash + permissionsHashCode(this.permissions);
+        hash = 7 * hash + this.principals.hashCode();
         hashcode = hash;
         staticPermissions = true;
+        this.key = new Key(/*hashcode*/);
     }
 
     /**
@@ -257,14 +263,18 @@ public class ProtectionDomain {
         this.principals = (principals != null ? principals.clone():
                            new Principal[0]);
         int hash = 7;
-        hash = 83 * hash + 1237; // staticPermisions = false;
-        hash = 83 * hash + Objects.hashCode(this.uriCS);
-        hash = 83 * hash + permissionsHashCode(this.permissions);
-        hash = 83 * hash + Objects.hashCode(this.classloader);
-        hash = 83 * hash + this.principals.length > 0 ? 
+        hash = 7 * hash + 1237; // staticPermisions = false;
+        hash = 7 * hash + (hasAllPerm ? 1231 : 1237);
+        hash = 7 * hash + getClass().hashCode();
+        hash = 7 * hash + Objects.hashCode(this.uriCS);
+        if (this.uriCS == null && this.codesource != null) hash = 7 * hash +this.codesource.hashCode();
+        hash = 7 * hash + permissionsHashCode(this.permissions);
+        hash = 7 * hash + Objects.hashCode(this.classloader);
+        hash = 7 * hash + this.principals.length > 0 ? 
                 Arrays.deepHashCode(this.principals) : this.principals.hashCode();
         hashcode = hash;
         staticPermissions = false;
+        this.key = new Key(/*hashcode*/);
     }
 
     /**
@@ -356,10 +366,9 @@ public class ProtectionDomain {
             return true;
         }
         if (Policy.getPolicyNoCheck().implies(this, perm)) return true;
-        // Supports AccessController methods with Permission parameter argument.
-        if (staticPermissions && codesource == null && permissions != null){
-            return permissions.implies(perm);
-        }
+        // Supports AccessControlContext only Permissions, that cannot be supported by policy.
+        // Note that dynamic policy can determine permission based on ClassLoader
+        if (permissions != null) return permissions.implies(perm);
         return false;
     }
 
@@ -447,16 +456,20 @@ public class ProtectionDomain {
         final ProtectionDomain other = (ProtectionDomain) obj;
         if (hashcode != other.hashcode) return false;
         if (staticPermissions != other.staticPermissions) return false;
+        if (!Objects.equals(this.classloader, other.classloader)) return false;
         if (!Objects.equals(this.uriCS, other.uriCS)) return false;
+        if (this.uriCS == null && this.codesource != null){
+            if (!Objects.equals(this.codesource, other.codesource)) return false;
+        }
+        if (!Arrays.equals(this.principals, other.principals)) return false;
+        if (hasAllPerm && other.hasAllPerm) return true;
+        if (Objects.equals(permissions, other.permissions)) return true;
         if (permissions != null && other.permissions != null){
             SortedSet<Permission> thisPermSet = permissionsToSet(permissions);
             SortedSet<Permission> thatPermSet = permissionsToSet(other.permissions);
-            if (!Objects.equals(thisPermSet, thatPermSet)) return false; 
-        } else if (permissions == null || other.permissions == null){
-            return false;
+            return (Objects.equals(thisPermSet, thatPermSet)); 
         }
-        if (!Objects.equals(this.classloader, other.classloader)) return false;
-        return Arrays.equals(this.principals, other.principals);
+        return false;
     }
     
     /**
@@ -485,14 +498,14 @@ public class ProtectionDomain {
      */
     static int permissionHashCode(Permission perm){
         if (perm == null) return 0;
-        int hashCode = 7;
-        hashCode = (hashCode << 5) - hashCode + perm.getClass().hashCode();
-        hashCode = (hashCode << 5) - hashCode + perm.getName().hashCode();
-        hashCode = (hashCode << 5) - hashCode + perm.getActions().hashCode();
+        int hashCode = 5;
+        hashCode = hashCode * 5 + perm.getClass().hashCode();
+        hashCode = hashCode * 5 + perm.getName().hashCode();
+        hashCode = hashCode * 5 + perm.getActions().hashCode();
         if (perm instanceof javax.security.auth.PrivateCredentialPermission pcp){
-            hashCode = (hashCode << 5) - hashCode + Arrays.deepHashCode(pcp.getPrincipals());
+            hashCode = hashCode * 5 + Arrays.deepHashCode(pcp.getPrincipals());
             String credClass = pcp.getCredentialClass();
-            if (credClass != null) hashCode = (hashCode << 5) - hashCode + credClass.hashCode();
+            if (credClass != null) hashCode = hashCode * 5 + credClass.hashCode();
         }
         return hashCode;   
     }
@@ -598,14 +611,30 @@ public class ProtectionDomain {
 
     @SuppressWarnings("removal")
     private PermissionCollection<Permission> mergePermissions() {
+        if (hasAllPerm) return permissions;
         // The use of lambda's could cause problems at bootstrap time?
         PermissionCollection<Permission> perms =
             java.security.AccessController.doPrivileged
             ((PrivilegedAction<PermissionCollection<Permission>>) () ->
                 Policy.getPolicyNoCheck().getPermissions(ProtectionDomain.this));
-        //Policy has responsiblity of merging permissions.
+        //Policy has responsiblity of merging permissions, but simple test Policies don't.
         if (perms != null && perms != Policy.UNSUPPORTED_EMPTY_COLLECTION){
-            return perms;
+            if (permissions == null) return perms;
+            Set<Permission> pset = new TreeSet<>(PERM_COMPARE);
+            Enumeration<Permission> en = perms.elements();
+            while(en.hasMoreElements()){
+                pset.add(en.nextElement());
+            }
+            en = permissions.elements();
+            while(en.hasMoreElements()){
+                pset.add(en.nextElement());
+            }
+            Permissions merged = new Permissions();
+            Iterator<Permission> it = pset.iterator();
+            while(it.hasNext()){
+                merged.add(it.next());
+            }
+            return merged;
         }
         return permissions;
     }
@@ -613,7 +642,25 @@ public class ProtectionDomain {
     /**
      * Used for storing ProtectionDomains as keys in a Map.
      */
-    static final class Key {}
+    static final class Key {
+        
+//        final int hashCode;
+//        
+//        Key(int hash){
+//            this.hashCode = hash;
+//        }
+//        
+//        public int hashCode(){
+//            return hashCode;
+//        }
+//        
+//        public boolean equals(Object o){
+//            if (o instanceof Key that){
+//                if (this.hashCode == that.hashCode) return true;
+//            }
+//            return false;
+//        }
+    }
     
     /**
      * To avoid CodeSource equals and hashCode methods.

@@ -175,6 +175,7 @@ public class MethodHandleConstants {
         final PermissionCollection permissions = new Permissions();
         TestPolicy() {
             permissions.add(new java.io.FilePermission("<<ALL FILES>>", "read"));
+            permissions.add(new java.lang.RuntimePermission("exitVM.95"));
         }
         public PermissionCollection getPermissions(ProtectionDomain domain) {
             return permissions;

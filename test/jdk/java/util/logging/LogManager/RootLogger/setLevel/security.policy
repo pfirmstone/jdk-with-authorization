@@ -1,11 +1,8 @@
-/*
- * grant nothing
- */
-grant {
-    permission au.zeus.jdk.authorization.guards.LoadClassPermission;
-};
-
 grant codebase "jrt:/java.logging/java.util.logging.LogManager" {
     permission java.lang.RuntimePermission "accessClassInPackage.sun.util.locale.provider";
+    permission java.lang.RuntimePermission "loggerFinder";
+};
+
+grant {
     permission java.lang.RuntimePermission "loggerFinder";
 };

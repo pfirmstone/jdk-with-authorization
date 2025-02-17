@@ -30,6 +30,10 @@ import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 import java.lang.ref.Reference;
+import java.net.MalformedURLException;
+import java.net.URISyntaxException;
+import java.net.URL;
+import java.net.URI;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
@@ -377,13 +381,6 @@ public final class AccessController {
      * <p>
      * If the action's {@code run} method throws an (unchecked) exception,
      * it will propagate through this method.
-     * <p>
-     * If a security manager is installed and the specified
-     * {@code AccessControlContext} was not created by system code and the
-     * caller's {@code ProtectionDomain} has not been granted the
-     * {@literal "createAccessControlContext"}
-     * {@link java.security.SecurityPermission}, then the action is performed
-     * with no permissions.
      *
      * @param <T> the type of the value returned by the PrivilegedAction's
      *                  {@code run} method.
@@ -407,7 +404,6 @@ public final class AccessController {
     {
         if (action == null) throw new NullPointerException("action cannot be null");
         Class<?> caller = Reflection.getCallerClass();
-        context = checkCallerCanCreateContext(context, caller);
         return executePrivileged(action, context, caller);
     }
 
@@ -425,13 +421,6 @@ public final class AccessController {
      * <p>
      * If the action's {@code run} method throws an (unchecked) exception,
      * it will propagate through this method.
-     * <p>
-     * If a security manager is installed and the specified
-     * {@code AccessControlContext} was not created by system code and the
-     * caller's {@code ProtectionDomain} has not been granted the
-     * {@literal "createAccessControlContext"}
-     * {@link java.security.SecurityPermission}, then the action is performed
-     * with no permissions.
      *
      * @param <T> the type of the value returned by the PrivilegedAction's
      *                  {@code run} method.
@@ -467,19 +456,24 @@ public final class AccessController {
             throw new NullPointerException("null permissions parameter");
         }
         Class<?> caller = Reflection.getCallerClass();
-        perms = intersectionWithCallersPermissions(perms, caller);
-        if (context == null){
-            Permissions p = new Permissions();
-            for (int i = 0, len = perms.length; i < len; i++){
-                p.add(perms[i]);
-            }
-            context = AccessControlContext.build(
-                    new ProtectionDomain[]{
-                        new ProtectionDomain(null, p)}, null, true);
-        } else {
-            context = context.intersectionPermissions(perms);
+        Module module = caller.getModule();
+        StringBuilder sb = new StringBuilder();
+        sb.append("jrt:/").append(module.getName()).append("/").append(caller.getName());
+        CodeSource cs = null;
+        try {
+            URL url = new URI(sb.toString()).toURL();
+            cs = new CodeSource(new URI(sb.toString()).toURL(), (CodeSigner[]) null);
+        } catch (MalformedURLException | URISyntaxException e){
+            //TODO: Debug output
         }
-        context = checkCallerCanCreateContext(context, caller);
+//        perms = intersectionWithCallersPermissions(perms, caller);
+        ProtectionDomain pd = new ProtectionDomain(cs, toPermissions(perms), null, null);
+        if (context == null){
+            context = AccessControlContext.build(
+                    new ProtectionDomain[]{pd}, (AccessControlContext) null, false);
+        } else {
+            context = context.intersectionPermissions(pd);
+        }
         return executePrivileged(action, context, caller);
     }
 
@@ -500,13 +494,6 @@ public final class AccessController {
      *
      * <p> This method preserves the current AccessControlContext's
      * {@code DomainCombiner} (which may be null) while the action is performed.
-     * <p>
-     * If a security manager is installed and the specified
-     * {@code AccessControlContext} was not created by system code and the
-     * caller's {@code ProtectionDomain} has not been granted the
-     * {@literal "createAccessControlContext"}
-     * {@link java.security.SecurityPermission}, then the action is performed
-     * with no permissions.
      *
      * @param <T> the type of the value returned by the PrivilegedAction's
      *                  {@code run} method.
@@ -545,21 +532,25 @@ public final class AccessController {
         @SuppressWarnings("removal")
         DomainCombiner dc = parent.getCombiner();
         Class<?> caller = Reflection.getCallerClass();
-        perms = intersectionWithCallersPermissions(perms, caller);
+        Module module = caller.getModule();
+        StringBuilder sb = new StringBuilder();
+        sb.append("jrt:/").append(module.getName()).append("/").append(caller.getName());
+        CodeSource cs = null;
+        try {
+            URL url = new URI(sb.toString()).toURL();
+            cs = new CodeSource(new URI(sb.toString()).toURL(), (CodeSigner[]) null);
+        } catch (MalformedURLException | URISyntaxException e){
+            //TODO: Debug output
+        }
+        // We don't need to do this as executePrivileged will merge the callers domain.
+//        perms = intersectionWithCallersPermissions(perms, caller);
+        ProtectionDomain pd = new ProtectionDomain(cs, toPermissions(perms), null, null);
         if (context == null){
-            Permissions p = new Permissions();
-            for (int i = 0, len = perms.length; i < len; i++){
-                p.add(perms[i]);
-            }
-            context = AccessControlContext.build(
-                    new ProtectionDomain[]{
-                        new ProtectionDomain(null, p)},
-                    dc, true);
+            context = AccessControlContext.build(new ProtectionDomain[]{pd}, dc, false);
         } else {
             if (dc == null) dc = context.getCombiner();
-            context = context.intersectionOfPermsDoWithCombiner(dc, perms);
+            context = context.intersectionOfPermsDoWithCombiner(dc, pd);
         }
-        context = checkCallerCanCreateContext(context, caller);
         return executePrivileged(action, context, caller);
     }
 
@@ -663,27 +654,14 @@ public final class AccessController {
         // even if the caller is from the bootclasspath
         ProtectionDomain[] pds = new ProtectionDomain[] {callerPD};
         if (combiner == null) {
-            return AccessControlContext.build(pds, null, true);
+            return AccessControlContext.build(pds, (DomainCombiner) null, true);
         } else {
             return AccessControlContext.build(combiner.combine(pds, null),
                                             combiner, true);
         }
     }
 
-    private static class AccHolder {
-        // An AccessControlContext with no granted permissions.
-        // Only initialized on demand when getInnocuousAcc() is called.
-        @SuppressWarnings("removal")
-        static final AccessControlContext innocuousAcc =
-            new AccessControlContext(new ProtectionDomain[] {
-                                     new ProtectionDomain(null, null) });
-    }
-    @SuppressWarnings("removal")
-    private static AccessControlContext getInnocuousAcc() {
-        return AccHolder.innocuousAcc;
-    }
-
-    private static native ProtectionDomain getProtectionDomain(final Class<?> caller);
+    static native ProtectionDomain getProtectionDomain(final Class<?> caller);
 
     /**
      * Performs the specified {@code PrivilegedExceptionAction} with
@@ -695,13 +673,6 @@ public final class AccessController {
      * <p>
      * If the action's {@code run} method throws an <i>unchecked</i>
      * exception, it will propagate through this method.
-     * <p>
-     * If a security manager is installed and the specified
-     * {@code AccessControlContext} was not created by system code and the
-     * caller's {@code ProtectionDomain} has not been granted the
-     * {@literal "createAccessControlContext"}
-     * {@link java.security.SecurityPermission}, then the action is performed
-     * with no permissions.
      *
      * @param <T> the type of the value returned by the
      *                  PrivilegedExceptionAction's {@code run} method.
@@ -728,7 +699,6 @@ public final class AccessController {
         throws PrivilegedActionException
     {
         Class<?> caller = Reflection.getCallerClass();
-        context = checkCallerCanCreateContext(context, caller);
         try {
             return executePrivileged(action, context, caller);
         } catch (RuntimeException e) {
@@ -736,27 +706,6 @@ public final class AccessController {
         } catch (Exception e) {
             throw wrapException(e);
         }
-    }
-
-    /** 
-     * Checks the caller has permission to create the context, and if not
-     * returns an innocuous context, without any permissions.
-     */
-    @SuppressWarnings("removal")
-    private static AccessControlContext checkCallerCanCreateContext(AccessControlContext context,
-        Class<?> caller)
-    {
-        // check if caller is authorized to create context
-        if (System.getSecurityManager() != null &&
-            context != null && !context.isAuthorized() &&
-            context != getInnocuousAcc())
-        {
-            ProtectionDomain callerPD = getProtectionDomain(caller);
-            if (callerPD != null && !callerPD.implies(SecurityConstants.CREATE_ACC_PERMISSION)) {
-                return getInnocuousAcc();
-            }
-        }
-        return context;
     }
     
     private static Permission[] intersectionWithCallersPermissions(Permission[] perms, Class<?> caller){
@@ -937,18 +886,23 @@ public final class AccessController {
             throw new NullPointerException("null permissions parameter");
         }
         Class<?> caller = Reflection.getCallerClass();
-        perms = intersectionWithCallersPermissions(perms, caller);
+        Module module = caller.getModule();
+        StringBuilder sb = new StringBuilder();
+        sb.append("jrt:/").append(module.getName()).append("/").append(caller.getName());
+        CodeSource cs = null;
+        try {
+            URL url = new URI(sb.toString()).toURL();
+            cs = new CodeSource(new URI(sb.toString()).toURL(), (CodeSigner[]) null);
+        } catch (MalformedURLException | URISyntaxException e){
+            //TODO: Debug output
+        }
+//        perms = intersectionWithCallersPermissions(perms, caller);
+        ProtectionDomain pd = new ProtectionDomain(cs, toPermissions(perms), null, null);
         if (context == null){
-            Permissions p = new Permissions();
-            for (int i = 0, len = perms.length; i < len; i++){
-                if (perms[i] == null) throw new NullPointerException("null permission not permitted in array");
-                p.add(perms[i]);
-            }
             context = AccessControlContext.build(
-                    new ProtectionDomain[]{
-                        new ProtectionDomain(null, p)}, null, true);
+                    new ProtectionDomain[]{pd}, (AccessControlContext) null, false);
         } else {
-            context = context.intersectionPermissions(perms);
+            context = context.intersectionPermissions(pd);
         }
         try {
             return executePrivileged(action, context, caller);
@@ -1024,22 +978,25 @@ public final class AccessController {
         @SuppressWarnings("removal")
         DomainCombiner dc = parent.getCombiner();
         Class<?> caller = Reflection.getCallerClass();
-        perms = intersectionWithCallersPermissions(perms, caller);
+        Module module = caller.getModule();
+        StringBuilder sb = new StringBuilder();
+        sb.append("jrt:/").append(module.getName()).append("/").append(caller.getName());
+        CodeSource cs = null;
+        try {
+            URL url = new URI(sb.toString()).toURL();
+            cs = new CodeSource(new URI(sb.toString()).toURL(), (CodeSigner[]) null);
+        } catch (MalformedURLException | URISyntaxException e){
+            //TODO: Debug output
+        }
+//        perms = intersectionWithCallersPermissions(perms, caller);
+        ProtectionDomain pd = new ProtectionDomain(cs, toPermissions(perms), null, null);
         if (context == null){
-            Permissions p = new Permissions();
-            for (int i = 0, len = perms.length; i < len; i++){
-                if (perms[i] == null)throw new NullPointerException("null permission parameter");
-                p.add(perms[i]);
-            }
             context = AccessControlContext.build(
-                    new ProtectionDomain[]{
-                        new ProtectionDomain(null, p)},
-                    dc, true);
+                    new ProtectionDomain[]{pd},
+                    dc, false);
         } else {
             if (dc == null) dc = context.getCombiner();
-            context = checkCallerCanCreateContext(
-                    context.intersectionOfPermsDoWithCombiner(dc, perms),
-                    caller);
+            context = context.intersectionOfPermsDoWithCombiner(dc, pd);
         }
         try {
             return executePrivileged(action, context, caller);
@@ -1156,5 +1113,14 @@ public final class AccessController {
 
         AccessControlContext acc = stack.optimize();
         acc.checkPermission(perm);
+    }
+    
+    private static PermissionCollection<Permission> toPermissions(Permission [] perms){
+        Permissions p = new Permissions();
+        for (int i = 0, len = perms.length; i < len; i++){
+            if (perms[i] == null) throw new NullPointerException("null permission not permitted in array");
+            p.add(perms[i]);
+        }
+        return p;
     }
 }

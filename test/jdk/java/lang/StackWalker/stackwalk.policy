@@ -4,3 +4,7 @@ grant {
   permission java.lang.RuntimePermission "accessClassInPackage.sun.util.locale.provider";
 };
 
+grant codebase "jrt:/java.logging/java.util.logging.LogManager" {
+    permission java.lang.RuntimePermission "accessClassInPackage.sun.util.locale.provider";
+    permission java.lang.RuntimePermission "loggerFinder";
+};

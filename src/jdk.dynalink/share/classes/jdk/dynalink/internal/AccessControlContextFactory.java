@@ -58,7 +58,7 @@ public final class AccessControlContextFactory {
         for(final Permission permission: permissions) {
             perms.add(permission);
         }
-        return new AccessControlContext(new ProtectionDomain[] { new ProtectionDomain(null, perms) });
+        return AccessControlContext.build(new ProtectionDomain[] { new ProtectionDomain(null, perms) });
     }
 
     /**

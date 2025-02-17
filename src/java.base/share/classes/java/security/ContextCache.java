@@ -28,6 +28,7 @@ package java.security;
 import au.zeus.jdk.concurrent.RC;
 import au.zeus.jdk.concurrent.Ref;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.ConcurrentMap;
 
 /**
@@ -45,7 +46,7 @@ class ContextCache {
         // Note, weakly referenced value causes collection of Key value tuple,
         // if there are contexts with identical hash only one will be collected.
         ConcurrentMap<AccessControlContext.ContextKey,AccessControlContext> CONTEXTS 
-            = RC.concurrentMap(new ConcurrentHashMap<>(), Ref.STRONG, Ref.WEAK, 3000L, 3000L);
+            = RC.concurrentMap(new ConcurrentSkipListMap<>(), Ref.STRONG, Ref.WEAK, 2000L, 2000L);
         AccessControlContext.initCache(CONTEXTS);
     }
     

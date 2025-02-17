@@ -1200,7 +1200,7 @@ public class ForkJoinPool extends AbstractExecutorService {
                 ps.add(new RuntimePermission("setContextClassLoader"));
                 ps.add(new RuntimePermission("enableContextClassLoaderOverride"));
                 regularACC = acc =
-                    new AccessControlContext(new ProtectionDomain[] {
+                    AccessControlContext.build(new ProtectionDomain[] {
                             new ProtectionDomain(null, ps) });
     }
             return AccessController.doPrivileged(
@@ -1221,7 +1221,7 @@ public class ForkJoinPool extends AbstractExecutorService {
                 ps.add(new RuntimePermission("enableContextClassLoaderOverride"));
                 ps.add(new RuntimePermission("modifyThreadGroup"));
                 commonACC = acc =
-                    new AccessControlContext(new ProtectionDomain[] {
+                    AccessControlContext.build(new ProtectionDomain[] {
                             new ProtectionDomain(null, ps) });
             }
             return AccessController.doPrivileged(

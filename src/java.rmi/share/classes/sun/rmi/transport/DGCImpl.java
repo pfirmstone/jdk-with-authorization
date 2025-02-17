@@ -356,7 +356,7 @@ final class DGCImpl implements DGC {
                         Permissions perms = new Permissions();
                         perms.add(new SocketPermission("*", "accept,resolve"));
                         ProtectionDomain[] pd = { new ProtectionDomain(null, perms) };
-                        AccessControlContext acceptAcc = new AccessControlContext(pd);
+                        AccessControlContext acceptAcc = AccessControlContext.build(pd);
 
                         Target target = AccessController.doPrivileged(
                             new PrivilegedAction<Target>() {

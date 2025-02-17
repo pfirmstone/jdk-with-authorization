@@ -133,7 +133,7 @@ public class TCPTransport extends Transport {
     private static AccessControlContext createNopermsAcc() {
         Permissions perms = new Permissions();
         ProtectionDomain[] pd = { new ProtectionDomain(null, perms) };
-        return new AccessControlContext(pd);
+        return AccessControlContext.build(pd);
     }
 
     /** endpoints for this transport */

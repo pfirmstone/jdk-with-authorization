@@ -78,7 +78,7 @@ public abstract class Transport {
         Permissions perms = new Permissions();
         perms.add(new RuntimePermission("setContextClassLoader"));
         ProtectionDomain[] pd = { new ProtectionDomain(null, perms) };
-        SETCCL_ACC = new AccessControlContext(pd);
+        SETCCL_ACC = AccessControlContext.build(pd);
     }
 
     /**

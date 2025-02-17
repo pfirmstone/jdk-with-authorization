@@ -4745,13 +4745,11 @@ DependencyContext java_lang_invoke_MethodHandleNatives_CallSiteContext::vmdepend
 int java_security_AccessControlContext::_context_offset;
 int java_security_AccessControlContext::_privilegedContext_offset;
 int java_security_AccessControlContext::_isPrivileged_offset;
-int java_security_AccessControlContext::_isAuthorized_offset;
 
 #define ACCESSCONTROLCONTEXT_FIELDS_DO(macro) \
   macro(_context_offset,           k, "context",      protectiondomain_signature, false); \
   macro(_privilegedContext_offset, k, "privilegedContext", accesscontrolcontext_signature, false); \
-  macro(_isPrivileged_offset,      k, "isPrivileged", bool_signature, false); \
-  macro(_isAuthorized_offset,      k, "isAuthorized", bool_signature, false)
+  macro(_isPrivileged_offset,      k, "isPrivileged", bool_signature, false)
 
 void java_security_AccessControlContext::compute_offsets() {
   assert(_isPrivileged_offset == 0, "offsets should be initialized only once");
@@ -4777,7 +4775,6 @@ oop java_security_AccessControlContext::create(objArrayHandle context, bool isPr
   args.push_oop(context);
   args.push_oop(privileged_context);
   args.push_int(isPrivileged);
-  args.push_int(true);
   JavaCalls::call_static(&result,
                          klass,
                          vmSymbols::buildAccessControlContext_name(),

@@ -190,7 +190,7 @@ public final class InnocuousThread extends Thread {
     // Use Unsafe to access Thread group and ThreadGroup parent fields
     static {
         try {
-            ACC = new AccessControlContext(new ProtectionDomain[] {
+            ACC = AccessControlContext.build(new ProtectionDomain[] {
                 new ProtectionDomain(null, null)
             });
 

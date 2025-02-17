@@ -7,4 +7,5 @@ grant {
   // standard test activation permissions
   permission java.io.FilePermission "*", "read";
   permission au.zeus.jdk.authorization.guards.LoadClassPermission;
+  permission java.lang.RuntimePermission "accessClassInPackage.sun.util.locale.provider";
 };

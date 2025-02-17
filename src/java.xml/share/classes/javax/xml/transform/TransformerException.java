@@ -242,7 +242,7 @@ public class TransformerException extends Exception {
         } else {
             return AccessController.doPrivileged((PrivilegedAction<String>) () ->
                 getLocationString(),
-                new AccessControlContext(new ProtectionDomain[] {getNonPrivDomain()}));
+                AccessControlContext.build(new ProtectionDomain[] {getNonPrivDomain()}));
         }
     }
 

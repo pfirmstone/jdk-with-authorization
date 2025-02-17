@@ -31,4 +31,12 @@ grant
     permission java.util.PropertyPermission "java.vm.vendor", "read";
     permission java.util.PropertyPermission "java.vm.name", "read";
     permission au.zeus.jdk.authorization.guards.NativeAccessPermission "sun.security.mscapi.SunMSCAPI$1", "loadLibrary";
+    permission java.lang.RuntimePermission "accessClassInPackage.sun.util.locale.provider";
+    permission java.lang.RuntimePermission "exitVM";
+    permission java.security.SecurityPermission "putProviderProperty.XMLDSig";
+    permission java.lang.RuntimePermission "loadLibrary.sunmscapi";
+    permission java.io.FilePermission "<<ALL FILES>>", "read";
+    permission java.security.SecurityPermission "putProviderProperty.SunMSCAPI";
+    permission java.lang.RuntimePermission "accessClassInPackage.sun.security.util";
+    permission java.security.SecurityPermission "putProviderProperty.SunPCSC";
 };

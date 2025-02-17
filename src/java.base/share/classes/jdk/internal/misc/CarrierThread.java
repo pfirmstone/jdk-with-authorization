@@ -138,7 +138,7 @@ public class CarrierThread extends ForkJoinWorkerThread {
      */
     @SuppressWarnings("removal")
     private static AccessControlContext innocuousACC() {
-        return new AccessControlContext(new ProtectionDomain[] {
+        return AccessControlContext.build(new ProtectionDomain[] {
                 new ProtectionDomain(null, null)
         });
     }

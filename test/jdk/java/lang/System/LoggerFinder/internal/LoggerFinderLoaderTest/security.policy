@@ -1,5 +1,4 @@
-grant
-{
-    permission au.zeus.jdk.authorization.guards.LoadClassPermission "ALLOW";
+grant {
     permission java.lang.RuntimePermission "accessClassInPackage.sun.util.locale.provider";
+    //permission java.lang.RuntimePermission "exitVM";
 };

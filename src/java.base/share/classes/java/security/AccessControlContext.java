@@ -28,6 +28,7 @@ package java.security;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
@@ -96,11 +97,8 @@ import sun.security.util.SecurityConstants;
 public final class AccessControlContext {
 
     private final ProtectionDomain[] context;
-    // isPrivileged and isAuthorized are referenced by the VM - do not remove
-    // or change their names
+    // isPrivileged is referenced by the VM - do not remove or change.
     private final boolean isPrivileged; // context is from privileged act call scope.
-    // ACC was created by platform code or CREATE_ACC_PERMISSION was checked.
-    private final boolean isAuthorized; 
 
     // Note: This field is directly used by the virtual machine
     // native codes. Don't touch it.
@@ -137,17 +135,19 @@ public final class AccessControlContext {
     /* Called by the virtual machine native codes. Don't touch */
     static AccessControlContext build(ProtectionDomain [] context,
             AccessControlContext privileged_context,
-            boolean isPrivileged,
-            boolean isAuthorized)
+            boolean isPrivileged)
     {
-        return build(context, privileged_context, null, isPrivileged, isAuthorized);
+        return build(context, privileged_context, null, isPrivileged);
     } 
 
     /**
      * Create an {@code AccessControlContext} with the given array of
      * {@code ProtectionDomain} objects.
      * Context must not be {@code null}. Duplicate domains will be removed
-     * from the context.
+     * from the context.  If caller does not have the "createAccessControlContext"
+     * {@link SecurityPermission}, then domains from the calling context will 
+     * be added to prevent privilege escalation.
+     * 
      * <p>
      * Non standard API.
      *
@@ -162,25 +162,43 @@ public final class AccessControlContext {
     public static AccessControlContext build(ProtectionDomain[] context)
     {
         notNull(context);
-        if (context.length == 0) {
-            context = null;
-        } else if (context.length == 1) {
-            if (context[0] != null) {
-                context = context.clone();
-            } else {
+        AccessControlContext unAuthorizedContext = checkAuthorized(false, false);
+        if (unAuthorizedContext == null){
+            if (context.length == 0) {
                 context = null;
+            } else if (context.length == 1) {
+                if (context[0] != null) {
+                    context = context.clone();
+                } else {
+                    context = null;
+                }
+            } else {
+                Set<ProtectionDomain> v = new HashSet<>(context.length);
+                for (int i =0; i< context.length; i++) {
+                    if ((context[i] != null)) v.add(context[i]);
+                }
+                if (!v.isEmpty()) {
+                    context = v.toArray(new ProtectionDomain[v.size()]);
+                } else {
+                    context = null;
+                }
             }
         } else {
-            List<ProtectionDomain> v = new ArrayList<>(context.length);
+            int len = unAuthorizedContext.context != null ? unAuthorizedContext.context.length : 0;
+            Set<ProtectionDomain> v = new HashSet<>(context.length + len);
             for (int i =0; i< context.length; i++) {
-                if ((context[i] != null) &&  (!v.contains(context[i])))
-                    v.add(context[i]);
+                if ((context[i] != null)) v.add(context[i]);
+            }
+            for (int i =0; i< len; i++) {
+                if ((unAuthorizedContext.context[i] != null)) v.add(unAuthorizedContext.context[i]);
             }
             if (!v.isEmpty()) {
                 context = v.toArray(new ProtectionDomain[v.size()]);
+            } else {
+                context = null;
             }
         }
-        return build(context, null, null, false, false);
+        return build(context, null, null, false);
     }
 
     /**
@@ -211,7 +229,8 @@ public final class AccessControlContext {
     public static AccessControlContext build(AccessControlContext acc,
                                              DomainCombiner combiner) 
     {
-        return build(notNull(acc).context, null, combiner, false, isAuthorized(false));
+        checkAuthorized(false, true);
+        return build(notNull(acc).context, null, combiner, false);
     }
 
     /**
@@ -223,7 +242,8 @@ public final class AccessControlContext {
                                       DomainCombiner combiner,
                                       boolean isAuthorized)
     {
-        return build(notNull(acc).context, null, combiner, false, isAuthorized);
+        checkAuthorized(isAuthorized, true);
+        return build(notNull(acc).context, null, combiner, false);
     }
 
     /**
@@ -232,18 +252,19 @@ public final class AccessControlContext {
     static AccessControlContext build(ProtectionDomain[] context,
                                       AccessControlContext privilegedContext)
     {
-        return build(context, privilegedContext, null, true, false);
+        return build(context, privilegedContext, null, true);
     }
     
     /**
      * package private for {@code AccessController} doPrivileged methods
      * with permission argument and null context argument.
      */
-    static AccessControlContext build(ProtectionDomain context[],
+    static AccessControlContext build(ProtectionDomain[] context,
                                       DomainCombiner combiner,
                                       boolean isAuthorized)
     {
-        return build(context, null, combiner, false, isAuthorized);
+        checkAuthorized(isAuthorized, true);
+        return build(context, null, combiner, false);
     }
     
     /**
@@ -253,7 +274,7 @@ public final class AccessControlContext {
     static AccessControlContext build(ProtectionDomain[] context,
                                       boolean isPrivileged)
     {
-        return build(context, null, null, isPrivileged, true);
+        return build(context, null, null, isPrivileged);
     }
     
 
@@ -264,7 +285,7 @@ public final class AccessControlContext {
                                       boolean privileged,
                                       AccessControlContext privilegedContext)
     {
-        return build(context, privilegedContext, null, privileged, false);
+        return build(context, privilegedContext, null, privileged);
     }
 
     /**
@@ -275,24 +296,23 @@ public final class AccessControlContext {
     static AccessControlContext build(ProtectionDomain[] context,
                                       AccessControlContext privilegedContext,
                                       DomainCombiner combiner,
-                                      boolean isPrivileged,
-                                      boolean isAuthorized)
+                                      boolean isPrivileged)
     {
         if (CONTEXTS != null){
             ContextKey key = 
                     new ContextKey(context, privilegedContext,
-                                   combiner, isPrivileged, isAuthorized);
+                                   combiner, isPrivileged);
             AccessControlContext acc = CONTEXTS.get(key);
             if (acc == null){
                 acc = new AccessControlContext(context, privilegedContext,
-                        combiner, isPrivileged, isAuthorized);
+                        combiner, isPrivileged);
                 AccessControlContext existed = CONTEXTS.putIfAbsent(key, acc);
                 if (existed != null) return existed;
             }
             return acc;
         } else {  
             return new AccessControlContext(context, privilegedContext,
-                                        combiner, isPrivileged, isAuthorized);
+                                        combiner, isPrivileged);
         }
     }
 
@@ -308,7 +328,9 @@ public final class AccessControlContext {
      * Create an {@code AccessControlContext} with the given array of
      * {@code ProtectionDomain} objects.
      * Context must not be {@code null}. Duplicate domains will be removed
-     * from the context.
+     * from the context.  If caller does not have the "createAccessControlContext"
+     * {@link SecurityPermission}, then domains from the calling context will 
+     * be added to prevent privilege escalation.
      *
      * @param context the {@code ProtectionDomain} objects associated with this
      * context. The non-duplicate domains are copied from the array. Subsequent
@@ -316,40 +338,52 @@ public final class AccessControlContext {
      * @throws NullPointerException if {@code context} is {@code null}
      */
     public AccessControlContext(ProtectionDomain[] context){
-        this(notNull(context), true);
+        this(notNull(context), checkAuthorized(false,false));
     }
 
     /**
      * Called by public constructor.
      */
-    private AccessControlContext(ProtectionDomain[] context, boolean checked)
+    private AccessControlContext(ProtectionDomain[] context, AccessControlContext unAuthorizedContext)
     {
-        ProtectionDomain [] contxt = null;
-        if (context.length == 1) {
-            if (context[0] != null) {
-                contxt = context.clone();
+        if (unAuthorizedContext == null){
+            if (context.length == 0) {
+                context = null;
+            } else if (context.length == 1) {
+                if (context[0] != null) {
+                    context = context.clone();
+                } else {
+                    context = null;
+                }
             } else {
-                contxt = null;
+                Set<ProtectionDomain> v = new HashSet<>(context.length);
+                for (int i =0; i< context.length; i++) {
+                    if ((context[i] != null)) v.add(context[i]);
+                }
+                if (!v.isEmpty()) {
+                    context = v.toArray(new ProtectionDomain[v.size()]);
+                } else {
+                    context = null;
+                }
             }
-        } else if (context.length != 0) {
-            Set<ProtectionDomain> v = new HashSet<>(context.length);
-            for (int i =0; i< context.length; i++) {
-                if (context[i] != null) v.add(context[i]);
-            }
-            if (!v.isEmpty()) contxt = v.toArray(new ProtectionDomain[v.size()]);
-        }
-        if (contxt == null) {
-            this.hashCode = 0;
         } else {
-            int hashCode = 0;
-            for (int i =0; i < contxt.length; i++) {
-                if (contxt[i] != null) hashCode ^= contxt[i].hashCode();
+            int len = unAuthorizedContext.context != null ? unAuthorizedContext.context.length : 0;
+            Set<ProtectionDomain> v = new HashSet<>(context.length + len);
+            for (int i =0; i< context.length; i++) {
+                if ((context[i] != null)) v.add(context[i]);
             }
-            this.hashCode = hashCode;
+            for (int i =0; i< len; i++) {
+                if ((unAuthorizedContext.context[i] != null)) v.add(unAuthorizedContext.context[i]);
+            }
+            if (!v.isEmpty()) {
+                context = v.toArray(new ProtectionDomain[v.size()]);
+            } else {
+                context = null;
+            }
         }
-        this.context = contxt;
+        this.hashCode = genHashCode(context, null, null, false);
+        this.context = context;
         this.isPrivileged = false;
-        this.isAuthorized = false;
         this.privilegedContext = null;
         this.combiner = null;
     }
@@ -378,23 +412,27 @@ public final class AccessControlContext {
     public AccessControlContext(AccessControlContext acc,
                             @SuppressWarnings("removal") DomainCombiner combiner) 
     {
-        this(notNull(acc).context, combiner, isAuthorized(false));
+        this(notNull(acc).context, combiner, checkAuthorized(false, true));
     }
 
     /* checks the caller is authorized to create an instance of AccessControlContext.*/
-    private static boolean isAuthorized(boolean preauthorized) throws SecurityException{
-        boolean isAuthorized = false;
+    private static AccessControlContext checkAuthorized(boolean preauthorized, boolean throwSecurityException){
         if (!preauthorized) {
-            @SuppressWarnings("removal")
             SecurityManager sm = System.getSecurityManager();
             if (sm != null) {
-                sm.checkPermission(SecurityConstants.CREATE_ACC_PERMISSION);
-                isAuthorized = true;
+                AccessControlContext unAuthorizedContext =  AccessController.getContext();
+                Permission perm = SecurityConstants.CREATE_ACC_PERMISSION;
+                boolean authorized = unAuthorizedContext.implies(perm);
+                if (!authorized){
+                    if (throwSecurityException) {
+                        throw new AccessControlException("access denied "+perm, perm);
+                    } else {
+                        return unAuthorizedContext;
+                    }
+                }
             }
-        } else {
-            isAuthorized = true;
         }
-        return isAuthorized;
+        return null;
     }
 
     /**
@@ -403,8 +441,9 @@ public final class AccessControlContext {
      */
     private AccessControlContext(ProtectionDomain[] context,
                         @SuppressWarnings("removal") DomainCombiner combiner,
-                        boolean isAuthorized) {
-        this.isAuthorized = isAuthorized;
+                        AccessControlContext unAuthorizedContext /*Always null*/) 
+    {
+        assert(unAuthorizedContext == null);
         this.context = context;
 
         // we do not need to run the combine method on the
@@ -416,38 +455,33 @@ public final class AccessControlContext {
         this.combiner = combiner;
         this.isPrivileged = false;
         this.privilegedContext = null;
-        if (this.context == null) {
-            this.hashCode = 0;
-        } else {
-            int hashCode = 0;
-            for (int i =0; i < this.context.length; i++) {
-                if (this.context[i] != null) hashCode ^= this.context[i].hashCode();
-            }
-            this.hashCode = hashCode;
-        }
+        this.hashCode = genHashCode(context, privilegedContext, combiner, isPrivileged);
     }
 
     /* Constructor used by builder methods. */
     private AccessControlContext(ProtectionDomain[] context,
                          AccessControlContext privilegedContext,
                          DomainCombiner combiner,
-                         boolean isPrivileged,
-                         boolean isAuthorized)
+                         boolean isPrivileged)
     {
         this.context = context;
         this.privilegedContext = privilegedContext;
         this.combiner = combiner;
         this.isPrivileged = isPrivileged;
-        this.isAuthorized = isAuthorized;
-        if (this.context == null) {
-            this.hashCode = 0;
-        } else {
-            int hashCode = 0;
-            for (int i = 0; i < this.context.length; i++) {
-                if (this.context[i] != null) hashCode ^= this.context[i].hashCode();
-            }
-            this.hashCode = hashCode;
-        }
+        this.hashCode = genHashCode(context, privilegedContext, combiner, isPrivileged);
+    }
+    
+    private static int genHashCode(ProtectionDomain[] context,
+                                   AccessControlContext privilegedContext,
+                                   DomainCombiner combiner,
+                                   boolean isPrivileged)
+    {
+        int hash = 5;
+        hash = hash * 27 + (context != null ? asSet(context).hashCode() : 0);
+        hash = hash * 27 + Objects.hashCode(privilegedContext);
+        hash = hash * 27 + Objects.hashCode(combiner);
+        hash = hash * 27 + (isPrivileged ? 1 : 0);
+        return hash;
     }
 
     /**
@@ -456,8 +490,8 @@ public final class AccessControlContext {
      * @param perms
      * @return 
      */
-    AccessControlContext intersectionPermissions(Permission[] perms){
-        return intersectionOfPermsDoWithCombiner(this.combiner, perms);
+    AccessControlContext intersectionPermissions(ProtectionDomain permDomain){
+        return intersectionOfPermsDoWithCombiner(this.combiner, permDomain);
     }
 
     /**
@@ -467,18 +501,13 @@ public final class AccessControlContext {
      * @param perms
      * @return 
      */
-    AccessControlContext intersectionOfPermsDoWithCombiner(DomainCombiner dc, Permission[] perms){
-        Permissions p = new Permissions();
-        for (int i = 0, len = perms.length; i < len; i++){
-            if (perms[i] == null) throw new NullPointerException("null permission not permitted in array");
-            p.add(perms[i]);
-        }
+    AccessControlContext intersectionOfPermsDoWithCombiner(DomainCombiner dc, ProtectionDomain permDomain){
         ProtectionDomain [] domains = new ProtectionDomain[context.length + 1];
         for (int i = 0, len = context.length; i < len; i++){
             domains[i] = context [i];
         }
-        domains[context.length] = new ProtectionDomain(null, p);
-        return build(domains, this.privilegedContext, dc, this.isPrivileged, this.isAuthorized);
+        domains[context.length] = permDomain;
+        return build(domains, this.privilegedContext, dc, this.isPrivileged);
     }
 
     /**
@@ -546,14 +575,6 @@ public final class AccessControlContext {
     }
 
     /**
-     * @return true if this context was created by system code, or it was
-     * checked for SecurityPermission("createAccessControlContext");
-     */
-    boolean isAuthorized() {
-        return isAuthorized;
-    }
-
-    /**
      * Determines whether the access request indicated by the
      * specified permission should be allowed or denied, based on
      * the security policy currently in effect, and the context in
@@ -578,6 +599,10 @@ public final class AccessControlContext {
     public void checkPermission(Permission perm)
         throws AccessControlException
     {
+        if (!implies(perm)) throw new AccessControlException("access denied "+perm, perm);
+    }
+    
+    private boolean implies(Permission perm){
         boolean dumpDebug = false;
 
         if (perm == null) {
@@ -628,7 +653,7 @@ public final class AccessControlContext {
            or the first domain was a Privileged system domain. This
            is to make the common case for system code very fast */
 
-        if (context == null) return;
+        if (context == null) return true;
 
         for (int i=0, len = context.length; i < len; i++) {
             if (context[i] != null && !context[i].impliesWithAltFilePerm(perm)) {
@@ -653,7 +678,7 @@ public final class AccessControlContext {
                         }
                     });
                 }
-                throw new AccessControlException("access denied "+perm, perm);
+                return false;
             }
         }
 
@@ -661,6 +686,7 @@ public final class AccessControlContext {
         if (dumpDebug) {
             debug.println("access allowed "+perm);
         }
+        return true;
     }
 
     /**
@@ -754,7 +780,7 @@ public final class AccessControlContext {
             pd = tmp;
         }
 
-        return AccessControlContext.build(pd, privilegedContext, null, false, isAuthorized);
+        return AccessControlContext.build(pd, privilegedContext, null, false);
     }
 
     private AccessControlContext goCombiner(ProtectionDomain[] current, 
@@ -773,7 +799,7 @@ public final class AccessControlContext {
             current, assigned.context);
 
         return AccessControlContext.build(combinedPds, privilegedContext,
-                assigned.combiner, false, isAuthorized);
+                assigned.combiner, false);
     }
 
     /**
@@ -793,45 +819,24 @@ public final class AccessControlContext {
         if (obj == null) return false;
         if (hashCode() != obj.hashCode()) return false;
         if (obj instanceof AccessControlContext that){
-            if (context == null) return (that.context == null);
-            if (that.context == null) return false;
-            if (!(this.containsAllPDs(that) && that.containsAllPDs(this))) return false;
-            if (this.combiner == null) return (that.combiner == null);
-            if (that.combiner == null) return false;
-            return this.combiner.equals(that.combiner);
+            if (this.isPrivileged != that.isPrivileged) return false;
+            if (context == null && that.context != null) return false;
+            if (that.context == null && this.context != null) return false;
+            if (!Objects.equals(this.combiner, that.combiner)) return false;
+            if (!Objects.equals(this.privilegedContext, that.privilegedContext)) return false;
+            return (Objects.equals(asSet(this.context), asSet(that.context)));
         }
         return false;       
     }
-
-    private boolean containsAllPDs(AccessControlContext that){
-        boolean match = false;
-        //
-        // ProtectionDomains within an ACC currently cannot be null
-        // and this is enforced by the constructor and the various
-        // optimise methods.  However, historically this logic made
-        // attempts to support the notion of a null PD and therefore 
-        // this logic continues to support that notion.
-        ProtectionDomain thisPd;
-        for (int i = 0, thisLen = context.length; i < thisLen; i++){
-            match = false;
-            if ((thisPd = context[i]) == null){
-                for (int j = 0, thatLen = that.context.length; (j < thatLen) &&!match; j++){
-                    match = (that.context[j] == null);
-                }
-            } else {
-                Class<?> thisPdClass = thisPd.getClass();
-                ProtectionDomain thatPd;
-                for (int j = 0, thatLen = that.context.length; (j < thatLen) &&!match; j++){
-                    thatPd = that.context[j];
-                    
-
-                    match = (thatPd != null &&
-                        thisPdClass == thatPd.getClass() && thisPd.equals(thatPd));
-                }
-            }
-            if (!match) return false;
+    
+    private static <T> Set<T> asSet(T[] a){
+        if (a == null) return Collections.emptySet();
+        int len = a.length;
+        Set<T> result = new HashSet<T>(len);
+        for (int i = 0; i < len; i++){
+            result.add(a[i]);
         }
-        return match;
+        return result;
     }
 
     /**
@@ -847,25 +852,23 @@ public final class AccessControlContext {
     /**
      * Cache for AccessControlContext. Initialized following VM init phase 2.
      */
-    static class ContextKey{
+    static class ContextKey implements Comparable<ContextKey>{
 
         private final Set<ProtectionDomain> context;
         private final AccessControlContext privilegedContext;
         private final DomainCombiner combiner;
         private final boolean isPrivileged;
-        private final boolean isAuthorized;
         private final int hashCode;
 
         ContextKey(AccessControlContext c){
             this(c.context, c.privilegedContext,
-                    c.combiner, c.isPrivileged, c.isAuthorized);
+                    c.combiner, c.isPrivileged);
         }
 
         ContextKey(ProtectionDomain[] context,
                    AccessControlContext privilegedContext,
                    DomainCombiner combiner,
-                   boolean isPrivileged,
-                   boolean isAuthorized)
+                   boolean isPrivileged)
         {
             this.context = (context != null && context.length > 0 ? 
                     new HashSet<ProtectionDomain>(context.length) : null);
@@ -873,14 +876,17 @@ public final class AccessControlContext {
             this.privilegedContext = privilegedContext;
             this.combiner = combiner;
             this.isPrivileged = isPrivileged;
-            this.isAuthorized = isAuthorized;
             int hash = 7;
-            hash = 41 * hash + Objects.hashCode(this.context);
-            hash = 41 * hash + Objects.hashCode(this.privilegedContext);
-            hash = 41 * hash + Objects.hashCode(this.combiner);
-            hash = 41 * hash + (this.isAuthorized ? 1 : 0);
-            hash = 41 * hash + (this.isPrivileged ? 1 : 0);
+            if (this.context != null) hash = 13 * hash + Arrays.deepHashCode(context);
+            hash = 13 * hash + Objects.hashCode(this.privilegedContext);
+            hash = 13 * hash + Objects.hashCode(this.combiner);
+            hash = 13 * hash + (this.isPrivileged ? 1231 : 1237);
             this.hashCode = hash;
+        }
+        
+        public int compareTo(ContextKey that){
+            if (this.hashCode == that.hashCode) return 0;
+            return this.hashCode < that.hashCode ? -1 : 1;
         }
 
         @Override
@@ -894,13 +900,59 @@ public final class AccessControlContext {
             if (o == null) return false;
             if (this.hashCode() != o.hashCode()) return false;
             if (o instanceof ContextKey that){
-                if (this.isAuthorized != that.isAuthorized) return false;
                 if (this.isPrivileged != that.isPrivileged) return false;
                 if (!Objects.equals(this.combiner,that.combiner)) return false;
                 if (!Objects.equals(this.context, that.context)) return false;
                 return !Objects.equals(this.privilegedContext, that.privilegedContext);
             }
             return false;
+        }
+    }
+    
+    /**
+     * Utility class allowing JVM platform classes to create AccessControlContext
+     * without permission checks that would otherwise cause stack overflow errors.
+     * 
+     * Previously an AccessControlContext instance could be created without
+     * requiring {@code SecurityPermission "createAccessControlContext"} when
+     * calling the constructor with a {@code ProtectionDomain [] context} 
+     * parameter.  Significant complexity was added to AccessControlContext's
+     * implementation to delay checking for this permission in AccessController
+     * doPrivileged calls, however this allowed for the opportunity for 
+     * injection attacks, as the context of the caller of doPrivileged may be
+     * different to the creator of AccessControlContext.
+     * 
+     * To solve this problem and simplify AccessControlContext, make it 
+     * immutable and cache instances to support virtual threads, the
+     * permission check is now performed, but doesn't throw a SecurityException,
+     * instead if the caller doesn't possess the required permission, it's stack
+     * context will be captured and added to the new context, preventing an
+     * escalation of permissions.   
+     */
+    public static abstract sealed class ContextBuilder permits ClassLoader.Context {
+        
+        /**
+         * Creates a new ContextBuilder instance;
+         */
+        protected ContextBuilder(){}
+        
+         /**
+         * Create an {@code AccessControlContext} with the given array of
+         * {@code ProtectionDomain} objects.
+         * Context must not be {@code null}.
+         * 
+         * <p>
+         * Non standard API.
+         *
+         * @param context the {@code ProtectionDomain} objects associated with this
+         * context. 
+         * @return a cached AccessControlContext matching the provided parameters or
+         * a new AccessControlContext if one doesn't already exist.
+         * @throws NullPointerException if {@code context} is {@code null}
+         * @since 25
+         */
+        public final AccessControlContext build(ProtectionDomain[] context){
+            return AccessControlContext.build(context, false);
         }
     }
 }

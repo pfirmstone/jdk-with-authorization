@@ -53,8 +53,10 @@ import java.nio.charset.Charset;
 import java.security.AccessControlContext;
 import java.security.AccessController;
 import java.security.CodeSource;
+import java.security.Permission;
 import java.security.PrivilegedAction;
 import java.security.ProtectionDomain;
+import java.security.UnresolvedPermission;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -1744,7 +1746,13 @@ public final class System {
                 PrivilegedAction<LoggerFinder> pa =
                         () -> LoggerFinderLoader.getLoggerFinder();
                 finder = AccessController.doPrivileged(pa, null,
-                        LOGGERFINDER_PERMISSION);
+                        new Permission []{
+                            LOGGERFINDER_PERMISSION,
+                            new UnresolvedPermission(
+                                "java.util.logging.LoggingPermission" ,"control", null, null),
+                            new RuntimePermission("exitVM"),
+                            new RuntimePermission("accessClassInPackage.sun.util.locale.provider")
+                        });
                 if (finder instanceof TemporaryLoggerFinder) return finder;
                 service = finder;
             }
@@ -1859,7 +1867,13 @@ public final class System {
                     () -> LoggerFinder.accessProvider()
                             .getLocalizedLogger(name, rb, caller.getModule());
             return AccessController.doPrivileged(pa, null,
-                                         LoggerFinder.LOGGERFINDER_PERMISSION);
+                        new Permission[]{
+                            LoggerFinder.LOGGERFINDER_PERMISSION,
+                            new UnresolvedPermission(
+                                "java.util.logging.LoggingPermission" ,"control", null, null),
+                            new RuntimePermission("exitVM"),
+                            new RuntimePermission("accessClassInPackage.sun.util.locale.provider")
+                        });
         }
         return LoggerFinder.accessProvider()
                 .getLocalizedLogger(name, rb, caller.getModule());

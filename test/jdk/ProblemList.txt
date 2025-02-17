@@ -525,6 +525,13 @@ java/lang/ClassLoader/securityManager/ClassLoaderTest.java		generic-all
 java/lang/SecurityManager/modules/CustomSecurityManagerTest.java	generic-all
 java/lang/constant/methodTypeDesc/ResolveConstantDesc.java		generic-all
 java/lang/invoke/lambda/LogGeneratedClassesTest.java                    generic-all
+java/lang/Class/getResource/ResourcesTest.java                          generic-all
+java/lang/ClassLoader/getResource/modules/ResourcesTest.java            generic-all
+java/lang/invoke/lambda/LambdaAccessControlDoPrivilegedTest.java        generic-all
+#java/lang/System/LoggerFinder/BaseLoggerFinderTest/BaseLoggerFinderTest.java                            generic-all
+#java/lang/System/LoggerFinder/internal/BasePlatformLoggerTest/BasePlatformLoggerTest.java               generic-all
+#java/lang/System/LoggerFinder/internal/LoggerBridgeTest/LoggerBridgeTest.java                           generic-all
+#java/lang/System/LoggerFinder/internal/LoggerFinderLoaderTest/LoggerFinderLoaderTest.java               generic-all
 
 ############################################################################
 
@@ -745,6 +752,8 @@ java/util/zip/CloseInflaterDeflaterTest.java  8339216 linux-s390x
 java/util/ServiceLoader/security/SecurityTest.java		generic-all
 java/util/Properties/StoreReproducibilityTest.java		generic-all
 java/util/logging/modules/GetResourceBundleTest.java		generic-all
+java/util/ResourceBundle/modules/security/TestPermission.java   generic-all
+java/util/TimeZone/TimeZoneDatePermissionCheckRun.java          generic-all
 
 ############################################################################
 

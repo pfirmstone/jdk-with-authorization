@@ -498,7 +498,7 @@ class SerializeClosure;
   template(getProtectionDomain_name,                  "getProtectionDomain")                      \
   template(getProtectionDomain_signature,             "(Ljava/security/CodeSource;)Ljava/security/ProtectionDomain;") \
   template(buildAccessControlContext_name,            "build")                                    \
-  template(buildAccessControlContext_signature,       "([Ljava/security/ProtectionDomain;Ljava/security/AccessControlContext;ZZ)Ljava/security/AccessControlContext;") \
+  template(buildAccessControlContext_signature,       "([Ljava/security/ProtectionDomain;Ljava/security/AccessControlContext;Z)Ljava/security/AccessControlContext;") \
   template(java_lang_Integer_array_signature,         "[Ljava/lang/Integer;")                     \
   template(java_lang_Long_array_signature,            "[Ljava/lang/Long;")                        \
   template(java_lang_Character_array_signature,       "[Ljava/lang/Character;")                   \

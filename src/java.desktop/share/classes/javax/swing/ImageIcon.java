@@ -146,7 +146,7 @@ public class ImageIcon implements Icon, Serializable, Accessible {
                         };
                     }
                 },
-                new AccessControlContext(new ProtectionDomain[]{
+                AccessControlContext.build(new ProtectionDomain[]{
                         new ProtectionDomain(null, null)
                 })
         );

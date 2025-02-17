@@ -54,7 +54,7 @@ import au.zeus.jdk.authorization.guards.LoadClassPermission;
  * @bug 8033661 8189291
  * @summary tests LogManager.updateConfiguration(InputStream, Function) method
  * @run main/othervm SimpleUpdateConfigWithInputStreamTest UNSECURE
- * @run main/othervm -Djava.security.manager=allow SimpleUpdateConfigWithInputStreamTest SECURE
+ * @run main/othervm/policy=security.policy -Djava.security.debug=access:failure -Djava.security.manager=allow SimpleUpdateConfigWithInputStreamTest SECURE
  * @author danielfuchs
  */
 public class SimpleUpdateConfigWithInputStreamTest {

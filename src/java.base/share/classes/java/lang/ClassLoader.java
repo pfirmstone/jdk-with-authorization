@@ -35,6 +35,7 @@ import java.lang.reflect.InvocationTargetException;
 import java.net.URL;
 import java.security.AccessController;
 import java.security.AccessControlContext;
+import java.security.AccessControlContext.ContextBuilder;
 import java.security.CodeSource;
 import java.security.PrivilegedAction;
 import java.security.ProtectionDomain;
@@ -687,6 +688,23 @@ public abstract class ClassLoader {
         }
         return lock;
     }
+    
+    /**
+     * Builds AccessControlContext instances or obtains from cache, without
+     * permission checks.
+     */
+    public final static class Context extends ContextBuilder{
+        
+        Context(){
+        }
+        
+        static final AccessControlContext.ContextBuilder builder = new Context();
+        
+        static AccessControlContext create(ProtectionDomain [] context){
+            return builder.build(context);
+        }
+        
+    }
 
     // Invoked by the VM after loading class with this loader.
     @SuppressWarnings("removal")
@@ -699,7 +717,7 @@ public abstract class ClassLoader {
                 }
                 return;
             }
-
+            
             final String packageName = cls.getPackageName();
             if (!packageName.isEmpty()) {
                 AccessController.doPrivileged(new PrivilegedAction<>() {
@@ -707,7 +725,7 @@ public abstract class ClassLoader {
                         sm.checkPackageAccess(packageName);
                         return null;
                     }
-                }, new AccessControlContext(new ProtectionDomain[] {pd}));
+                }, Context.create(new ProtectionDomain[] {pd}));
             }
         }
     }

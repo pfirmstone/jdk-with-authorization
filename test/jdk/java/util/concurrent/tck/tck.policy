@@ -44,4 +44,6 @@ grant {
     permission au.zeus.jdk.authorization.guards.SerialObjectPermission "java.util.concurrent.ArrayBlockingQueue";
     permission au.zeus.jdk.authorization.guards.SerialObjectPermission "java.util.concurrent.LinkedTransferQueue";
     permission java.lang.RuntimePermission "enableContextClassLoaderOverride";
+    permission java.util.logging.LoggingPermission "control";
+    permission java.lang.RuntimePermission "loggerFinder";
 };
