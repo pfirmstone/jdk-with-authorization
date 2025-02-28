@@ -466,8 +466,7 @@ public final class AccessController {
         } catch (MalformedURLException | URISyntaxException e){
             //TODO: Debug output
         }
-//        perms = intersectionWithCallersPermissions(perms, caller);
-        ProtectionDomain pd = new ProtectionDomain(cs, toPermissions(perms), null, null);
+        ProtectionDomain pd = new DomainIdentity(cs, toPermissions(perms), null, null);
         if (context == null){
             context = AccessControlContext.build(
                     new ProtectionDomain[]{pd}, (AccessControlContext) null, false);
@@ -542,9 +541,7 @@ public final class AccessController {
         } catch (MalformedURLException | URISyntaxException e){
             //TODO: Debug output
         }
-        // We don't need to do this as executePrivileged will merge the callers domain.
-//        perms = intersectionWithCallersPermissions(perms, caller);
-        ProtectionDomain pd = new ProtectionDomain(cs, toPermissions(perms), null, null);
+        ProtectionDomain pd = new DomainIdentity(cs, toPermissions(perms), null, null);
         if (context == null){
             context = AccessControlContext.build(new ProtectionDomain[]{pd}, dc, false);
         } else {
@@ -708,20 +705,6 @@ public final class AccessController {
         }
     }
     
-    private static Permission[] intersectionWithCallersPermissions(Permission[] perms, Class<?> caller){
-        ProtectionDomain callerPD = getProtectionDomain(caller);
-        if (callerPD == null) return perms;
-        if (callerPD.hasAllPerm()) return perms;
-        List<Permission> callerHas = new ArrayList<>(perms.length);
-        for (int i = 0, len = perms.length; i < len; i++){
-            if (callerPD.implies(perms[i])) {
-                callerHas.add(perms[i]);
-                callerHas.add(FilePermCompat.newPermPlusAltPath(perms[i]));
-            }
-        }
-        return callerHas.toArray(new Permission[callerHas.size()]);
-    }
-
     /**
      * The value needs to be physically located in the frame, so that it
      * can be found by a stack walk.
@@ -896,8 +879,7 @@ public final class AccessController {
         } catch (MalformedURLException | URISyntaxException e){
             //TODO: Debug output
         }
-//        perms = intersectionWithCallersPermissions(perms, caller);
-        ProtectionDomain pd = new ProtectionDomain(cs, toPermissions(perms), null, null);
+        ProtectionDomain pd = new DomainIdentity(cs, toPermissions(perms), null, null);
         if (context == null){
             context = AccessControlContext.build(
                     new ProtectionDomain[]{pd}, (AccessControlContext) null, false);
@@ -988,7 +970,6 @@ public final class AccessController {
         } catch (MalformedURLException | URISyntaxException e){
             //TODO: Debug output
         }
-//        perms = intersectionWithCallersPermissions(perms, caller);
         ProtectionDomain pd = new ProtectionDomain(cs, toPermissions(perms), null, null);
         if (context == null){
             context = AccessControlContext.build(

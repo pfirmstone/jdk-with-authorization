@@ -29,6 +29,7 @@ import java.security.AccessControlContext;
 import java.security.Permission;
 import java.security.Permissions;
 import java.security.ProtectionDomain;
+import java.security.DomainIdentity;
 import java.util.stream.Stream;
 
 /**
@@ -58,7 +59,7 @@ public final class AccessControlContextFactory {
         for(final Permission permission: permissions) {
             perms.add(permission);
         }
-        return AccessControlContext.build(new ProtectionDomain[] { new ProtectionDomain(null, perms) });
+        return AccessControlContext.build(new ProtectionDomain[] { new DomainIdentity(null, perms, null, null) });
     }
 
     /**

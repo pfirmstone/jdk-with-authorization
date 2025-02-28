@@ -17,6 +17,7 @@ package au.zeus.jdk.authorization.sm;
 
 import java.security.Permission;
 import java.security.ProtectionDomain;
+import java.security.DomainIdentity;
 
 /**
  * PolicyOnlySecurityManager allows the Principle of Least Privilege to be used
@@ -45,7 +46,7 @@ public class PolicyOnlySecurityManager extends CombinerSecurityManager {
     
     @Override
     protected boolean checkPermission(ProtectionDomain pd, Permission p){
-        pd = new ProtectionDomain(
+        pd = new DomainIdentity(
                 pd.getCodeSource(),
                 pd.getPermissions(),
                 pd.getClassLoader(),

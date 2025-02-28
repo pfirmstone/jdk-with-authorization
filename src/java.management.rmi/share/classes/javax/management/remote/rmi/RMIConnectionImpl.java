@@ -37,6 +37,7 @@ import java.security.PrivilegedAction;
 import java.security.PrivilegedActionException;
 import java.security.PrivilegedExceptionAction;
 import java.security.ProtectionDomain;
+import java.security.DomainIdentity;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.Map;
@@ -170,7 +171,7 @@ public class RMIConnectionImpl implements RMIConnection, Unreferenced {
             col.add(thePerm);
         }
 
-        final ProtectionDomain pd = new ProtectionDomain(null, col);
+        final ProtectionDomain pd = new DomainIdentity(null, col, null, null);
         return AccessControlContext.build( new ProtectionDomain[] { pd });
     }
 

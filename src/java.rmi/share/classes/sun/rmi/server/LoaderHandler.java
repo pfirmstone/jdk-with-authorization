@@ -46,6 +46,7 @@ import java.security.Permissions;
 import java.security.PermissionCollection;
 import java.security.Policy;
 import java.security.ProtectionDomain;
+import java.security.DomainIdentity;
 import java.rmi.server.LogStream;
 import java.security.PrivilegedAction;
 import java.util.Arrays;
@@ -1031,10 +1032,10 @@ public final class LoaderHandler {
          * Create an AccessControlContext that consists of a single
          * protection domain with only the permissions calculated above.
          */
-        ProtectionDomain pd = new ProtectionDomain(
+        ProtectionDomain pd = new DomainIdentity(
             new CodeSource((urls.length > 0 ? urls[0] : null),
                 (java.security.cert.Certificate[]) null),
-            perms);
+            perms, null, null);
         return AccessControlContext.build(new ProtectionDomain[] { pd });
     }
 

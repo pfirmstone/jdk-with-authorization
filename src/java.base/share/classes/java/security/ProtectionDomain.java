@@ -160,10 +160,6 @@ public class ProtectionDomain {
     /* the PermissionCollection is static (pre 1.4 constructor)
        or dynamic (via a policy refresh) */
     private final boolean staticPermissions;
-    
-    private final int hashcode;
-    
-    private final UriCodeSource uriCS;
 
     /*
      * An object used as a key when the ProtectionDomain is stored in a Map.
@@ -192,7 +188,6 @@ public class ProtectionDomain {
     public ProtectionDomain(CodeSource codesource,
                             PermissionCollection<? extends Permission> permissions) {
         this.codesource = codesource;
-        this.uriCS = codesource!= null ? new UriCodeSource(codesource) : null;
         boolean hasAllP = false;
         if (permissions != null) permissions.setReadOnly();
         this.permissions = (PermissionCollection<Permission>) permissions;
@@ -203,17 +198,8 @@ public class ProtectionDomain {
         this.hasAllPerm = hasAllP;
         this.classloader = null;
         this.principals = new Principal[0];
-        int hash = 7;
-        hash = 7 * hash + 1231; // staticPermisions = true;
-        hash = 7 * hash + (hasAllPerm ? 1231 : 1237);
-        hash = 7 * hash + getClass().hashCode();
-        hash = 7 * hash + Objects.hashCode(this.uriCS);
-        if (this.uriCS == null && this.codesource != null) hash = 7 * hash +this.codesource.hashCode();
-        hash = 7 * hash + permissionsHashCode(this.permissions);
-        hash = 7 * hash + this.principals.hashCode();
-        hashcode = hash;
         staticPermissions = true;
-        this.key = new Key(/*hashcode*/);
+        this.key = new Key();
     }
 
     /**
@@ -250,7 +236,6 @@ public class ProtectionDomain {
                             ClassLoader classloader,
                             Principal[] principals) {
         this.codesource = codesource;
-        this.uriCS = codesource!= null ? new UriCodeSource(codesource) : null;
         boolean hasAllPerm = false;
         if (permissions != null) permissions.setReadOnly();
         this.permissions = (PermissionCollection<Permission>) permissions;
@@ -262,19 +247,8 @@ public class ProtectionDomain {
         this.classloader = classloader;
         this.principals = (principals != null ? principals.clone():
                            new Principal[0]);
-        int hash = 7;
-        hash = 7 * hash + 1237; // staticPermisions = false;
-        hash = 7 * hash + (hasAllPerm ? 1231 : 1237);
-        hash = 7 * hash + getClass().hashCode();
-        hash = 7 * hash + Objects.hashCode(this.uriCS);
-        if (this.uriCS == null && this.codesource != null) hash = 7 * hash +this.codesource.hashCode();
-        hash = 7 * hash + permissionsHashCode(this.permissions);
-        hash = 7 * hash + Objects.hashCode(this.classloader);
-        hash = 7 * hash + this.principals.length > 0 ? 
-                Arrays.deepHashCode(this.principals) : this.principals.hashCode();
-        hashcode = hash;
         staticPermissions = false;
-        this.key = new Key(/*hashcode*/);
+        this.key = new Key();
     }
 
     /**
@@ -442,94 +416,8 @@ public class ProtectionDomain {
         }
         return false;
     }
-
-    @Override
-    public int hashCode() {
-        return hashcode;
-    }
-
-    @Override
-    public boolean equals(Object obj) {
-        if (this == obj) return true;
-        if (obj == null) return false;
-        if (getClass() != obj.getClass()) return false;
-        final ProtectionDomain other = (ProtectionDomain) obj;
-        if (hashcode != other.hashcode) return false;
-        if (staticPermissions != other.staticPermissions) return false;
-        if (!Objects.equals(this.classloader, other.classloader)) return false;
-        if (!Objects.equals(this.uriCS, other.uriCS)) return false;
-        if (this.uriCS == null && this.codesource != null){
-            if (!Objects.equals(this.codesource, other.codesource)) return false;
-        }
-        if (!Arrays.equals(this.principals, other.principals)) return false;
-        if (hasAllPerm && other.hasAllPerm) return true;
-        if (Objects.equals(permissions, other.permissions)) return true;
-        if (permissions != null && other.permissions != null){
-            SortedSet<Permission> thisPermSet = permissionsToSet(permissions);
-            SortedSet<Permission> thatPermSet = permissionsToSet(other.permissions);
-            return (Objects.equals(thisPermSet, thatPermSet)); 
-        }
-        return false;
-    }
     
-    /**
-     * Generates unique hash codes for Permissions without calling their
-     * hashcode method.
-     * 
-     * @param perms the PermissionCollection
-     * @return hash code.
-     */
-    static int permissionsHashCode(PermissionCollection<Permission> perms){
-        if (perms == null) return 0;
-        int hashCode = 13;
-        Enumeration<Permission> e = perms.elements();
-        while (e.hasMoreElements()){
-            hashCode ^= permissionHashCode(e.nextElement());
-        }
-        return hashCode;
-    }
-
-    /**
-     * Generates unique hash codes for Permission without calling their
-     * hashcode method.
-     * 
-     * @param perm the Permission
-     * @return hash code.
-     */
-    static int permissionHashCode(Permission perm){
-        if (perm == null) return 0;
-        int hashCode = 5;
-        hashCode = hashCode * 5 + perm.getClass().hashCode();
-        hashCode = hashCode * 5 + perm.getName().hashCode();
-        hashCode = hashCode * 5 + perm.getActions().hashCode();
-        if (perm instanceof javax.security.auth.PrivateCredentialPermission pcp){
-            hashCode = hashCode * 5 + Arrays.deepHashCode(pcp.getPrincipals());
-            String credClass = pcp.getCredentialClass();
-            if (credClass != null) hashCode = hashCode * 5 + credClass.hashCode();
-        }
-        return hashCode;   
-    }
-    
-    /**
-     * A SortedSet doesn't call hashCode on elements, this is important to
-     * avoid DNS calls or File system access that occurs with some Permission
-     * implementations like SocketPermission or FilePermission.
-     * 
-     * @param p
-     * @return a SortedSet
-     */
-    static SortedSet<Permission> permissionsToSet(PermissionCollection<Permission> p){
-        SortedSet<Permission> result = new TreeSet<>(PERM_COMPARE);
-        Enumeration<Permission> e = p.elements();
-        while (e.hasMoreElements()){
-            result.add(e.nextElement());
-        }
-        return result;
-    }
-    
-    private static Comparator<Permission> PERM_COMPARE = new PermissionComparator();
-
-    
+    static Comparator<Permission> PERM_COMPARE = new PermissionComparator();    
 
     /**
      * Convert a {@code ProtectionDomain} to a {@code String}.
@@ -642,77 +530,6 @@ public class ProtectionDomain {
     /**
      * Used for storing ProtectionDomains as keys in a Map.
      */
-    static final class Key {
-        
-//        final int hashCode;
-//        
-//        Key(int hash){
-//            this.hashCode = hash;
-//        }
-//        
-//        public int hashCode(){
-//            return hashCode;
-//        }
-//        
-//        public boolean equals(Object o){
-//            if (o instanceof Key that){
-//                if (this.hashCode == that.hashCode) return true;
-//            }
-//            return false;
-//        }
-    }
+    static final class Key {}
     
-    /**
-     * To avoid CodeSource equals and hashCode methods.
-     * 
-     * Shamelessly stolen from RFC3986URLClassLoader
-     * 
-     * CodeSource uses DNS lookup calls to check location IP addresses are 
-     * equal.
-     * 
-     * This class must not be serialized.
-     * @author Peter Firmstone.
-     */
-    @SuppressWarnings("serial")
-    private static class UriCodeSource extends CodeSource{
-        private final Uri uri;
-        private final int hashCode;
-        
-        UriCodeSource(CodeSource cs){
-            this(cs.getLocation(), cs.getCertificates());
-        }
-        
-        private UriCodeSource(URL url, java.security.cert.Certificate [] certs){
-            super(url, certs);
-            Uri uRi = null;
-            if (url != null){
-                try {
-                    uRi = Uri.urlToUri(url);
-                } catch (URISyntaxException ex) { }//Ignore
-            }
-            this.uri = uRi;
-            int hash = 7;
-            hash = 23 * hash + (this.uri != null ? this.uri.hashCode() : 0);
-            hash = 23 * hash + (certs != null ? Arrays.hashCode(certs) : 0);
-            hashCode = hash;
-        }
-
-        @Override
-        public int hashCode() {
-            return hashCode;
-        }
-        
-        @Override
-        public boolean equals(Object o){
-            if (!(o instanceof UriCodeSource)) return false;
-            if (uri == null) return super.equals(o); // In case of URISyntaxException
-            UriCodeSource that = (UriCodeSource) o; 
-            if ( !uri.equals(that.uri)) return false;
-            java.security.cert.Certificate [] mine = getCertificates();
-            java.security.cert.Certificate [] theirs = that.getCertificates();
-            return Arrays.equals(mine, theirs);
-        }
-       
-    }
-
 }

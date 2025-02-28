@@ -48,6 +48,7 @@ import java.security.PrivilegedAction;
 import java.security.PrivilegedActionException;
 import java.security.PrivilegedExceptionAction;
 import java.security.ProtectionDomain;
+import java.security.DomainIdentity;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -481,7 +482,7 @@ public final class ObjectStreamClass implements Serializable {
     private ProtectionDomain noPermissionsDomain() {
         PermissionCollection<Permission> perms = new Permissions();
         perms.setReadOnly();
-        return new ProtectionDomain(null, perms);
+        return new DomainIdentity(null, perms, null, null);
     }
 
     /**

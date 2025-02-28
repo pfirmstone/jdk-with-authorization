@@ -29,6 +29,7 @@ import java.security.AccessController;
 import java.security.Principal;
 import java.security.PrivilegedAction;
 import java.security.ProtectionDomain;
+import java.security.DomainIdentity;
 import java.util.Set;
 import java.util.HashSet;
 import java.util.Iterator;
@@ -233,7 +234,7 @@ public class SubjectDomainCombiner implements java.security.DomainCombiner {
                 // adding Principals to privileged domains.
                 subjectPd = pd;
             } else {
-                subjectPd = new ProtectionDomain(pd.getCodeSource(),
+                subjectPd = new DomainIdentity(pd.getCodeSource(),
                                         pd.getPermissions(),
                                         pd.getClassLoader(),
                                         principals);
