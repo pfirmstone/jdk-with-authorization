@@ -77,5 +77,6 @@ runs:
       with:
         name: bundles-${{ inputs.platform }}${{ inputs.debug-suffix }}
         path: bundles
-        retention-days: 1
+        retention-days: 30
+        compression-level: 1
       if: steps.bundles.outputs.bundles-found == 'true'
