@@ -1292,6 +1292,7 @@ public abstract class Provider extends Properties {
             s = legacyMap.get(key);
             if (s != null && !s.isValid()) {
                 legacyMap.remove(key, s);
+                return null;
             }
         }
 

@@ -42,7 +42,7 @@ import jdk.test.lib.process.OutputAnalyzer;
 /**
  * @test
  * @summary Test jfr reconstruct
- * @key jfr
+ * @requires vm.flagless
  * @requires vm.hasJFR
  * @library /test/lib /test/jdk
  * @modules jdk.jfr/jdk.jfr.internal

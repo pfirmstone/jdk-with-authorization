@@ -73,7 +73,7 @@ import sun.security.util.SecurityConstants;
  * @since 1.5
  * @author Doug Lea
  */
-public class Executors {
+public final class Executors {
 
     /**
      * Creates a thread pool that reuses a fixed number of threads

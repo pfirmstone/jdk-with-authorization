@@ -23,7 +23,6 @@
  *
  */
 
-#include "precompiled.hpp"
 #include "classfile/javaClasses.hpp"
 #include "compiler/compileLog.hpp"
 #include "gc/shared/barrierSet.hpp"
@@ -2399,30 +2398,24 @@ const Type* LoadSNode::Value(PhaseGVN* phase) const {
 //=============================================================================
 //----------------------------LoadKlassNode::make------------------------------
 // Polymorphic factory method:
-Node* LoadKlassNode::make(PhaseGVN& gvn, Node* ctl, Node* mem, Node* adr, const TypePtr* at, const TypeKlassPtr* tk) {
+Node* LoadKlassNode::make(PhaseGVN& gvn, Node* mem, Node* adr, const TypePtr* at, const TypeKlassPtr* tk) {
   // sanity check the alias category against the created node type
-  const TypePtr *adr_type = adr->bottom_type()->isa_ptr();
+  const TypePtr* adr_type = adr->bottom_type()->isa_ptr();
   assert(adr_type != nullptr, "expecting TypeKlassPtr");
 #ifdef _LP64
   if (adr_type->is_ptr_to_narrowklass()) {
     assert(UseCompressedClassPointers, "no compressed klasses");
-    Node* load_klass = gvn.transform(new LoadNKlassNode(ctl, mem, adr, at, tk->make_narrowklass(), MemNode::unordered));
+    Node* load_klass = gvn.transform(new LoadNKlassNode(mem, adr, at, tk->make_narrowklass(), MemNode::unordered));
     return new DecodeNKlassNode(load_klass, load_klass->bottom_type()->make_ptr());
   }
 #endif
   assert(!adr_type->is_ptr_to_narrowklass() && !adr_type->is_ptr_to_narrowoop(), "should have got back a narrow oop");
-  return new LoadKlassNode(ctl, mem, adr, at, tk, MemNode::unordered);
+  return new LoadKlassNode(mem, adr, at, tk, MemNode::unordered);
 }
 
 //------------------------------Value------------------------------------------
 const Type* LoadKlassNode::Value(PhaseGVN* phase) const {
   return klass_value_common(phase);
-}
-
-// In most cases, LoadKlassNode does not have the control input set. If the control
-// input is set, it must not be removed (by LoadNode::Ideal()).
-bool LoadKlassNode::can_remove_control() const {
-  return false;
 }
 
 const Type* LoadNode::klass_value_common(PhaseGVN* phase) const {
@@ -2859,16 +2852,16 @@ private:
     return is_trace(TraceMergeStores::Tag::BASIC);
   }
 
-  bool is_trace_pointer() const {
-    return is_trace(TraceMergeStores::Tag::POINTER);
+  bool is_trace_pointer_parsing() const {
+    return is_trace(TraceMergeStores::Tag::POINTER_PARSING);
   }
 
-  bool is_trace_aliasing() const {
-    return is_trace(TraceMergeStores::Tag::ALIASING);
+  bool is_trace_pointer_aliasing() const {
+    return is_trace(TraceMergeStores::Tag::POINTER_ALIASING);
   }
 
-  bool is_trace_adjacency() const {
-    return is_trace(TraceMergeStores::Tag::ADJACENCY);
+  bool is_trace_pointer_adjacency() const {
+    return is_trace(TraceMergeStores::Tag::POINTER_ADJACENCY);
   }
 
   bool is_trace_success() const {
@@ -2939,12 +2932,13 @@ bool MergePrimitiveStores::is_adjacent_pair(const StoreNode* use_store, const St
 
   ResourceMark rm;
 #ifndef PRODUCT
-  const TraceMemPointer trace(is_trace_pointer(),
-                              is_trace_aliasing(),
-                              is_trace_adjacency());
+  const TraceMemPointer trace(is_trace_pointer_parsing(),
+                              is_trace_pointer_aliasing(),
+                              is_trace_pointer_adjacency(),
+                              true);
 #endif
-  const MemPointer pointer_use(use_store NOT_PRODUCT( COMMA trace ));
-  const MemPointer pointer_def(def_store NOT_PRODUCT( COMMA trace ));
+  const MemPointer pointer_use(use_store NOT_PRODUCT(COMMA trace));
+  const MemPointer pointer_def(def_store NOT_PRODUCT(COMMA trace));
   return pointer_def.is_adjacent_to_and_before(pointer_use);
 }
 
