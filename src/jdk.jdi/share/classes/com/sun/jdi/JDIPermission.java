@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2004, 2025, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2004, 2024, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -81,11 +81,8 @@ package com.sun.jdi;
  * @see java.security.PermissionCollection
  * @see java.lang.SecurityManager
  *
- * @deprecated This class was only useful in conjunction with the Security Manager,
- * which is no longer supported. There is no replacement for this class.
  */
 
-@Deprecated(since="25", forRemoval=true)
 public final class JDIPermission extends java.security.BasicPermission {
 
     private static final long serialVersionUID = -6988461416938786271L;
