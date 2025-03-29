@@ -130,7 +130,7 @@ final class JVMUpcalls {
             Bytecode.log(ei.getClassName() + "(" + traceId + ")", bytes);
             return bytes;
         } catch (Throwable t) {
-            Logger.log(LogTag.JFR_SYSTEM, LogLevel.WARN, "Unexpected error when adding instrumentation for event type " + eventName + ". " + t.getMessage());
+            Logger.log(LogTag.JFR_SYSTEM, LogLevel.WARN, "Unexpected error when adding instrumentation for event type " + eventName);
             return oldBytes;
         }
     }

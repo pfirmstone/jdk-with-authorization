@@ -83,6 +83,7 @@ final class FlightRecorderMXBeanImpl extends StandardEmitterMBean implements Fli
         @SuppressWarnings("removal")
         private final AccessControlContext context;
 
+        @SuppressWarnings("removal")
         public MXBeanListener(NotificationListener listener, NotificationFilter filter, Object handback) {
             this.context = AccessController.getContext();
             this.listener = listener;
@@ -90,6 +91,7 @@ final class FlightRecorderMXBeanImpl extends StandardEmitterMBean implements Fli
             this.handback = handback;
         }
 
+        @SuppressWarnings("removal")
         public void recordingStateChanged(Recording recording) {
             AccessController.doPrivileged(new PrivilegedAction<Void>() {
                 @Override
