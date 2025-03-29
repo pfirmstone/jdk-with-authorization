@@ -103,7 +103,7 @@ void FinalImageRecipes::load_all_classes(TRAPS) {
     if (k->is_instance_klass()) {
       InstanceKlass* ik = InstanceKlass::cast(k);
       if (!ik->is_shared_unregistered_class() && !ik->is_hidden()) {
-        Klass* actual = SystemDictionary::resolve_or_fail(ik->name(), class_loader, true, CHECK);
+        Klass* actual = SystemDictionary::resolve_or_fail(ik->name(), class_loader, Handle(THREAD, ik->protection_domain()), true, CHECK);
         if (actual != ik) {
           ResourceMark rm(THREAD);
           log_error(cds)("Unable to resolve class from CDS archive: %s", ik->external_name());

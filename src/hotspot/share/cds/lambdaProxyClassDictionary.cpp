@@ -327,7 +327,12 @@ InstanceKlass* LambdaProxyClassDictionary::load_and_init_lambda_proxy_class(Inst
   assert(shared_nest_host != nullptr, "unexpected nullptr _nest_host");
   assert(shared_nest_host->is_shared(), "nest host must be in CDS archive");
 
-  Klass* resolved_nest_host = SystemDictionary::resolve_or_fail(shared_nest_host->name(), class_loader, true, CHECK_NULL);
+  Klass* resolved_nest_host = SystemDictionary::resolve_or_fail(
+                        shared_nest_host->name(),
+                        class_loader, 
+                        protection_domain,
+                        true,
+                        CHECK_NULL);
   if (resolved_nest_host != shared_nest_host) {
     // The dynamically resolved nest_host is not the same as the one we used during dump time,
     // so we cannot use lambda_ik.
