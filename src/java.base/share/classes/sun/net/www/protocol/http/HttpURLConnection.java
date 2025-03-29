@@ -2392,6 +2392,7 @@ public class HttpURLConnection extends java.net.HttpURLConnection {
      * Gets the authentication for an HTTP proxy, and applies it to
      * the connection.
      */
+    @SuppressWarnings("fallthrough")
     private AuthenticationInfo getHttpProxyAuthentication(AuthenticationHeader authhdr)
         throws IOException {
 
