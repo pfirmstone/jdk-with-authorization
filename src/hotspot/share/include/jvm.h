@@ -549,6 +549,9 @@ JVM_GetClassInterfaces(JNIEnv *env, jclass cls);
 JNIEXPORT jboolean JNICALL
 JVM_IsInterface(JNIEnv *env, jclass cls);
 
+JNIEXPORT jobject JNICALL
+JVM_GetProtectionDomain(JNIEnv *env, jclass cls);
+
 JNIEXPORT jboolean JNICALL
 JVM_IsHiddenClass(JNIEnv *env, jclass cls);
 
