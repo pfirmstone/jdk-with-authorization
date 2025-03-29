@@ -3267,21 +3267,20 @@ public final class Class<T> implements java.io.Serializable,
         }
     }
 
-    /**
-     * Returns the {@code ProtectionDomain} of this class.
-     *
-     * @return the ProtectionDomain of this class
-     *
-     * @see java.security.ProtectionDomain
-     * @since 1.2
-     */
-    public ProtectionDomain getProtectionDomain() {
-        if (protectionDomain == null) {
+    // package-private
+    ProtectionDomain protectionDomain() {
+        ProtectionDomain pd = getProtectionDomain0();
+        if (pd == null) {
             return Holder.allPermDomain;
         } else {
-            return protectionDomain;
+            return pd;
         }
     }
+
+    /**
+     * Returns the ProtectionDomain of this class.
+     */
+    private native ProtectionDomain getProtectionDomain0();
 
     /*
      * Returns the Class object for the named primitive type. Type parameter T

@@ -41,7 +41,6 @@ import java.lang.reflect.Method;
 import jdk.internal.misc.Unsafe;
 import jdk.internal.module.ModulePath;
 import jdk.internal.perf.Perf;
-import java.security.ProtectionDomain;
 
 import org.testng.annotations.Test;
 import static org.testng.Assert.*;
