@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 1999, 2023, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 1999, 2025, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -1229,7 +1229,6 @@ public final class LdapCtx extends ComponentDirContext
 
             // process the referrals sequentially
             while (true) {
-                @SuppressWarnings("unchecked")
                 LdapReferralContext refCtx =
                     (LdapReferralContext)e.getReferralContext(envprops, bindCtls);
 
@@ -1888,7 +1887,6 @@ public final class LdapCtx extends ComponentDirContext
             // process the referrals sequentially
             while (true) {
 
-                @SuppressWarnings("unchecked")
                 LdapReferralContext refCtx = (LdapReferralContext)
                         e.getReferralContext(envprops, bindCtls);
 

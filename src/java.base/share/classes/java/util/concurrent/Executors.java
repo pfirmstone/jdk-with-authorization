@@ -617,11 +617,9 @@ public final class Executors {
     private static final class PrivilegedCallableUsingCurrentClassLoader<T>
             implements Callable<T> {
         final Callable<T> task;
-        @SuppressWarnings("removal")
         final AccessControlContext acc;
         final ClassLoader ccl;
 
-        @SuppressWarnings("removal")
         PrivilegedCallableUsingCurrentClassLoader(Callable<T> task) {
             SecurityManager sm = System.getSecurityManager();
             if (sm != null) {
@@ -704,7 +702,6 @@ public final class Executors {
      * Thread factory capturing access control context and class loader.
      */
     private static class PrivilegedThreadFactory extends DefaultThreadFactory {
-        @SuppressWarnings("removal")
         final AccessControlContext acc;
         final ClassLoader ccl;
 
@@ -727,7 +724,6 @@ public final class Executors {
 
         public Thread newThread(final Runnable r) {
             return super.newThread(new Runnable() {
-                @SuppressWarnings("removal")
                 public void run() {
                     AccessController.doPrivileged(new PrivilegedAction<>() {
                         public Void run() {

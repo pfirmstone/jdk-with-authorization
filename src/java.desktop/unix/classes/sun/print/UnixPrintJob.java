@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2000, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2000, 2025, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -855,7 +855,7 @@ public class UnixPrintJob implements CancelablePrintJob {
         }
         if (options != null && !options.isEmpty()) {
             pFlags |= OPTIONS;
-            ncomps+=1;
+            ncomps+=options.trim().split(" ").length;
         }
         if (jobTitle != null && !jobTitle.isEmpty()) {
             pFlags |= JOBTITLE;
@@ -890,7 +890,9 @@ public class UnixPrintJob implements CancelablePrintJob {
             execCmd[n++] = "-o job-sheets=standard";
         }
         if ((pFlags & OPTIONS) != 0) {
-            execCmd[n++] = "-o" + options;
+            for (String option : options.trim().split(" ")) {
+                execCmd[n++] = "-o " + option;
+            }
         }
         execCmd[n++] = spoolFile;
         if (IPPPrintService.debugPrint) {

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2007, 2021, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2007, 2025, Oracle and/or its affiliates. All rights reserved.
  */
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
@@ -68,7 +68,7 @@ import jdk.xml.internal.SecuritySupport;
  * @author G. Todd Millerj
  * @author Jochen Cordes <Jochen.Cordes@t-online.de>
  * @author Santiago Pericas-Geertsen
- * @LastModified: May 2021
+ * @LastModified: Jan 2025
  */
 public final class TemplatesImpl implements Templates, Serializable {
     static final long serialVersionUID = 673094361519270707L;
@@ -258,7 +258,6 @@ public final class TemplatesImpl implements Templates, Serializable {
      *  if yes then we need to deserialize the URIResolver
      *  Fix for bugzilla bug 22438
      */
-    @SuppressWarnings("unchecked")
     private void  readObject(ObjectInputStream is)
       throws IOException, ClassNotFoundException
     {

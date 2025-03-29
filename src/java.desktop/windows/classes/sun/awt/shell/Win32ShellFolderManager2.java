@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2003, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2003, 2025, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -46,7 +46,6 @@ import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Stream;
 
-import sun.awt.OSInfo;
 import sun.awt.util.ThreadGroupUtils;
 import sun.util.logging.PlatformLogger;
 
@@ -309,7 +308,7 @@ final class Win32ShellFolderManager2 extends ShellFolderManager {
                 Win32ShellFolder2 drives = getDrives();
 
                 Win32ShellFolder2 recentFolder = getRecent();
-                if (recentFolder != null && OSInfo.getWindowsVersion().compareTo(OSInfo.WINDOWS_2000) >= 0) {
+                if (recentFolder != null) {
                     folders.add(recentFolder);
                 }
 

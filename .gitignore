@@ -24,3 +24,4 @@ NashornProfile.txt
 /.lldbinit
 config.log
 configure.log
+**/core.[0-9]*
