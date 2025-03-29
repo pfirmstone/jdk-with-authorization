@@ -177,7 +177,6 @@ final class DCmdStart extends AbstractDCmd {
                     // Decide destination filename at dump time
                     // Purposely avoid generating filename in Recording#setDestination due to
                     // security concerns
-                    PlatformRecording pr = PrivateAccess.getInstance().getPlatformRecording(recording);
                     pr.setDumpDirectory(new SafePath(p));
                 } else {
                     safePath = resolvePath(recording, path);
