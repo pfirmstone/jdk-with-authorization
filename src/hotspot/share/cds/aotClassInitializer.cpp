@@ -371,7 +371,8 @@ void AOTClassInitializer::init_test_class(TRAPS) {
     log_info(cds)("Debug build only: force initialization of AOTInitTestClass %s", AOTInitTestClass);
     TempNewSymbol class_name = SymbolTable::new_symbol(AOTInitTestClass);
     Handle app_loader(THREAD, SystemDictionary::java_system_loader());
-    Klass* k = SystemDictionary::resolve_or_null(class_name, app_loader, CHECK);
+    Handle protection_domain;
+    Klass* k = SystemDictionary::resolve_or_null(class_name, app_loader, protection_domain, CHECK);
     if (k == nullptr) {
       vm_exit_during_initialization("AOTInitTestClass not found", AOTInitTestClass);
     }
