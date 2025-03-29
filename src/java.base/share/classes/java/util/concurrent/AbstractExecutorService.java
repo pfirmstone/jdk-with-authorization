@@ -97,7 +97,7 @@ public abstract class AbstractExecutorService implements ExecutorService {
      * @since 1.6
      */
     protected <T> RunnableFuture<T> newTaskFor(Runnable runnable, T value) {
-        if (System.getSecurityManager() != null && !(task instanceof Executors.PrivilegedRunnable)) {
+        if (System.getSecurityManager() != null && !(runnable instanceof Executors.PrivilegedRunnable)) {
             runnable = Executors.privilegedRunnable(runnable);
         }
         return new FutureTask<T>(runnable, value);
@@ -115,7 +115,7 @@ public abstract class AbstractExecutorService implements ExecutorService {
      * @since 1.6
      */
     protected <T> RunnableFuture<T> newTaskFor(Callable<T> callable) {
-        if (System.getSecurityManager() != null && !(task instanceof Executors.PrivilegedCallable)) {
+        if (System.getSecurityManager() != null && !(callable instanceof Executors.PrivilegedCallable)) {
             callable = Executors.privilegedCallable(callable);
         }
         return new FutureTask<T>(callable);
