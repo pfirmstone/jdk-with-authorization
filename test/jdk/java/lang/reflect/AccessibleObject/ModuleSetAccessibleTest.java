@@ -147,7 +147,7 @@ public class ModuleSetAccessibleTest {
 
         // non-public constructor
         Constructor<?> ctor
-            = Class.class.getDeclaredConstructor(ClassLoader.class, Class.class, char.class, ProtectionDomain.class, boolean.class);
+            = Class.class.getDeclaredConstructor(ClassLoader.class, Class.class, char.class, boolean.class);
         AccessibleObject[] ctors = { ctor };
 
         try {
