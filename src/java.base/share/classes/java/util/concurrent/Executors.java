@@ -505,24 +505,41 @@ public final class Executors {
      * under the selected permission settings holding within that
      * action; or if not possible, throw an associated {@link
      * AccessControlException}.
-     * <p> Deprecated since 17, removed or disabled since 24, retained and maintained operational for Authorization
+     * <p> Deprecated since 17, removed or disabled since 24, retained and 
+     * maintained operational for Authorization.  This method will be made
+     * package private in future, as all tasks will by default be decorated
+     * with context when SecurityManager is in force.
+     * 
      * @param callable the underlying task
      * @param <T> the type of the callable's result
      * @return a callable object
      * @throws NullPointerException if callable null
      */
-     /* @deprecated This method is only useful in conjunction with
-     *       {@linkplain SecurityManager the Security Manager}, which is
-     *       deprecated and subject to removal in a future release.
-     *       Consequently, this method is also deprecated and subject to
-     *       removal. There is no replacement for the Security Manager or this
-     *       method.
-     */
-//    @Deprecated(since="17", forRemoval=true)
     public static <T> Callable<T> privilegedCallable(Callable<T> callable) {
         if (callable == null)
             throw new NullPointerException();
         return new PrivilegedCallable<T>(callable);
+    }
+    
+    /**
+     * Returns a {@link Callable} object that will, when called,
+     * execute the given {@code callable} under the current access
+     * control context. This method should normally be invoked within
+     * an {@link AccessController#doPrivileged AccessController.doPrivileged}
+     * action to create callables that will, if possible, execute
+     * under the selected permission settings holding within that
+     * action; or if not possible, throw an associated {@link
+     * AccessControlException}.
+     * @param callable the underlying task
+     * @param context the AccessControlContext
+     * @param <T> the type of the callable's result
+     * @return a callable object
+     * @throws NullPointerException if callable or context is null
+     */
+    static <T> Callable<T> privilegedCallable(Callable<T> callable, AccessControlContext context) {
+        if (callable == null || context == null)
+            throw new NullPointerException();
+        return new PrivilegedCallable<T>(callable, context);
     }
     
     /**
@@ -539,10 +556,31 @@ public final class Executors {
      * @return runnable dectorated with context.
      * @throws NullPointerException if callable null
      */
-    public static Runnable privilegedRunnable(Runnable runnable) {
+    static Runnable privilegedRunnable(Runnable runnable) {
         if (runnable == null)
             throw new NullPointerException();
         return new PrivilegedRunnable(runnable);
+    }
+    
+    /**
+     * Returns a {@link Runnable} object that will, when run,
+     * execute the given {@code runnable} under the current access
+     * control context. This method should normally be invoked within
+     * an {@link AccessController#doPrivileged AccessController.doPrivileged}
+     * action to create runnables that will, if possible, execute
+     * under the selected permission settings holding within that
+     * action; or if not possible, throw an associated {@link
+     * AccessControlException}.
+     * 
+     * @param runnable the underlying task
+     * @param context the AccessControlContext
+     * @return runnable dectorated with context.
+     * @throws NullPointerException if callable or context null
+     */
+    static Runnable privilegedRunnable(Runnable runnable, AccessControlContext context) {
+        if (runnable == null || context == null)
+            throw new NullPointerException();
+        return new PrivilegedRunnable(runnable, context);
     }
 
     /**
@@ -567,14 +605,6 @@ public final class Executors {
      * context does not have permission to both set and get context
      * class loader
      */
-     /* @deprecated This method is only useful in conjunction with
-     *       {@linkplain SecurityManager the Security Manager}, which is
-     *       deprecated and subject to removal in a future release.
-     *       Consequently, this method is also deprecated and subject to
-     *       removal. There is no replacement for the Security Manager or this
-     *       method.
-     */
-//    @Deprecated(since="17", forRemoval=true)
     public static <T> Callable<T> privilegedCallableUsingCurrentClassLoader(Callable<T> callable) {
         if (callable == null)
             throw new NullPointerException();
@@ -611,12 +641,12 @@ public final class Executors {
         final AccessControlContext acc;
 
         @SuppressWarnings("removal")
-        PrivilegedCallable(Callable<T> task) {
+        private PrivilegedCallable(Callable<T> task) {
             this.task = task;
             this.acc = AccessController.getContext();
         }
         
-        PrivilegedCallable(Callable<T> task, AccessControlContext context){
+        private PrivilegedCallable(Callable<T> task, AccessControlContext context){
             this.task = task;
             this.acc = context;
         }
@@ -649,12 +679,12 @@ public final class Executors {
         final AccessControlContext acc;
 
         @SuppressWarnings("removal")
-        PrivilegedRunnable(Runnable task) {
+        private PrivilegedRunnable(Runnable task) {
             this.task = task;
             this.acc = AccessController.getContext();
         }
         
-        PrivilegedRunnable(Runnable task, AccessControlContext context){
+        private PrivilegedRunnable(Runnable task, AccessControlContext context){
             this.task = task;
             this.acc = context;
         }

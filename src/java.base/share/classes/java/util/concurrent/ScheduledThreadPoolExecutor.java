@@ -547,7 +547,7 @@ public class ScheduledThreadPoolExecutor
         AccessControlContext context = 
             (System.getSecurityManager() != null && !(command instanceof Executors.PrivilegedRunnable))?
             AccessController.getContext() : null;
-        if (context != null) command = new Executors.PrivilegedRunnable(command, context);
+        if (context != null) command = Executors.privilegedRunnable(command, context);
         RunnableScheduledFuture<Void> t = decorateTask(command,
             new ScheduledFutureTask<Void>(command, null,
                                           triggerTime(delay, unit),
@@ -568,7 +568,7 @@ public class ScheduledThreadPoolExecutor
         AccessControlContext context = 
             (System.getSecurityManager() != null && !(callable instanceof Executors.PrivilegedCallable))? 
             AccessController.getContext() : null;
-        if (context != null) callable = new Executors.PrivilegedCallable<>(callable, context);
+        if (context != null) callable = Executors.privilegedCallable(callable, context);
         RunnableScheduledFuture<V> t = decorateTask(callable,
             new ScheduledFutureTask<V>(callable,
                                        triggerTime(delay, unit),
@@ -621,7 +621,7 @@ public class ScheduledThreadPoolExecutor
         AccessControlContext context = 
             (System.getSecurityManager() != null && !(command instanceof Executors.PrivilegedRunnable))? 
             AccessController.getContext() : null;
-        if (context != null) command = new Executors.PrivilegedRunnable(command, context);
+        if (context != null) command = Executors.privilegedRunnable(command, context);
         ScheduledFutureTask<Void> sft =
             new ScheduledFutureTask<Void>(command,
                                           null,
@@ -673,7 +673,7 @@ public class ScheduledThreadPoolExecutor
         AccessControlContext context = 
             (System.getSecurityManager() != null && !(command instanceof Executors.PrivilegedRunnable))? 
             AccessController.getContext() : null;
-        if (context != null) command = new Executors.PrivilegedRunnable(command, context);
+        if (context != null) command = Executors.privilegedRunnable(command, context);
         ScheduledFutureTask<Void> sft =
             new ScheduledFutureTask<Void>(command,
                                           null,
