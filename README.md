@@ -47,9 +47,17 @@ This project's objectives are to maintain a community fork of OpenJDK that retai
 - System.setSecurityManager(null) now throws NullPointerException, preventing injection attacks (vulnerabilities) from utilising privileged context to disable SecurityManager. ✔
 - Add policy tests from JGDMS.
 - Add strict RFC3986 RFC6874 and RFC5952 URI support and Remove DNS lookups from CodeSource.
-- Add support for Virtual threads. ✔
-- Reimplement AccessController::getContext to use StackWalker. ✔
-- Reimplement AccessController::doPrivileged to use ScopedValue for context and make AccessControlContext immutable. ✔
+- Add support for Virtual threads when SecurityManager is enabled. ✔
+- Reimplement AccessController::getContext to use StackWalker - this was tried but wasn't stable and caused test failures. 🪓
+- Reimplement AccessController::doPrivileged to use ScopedValue for context - this was tried but wasn't stable and caused test failures. 🪓
+- Make AccessControlContext immutable, add static builder methods to allow reuse, modify the VM to call builder methods. ✔
+- Simplify AccessControlContext similar to its original design. ✔
+- Update AccessControlContext equals and hashCode implementations. ✔
+- Create DomainIdentity subclass of ProtectionDomain that implements equals and hashCode methods. ✔
+- Reimplement AccessController::doPrivileged methods with Permission arguments, to strictly limit permissions, instead of allowing privileged callers to use their privileges. Capture the caller and use DomainIdentity and "jrt:/module/class" to represent the domain of the caller restricting permissions. ✔
+- Allow Policy to grant additional permissions to those hard coded in AccessController::doPrivileged methods with Permission arguments.  ✔
+- Create a cache of AccessControlContext instances, to avoid duplication, this is necessary to support virtual threads, instantiate only when SecurityManager is enabled. ✔
+- Remove the ProtectionDomain cache from SubjectDomainCombiner, use the non blocking AccessControlContext cache and DomainIdentity to replace this functionality.
 - Update CombinerSecurityManager to use Virtual threads to hand off permission checks. ✔
 - Add LoadClassPermission to SecureClassLoader, to allow httmpd and jar file signers to control which code can be loaded by policy. ✔
 - Add SerialObjectPermission for Java Serialization, automating class whitelisting. ✔
