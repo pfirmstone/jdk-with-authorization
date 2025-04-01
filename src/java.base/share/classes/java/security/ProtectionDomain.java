@@ -300,9 +300,10 @@ public class ProtectionDomain {
      * 
      * For performance reasons, Policy performs static permission checks
      * using thread confined PermissionCollection's, adding
-     * any additional permissions determined by policy for CodeSource,
-     * however Subject Principal's aren't injected into PermissionCollection's
-     * constructed using the two argument ProtectionDomain constructor.
+     * any additional permissions determined by policy for CodeSource.
+     * <p>
+     * SubjectDomainCombiner doesn't replace static ProtectionDomain's
+     * on the stack with equivalent domain's with Principal's added.
      *
      * @return {@code false} if four argument constructor was called and {@code true}
      * if two argument constructor was called to construct this domain.
