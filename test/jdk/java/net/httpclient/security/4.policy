@@ -32,6 +32,7 @@ grant {
     permission java.net.SocketPermission "[::1]:1024-", "accept,listen";
     permission java.io.FilePermission "${test.src}${/}docs${/}-", "read";
     permission java.lang.RuntimePermission "createClassLoader";
+    permission au.zeus.jdk.authorization.guards.LoadClassPermission "ALLOW";
 
 
     // permissions specific to this test

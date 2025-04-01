@@ -135,12 +135,7 @@ final class HttpClientImpl extends HttpClient implements Trackable {
         @Override
         public Thread newThread(Runnable r) {
             String name = namePrefix + nextId.getAndIncrement();
-            Thread t;
-            if (System.getSecurityManager() == null) {
-                t = new Thread(null, r, name, 0, false);
-            } else {
-                t = InnocuousThread.newThread(name, r);
-            }
+            Thread t = new Thread(null, r, name, 0, false);
             t.setDaemon(true);
             return t;
         }

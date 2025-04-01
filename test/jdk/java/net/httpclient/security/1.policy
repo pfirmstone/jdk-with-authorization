@@ -32,6 +32,15 @@ grant {
     permission java.net.SocketPermission "[::1]:1024-", "accept,listen";
     permission java.io.FilePermission "${test.src}${/}docs${/}-", "read";
     permission java.lang.RuntimePermission "createClassLoader";
+    permission au.zeus.jdk.authorization.guards.LoadClassPermission "ALLOW";
+    permission java.lang.RuntimePermission "httpServerProvider";
+    permission java.lang.RuntimePermission "accessClassInPackage.sun.util.locale.provider";
+    permission java.lang.RuntimePermission "accessClassInPackage.sun.net";
+    permission java.lang.RuntimePermission "accessClassInPackage.jdk.internal.ref";
+    permission java.net.NetPermission "getProxySelector";
+    permission java.lang.RuntimePermission "enableContextClassLoaderOverride";
+    permission java.lang.RuntimePermission "setContextClassLoader";
+    permission java.security.SecurityPermission "createAccessControlContext";
 
 
     // permissions specific to this test
@@ -43,4 +52,44 @@ grant {
 grant codebase "file:${test.classes}/proxydir/-" {
     permission java.net.SocketPermission "127.0.0.1:1024-", "accept,listen,connect,resolve";
     permission java.net.SocketPermission "[::1]:1024-", "accept,listen,connect,resolve";
+};
+
+grant codebase "jrt:/java.net.http" {
+    permission java.net.SocketPermission "127.0.0.1:1024-", "accept,listen,connect,resolve";
+    permission java.lang.RuntimePermission "accessClassInPackage.jdk.internal.misc";
+    permission java.lang.RuntimePermission "accessClassInPackage.sun.net.www";
+};
+
+grant codebase "jrt:/jdk.crypto.cryptoki" {
+    permission java.lang.RuntimePermission "accessClassInPackage.sun.security.util";
+};
+
+grant codebase "jrt:/java.smartcardio" {
+    permission java.lang.RuntimePermission "accessClassInPackage.sun.security.util";
+    permission java.security.SecurityPermission "putProviderProperty.SunPCSC";
+};
+
+grant codebase "jrt:/java.security.jgss" {
+    permission java.lang.RuntimePermission "accessClassInPackage.sun.security.util";
+    permission java.security.SecurityPermission "putProviderProperty.SunJGSS";
+};
+
+grant codebase "jrt:/jdk.security.jgss" {
+    permission java.lang.RuntimePermission "accessClassInPackage.sun.security.util";
+    permission java.security.SecurityPermission "putProviderProperty.JdkSASL";
+};
+
+grant codebase "jrt:/jdk.crypto.mscapi" {
+    permission au.zeus.jdk.authorization.guards.NativeAccessPermission "sun.security.mscapi.SunMSCAPI$1", "loadLibrary";
+    permission java.lang.RuntimePermission "accessClassInPackage.sun.security.util";
+    permission java.lang.RuntimePermission "loadLibrary.sunmscapi";
+    permission java.security.SecurityPermission "putProviderProperty.SunMSCAPI";
+};
+
+grant codebase "jrt:/java.xml.crypto" {
+    permission java.security.SecurityPermission "putProviderProperty.XMLDSig";
+};
+
+grant codebase "jrt:/jdk.httpserver" {
+    permission java.io.FilePermission "<<ALL FILES>>", "read";
 };
