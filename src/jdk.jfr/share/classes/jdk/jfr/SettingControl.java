@@ -34,7 +34,7 @@ import jdk.jfr.internal.settings.JDKSettingControl;
 /**
  * Base class to extend to create setting controls.
  * <p>
- * The following example shows a naive implementation of a setting control for
+ * The following example shows an implementation of a setting control for
  * regular expressions:
  *
  * {@snippet class="Snippets" region="SettingControlOverview1"}

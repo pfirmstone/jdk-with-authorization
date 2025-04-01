@@ -93,7 +93,7 @@ public final class ThrottleSetting extends JDKSettingControl {
             // if unit is less than 1 s, scale samples
             if (unit.nanos < SECONDS.nanos) {
                 long perSecond = SECONDS.nanos / unit.nanos;
-                samples *= Utils.multiplyOverflow(samples, perSecond, Long.MAX_VALUE);
+                samples = Utils.multiplyOverflow(samples, perSecond, Long.MAX_VALUE);
             }
             eventType.setThrottle(samples, millis);
             this.value = value;

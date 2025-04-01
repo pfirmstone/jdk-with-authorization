@@ -48,7 +48,6 @@ import sun.security.action.GetPropertyAction;
 import sun.util.calendar.ZoneInfo;
 import sun.util.calendar.ZoneInfoFile;
 import sun.util.locale.provider.TimeZoneNameUtility;
-import sun.util.logging.PlatformLogger;
 
 /**
  * {@code TimeZone} represents a time zone offset, and also figures out daylight
@@ -600,9 +599,9 @@ public abstract class TimeZone implements Serializable, Cloneable {
 
     private static TimeZone getTimeZone(String ID, boolean fallback) {
         if (ZoneId.SHORT_IDS.containsKey(ID)) {
-            PlatformLogger.getLogger(TimeZone.class.getName())
-                .warning("Use of the three-letter time zone ID \"%s\" is deprecated and it will be removed in a future release"
-                    .formatted(ID));
+            System.err.printf(
+                "WARNING: Use of the three-letter time zone ID \"%s\" is deprecated and it will be removed in a future release%n",
+                ID);
         }
         TimeZone tz = ZoneInfo.getTimeZone(ID);
         if (tz == null) {

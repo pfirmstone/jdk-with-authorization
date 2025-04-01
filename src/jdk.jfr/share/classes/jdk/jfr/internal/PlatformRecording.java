@@ -60,6 +60,7 @@ import jdk.jfr.FlightRecorderListener;
 import jdk.jfr.Recording;
 import jdk.jfr.RecordingState;
 import jdk.jfr.internal.SecuritySupport.SafePath;
+import jdk.jfr.internal.query.Report;
 import jdk.jfr.internal.util.Utils;
 import jdk.jfr.internal.util.ValueFormatter;
 
@@ -87,6 +88,7 @@ public final class PlatformRecording implements AutoCloseable {
     private RecordingState state = RecordingState.NEW;
     private long size;
     private final LinkedList<RepositoryChunk> chunks = new LinkedList<>();
+    private final List<Report> reports = new ArrayList<>();
     private volatile Recording recording;
     private TimerTask stopTask;
     private TimerTask startTask;
@@ -184,7 +186,10 @@ public final class PlatformRecording implements AutoCloseable {
                 dumpStopped(dest);
                 Logger.log(LogTag.JFR, LogLevel.INFO, "Wrote recording \"" + getName() + "\" (" + getId() + ") to " + dest.getRealPathText());
                 notifyIfStateChanged(newState, oldState);
-                close(); // remove if copied out
+                boolean reportOnExit = recorder.isInShutDown() && !reports.isEmpty();
+                if (!reportOnExit) {
+                    close(); // remove if copied out, unless we are in shutdown and there are reports to report.
+                }
             } catch(IOException e) {
                 Logger.log(LogTag.JFR, LogLevel.ERROR,
                            "Unable to complete I/O operation when dumping recording \"" + getName() + "\" (" + getId() + ")");
@@ -948,5 +953,13 @@ public final class PlatformRecording implements AutoCloseable {
                 }
             }
         }
+    }
+
+    public void addReport(Report report) {
+       reports.add(report);
+    }
+
+    public List<Report> getReports() {
+        return reports;
     }
 }

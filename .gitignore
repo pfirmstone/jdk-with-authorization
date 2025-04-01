@@ -26,3 +26,4 @@ config.log
 configure.log
 .vs/*
 *.vsidx
+**/core.[0-9]*

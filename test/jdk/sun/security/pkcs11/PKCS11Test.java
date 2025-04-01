@@ -31,7 +31,6 @@ import java.io.StringReader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
 import java.security.AlgorithmParameters;
 import java.security.InvalidAlgorithmParameterException;
@@ -64,7 +63,6 @@ import jdk.test.lib.Platform;
 import jdk.test.lib.Utils;
 import jdk.test.lib.artifacts.Artifact;
 import jdk.test.lib.artifacts.ArtifactResolver;
-import jdk.test.lib.artifacts.ArtifactResolverException;
 import jtreg.SkippedException;
 
 public abstract class PKCS11Test {
@@ -84,7 +82,7 @@ public abstract class PKCS11Test {
 
     // Version of the NSS artifact. This coincides with the version of
     // the NSS version
-    private static final String NSS_BUNDLE_VERSION = "3.101";
+    private static final String NSS_BUNDLE_VERSION = "3.107";
     private static final String NSSLIB = "jpg.tests.jdk.nsslib";
 
     static double nss_version = -1;
@@ -255,10 +253,6 @@ public abstract class PKCS11Test {
 
     static String getNSSLibDir(String library) throws Exception {
         Path libPath = getNSSLibPath(library);
-        if (libPath == null) {
-            return null;
-        }
-
         String libDir = String.valueOf(libPath.getParent()) + File.separatorChar;
         System.out.println("nssLibDir: " + libDir);
         System.setProperty("pkcs11test.nss.libdir", libDir);
@@ -272,12 +266,7 @@ public abstract class PKCS11Test {
     static Path getNSSLibPath(String library) throws Exception {
         String osid = getOsId();
         Path libraryName = Path.of(System.mapLibraryName(library));
-        Path nssLibPath = fetchNssLib(osid, libraryName);
-        if (nssLibPath == null) {
-            throw new SkippedException("Warning: unsupported OS: " + osid
-                    + ", please initialize NSS library location, skipping test");
-        }
-        return nssLibPath;
+        return fetchNssLib(osid, libraryName);
     }
 
     private static String getOsId() {
@@ -738,7 +727,7 @@ public abstract class PKCS11Test {
         return data;
     }
 
-    private static Path fetchNssLib(String osId, Path libraryName) {
+    private static Path fetchNssLib(String osId, Path libraryName) throws IOException {
         switch (osId) {
             case "Windows-amd64-64":
                 return fetchNssLib(WINDOWS_X64.class, libraryName);
@@ -763,7 +752,7 @@ public abstract class PKCS11Test {
                     return fetchNssLib(LINUX_AARCH64.class, libraryName);
                 }
             default:
-                return null;
+                throw new SkippedException("Unsupported OS: " + osId);
         }
     }
 

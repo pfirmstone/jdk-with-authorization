@@ -63,6 +63,7 @@ public abstract class AbstractEventStream implements EventStream {
     private final List<Configuration> configurations;
     private final ParserState parserState = new ParserState();
     private volatile boolean closeOnComplete = true;
+    private volatile boolean waitForChunks = true;
     private Dispatcher dispatcher;
     private boolean daemon = false;
 
@@ -114,6 +115,14 @@ public abstract class AbstractEventStream implements EventStream {
     // the resource is cleaned up when the process() call has finished.
     public final void setCloseOnComplete(boolean closeOnComplete) {
         this.closeOnComplete = closeOnComplete;
+    }
+
+    public final void setWaitForChunks(boolean wait) {
+        waitForChunks = wait;
+    }
+
+    protected final boolean getWaitForChunks() {
+        return waitForChunks;
     }
 
     @Override

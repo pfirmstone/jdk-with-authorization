@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2001, 2023, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2001, 2025, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -30,6 +30,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.TreeSet;
 
 import jdk.internal.access.JavaLangAccess;
 import jdk.internal.access.SharedSecrets;
@@ -53,10 +54,19 @@ public class Reflection {
     public static final Set<String> ALL_MEMBERS = Set.of(WILDCARD);
 
     static {
+        // Set.of must be avoided during VM bootstrap for sets containing more
+        // than two elements.  ImmutableCollections.SetN calls String.hashCode
+        // prior to VM init level 1 and must be avoided, the same for any 
+        // hash based Set, hence the use of TreeSet here.
+        Set<String> set = new TreeSet<>();
+        set.add("classLoader");
+        set.add("classData");
+        set.add("modifiers");
+        set.add("primitive");
         fieldFilterMap = Map.of(
             Reflection.class, ALL_MEMBERS,
             AccessibleObject.class, ALL_MEMBERS,
-            Class.class, Set.of("classLoader", "classData"),
+            Class.class, set,
             ClassLoader.class, ALL_MEMBERS,
             Constructor.class, ALL_MEMBERS,
             Field.class, ALL_MEMBERS,

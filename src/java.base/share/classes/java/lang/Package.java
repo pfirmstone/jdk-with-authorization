@@ -355,7 +355,6 @@ public final class Package extends NamedPackage implements java.lang.reflect.Ann
      */
     @CallerSensitive
     @Deprecated(since="9")
-    @SuppressWarnings("deprecation")
     public static Package getPackage(String name) {
         ClassLoader l = ClassLoader.getClassLoader(Reflection.getCallerClass());
         return l != null ? l.getPackage(name) : BootLoader.getDefinedPackage(name);
