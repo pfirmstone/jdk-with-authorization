@@ -44,9 +44,9 @@ class ContextCache {
         // Time of 3000L required to pass jtreg:test/langtools/tools/javac/Paths/MineField.java
         // Note, weakly referenced value causes collection of Key value tuple,
         // if there are contexts with identical hash only one will be collected.
-//        ConcurrentMap<AccessControlContext.ContextKey,AccessControlContext> CONTEXTS 
-//            = RC.concurrentMap(new ConcurrentSkipListMap<>(), Ref.STRONG, Ref.WEAK, 2000L, 2000L);
-//        AccessControlContext.initCache(CONTEXTS);
+        ConcurrentMap<AccessControlContext.ContextKey,AccessControlContext> CONTEXTS 
+            = RC.concurrentMap(new ConcurrentSkipListMap<>(), Ref.STRONG, Ref.WEAK, 2000L, 2000L);
+        AccessControlContext.initCache(CONTEXTS);
     }
     
 }
