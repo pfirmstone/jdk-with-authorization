@@ -54,6 +54,7 @@ import au.zeus.jdk.authorization.policy.ConcurrentPolicyFile;
 import au.zeus.jdk.concurrent.RC;
 import au.zeus.jdk.concurrent.Ref;
 import au.zeus.jdk.concurrent.Referrer;
+import java.lang.ScopedValue.CallableOp;
 import java.util.concurrent.Executors;
 
 /**
@@ -82,13 +83,7 @@ public class CombinerSecurityManager
 extends SecurityManager implements CachingSecurityManager {
     private static Logger logger;
     private static final Object loggerLock = new Object();
-    private static final ThreadLocal<Integer> TRUSTED_RECURSIVE_CALL = 
-            new ThreadLocal<Integer>(){
-                @Override 
-                protected Integer initialValue() {
-                    return 0;
-                }
-            };
+    private static final ScopedValue<Integer> TRUSTED_RECURSIVE_CALL = ScopedValue.newInstance();
 
     /**
      * Logger is lazily loaded, the SecurityManager can be loaded prior to
@@ -216,7 +211,7 @@ extends SecurityManager implements CachingSecurityManager {
      */
     @Override
     public void checkPermission(Permission perm) throws SecurityException {
-        Integer call = TRUSTED_RECURSIVE_CALL.get();
+        Integer call = TRUSTED_RECURSIVE_CALL.isBound() ? TRUSTED_RECURSIVE_CALL.get() : null;
         if (call != null && call > 7) {
             /* This is a recursive permission check, there's a permission on
              * the stack that requires privilege to determine whether it is implied.
@@ -258,7 +253,8 @@ extends SecurityManager implements CachingSecurityManager {
 		|| SMConstructorContext.equals(executionContext) 
 		)
             ) return; // prevents endless loop in debug.
-        Integer count = TRUSTED_RECURSIVE_CALL.get();
+        Integer count = TRUSTED_RECURSIVE_CALL.isBound() ? TRUSTED_RECURSIVE_CALL.get() : null;
+        if (count == null) count = Integer.valueOf(0);
         // Checks if Permission has already been checked for this context.
         NavigableSet<Permission> checkedPerms = checked.get(context);
         if (checkedPerms == null){
@@ -284,13 +280,13 @@ extends SecurityManager implements CachingSecurityManager {
                     new ConcurrentSkipListSet<Referrer<Permission>>(permCompare);
             checkedPerms = RC.navigableSet(internal, Ref.TIME, 10000L);
             final NavigableSet<Permission> perms = checkedPerms;
-            NavigableSet<Permission> existed = null;
-            TRUSTED_RECURSIVE_CALL.set(count + 1);
-            try {    
-                existed = checked.putIfAbsent(context, perms);
-            } finally {
-                TRUSTED_RECURSIVE_CALL.set(count);
-            }
+            NavigableSet<Permission> existed = ScopedValue.where(TRUSTED_RECURSIVE_CALL, count + 1).call(
+                new CallableOp<NavigableSet<Permission>, SecurityException>(){
+                    @Override
+                    public NavigableSet<Permission> call() throws SecurityException {
+                        return checked.putIfAbsent(context, perms);
+                    }
+                });
             if (existed != null) checkedPerms = existed;
         }
         if (checkedPerms.contains(perm)) return; // don't need to check again.
@@ -299,19 +295,19 @@ extends SecurityManager implements CachingSecurityManager {
         if (delegateContext == null ) {
             final AccessControlContext finalExecutionContext = executionContext;
             // Create a new AccessControlContext with the DelegateDomainCombiner
-            TRUSTED_RECURSIVE_CALL.set(count + 1);
-            try {
-                delegateContext = AccessController.doPrivileged( 
+            delegateContext = ScopedValue.where(TRUSTED_RECURSIVE_CALL, count + 1).call(
+            new CallableOp<AccessControlContext, SecurityException>(){
+                @Override
+                public AccessControlContext call() throws SecurityException {
+                    return AccessController.doPrivileged( 
                         new PrivilegedAction<AccessControlContext>(){
                             public AccessControlContext run() {
                                 return AccessControlContext.build(finalExecutionContext, dc);
                             }
                         }
                     );
-            } finally {
-                TRUSTED_RECURSIVE_CALL.set(count);
-            }
-            
+                }
+            });
             // Optimise the delegateContext, this runs the DelegateDomainCombiner
             // and returns the AccessControlContext.
             // This is a mutator method, the delegateContext returned
@@ -320,12 +316,15 @@ extends SecurityManager implements CachingSecurityManager {
             // return it.
             delegateContext = AccessController.doPrivileged(action, delegateContext);
             final AccessControlContext delContext = delegateContext;
-            TRUSTED_RECURSIVE_CALL.set( count + 1);
-            try{ 
-                contextCache.putIfAbsent(finalExecutionContext, delContext);
-            } finally {
-                TRUSTED_RECURSIVE_CALL.set(count);
-            }
+            
+            ScopedValue.where(TRUSTED_RECURSIVE_CALL, count + 1).call(
+                new CallableOp<AccessControlContext, SecurityException>(){
+                    @Override
+                    public AccessControlContext call() throws SecurityException {
+                        return contextCache.putIfAbsent(finalExecutionContext, delContext);
+                    }
+                }
+            );
         }
         // Normal execution, same as SecurityManager.
         delegateContext.checkPermission(perm); // Throws SecurityException.
@@ -348,13 +347,17 @@ extends SecurityManager implements CachingSecurityManager {
          * writing to old Set's, while new checks will write to new Sets.
          */
         g.checkGuard(this);
-        Integer count = TRUSTED_RECURSIVE_CALL.get();
-        TRUSTED_RECURSIVE_CALL.set(count + 1);
-        try {
-            checked.clear();
-        } finally {
-            TRUSTED_RECURSIVE_CALL.set(count);
-        }
+        Integer count = TRUSTED_RECURSIVE_CALL.isBound() ? TRUSTED_RECURSIVE_CALL.get() : null;
+        if (count == null) count = Integer.valueOf(0);
+        ScopedValue.where(TRUSTED_RECURSIVE_CALL, count + 1).call(
+            new CallableOp<Boolean, SecurityException>(){
+                @Override
+                public Boolean call() throws SecurityException {
+                    checked.clear();
+                    return true;
+                }
+            }
+        );
     }
     
     // Action retrieves the optimised AccessControlContext.
