@@ -721,20 +721,11 @@ public final class ScopedValue<T> {
     static boolean containsAll(int bitmask, int targetBits) {
         return (bitmask & targetBits) == targetBits;
     }
-
-   /** 
-    * A small fixed-size key-value cache. When a scoped value's get() method
-    * is invoked, we record the result of the lookup in this per-thread cache
-    * for fast access in future.
-    * 
-    * This class is not part of the public API, however it's visibility must
-    * be public in order to ensure proper static class initialization during
-    * VM init phase 2.
-    */
+  
+    // A small fixed-size key-value cache. When a scoped value's get() method
+    // is invoked, we record the result of the lookup in this per-thread cache
+    // for fast access in future.
     private static final class Cache {
-        
-        private Cache(){} //prevent instantiation.
-        
         static final int INDEX_BITS = 4;  // Must be a power of 2
         static final int TABLE_SIZE = 1 << INDEX_BITS;
         static final int TABLE_MASK = TABLE_SIZE - 1;
