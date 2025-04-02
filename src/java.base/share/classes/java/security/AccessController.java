@@ -461,7 +461,6 @@ public final class AccessController {
         sb.append("jrt:/").append(module.getName()).append("/").append(caller.getName());
         CodeSource cs = null;
         try {
-            URL url = new URI(sb.toString()).toURL();
             cs = new CodeSource(new URI(sb.toString()).toURL(), (CodeSigner[]) null);
         } catch (MalformedURLException | URISyntaxException e){
             //TODO: Debug output
@@ -536,7 +535,6 @@ public final class AccessController {
         sb.append("jrt:/").append(module.getName()).append("/").append(caller.getName());
         CodeSource cs = null;
         try {
-            URL url = new URI(sb.toString()).toURL();
             cs = new CodeSource(new URI(sb.toString()).toURL(), (CodeSigner[]) null);
         } catch (MalformedURLException | URISyntaxException e){
             //TODO: Debug output
