@@ -958,7 +958,6 @@ enum LIR_Code {
       , lir_mul
       , lir_div
       , lir_rem
-      , lir_log10
       , lir_logic_and
       , lir_logic_or
       , lir_logic_xor
@@ -2258,7 +2257,6 @@ class LIR_List: public CompilationResourceObj {
   void sqrt(LIR_Opr from, LIR_Opr to, LIR_Opr tmp)                { append(new LIR_Op1(lir_sqrt, from, to, tmp)); }
   void fmad(LIR_Opr from, LIR_Opr from1, LIR_Opr from2, LIR_Opr to) { append(new LIR_Op3(lir_fmad, from, from1, from2, to)); }
   void fmaf(LIR_Opr from, LIR_Opr from1, LIR_Opr from2, LIR_Opr to) { append(new LIR_Op3(lir_fmaf, from, from1, from2, to)); }
-  void log10 (LIR_Opr from, LIR_Opr to, LIR_Opr tmp)              { append(new LIR_Op2(lir_log10, from, LIR_OprFact::illegalOpr, to, tmp)); }
   void f2hf(LIR_Opr from, LIR_Opr to, LIR_Opr tmp)                { append(new LIR_Op1(lir_f2hf, from, to, tmp)); }
   void hf2f(LIR_Opr from, LIR_Opr to, LIR_Opr tmp)                { append(new LIR_Op1(lir_hf2f, from, to, tmp)); }
 
