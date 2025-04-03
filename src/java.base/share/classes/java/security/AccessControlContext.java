@@ -96,13 +96,13 @@ import sun.security.util.SecurityConstants;
 //@Deprecated(since="17", forRemoval=true)
 public final class AccessControlContext {
 
-    private final ProtectionDomain[] context;
+    private ProtectionDomain[] context;
     // isPrivileged is referenced by the VM - do not remove or change.
-    private final boolean isPrivileged; // context is from privileged act call scope.
+    private boolean isPrivileged; // context is from privileged act call scope.
 
     // Note: This field is directly used by the virtual machine
     // native codes. Don't touch it.
-    private final AccessControlContext privilegedContext;
+    private AccessControlContext privilegedContext;
 
     @SuppressWarnings("removal")
     private final DomainCombiner combiner;
