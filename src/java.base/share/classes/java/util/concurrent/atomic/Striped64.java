@@ -43,6 +43,8 @@ import java.util.Arrays;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.function.DoubleBinaryOperator;
 import java.util.function.LongBinaryOperator;
+import jdk.internal.access.SharedSecrets;
+import jdk.internal.access.JavaUtilConcurrentTLRAccess;
 
 /**
  * A package-local class holding common representation and mechanics
@@ -188,24 +190,18 @@ abstract class Striped64 extends Number {
     }
 
     /**
-     * Returns the probe value for the current thread.
-     * Duplicated from ThreadLocalRandom because of packaging restrictions.
+     * Returns the ThreadLocalRandom probe value for the current carrier thread.
      */
     static final int getProbe() {
-        return (int) THREAD_PROBE.get(Thread.currentThread());
+        return TLR.getThreadLocalRandomProbe();
     }
 
     /**
      * Pseudo-randomly advances and records the given probe value for the
-     * given thread.
-     * Duplicated from ThreadLocalRandom because of packaging restrictions.
+     * given carrier thread.
      */
     static final int advanceProbe(int probe) {
-        probe ^= probe << 13;   // xorshift
-        probe ^= probe >>> 17;
-        probe ^= probe << 5;
-        THREAD_PROBE.set(Thread.currentThread(), probe);
-        return probe;
+        return TLR.advanceThreadLocalRandomProbe(probe);
     }
 
     /**
@@ -371,10 +367,12 @@ abstract class Striped64 extends Number {
         }
     }
 
+    private static final JavaUtilConcurrentTLRAccess TLR =
+        SharedSecrets.getJavaUtilConcurrentTLRAccess();
+
     // VarHandle mechanics
     private static final VarHandle BASE;
     private static final VarHandle CELLSBUSY;
-    private static final VarHandle THREAD_PROBE;
     static {
         MethodHandles.Lookup l1 = MethodHandles.lookup();
 
