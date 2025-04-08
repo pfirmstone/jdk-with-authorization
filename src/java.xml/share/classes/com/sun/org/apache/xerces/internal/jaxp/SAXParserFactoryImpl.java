@@ -21,6 +21,7 @@
 package com.sun.org.apache.xerces.internal.jaxp;
 
 import com.sun.org.apache.xerces.internal.impl.Constants;
+import com.sun.org.apache.xerces.internal.util.SAXMessageFormatter;
 import java.util.HashMap;
 import java.util.Map;
 import javax.xml.XMLConstants;
