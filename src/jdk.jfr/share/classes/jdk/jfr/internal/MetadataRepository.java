@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2016, 2025, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -179,20 +179,6 @@ public final class MetadataRepository {
             Utils.ensureInitialized(eventClass);
         }
         return JVMSupport.getConfiguration(eventClass);
-    }
-
-    private EventConfiguration newEventConfiguration(EventType eventType, EventControl ec) {
-        try {
-            if (cachedEventConfigurationConstructor == null) {
-                var argClasses = new Class<?>[] { EventType.class, EventControl.class};
-                Constructor<EventConfiguration> c = EventConfiguration.class.getDeclaredConstructor(argClasses);
-                SecuritySupport.setAccessible(c);
-                cachedEventConfigurationConstructor = c;
-            }
-            return cachedEventConfigurationConstructor.newInstance(eventType, ec);
-        } catch (NoSuchMethodException | SecurityException | InstantiationException | IllegalAccessException | IllegalArgumentException | InvocationTargetException e) {
-            throw new InternalError(e);
-        }
     }
 
     private EventConfiguration makeConfiguration(Class<? extends jdk.internal.event.Event> eventClass, PlatformEventType pEventType, List<AnnotationElement> dynamicAnnotations, List<ValueDescriptor> dynamicFields) throws InternalError {
