@@ -640,6 +640,7 @@ public class ParameterAnnotations extends TestRunner {
         }
 
         Task.Result result = new JavacTask(tb)
+                .processors(new TestAP())
                 .options("-classpath", classes.toString(),
                         "-processorpath", System.getProperty("test.classes"),
                         "-processor", TestAP.class.getName(),
