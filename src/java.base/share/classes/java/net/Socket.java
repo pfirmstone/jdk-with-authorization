@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 1995, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 1995, 2025, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -455,10 +455,6 @@ public class Socket implements java.io.Closeable {
      * In other words, it is equivalent to specifying an address of the
      * loopback interface. </p>
      * <p>
-     * If the stream argument is {@code true}, this creates a
-     * stream socket. If the stream argument is {@code false}, it
-     * creates a datagram socket.
-     * <p>
      * If the application has specified a {@linkplain SocketImplFactory client
      * socket implementation factory}, that factory's
      * {@linkplain SocketImplFactory#createSocketImpl() createSocketImpl}
@@ -474,16 +470,17 @@ public class Socket implements java.io.Closeable {
      *
      * @param      host     the host name, or {@code null} for the loopback address.
      * @param      port     the port number.
-     * @param      stream   a {@code boolean} indicating whether this is
-     *                      a stream socket or a datagram socket.
+     * @param      stream   must be true, false is not allowed.
      * @throws     IOException  if an I/O error occurs when creating the socket.
      * @throws     SecurityException  if a security manager exists and its
      *             {@code checkConnect} method doesn't allow the operation.
-     * @throws     IllegalArgumentException if the port parameter is outside
-     *             the specified range of valid port values, which is between
-     *             0 and 65535, inclusive.
+     * @throws     IllegalArgumentException if the stream parameter is {@code false}
+     *             or if the port parameter is outside the specified range of valid
+     *             port values, which is between 0 and 65535, inclusive.
      * @see        SecurityManager#checkConnect
-     * @deprecated Use {@link DatagramSocket} instead for UDP transport.
+     * @deprecated The {@code stream} parameter provided a way in early JDK releases
+     *             to create a {@code Socket} that used a datagram socket. This feature
+     *             no longer exists. Instead use {@link DatagramSocket} for datagram sockets.
      */
     @Deprecated(forRemoval = true, since = "1.1")
     @SuppressWarnings("this-escape")
@@ -497,10 +494,6 @@ public class Socket implements java.io.Closeable {
      * Creates a socket and connects it to the specified port number at
      * the specified IP address.
      * <p>
-     * If the stream argument is {@code true}, this creates a
-     * stream socket. If the stream argument is {@code false}, it
-     * creates a datagram socket.
-     * <p>
      * If the application has specified a {@linkplain SocketImplFactory client
      * socket implementation factory}, that factory's
      * {@linkplain SocketImplFactory#createSocketImpl() createSocketImpl}
@@ -512,21 +505,21 @@ public class Socket implements java.io.Closeable {
      * with {@code host.getHostAddress()} and {@code port}
      * as its arguments. This could result in a SecurityException.
      * <p>
-     * If UDP socket is used, TCP/IP related socket options will not apply.
      *
      * @param      host     the IP address.
      * @param      port      the port number.
-     * @param      stream    if {@code true}, create a stream socket;
-     *                       otherwise, create a datagram socket.
+     * @param      stream    must be true, false is not allowed.
      * @throws     IOException  if an I/O error occurs when creating the socket.
      * @throws     SecurityException  if a security manager exists and its
      *             {@code checkConnect} method doesn't allow the operation.
-     * @throws     IllegalArgumentException if the port parameter is outside
-     *             the specified range of valid port values, which is between
-     *             0 and 65535, inclusive.
+     * @throws     IllegalArgumentException if the stream parameter is {@code false}
+     *             or if the port parameter is outside the specified range of valid
+     *             port values, which is between 0 and 65535, inclusive.
      * @throws     NullPointerException if {@code host} is null.
      * @see        SecurityManager#checkConnect
-     * @deprecated Use {@link DatagramSocket} instead for UDP transport.
+     * @deprecated The {@code stream} parameter provided a way in early JDK releases
+     *             to create a {@code Socket} that used a datagram socket. This feature
+     *             no longer exists. Instead use {@link DatagramSocket} for datagram sockets.
      */
     @Deprecated(forRemoval = true, since = "1.1")
     @SuppressWarnings("this-escape")
@@ -547,6 +540,10 @@ public class Socket implements java.io.Closeable {
         throws IOException
     {
         Objects.requireNonNull(address);
+        if (!stream) {
+            throw new IllegalArgumentException(
+                    "Socket constructor does not support creation of datagram sockets");
+        }
         assert address instanceof InetSocketAddress;
 
         // create the SocketImpl and the underlying socket

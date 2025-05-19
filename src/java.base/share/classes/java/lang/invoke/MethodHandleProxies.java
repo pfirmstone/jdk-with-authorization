@@ -37,12 +37,10 @@ import java.security.AccessController;
 import java.security.PrivilegedAction;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
-import java.util.WeakHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Stream;
 
@@ -60,6 +58,7 @@ import jdk.internal.reflect.CallerSensitive;
 import jdk.internal.reflect.Reflection;
 import jdk.internal.util.ClassFileDumper;
 import sun.reflect.misc.ReflectUtil;
+import jdk.internal.util.ReferencedKeySet;
 
 import static java.lang.constant.ConstantDescs.*;
 import static java.lang.invoke.MethodHandleStatics.*;
@@ -221,7 +220,7 @@ public final class MethodHandleProxies {
     private static final ClassFileDumper DUMPER = ClassFileDumper.getInstance(
             "jdk.invoke.MethodHandleProxies.dumpClassFiles", "DUMP_MH_PROXY_CLASSFILES");
 
-    private static final Set<Class<?>> WRAPPER_TYPES = Collections.newSetFromMap(new WeakHashMap<>());
+    private static final Set<Class<?>> WRAPPER_TYPES = ReferencedKeySet.create(false, ReferencedKeySet.concurrentHashMapSupplier());
     private static final ClassValue<WeakReferenceHolder<Class<?>>> PROXIES = new ClassValue<>() {
         @Override
         protected WeakReferenceHolder<Class<?>> computeValue(Class<?> intfc) {

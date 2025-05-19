@@ -49,10 +49,12 @@ class UnixFileAttributeViews {
         public BasicFileAttributes readAttributes() throws IOException {
             file.checkRead();
             try {
-                 UnixFileAttributes attrs =
-                     UnixFileAttributes.get(file, followLinks);
+                 UnixFileAttributes attrs = UnixFileAttributes.get(file, followLinks);
                  return attrs.asBasicFileAttributes();
             } catch (UnixException x) {
+                if (x.errno() == ENOTDIR) {
+                    x.setError(ENOENT);
+                }
                 x.rethrowAsIOException(file);
                 return null;    // keep compiler happy
             }
@@ -232,6 +234,9 @@ class UnixFileAttributeViews {
             try {
                  return UnixFileAttributes.get(file, followLinks);
             } catch (UnixException x) {
+                if (x.errno() == ENOTDIR) {
+                    x.setError(ENOENT);
+                }
                 x.rethrowAsIOException(file);
                 return null;    // keep compiler happy
             }

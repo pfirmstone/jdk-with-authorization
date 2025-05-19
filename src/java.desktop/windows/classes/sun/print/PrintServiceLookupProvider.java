@@ -45,7 +45,7 @@ import javax.print.attribute.standard.PrinterName;
 
 import sun.awt.util.ThreadGroupUtils;
 
-public class PrintServiceLookupProvider extends PrintServiceLookup {
+public final class PrintServiceLookupProvider extends PrintServiceLookup {
 
     private PrintService defaultPrintService;
     private PrintService[] printServices; /* includes the default printer */
@@ -118,6 +118,7 @@ public class PrintServiceLookupProvider extends PrintServiceLookup {
      * This isn't required by the API and there's a risk doing this will
      * lead people to assume its guaranteed.
      */
+    @Override
     public synchronized PrintService[] getPrintServices() {
         @SuppressWarnings("removal")
         SecurityManager security = System.getSecurityManager();
@@ -217,6 +218,7 @@ public class PrintServiceLookupProvider extends PrintServiceLookup {
         return true;
     }
 
+    @Override
     public PrintService[] getPrintServices(DocFlavor flavor,
                                            AttributeSet attributes) {
 
@@ -283,6 +285,7 @@ public class PrintServiceLookupProvider extends PrintServiceLookup {
     /*
      * return empty array as don't support multi docs
      */
+    @Override
     public MultiDocPrintService[]
         getMultiDocPrintServices(DocFlavor[] flavors,
                                  AttributeSet attributes) {
@@ -295,6 +298,7 @@ public class PrintServiceLookupProvider extends PrintServiceLookup {
     }
 
 
+    @Override
     public synchronized PrintService getDefaultPrintService() {
         @SuppressWarnings("removal")
         SecurityManager security = System.getSecurityManager();

@@ -41,8 +41,6 @@ import java.util.Map;
 
 import sun.awt.X11.XToolkit;
 import sun.java2d.SunGraphicsEnvironment;
-import sun.java2d.SurfaceManagerFactory;
-import sun.java2d.UnixSurfaceManagerFactory;
 import sun.java2d.xr.XRSurfaceData;
 
 /**
@@ -130,11 +128,7 @@ public final class X11GraphicsEnvironment extends SunGraphicsEnvironment {
 
                 return null;
             }
-         });
-
-        // Install the correct surface manager factory.
-        SurfaceManagerFactory.setInstance(new UnixSurfaceManagerFactory());
-
+        }
     }
 
 
@@ -192,6 +186,7 @@ public final class X11GraphicsEnvironment extends SunGraphicsEnvironment {
      */
     private static native void initDisplay(boolean glxRequested);
 
+    @Override
     protected native int getNumScreens();
 
     private native int getDefaultScreenNum();
@@ -280,6 +275,7 @@ public final class X11GraphicsEnvironment extends SunGraphicsEnvironment {
                 "should not be called in this implementation");
     }
 
+    @Override
     public boolean isDisplayLocal() {
         if (isDisplayLocal == null) {
             SunToolkit.awtLock();

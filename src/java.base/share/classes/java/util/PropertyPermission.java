@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 1997, 2023, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 1997, 2025, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -85,6 +85,7 @@ import sun.security.util.SecurityConstants;
  * @serial exclude
  */
 
+@Deprecated(since="25", forRemoval=true)
 public final class PropertyPermission extends BasicPermission {
 
     /**
@@ -427,6 +428,7 @@ final class PropertyPermissionCollection extends PermissionCollection
      * Key is property name; value is PropertyPermission.
      * Not serialized; see serialization section at end of class.
      */
+    @SuppressWarnings("removal")
     private transient ConcurrentHashMap<String, PropertyPermission> perms;
 
     /**
@@ -458,6 +460,7 @@ final class PropertyPermissionCollection extends PermissionCollection
      *                                object has been marked readonly
      */
     @Override
+    @SuppressWarnings("removal")
     public void add(Permission permission) {
         if (! (permission instanceof PropertyPermission pp))
             throw new IllegalArgumentException("invalid permission: "+
@@ -502,6 +505,7 @@ final class PropertyPermissionCollection extends PermissionCollection
      * the set, false if not.
      */
     @Override
+    @SuppressWarnings("removal")
     public boolean implies(Permission permission) {
         if (! (permission instanceof PropertyPermission pp))
             return false;
@@ -628,6 +632,7 @@ final class PropertyPermissionCollection extends PermissionCollection
      * perms field. Reads in all_allowed.
      */
     @java.io.Serial
+    @SuppressWarnings("removal")
     private void readObject(ObjectInputStream in)
         throws IOException, ClassNotFoundException
     {

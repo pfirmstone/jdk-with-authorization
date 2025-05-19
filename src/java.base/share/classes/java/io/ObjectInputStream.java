@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 1996, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 1996, 2025, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -264,14 +264,6 @@ public class ObjectInputStream
     private static final Object unsharedMarker = new Object();
 
     private static class Caches {
-        /** cache of subclass security audit results */
-        static final ClassValue<Boolean> subclassAudits =
-            new ClassValue<>() {
-                @Override
-                protected Boolean computeValue(Class<?> type) {
-                    return auditSubclass(type);
-                }
-            };
 
         /**
          * Property to permit setting a filter after objects
@@ -3696,7 +3688,7 @@ public class ObjectInputStream
             if (utflen > 0 && utflen < Integer.MAX_VALUE) {
                 // Scan for leading ASCII chars
                 int avail = end - pos;
-                int ascii = JLA.countPositives(buf, pos, Math.min(avail, (int)utflen));
+                int ascii = JLA.uncheckedCountPositives(buf, pos, Math.min(avail, (int)utflen));
                 if (ascii == utflen) {
                     // Complete match, consume the buf[pos ... pos + ascii] range and return.
                     // Modified UTF-8 and ISO-8859-1 are both ASCII-compatible encodings bytes
@@ -3709,7 +3701,7 @@ public class ObjectInputStream
                 // Avoid allocating a StringBuilder if there's enough data in buf and
                 // cbuf is large enough
                 if (avail >= utflen && utflen <= CHAR_BUF_SIZE) {
-                    JLA.inflateBytesToChars(buf, pos, cbuf, 0, ascii);
+                    JLA.uncheckedInflateBytesToChars(buf, pos, cbuf, 0, ascii);
                     pos += ascii;
                     int cbufPos = readUTFSpan(ascii, utflen - ascii);
                     return new String(cbuf, 0, cbufPos);

@@ -54,6 +54,7 @@ public abstract class X11InputMethodDescriptor implements InputMethodDescriptor 
     /**
      * @see java.awt.im.spi.InputMethodDescriptor#getAvailableLocales
      */
+    @Override
     public Locale[] getAvailableLocales() {
         Locale[] locales = {locale};
         return locales;
@@ -62,6 +63,7 @@ public abstract class X11InputMethodDescriptor implements InputMethodDescriptor 
     /**
      * @see java.awt.im.spi.InputMethodDescriptor#hasDynamicLocaleList
      */
+    @Override
     public boolean hasDynamicLocaleList() {
         return false;
     }
@@ -69,6 +71,7 @@ public abstract class X11InputMethodDescriptor implements InputMethodDescriptor 
     /**
      * @see java.awt.im.spi.InputMethodDescriptor#getInputMethodDisplayName
      */
+    @Override
     public synchronized String getInputMethodDisplayName(Locale inputLocale, Locale displayLanguage) {
         // We ignore the input locale.
         // When displaying for the default locale, rely on the localized AWT properties;
@@ -83,6 +86,7 @@ public abstract class X11InputMethodDescriptor implements InputMethodDescriptor 
     /**
      * @see java.awt.im.spi.InputMethodDescriptor#getInputMethodIcon
      */
+    @Override
     public Image getInputMethodIcon(Locale inputLocale) {
         return null;
     }
@@ -90,6 +94,7 @@ public abstract class X11InputMethodDescriptor implements InputMethodDescriptor 
     /**
      * @see java.awt.im.spi.InputMethodDescriptor#createInputMethod
      */
+    @Override
     public abstract InputMethod createInputMethod() throws Exception;
 
     /**

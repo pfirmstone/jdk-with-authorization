@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 1996, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 1996, 2025, Oracle and/or its affiliates. All rights reserved.
  * Copyright (c) 2024, Alibaba Group Holding Limited. All Rights Reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
@@ -176,17 +176,6 @@ public class ObjectOutputStream
     extends OutputStream implements ObjectOutput, ObjectStreamConstants
 {
     private static final JavaLangAccess JLA = SharedSecrets.getJavaLangAccess();
-
-    private static class Caches {
-        /** cache of subclass security audit results */
-        static final ClassValue<Boolean> subclassAudits =
-            new ClassValue<>() {
-                @Override
-                protected Boolean computeValue(Class<?> type) {
-                    return auditSubclass(type);
-                }
-            };
-    }
 
     /** filter stream for handling block data conversion */
     private final BlockDataOutputStream bout;

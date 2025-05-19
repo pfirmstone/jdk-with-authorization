@@ -71,10 +71,12 @@ abstract class XDecoratedPeer extends XWindowPeer {
         return window;
     }
 
+    @Override
     public long getContentWindow() {
         return (content == null) ? window : content.getWindow();
     }
 
+    @Override
     void preInit(XCreateWindowParams params) {
         super.preInit(params);
         winAttr.initialFocus = true;
@@ -98,6 +100,7 @@ abstract class XDecoratedPeer extends XWindowPeer {
         params.add(EVENT_MASK, Long.valueOf(eventMask.longValue() & ~(XConstants.FocusChangeMask | XConstants.KeyPressMask | XConstants.KeyReleaseMask)));
     }
 
+    @Override
     void postInit(XCreateWindowParams params) {
         // The size hints must be set BEFORE mapping the window (see 6895647)
         updateSizeHints(dimensions);
@@ -118,6 +121,7 @@ abstract class XDecoratedPeer extends XWindowPeer {
         focusProxy = createFocusProxy();
     }
 
+    @Override
     void setIconHints(java.util.List<IconInfo> icons) {
         if (!XWM.getWM().setNetWMIcon(this, icons)) {
             if (icons.size() > 0) {
@@ -129,6 +133,7 @@ abstract class XDecoratedPeer extends XWindowPeer {
         }
     }
 
+    @Override
     public void updateMinimumSize() {
         super.updateMinimumSize();
         XToolkit.awtLock();
@@ -180,6 +185,7 @@ abstract class XDecoratedPeer extends XWindowPeer {
         return new XFocusProxyWindow(this);
     }
 
+    @Override
     protected XAtomList getWMProtocols() {
         XAtomList protocols = super.getWMProtocols();
         protocols.add(wm_delete_window);
@@ -187,6 +193,7 @@ abstract class XDecoratedPeer extends XWindowPeer {
         return protocols;
     }
 
+    @Override
     public Graphics getGraphics() {
         AWTAccessor.ComponentAccessor compAccessor = AWTAccessor.getComponentAccessor();
         return getGraphics(content.surfaceData,
@@ -208,6 +215,7 @@ abstract class XDecoratedPeer extends XWindowPeer {
         }
     }
 
+    @Override
     protected String getWMName() {
         if (winAttr.title == null || winAttr.title.trim().isEmpty()) {
             return " ";
@@ -216,6 +224,7 @@ abstract class XDecoratedPeer extends XWindowPeer {
         }
     }
 
+    @Override
     void updateWMName() {
         XToolkit.awtLock();
         try {
@@ -235,16 +244,19 @@ abstract class XDecoratedPeer extends XWindowPeer {
 
     // NOTE: This method may be called by privileged threads.
     //       DO NOT INVOKE CLIENT CODE ON THIS THREAD!
+    @Override
     public void handleIconify() {
         postEvent(new WindowEvent((Window)target, WindowEvent.WINDOW_ICONIFIED));
     }
 
     // NOTE: This method may be called by privileged threads.
     //       DO NOT INVOKE CLIENT CODE ON THIS THREAD!
+    @Override
     public void handleDeiconify() {
         postEvent(new WindowEvent((Window)target, WindowEvent.WINDOW_DEICONIFIED));
     }
 
+    @Override
     public void handleFocusEvent(XEvent xev) {
         super.handleFocusEvent(xev);
         XFocusChangeEvent xfe = xev.get_xfocus();
@@ -261,6 +273,7 @@ abstract class XDecoratedPeer extends XWindowPeer {
  *                             I N S E T S   C O D E
  **************************************************************************************/
 
+    @Override
     protected boolean isInitialReshape() {
         return false;
     }
@@ -320,6 +333,7 @@ abstract class XDecoratedPeer extends XWindowPeer {
         }
     }
 
+    @Override
     public void handlePropertyNotify(XEvent xev) {
         super.handlePropertyNotify(xev);
 
@@ -397,6 +411,7 @@ abstract class XDecoratedPeer extends XWindowPeer {
 
     long reparent_serial = 0;
 
+    @Override
     public void handleReparentNotifyEvent(XEvent xev) {
         XReparentEvent  xe = xev.get_xreparent();
         if (insLog.isLoggable(PlatformLogger.Level.FINE)) {
@@ -555,6 +570,7 @@ abstract class XDecoratedPeer extends XWindowPeer {
         return currentInsets;
     }
 
+    @Override
     public Insets getInsets() {
         Insets in = copy(getRealInsets());
         in.top += getMenuBarHeight();
@@ -579,6 +595,7 @@ abstract class XDecoratedPeer extends XWindowPeer {
         updateSizeHints(rec.x, rec.y, rec.width, rec.height);
     }
 
+    @Override
     void updateSizeHints() {
         updateSizeHints(dimensions);
     }
@@ -723,6 +740,7 @@ abstract class XDecoratedPeer extends XWindowPeer {
     /**
      * @see java.awt.peer.ComponentPeer#setBounds
      */
+    @Override
     public void setBounds(int x, int y, int width, int height, int op) {
         // TODO: Rewrite with WindowDimensions
         XToolkit.awtLock();
@@ -744,6 +762,7 @@ abstract class XDecoratedPeer extends XWindowPeer {
     }
 
     boolean no_reparent_artifacts = false;
+    @Override
     public void handleConfigureNotifyEvent(XEvent xev) {
         if (XWM.getWMID() == XWM.UNITY_COMPIZ_WM && !insets_corrected) {
             return;
@@ -940,18 +959,22 @@ abstract class XDecoratedPeer extends XWindowPeer {
         return dimensions.getClientRect();
     }
 
+    @Override
     public Rectangle getBounds() {
         return dimensions.getBounds();
     }
 
+    @Override
     public Dimension getSize() {
         return dimensions.getSize();
     }
 
+    @Override
     public int getX() {
         return dimensions.getLocation().x;
     }
 
+    @Override
     public int getY() {
         return dimensions.getLocation().y;
     }
@@ -960,20 +983,24 @@ abstract class XDecoratedPeer extends XWindowPeer {
         return dimensions.getLocation();
     }
 
+    @Override
     public int getAbsoluteX() {
         // NOTE: returning this peer's location which is shell location
         return dimensions.getScreenBounds().x;
     }
 
+    @Override
     public int getAbsoluteY() {
         // NOTE: returning this peer's location which is shell location
         return dimensions.getScreenBounds().y;
     }
 
+    @Override
     public int getWidth() {
         return getSize().width;
     }
 
+    @Override
     public int getHeight() {
         return getSize().height;
     }
@@ -982,6 +1009,7 @@ abstract class XDecoratedPeer extends XWindowPeer {
         return dimensions;
     }
 
+    @Override
     public Point getLocationOnScreen() {
         XToolkit.awtLock();
         try {
@@ -1004,6 +1032,7 @@ abstract class XDecoratedPeer extends XWindowPeer {
  *              END            OF             I N S E T S   C O D E
  **************************************************************************************/
 
+    @Override
     protected boolean isEventDisabled(XEvent e) {
         switch (e.get_type()) {
             // Do not generate MOVED/RESIZED events since we generate them by ourselves
@@ -1027,6 +1056,7 @@ abstract class XDecoratedPeer extends XWindowPeer {
         return winAttr.functions;
     }
 
+    @Override
     public void setVisible(boolean vis) {
         if (log.isLoggable(PlatformLogger.Level.FINER)) {
             log.finer("Setting {0} to visible {1}", this, Boolean.valueOf(vis));
@@ -1045,6 +1075,7 @@ abstract class XDecoratedPeer extends XWindowPeer {
         }
     }
 
+    @Override
     protected void suppressWmTakeFocus(boolean doSuppress) {
         XAtomList protocols = getWMProtocols();
         if (doSuppress) {
@@ -1055,6 +1086,7 @@ abstract class XDecoratedPeer extends XWindowPeer {
         wm_protocols.setAtomListProperty(this, protocols);
     }
 
+    @Override
     public void dispose() {
         if (content != null) {
             content.destroy();
@@ -1068,6 +1100,7 @@ abstract class XDecoratedPeer extends XWindowPeer {
         super.dispose();
     }
 
+    @Override
     public void handleClientMessage(XEvent xev) {
         super.handleClientMessage(xev);
         XClientMessageEvent cl = xev.get_xclient();
@@ -1106,6 +1139,7 @@ abstract class XDecoratedPeer extends XWindowPeer {
      * Requests focus to this decorated top-level by requesting X input focus
      * to the shell window.
      */
+    @Override
     protected void requestXFocus(long time, boolean timeProvided) {
         // We have proxied focus mechanism - instead of shell the focus is held
         // by "proxy" - invisible mapped window. When we want to set X input focus to
@@ -1202,6 +1236,7 @@ abstract class XDecoratedPeer extends XWindowPeer {
         return Window.Type.POPUP.equals(getWindowType());
     }
 
+    @Override
     public boolean requestWindowFocus(long time, boolean timeProvided) {
         focusLog.fine("Request for decorated window focus");
         // If this is Frame or Dialog we can't assure focus request success - but we still can try
@@ -1262,6 +1297,7 @@ abstract class XDecoratedPeer extends XWindowPeer {
     }
 
     XWindowPeer actualFocusedWindow = null;
+    @Override
     void setActualFocusedWindow(XWindowPeer actualFocusedWindow) {
         synchronized(getStateLock()) {
             this.actualFocusedWindow = actualFocusedWindow;
@@ -1274,6 +1310,7 @@ abstract class XDecoratedPeer extends XWindowPeer {
         setActualFocusedWindow(actualFocusedWindow);
         return requestWindowFocus(time, timeProvided);
     }
+    @Override
     public void handleWindowFocusIn(long serial) {
         if (null == actualFocusedWindow) {
             super.handleWindowFocusIn(serial);
@@ -1306,6 +1343,7 @@ abstract class XDecoratedPeer extends XWindowPeer {
         }
     }
 
+    @Override
     public void handleWindowFocusOut(Window oppositeWindow, long serial) {
         Window actualFocusedWindow = XKeyboardFocusManagerPeer.getInstance().getCurrentFocusedWindow();
 

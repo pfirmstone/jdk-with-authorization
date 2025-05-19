@@ -74,6 +74,7 @@ public final class Win32FontManager extends SunFontManager {
      */
     private static native String getEUDCFontFile();
 
+    @Override
     public TrueTypeFont getEUDCFont() {
         return eudcFont;
     }
@@ -98,6 +99,7 @@ public final class Win32FontManager extends SunFontManager {
      * Whether registerFontFile expects absolute or relative
      * font file names.
      */
+    @Override
     protected boolean useAbsoluteFontFileNames() {
         return false;
     }
@@ -108,6 +110,7 @@ public final class Win32FontManager extends SunFontManager {
      * class reports these back to the GraphicsEnvironment, so these
      * are the componentFileNames of CompositeFonts.
      */
+    @Override
     protected void registerFontFile(String fontFileName, String[] nativeNames,
                                     int fontRank, boolean defer) {
 
@@ -185,6 +188,7 @@ public final class Win32FontManager extends SunFontManager {
                                       preferLocaleFonts,preferPropFonts);
     }
 
+    @Override
     protected void
         populateFontFileNameMap(HashMap<String,String> fontToFileMap,
                                 HashMap<String,String> fontToFamilyNameMap,
@@ -204,6 +208,7 @@ public final class Win32FontManager extends SunFontManager {
                                      familyToFontListMap,
                                  Locale locale);
 
+    @Override
     protected synchronized native String getFontPath(boolean noType1Fonts);
 
     @Override

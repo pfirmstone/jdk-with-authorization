@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 1998, 2022, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 1998, 2025, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -126,6 +126,7 @@ package javax.security.auth;
  * conventions such as reverse domain name notation to avoid name clashes.
  * @since 1.4
  */
+@Deprecated(since="25", forRemoval=true)
 public final class AuthPermission extends
 java.security.BasicPermission {
 

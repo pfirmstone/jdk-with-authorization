@@ -92,6 +92,7 @@ import jdk.jfr.internal.management.EventSettingsModifier;
  *
  */
 @SuppressWarnings("serial")
+@Deprecated(since="25", forRemoval=true)
 public final class FlightRecorderPermission extends java.security.BasicPermission {
 
     // Purpose of InternalAccess is to give classes in jdk.jfr.internal

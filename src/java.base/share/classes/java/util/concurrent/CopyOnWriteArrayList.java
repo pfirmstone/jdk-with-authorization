@@ -35,7 +35,6 @@
 package java.util.concurrent;
 
 import java.lang.invoke.VarHandle;
-import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -57,6 +56,7 @@ import java.util.function.UnaryOperator;
 import java.util.stream.Stream;
 import java.util.stream.StreamSupport;
 import jdk.internal.access.SharedSecrets;
+import jdk.internal.misc.Unsafe;
 import jdk.internal.util.ArraysSupport;
 
 /**
@@ -2095,21 +2095,12 @@ public class CopyOnWriteArrayList<E>
 
     /** Initializes the lock; for use when deserializing or cloning. */
     private void resetLock() {
-        @SuppressWarnings("removal")
-        Field lockField = java.security.AccessController.doPrivileged(
-            (java.security.PrivilegedAction<Field>) () -> {
-                try {
-                    Field f = CopyOnWriteArrayList.class
-                        .getDeclaredField("lock");
-                    f.setAccessible(true);
-                    return f;
-                } catch (ReflectiveOperationException e) {
-                    throw new Error(e);
-                }});
-        try {
-            lockField.set(this, new Object());
-        } catch (IllegalAccessException e) {
-            throw new Error(e);
-        }
+	// Note: originally reflection was used to set this field from a privileged action.
+        final Unsafe U = Unsafe.getUnsafe();
+        U.putReference(
+            this,
+            U.objectFieldOffset(CopyOnWriteArrayList.class, "lock"),
+            new Object()
+        );
     }
 }

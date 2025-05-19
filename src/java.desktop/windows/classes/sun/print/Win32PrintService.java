@@ -78,7 +78,7 @@ import javax.print.attribute.standard.SheetCollate;
 import javax.print.event.PrintServiceAttributeListener;
 import sun.awt.windows.WPrinterJob;
 
-public class Win32PrintService implements PrintService, AttributeUpdater,
+public final class Win32PrintService implements PrintService, AttributeUpdater,
                                           SunPrinterJobService {
 
     public static MediaSize[] predefMedia = Win32MediaSize.getPredefMedia();
@@ -242,6 +242,7 @@ public class Win32PrintService implements PrintService, AttributeUpdater,
         isInvalid = true;
     }
 
+    @Override
     public String getName() {
         return printer;
     }
@@ -857,6 +858,7 @@ public class Win32PrintService implements PrintService, AttributeUpdater,
         return false;
     }
 
+    @Override
     public DocPrintJob createPrintJob() {
       @SuppressWarnings("removal")
       SecurityManager security = System.getSecurityManager();
@@ -873,6 +875,7 @@ public class Win32PrintService implements PrintService, AttributeUpdater,
         return attrs;
     }
 
+    @Override
     public PrintServiceAttributeSet getUpdatedAttributes() {
         PrintServiceAttributeSet currSet = getDynamicAttributes();
         if (lastSet == null) {
@@ -901,6 +904,7 @@ public class Win32PrintService implements PrintService, AttributeUpdater,
         }
     }
 
+    @Override
     public void addPrintServiceAttributeListener(PrintServiceAttributeListener
                                                  listener) {
         synchronized (this) {
@@ -914,6 +918,7 @@ public class Win32PrintService implements PrintService, AttributeUpdater,
         }
     }
 
+    @Override
     public void removePrintServiceAttributeListener(
                                       PrintServiceAttributeListener listener) {
         synchronized (this) {
@@ -928,6 +933,7 @@ public class Win32PrintService implements PrintService, AttributeUpdater,
         }
     }
 
+    @Override
     @SuppressWarnings("unchecked")
     public <T extends PrintServiceAttribute> T
         getAttribute(Class<T> category)
@@ -960,6 +966,7 @@ public class Win32PrintService implements PrintService, AttributeUpdater,
         }
     }
 
+    @Override
     public PrintServiceAttributeSet getAttributes() {
 
         PrintServiceAttributeSet attrs = new  HashPrintServiceAttributeSet();
@@ -984,6 +991,7 @@ public class Win32PrintService implements PrintService, AttributeUpdater,
         return AttributeSetUtilities.unmodifiableView(attrs);
     }
 
+    @Override
     public DocFlavor[] getSupportedDocFlavors() {
         int len = supportedFlavors.length;
         DocFlavor[] supportedDocFlavors;
@@ -1003,6 +1011,7 @@ public class Win32PrintService implements PrintService, AttributeUpdater,
         return supportedDocFlavors;
     }
 
+    @Override
     public boolean isDocFlavorSupported(DocFlavor flavor) {
         /* To avoid a native query which may be time-consuming
          * do not invoke native unless postscript support is being queried.
@@ -1022,6 +1031,7 @@ public class Win32PrintService implements PrintService, AttributeUpdater,
         return false;
     }
 
+    @Override
     public Class<?>[] getSupportedAttributeCategories() {
         ArrayList<Class<?>> categList = new ArrayList<>(otherAttrCats.length+3);
         for (int i=0; i < otherAttrCats.length; i++) {
@@ -1054,6 +1064,7 @@ public class Win32PrintService implements PrintService, AttributeUpdater,
         return categList.toArray(new Class<?>[categList.size()]);
     }
 
+    @Override
     public boolean
         isAttributeCategorySupported(Class<? extends Attribute> category)
     {
@@ -1077,6 +1088,7 @@ public class Win32PrintService implements PrintService, AttributeUpdater,
         return false;
     }
 
+    @Override
     public Object
         getDefaultAttributeValue(Class<? extends Attribute> category)
     {
@@ -1272,6 +1284,7 @@ public class Win32PrintService implements PrintService, AttributeUpdater,
         }
     }
 
+    @Override
     public Object
         getSupportedAttributeValues(Class<? extends Attribute> category,
                                     DocFlavor flavor,
@@ -1486,6 +1499,7 @@ public class Win32PrintService implements PrintService, AttributeUpdater,
         }
     }
 
+    @Override
     public boolean isAttributeValueSupported(Attribute attr,
                                              DocFlavor flavor,
                                              AttributeSet attributes) {
@@ -1615,6 +1629,7 @@ public class Win32PrintService implements PrintService, AttributeUpdater,
         return true;
     }
 
+    @Override
     public AttributeSet getUnsupportedAttributes(DocFlavor flavor,
                                                  AttributeSet attributes) {
 
@@ -1651,7 +1666,7 @@ public class Win32PrintService implements PrintService, AttributeUpdater,
 
     private Win32DocumentPropertiesUI docPropertiesUI = null;
 
-    private static class Win32DocumentPropertiesUI
+    private static final class Win32DocumentPropertiesUI
         extends DocumentPropertiesUI {
 
         Win32PrintService service;
@@ -1660,6 +1675,7 @@ public class Win32PrintService implements PrintService, AttributeUpdater,
             service = s;
         }
 
+        @Override
         public PrintRequestAttributeSet
             showDocumentProperties(PrinterJob job,
                                    Window owner,
@@ -1678,7 +1694,7 @@ public class Win32PrintService implements PrintService, AttributeUpdater,
         return new Win32DocumentPropertiesUI(this);
     }
 
-    private static class Win32ServiceUIFactory extends ServiceUIFactory {
+    private static final class Win32ServiceUIFactory extends ServiceUIFactory {
 
         Win32PrintService service;
 
@@ -1686,6 +1702,7 @@ public class Win32PrintService implements PrintService, AttributeUpdater,
             service = s;
         }
 
+        @Override
         public Object getUI(int role, String ui) {
             if (role <= ServiceUIFactory.MAIN_UIROLE) {
                 return null;
@@ -1698,6 +1715,7 @@ public class Win32PrintService implements PrintService, AttributeUpdater,
             throw new IllegalArgumentException("Unsupported role");
         }
 
+        @Override
         public String[] getUIClassNamesForRole(int role) {
 
             if (role <= ServiceUIFactory.MAIN_UIROLE) {
@@ -1714,6 +1732,7 @@ public class Win32PrintService implements PrintService, AttributeUpdater,
 
     private Win32ServiceUIFactory uiFactory = null;
 
+    @Override
     public synchronized ServiceUIFactory getServiceUIFactory() {
         if (uiFactory == null) {
             uiFactory = new Win32ServiceUIFactory(this);
@@ -1721,20 +1740,24 @@ public class Win32PrintService implements PrintService, AttributeUpdater,
         return uiFactory;
     }
 
+    @Override
     public String toString() {
         return "Win32 Printer : " + getName();
     }
 
+    @Override
     public boolean equals(Object obj) {
         return  (obj == this ||
                  (obj instanceof Win32PrintService &&
                   ((Win32PrintService)obj).getName().equals(getName())));
     }
 
+   @Override
    public int hashCode() {
         return this.getClass().hashCode()+getName().hashCode();
     }
 
+    @Override
     public boolean usesClass(Class<?> c) {
         return (c == sun.awt.windows.WPrinterJob.class);
     }
@@ -1756,7 +1779,7 @@ public class Win32PrintService implements PrintService, AttributeUpdater,
 }
 
 @SuppressWarnings("serial") // JDK implementation class
-class Win32MediaSize extends MediaSizeName {
+final class Win32MediaSize extends MediaSizeName {
     private static ArrayList<String> winStringTable = new ArrayList<>();
     private static ArrayList<Win32MediaSize> winEnumTable = new ArrayList<>();
     private static MediaSize[] predefMedia;
@@ -1816,11 +1839,13 @@ class Win32MediaSize extends MediaSizeName {
         return dmPaperID;
     }
 
+    @Override
     protected String[] getStringTable() {
       String[] nameTable = new String[winStringTable.size()];
       return winStringTable.toArray(nameTable);
     }
 
+    @Override
     protected EnumSyntax[] getEnumValueTable() {
       MediaSizeName[] enumTable = new MediaSizeName[winEnumTable.size()];
       return winEnumTable.toArray(enumTable);

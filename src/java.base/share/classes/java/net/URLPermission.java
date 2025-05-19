@@ -155,6 +155,7 @@ import java.util.Objects;
  *      RFC 2732: Format for Literal IPv6 Addresses in URL's
  * @since 1.8
  */
+@Deprecated(since = "25", forRemoval = true)
 public final class URLPermission extends Permission {
 
     @java.io.Serial

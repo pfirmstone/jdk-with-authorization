@@ -60,7 +60,7 @@ import sun.java2d.windows.WindowsFlags;
  * There are some restrictions to which windows we would use this for.
  * @see #createScreenSurface
  */
-public class D3DScreenUpdateManager extends ScreenUpdateManager
+public final class D3DScreenUpdateManager extends ScreenUpdateManager
     implements Runnable
 {
     /**
@@ -411,6 +411,7 @@ public class D3DScreenUpdateManager extends ScreenUpdateManager
         }
     }
 
+    @Override
     public void run() {
         while (!done) {
             synchronized (runLock) {
