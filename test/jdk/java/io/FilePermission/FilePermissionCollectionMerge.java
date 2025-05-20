@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016, 2025, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2016, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -24,21 +24,19 @@
 /**
  *
  * @test
- * @bug 8168127 8354053
+ * @bug 8168127
  * @summary FilePermissionCollection merges incorrectly
- * @modules java.base/java.io:open
+ * @modules java.base/sun.security.util
  * @library /test/lib
  * @build jdk.test.lib.Asserts
  * @run main FilePermissionCollectionMerge
  */
 
+import sun.security.util.FilePermCompat;
 import java.io.FilePermission;
-import java.lang.reflect.Method;
 import java.security.Permissions;
-
 import jdk.test.lib.Asserts;
 
-@SuppressWarnings("removal")
 public class FilePermissionCollectionMerge {
 
     public static void main(String[] args) throws Exception {
@@ -52,22 +50,13 @@ public class FilePermissionCollectionMerge {
         test("/x/-");
     }
 
-    static void test(String arg) throws Exception {
+    static void test(String arg) {
 
-        Method altPathMethod;
-        Method plusAltPathMethod;
-        try {
-            altPathMethod = FilePermission.class.getDeclaredMethod("newPermUsingAltPath");
-            altPathMethod.setAccessible(true);
-            plusAltPathMethod = FilePermission.class.getDeclaredMethod("newPermPlusAltPath");
-            plusAltPathMethod.setAccessible(true);
-        } catch (Exception ex) {
-            System.err.println("File permission compatibility initialization failed");
-            throw ex;
-        }
         FilePermission fp1 = new FilePermission(arg, "read");
-        FilePermission fp2 = (FilePermission) altPathMethod.invoke(fp1);
-        FilePermission fp3 = (FilePermission) plusAltPathMethod.invoke(fp1);
+        FilePermission fp2 = (FilePermission)
+                FilePermCompat.newPermUsingAltPath(fp1);
+        FilePermission fp3 = (FilePermission)
+                FilePermCompat.newPermPlusAltPath(fp1);
 
         // All 3 are different
         Asserts.assertNE(fp1, fp2);
