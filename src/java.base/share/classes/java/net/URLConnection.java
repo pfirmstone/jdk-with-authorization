@@ -838,8 +838,6 @@ public abstract class URLConnection {
      * computing it.
      *
      * @deprecated
-     * Permissions can no longer be used for controlling access to resources
-     * as the Security Manager is no longer supported.
      */
     @Deprecated(since = "25", forRemoval = true)
     public Permission getPermission() throws IOException {

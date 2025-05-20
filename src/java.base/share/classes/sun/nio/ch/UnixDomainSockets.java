@@ -28,6 +28,7 @@ package sun.nio.ch;
 import java.io.FileDescriptor;
 import java.io.IOException;
 import java.net.BindException;
+import java.net.NetPermission;
 import java.net.SocketAddress;
 import java.net.UnixDomainSocketAddress;
 import java.nio.channels.UnsupportedAddressTypeException;
@@ -50,6 +51,10 @@ class UnixDomainSockets {
     private static final boolean supported;
 
     private static final String tempDir = UnixDomainSocketsUtil.getTempDir();
+
+    private static final NetPermission accessUnixDomainSocket =
+            new NetPermission("accessUnixDomainSocket");
+    
 
     static boolean isSupported() {
         return supported;
