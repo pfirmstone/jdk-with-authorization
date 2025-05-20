@@ -31,6 +31,7 @@ import java.nio.file.CopyOption;
 import java.nio.file.DirectoryNotEmptyException;
 import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.LinkOption;
+import java.nio.file.LinkPermission;
 import java.nio.file.StandardCopyOption;
 import java.util.concurrent.ExecutionException;
 
