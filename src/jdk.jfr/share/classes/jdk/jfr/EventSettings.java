@@ -150,6 +150,12 @@ public abstract class EventSettings {
             return FlightRecorder.getFlightRecorder().getInternal();
         }
 
+	@SuppressWarnings("removal")
+        @Override
+        public AccessControlContext getContext(SettingControl settingControl) {
+            return settingControl.getContext();
+        }
+
         @Override
         public EventSettings newEventSettings(EventSettingsModifier esm) {
             return new EventSettings.DelegatedEventSettings(esm);

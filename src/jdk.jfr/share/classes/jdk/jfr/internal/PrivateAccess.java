@@ -60,7 +60,6 @@ public abstract class PrivateAccess {
             // Will trigger
             // EventSettings.<clinit>
             // which will call PrivateAccess.setPrivateAccess
-            new FlightRecorderPermission(SecuritySupport.REGISTER_EVENT);
             SecuritySupport.ensureClassIsInitialized(EventSettings.class);
         }
         return instance;
