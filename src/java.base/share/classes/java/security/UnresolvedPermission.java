@@ -103,8 +103,7 @@ import java.util.Objects;
  * @author Roland Schemers
  * @since 1.2
  *
- * @deprecated This permission cannot be used for controlling access to
- *       resources as the Security Manager is no longer supported.
+ * @deprecated
  */
 
 @Deprecated(since="25", forRemoval=true)
