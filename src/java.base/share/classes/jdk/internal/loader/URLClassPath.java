@@ -599,8 +599,8 @@ public class URLClassPath {
      * Throws exception on failure.
      * Called internally within this file.
      */
+    @SuppressWarnings("removal")
     public static void check(URL url) throws IOException {
-        @SuppressWarnings("removal")
         SecurityManager security = System.getSecurityManager();
         if (security != null) {
             URLConnection urlConnection = url.openConnection();

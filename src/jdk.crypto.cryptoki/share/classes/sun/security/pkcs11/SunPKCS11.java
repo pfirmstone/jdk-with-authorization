@@ -1607,6 +1607,7 @@ public final class SunPKCS11 extends AuthProvider {
      *  where <i>name</i> is the value returned by
      *  this provider's <code>getName</code> method
      */
+    @SuppressWarnings("removal")
     public void login(Subject subject, CallbackHandler handler)
         throws LoginException {
 
@@ -1615,7 +1616,6 @@ public final class SunPKCS11 extends AuthProvider {
         }
 
         // security check
-        @SuppressWarnings("removal")
         SecurityManager sm = System.getSecurityManager();
         if (sm != null) {
             if (debug != null) {
@@ -1739,13 +1739,13 @@ public final class SunPKCS11 extends AuthProvider {
      *  where <i>name</i> is the value returned by
      *  this provider's <code>getName</code> method
      */
+    @SuppressWarnings("removal")
     public void logout() throws LoginException {
         if (!isConfigured()) {
             throw new IllegalStateException("Configuration is required");
         }
 
         // security check
-        @SuppressWarnings("removal")
         SecurityManager sm = System.getSecurityManager();
         if (sm != null) {
             sm.checkPermission
@@ -1831,6 +1831,7 @@ public final class SunPKCS11 extends AuthProvider {
      *  where <i>name</i> is the value returned by
      *  this provider's <code>getName</code> method
      */
+    @SuppressWarnings("removal")
     public void setCallbackHandler(CallbackHandler handler) {
 
         if (!isConfigured()) {
@@ -1838,7 +1839,6 @@ public final class SunPKCS11 extends AuthProvider {
         }
 
         // security check
-        @SuppressWarnings("removal")
         SecurityManager sm = System.getSecurityManager();
         if (sm != null) {
             sm.checkPermission

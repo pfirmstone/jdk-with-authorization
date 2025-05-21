@@ -224,13 +224,13 @@ public abstract class HttpsURLConnection extends HttpURLConnection {
      *         <code>SSLPermission("setHostnameVerifier")</code>
      * @see #getDefaultHostnameVerifier()
      */
+    @SuppressWarnings("removal")
     public static void setDefaultHostnameVerifier(HostnameVerifier v) {
         if (v == null) {
             throw new IllegalArgumentException(
                 "no default HostnameVerifier specified");
         }
 
-        @SuppressWarnings("removal")
         SecurityManager sm = System.getSecurityManager();
         if (sm != null) {
             sm.checkPermission(new SSLPermission("setHostnameVerifier"));

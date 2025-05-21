@@ -349,8 +349,8 @@ public final class ProcessBuilder
      * @see    Runtime#exec(String[],String[],java.io.File)
      * @see    System#getenv()
      */
+    @SuppressWarnings("removal")
     public Map<String,String> environment() {
-        @SuppressWarnings("removal")
         SecurityManager security = System.getSecurityManager();
         if (security != null)
             security.checkPermission(new RuntimePermission("getenv.*"));

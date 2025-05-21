@@ -44,6 +44,7 @@ import sun.util.logging.PlatformLogger;
  */
 public final class LazyLoggers {
 
+    @SuppressWarnings("removal")
     static final RuntimePermission LOGGERFINDER_PERMISSION =
                 new RuntimePermission("loggerFinder");
 

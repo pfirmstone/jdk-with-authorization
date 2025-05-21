@@ -77,8 +77,10 @@ import sun.util.logging.PlatformLogger.ConfigurableBridge.LoggerConfiguration;
  *
  */
 public final class LoggingProviderImpl extends DefaultLoggerFinder {
+    @SuppressWarnings("removal")
     static final RuntimePermission LOGGERFINDER_PERMISSION =
                 new RuntimePermission("loggerFinder");
+    @SuppressWarnings("removal")
     private static final LoggingPermission LOGGING_CONTROL_PERMISSION =
             new LoggingPermission("control", null);
 

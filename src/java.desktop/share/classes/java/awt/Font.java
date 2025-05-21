@@ -1247,6 +1247,7 @@ public class Font implements java.io.Serializable
         return new Font(fontFile, fontFormat, false, null);
     }
 
+    @SuppressWarnings("removal")
     private static File checkFontFile(int fontFormat, File fontFile)
         throws FontFormatException, IOException {
 
@@ -1256,7 +1257,6 @@ public class Font implements java.io.Serializable
             fontFormat != Font.TYPE1_FONT) {
             throw new IllegalArgumentException ("font format not recognized");
         }
-        @SuppressWarnings("removal")
         SecurityManager sm = System.getSecurityManager();
         if (sm != null) {
             FilePermission filePermission =

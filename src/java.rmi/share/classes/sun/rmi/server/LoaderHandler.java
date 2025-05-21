@@ -253,6 +253,7 @@ public final class LoaderHandler {
                     if (sm != null) {
                         Permissions perms = new Permissions();
                         for (int i = 0; i < urls.length; i++) {
+                            @SuppressWarnings("removal")
                             Permission p =
                                 urls[i].openConnection().getPermission();
                             if (p != null) {
@@ -291,6 +292,7 @@ public final class LoaderHandler {
      * path.  The parent classloader of the returned classloader is the
      * context class loader.
      */
+    @SuppressWarnings("removal")
     public static ClassLoader getClassLoader(String codebase)
         throws MalformedURLException
     {
@@ -307,7 +309,6 @@ public final class LoaderHandler {
          * If there is a security manager, the current access control
          * context must have the "getClassLoader" RuntimePermission.
          */
-        @SuppressWarnings("removal")
         SecurityManager sm = System.getSecurityManager();
         if (sm != null) {
             sm.checkPermission(new RuntimePermission("getClassLoader"));
@@ -1041,6 +1042,7 @@ public final class LoaderHandler {
      * loader.  A given permission is only added to the collection if
      * it is not already implied by the collection.
      */
+    @SuppressWarnings("removal")
     private static void addPermissionsForURLs(URL[] urls,
                                              PermissionCollection perms,
                                              boolean forLoader)

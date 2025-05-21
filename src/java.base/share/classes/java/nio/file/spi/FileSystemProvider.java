@@ -119,9 +119,9 @@ public abstract class FileSystemProvider {
 
     // used to avoid recursive loading of installed providers
     private static boolean loadingProviders  = false;
-
+    
+    @SuppressWarnings("removal")
     private static Void checkPermission() {
-        @SuppressWarnings("removal")
         SecurityManager sm = System.getSecurityManager();
         if (sm != null)
             sm.checkPermission(new RuntimePermission("fileSystemProvider"));

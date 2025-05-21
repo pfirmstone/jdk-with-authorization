@@ -56,6 +56,7 @@ public final class LazyCodeSourcePermissionCollection
         this.cs = cs;
     }
 
+    @SuppressWarnings("removal")
     private void ensureAdded() {
         if (!permissionAdded) {
             synchronized(perms) {

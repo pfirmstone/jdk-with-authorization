@@ -124,8 +124,8 @@ class Authenticator {
      * @see SecurityManager#checkPermission
      * @see java.net.NetPermission
      */
-    public static synchronized void setDefault(Authenticator a) {
-        @SuppressWarnings("removal")
+    @SuppressWarnings("removal")
+    public static synchronized void setDefault(Authenticator a) {    
         SecurityManager sm = System.getSecurityManager();
         if (sm != null) {
             NetPermission setDefaultPermission
@@ -155,8 +155,8 @@ class Authenticator {
      * @see SecurityManager#checkPermission
      * @see java.net.NetPermission
      */
+    @SuppressWarnings("removal")
     public static Authenticator getDefault() {
-        @SuppressWarnings("removal")
         SecurityManager sm = System.getSecurityManager();
         if (sm != null) {
             NetPermission requestPermission
@@ -193,6 +193,7 @@ class Authenticator {
      * @see SecurityManager#checkPermission
      * @see java.net.NetPermission
      */
+    @SuppressWarnings("removal")
     public static PasswordAuthentication requestPasswordAuthentication(
                                             InetAddress addr,
                                             int port,
@@ -255,15 +256,14 @@ class Authenticator {
      * @see java.net.NetPermission
      * @since 1.4
      */
+    @SuppressWarnings("removal")
     public static PasswordAuthentication requestPasswordAuthentication(
                                             String host,
                                             InetAddress addr,
                                             int port,
                                             String protocol,
                                             String prompt,
-                                            String scheme) {
-
-        @SuppressWarnings("removal")
+                                            String scheme) {     
         SecurityManager sm = System.getSecurityManager();
         if (sm != null) {
             NetPermission requestPermission
@@ -321,6 +321,7 @@ class Authenticator {
      *
      * @since 1.5
      */
+    @SuppressWarnings("removal")
     public static PasswordAuthentication requestPasswordAuthentication(
                                     String host,
                                     InetAddress addr,
@@ -330,8 +331,7 @@ class Authenticator {
                                     String scheme,
                                     URL url,
                                     RequestorType reqType) {
-
-        @SuppressWarnings("removal")
+       
         SecurityManager sm = System.getSecurityManager();
         if (sm != null) {
             NetPermission requestPermission
@@ -394,6 +394,7 @@ class Authenticator {
      *
      * @since 9
      */
+    @SuppressWarnings("removal")
     public static PasswordAuthentication requestPasswordAuthentication(
                                     Authenticator authenticator,
                                     String host,
@@ -403,9 +404,7 @@ class Authenticator {
                                     String prompt,
                                     String scheme,
                                     URL url,
-                                    RequestorType reqType) {
-
-        @SuppressWarnings("removal")
+                                    RequestorType reqType) {   
         SecurityManager sm = System.getSecurityManager();
         if (sm != null) {
             NetPermission requestPermission

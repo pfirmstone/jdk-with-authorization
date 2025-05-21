@@ -170,13 +170,14 @@ public class ResponseSubscribers {
      * the construction of this PathSubscriber.
      */
     public static class PathSubscriber implements TrustedSubscriber<Path> {
-
+        @SuppressWarnings("removal")
         private static final FilePermission[] EMPTY_FILE_PERMISSIONS = new FilePermission[0];
 
         private final Path file;
         private final OpenOption[] options;
         @SuppressWarnings("removal")
         private final AccessControlContext acc;
+        @SuppressWarnings("removal")
         private final FilePermission[] filePermissions;
         private final boolean isDefaultFS;
         private final CompletableFuture<Path> result = new MinimalFuture<>();
@@ -196,9 +197,9 @@ public class ResponseSubscribers {
          * PathSubscriber. Permission checking and construction are deliberately
          * and tightly co-located.
          */
+        @SuppressWarnings("removal")
         public static PathSubscriber create(Path file,
                                             List<OpenOption> options) {
-            @SuppressWarnings("removal")
             SecurityManager sm = System.getSecurityManager();
             FilePermission filePermission = null;
             if (sm != null) {
@@ -219,6 +220,7 @@ public class ResponseSubscribers {
         }
 
         // pp so handler implementations in the same package can construct
+        @SuppressWarnings("removal")
         /*package-private*/ PathSubscriber(Path file,
                                            List<OpenOption> options,
                                            @SuppressWarnings("removal") AccessControlContext acc,

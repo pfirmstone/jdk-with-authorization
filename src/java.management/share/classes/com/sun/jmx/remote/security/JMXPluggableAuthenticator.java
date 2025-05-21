@@ -84,6 +84,7 @@ public final class JMXPluggableAuthenticator implements JMXAuthenticator {
      * @exception SecurityException if the authentication mechanism cannot be
      *            initialized.
      */
+    @SuppressWarnings("removal")
     public JMXPluggableAuthenticator(Map<?, ?> env) {
 
         String loginConfigName = null;

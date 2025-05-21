@@ -276,8 +276,8 @@ public class Desktop {
         }
     }
 
+    @SuppressWarnings("removal")
     private void checkEventsProcessingPermission() {
-        @SuppressWarnings("removal")
         SecurityManager sm = System.getSecurityManager();
         if (sm != null) {
             sm.checkPermission(new RuntimePermission(
@@ -605,8 +605,8 @@ public class Desktop {
         peer.mail(mailtoURI);
     }
 
+    @SuppressWarnings("removal")
     private void checkExec() throws SecurityException {
-        @SuppressWarnings("removal")
         SecurityManager sm = System.getSecurityManager();
         if (sm != null) {
             sm.checkPermission(new FilePermission("<<ALL FILES>>",
@@ -614,8 +614,8 @@ public class Desktop {
         }
     }
 
+    @SuppressWarnings("removal")
     private void checkRead() throws SecurityException {
-        @SuppressWarnings("removal")
         SecurityManager sm = System.getSecurityManager();
         if (sm != null) {
             sm.checkPermission(new FilePermission("<<ALL FILES>>",

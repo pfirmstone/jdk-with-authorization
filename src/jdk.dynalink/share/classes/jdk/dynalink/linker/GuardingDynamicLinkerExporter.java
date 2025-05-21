@@ -54,7 +54,8 @@ public abstract class GuardingDynamicLinkerExporter implements Supplier<List<Gua
      * linkers for automatic loading into other language runtimes.
      */
     public static final String AUTOLOAD_PERMISSION_NAME = "dynalink.exportLinkersAutomatically";
-
+    
+    @SuppressWarnings("removal")
     private static final Permission AUTOLOAD_PERMISSION = new RuntimePermission(AUTOLOAD_PERMISSION_NAME);
 
     /**

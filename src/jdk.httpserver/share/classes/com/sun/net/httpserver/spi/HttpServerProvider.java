@@ -87,8 +87,8 @@ public abstract class HttpServerProvider {
      *          If a security manager has been installed and it denies
      *          {@link RuntimePermission}{@code ("httpServerProvider")}
      */
+    @SuppressWarnings("removal")
     protected HttpServerProvider() {
-        @SuppressWarnings("removal")
         SecurityManager sm = System.getSecurityManager();
         if (sm != null)
             sm.checkPermission(new RuntimePermission("httpServerProvider"));

@@ -601,8 +601,8 @@ public class RMIClassLoader {
      *
      * @since   1.4
      */
+    @SuppressWarnings("removal")
     public static RMIClassLoaderSpi getDefaultProviderInstance() {
-        @SuppressWarnings("removal")
         SecurityManager sm = System.getSecurityManager();
         if (sm != null) {
             sm.checkPermission(new RuntimePermission("setFactory"));

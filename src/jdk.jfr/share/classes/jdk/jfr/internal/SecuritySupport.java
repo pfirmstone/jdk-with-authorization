@@ -210,16 +210,16 @@ public final class SecuritySupport {
         public T call();
     }
 
+    @SuppressWarnings("removal")
     public static void checkAccessFlightRecorder() throws SecurityException {
-        @SuppressWarnings("removal")
         SecurityManager sm = System.getSecurityManager();
         if (sm != null) {
             sm.checkPermission(new FlightRecorderPermission(ACCESS_FLIGHT_RECORDER));
         }
     }
 
+    @SuppressWarnings("removal")
     public static void checkRegisterPermission() throws SecurityException {
-        @SuppressWarnings("removal")
         SecurityManager sm = System.getSecurityManager();
         if (sm != null) {
             sm.checkPermission(new FlightRecorderPermission(REGISTER_EVENT));
@@ -325,18 +325,22 @@ public final class SecuritySupport {
         Modules.addReads(clazz.getModule(), JFR_MODULE);
     }
 
+    @SuppressWarnings("removal")
     public static void registerEvent(Class<? extends jdk.internal.event.Event> eventClass) {
         doPrivileged(() ->  MetadataRepository.getInstance().register(eventClass), new FlightRecorderPermission(REGISTER_EVENT));
     }
 
+    @SuppressWarnings("removal")
     public static void setProperty(String propertyName, String value) {
         doPrivileged(() -> System.setProperty(propertyName, value), new PropertyPermission(propertyName, "write"));
     }
 
+    @SuppressWarnings("removal")
     static boolean getBooleanProperty(String propertyName) {
         return doPrivilegedWithReturn(() -> Boolean.getBoolean(propertyName), new PropertyPermission(propertyName, "read"));
     }
 
+    @SuppressWarnings("removal")
     private static SafePath getPathInProperty(String prop, String subPath) {
         return doPrivilegedWithReturn(() -> {
             String path = System.getProperty(prop);
@@ -349,6 +353,7 @@ public final class SecuritySupport {
     }
 
     // Called by JVM during initialization of JFR
+    @SuppressWarnings("removal")
     static Thread createRecorderThread(ThreadGroup systemThreadGroup, ClassLoader contextClassLoader) {
         // The thread should have permission = new Permission[0], and not "modifyThreadGroup" and "modifyThread" on the stack,
         // but it's hard circumvent if we are going to pass in system thread group in the constructor
@@ -357,10 +362,12 @@ public final class SecuritySupport {
         return thread;
     }
 
+    @SuppressWarnings("removal")
     static void registerShutdownHook(Thread shutdownHook) {
         doPrivileged(() -> Runtime.getRuntime().addShutdownHook(shutdownHook), new RuntimePermission("shutdownHooks"));
     }
 
+    @SuppressWarnings("removal")
     static void setUncaughtExceptionHandler(Thread thread, Thread.UncaughtExceptionHandler eh) {
         doPrivileged(() -> thread.setUncaughtExceptionHandler(eh), new RuntimePermission("modifyThread"));
     }
@@ -423,10 +430,12 @@ public final class SecuritySupport {
         return doPrivilegedIOWithReturn(() -> Files.newBufferedReader(safePath.toPath()));
     }
 
+    @SuppressWarnings("removal")
     static void setAccessible(Method method) {
         doPrivileged(() -> method.setAccessible(true), new ReflectPermission("suppressAccessChecks"));
     }
 
+    @SuppressWarnings("removal")
     static void setAccessible(Constructor<?> constructor) {
         doPrivileged(() -> constructor.setAccessible(true), new ReflectPermission("suppressAccessChecks"));
     }
@@ -471,6 +480,7 @@ public final class SecuritySupport {
         return doPrivilegedWithReturn(() -> new Thread(runnable, threadName), new Permission[0]);
     }
 
+    @SuppressWarnings("removal")
     public static void setDaemonThread(Thread t, boolean daemon) {
       doPrivileged(()-> t.setDaemon(daemon), new RuntimePermission("modifyThread"));
     }

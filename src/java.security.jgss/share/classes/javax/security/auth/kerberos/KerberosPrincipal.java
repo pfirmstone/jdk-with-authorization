@@ -189,6 +189,7 @@ public final class KerberosPrincipal
      * {@link ServicePermission} as described above is not granted.
      */
 
+    @SuppressWarnings("removal")
     public KerberosPrincipal(String name, int nameType) {
 
         PrincipalName krb5Principal;
@@ -201,7 +202,6 @@ public final class KerberosPrincipal
         }
 
         if (krb5Principal.isRealmDeduced() && !Realm.AUTODEDUCEREALM) {
-            @SuppressWarnings("removal")
             SecurityManager sm = System.getSecurityManager();
             if (sm != null) {
                 try {

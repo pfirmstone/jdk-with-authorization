@@ -127,13 +127,13 @@ public class DataFlavor implements Externalizable, Cloneable {
      * @return the class loaded
      * @throws ClassNotFoundException if class is not found
      */
+    @SuppressWarnings("removal")
     protected static final Class<?> tryToLoadClass(String className,
                                                    ClassLoader fallback)
         throws ClassNotFoundException
     {
         ReflectUtil.checkPackageAccess(className);
         try {
-            @SuppressWarnings("removal")
             SecurityManager sm = System.getSecurityManager();
             if (sm != null) {
                 sm.checkPermission(new RuntimePermission("getClassLoader"));

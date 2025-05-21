@@ -1337,12 +1337,11 @@ public final class Subject implements java.io.Serializable {
                     return i.hasNext();
                 }
 
+                @SuppressWarnings("removal")
                 public E next() {
                     if (which != Subject.PRIV_CREDENTIAL_SET) {
                         return i.next();
                     }
-
-                    @SuppressWarnings("removal")
                     SecurityManager sm = System.getSecurityManager();
                     if (sm != null) {
                         try {
@@ -1814,6 +1813,8 @@ public final class Subject implements java.io.Serializable {
         }
     }
 
+    
+    @SuppressWarnings("removal")
     static final class AuthPermissionHolder {
         static final AuthPermission DO_AS_PERMISSION =
             new AuthPermission("doAs");

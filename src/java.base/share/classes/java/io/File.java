@@ -1907,8 +1907,8 @@ public class File
      * @since  1.6
      * @see FileStore#getTotalSpace
      */
+    @SuppressWarnings("removal")
     public long getTotalSpace() {
-        @SuppressWarnings("removal")
         SecurityManager sm = System.getSecurityManager();
         if (sm != null) {
             sm.checkPermission(new RuntimePermission("getFileSystemAttributes"));
@@ -1951,8 +1951,8 @@ public class File
      * @since  1.6
      * @see FileStore#getUnallocatedSpace
      */
+    @SuppressWarnings("removal")
     public long getFreeSpace() {
-        @SuppressWarnings("removal")
         SecurityManager sm = System.getSecurityManager();
         if (sm != null) {
             sm.checkPermission(new RuntimePermission("getFileSystemAttributes"));
@@ -1998,8 +1998,8 @@ public class File
      * @since  1.6
      * @see FileStore#getUsableSpace
      */
+    @SuppressWarnings("removal")
     public long getUsableSpace() {
-        @SuppressWarnings("removal")
         SecurityManager sm = System.getSecurityManager();
         if (sm != null) {
             sm.checkPermission(new RuntimePermission("getFileSystemAttributes"));

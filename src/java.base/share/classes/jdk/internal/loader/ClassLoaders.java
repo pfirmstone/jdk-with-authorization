@@ -189,6 +189,7 @@ public class ClassLoaders {
         }
 
         @Override
+        @SuppressWarnings("removal")
         protected PermissionCollection getPermissions(CodeSource cs) {
             PermissionCollection perms = super.getPermissions(cs);
             perms.add(new RuntimePermission("exitVM"));

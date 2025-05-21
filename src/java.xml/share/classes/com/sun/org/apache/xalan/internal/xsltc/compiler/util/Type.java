@@ -57,6 +57,7 @@ public abstract class Type implements Constants {
      * Factory method to instantiate object types. Returns a pre-defined
      * instance for "java.lang.Object" and "java.lang.String".
      */
+    @SuppressWarnings("removal")
     public static Type newObjectType(String javaClassName) {
         if (javaClassName == "java.lang.Object") {
             return Type.Object;
@@ -65,8 +66,6 @@ public abstract class Type implements Constants {
             return Type.ObjectString;
         }
         else {
-            //
-            @SuppressWarnings("removal")
             java.security.AccessControlContext acc = java.security.AccessController.getContext();
             acc.checkPermission(new RuntimePermission("getContextClassLoader"));
             return new ObjectType(javaClassName);

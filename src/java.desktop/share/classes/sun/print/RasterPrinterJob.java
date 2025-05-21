@@ -263,6 +263,7 @@ public abstract class RasterPrinterJob extends PrinterJob {
    /**
     * Print to file permission variables.
     */
+    @SuppressWarnings("removal")
     private FilePermission printToFilePermission;
 
     /**
@@ -2563,8 +2564,8 @@ public abstract class RasterPrinterJob extends PrinterJob {
      * specify printing to a file. In that case its probably right
      * to throw a SecurityException if the permission is not granted
      */
+    @SuppressWarnings("removal")
     private void throwPrintToFile() {
-        @SuppressWarnings("removal")
         SecurityManager security = System.getSecurityManager();
         if (security != null) {
             if (printToFilePermission == null) {

@@ -465,6 +465,7 @@ public abstract class HttpURLConnection extends URLConnection {
      *              NetPermission is not granted.
      * @see #getRequestMethod()
      */
+    @SuppressWarnings("removal")
     public void setRequestMethod(String method) throws ProtocolException {
         if (connected) {
             throw new ProtocolException("Can't reset method: already connected");
@@ -473,11 +474,10 @@ public abstract class HttpURLConnection extends URLConnection {
         // experiment w/ new HTTP methods using java.  But it should
         // be placed for security - the request String could be
         // arbitrarily long.
-
+        
         for (int i = 0; i < methods.length; i++) {
             if (methods[i].equals(method)) {
                 if (method.equals("TRACE")) {
-                    @SuppressWarnings("removal")
                     SecurityManager s = System.getSecurityManager();
                     if (s != null) {
                         s.checkPermission(new NetPermission("allowHttpTrace"));

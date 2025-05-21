@@ -1249,6 +1249,7 @@ public final class Locale implements Cloneable, Serializable {
      * @see #getDefault(Locale.Category)
      * @since 1.7
      */
+    @SuppressWarnings("removal")
     public static synchronized void setDefault(Locale.Category category,
         Locale newLocale) {
         if (category == null)
@@ -1256,7 +1257,6 @@ public final class Locale implements Cloneable, Serializable {
         if (newLocale == null)
             throw new NullPointerException("Can't set default locale to NULL");
 
-        @SuppressWarnings("removal")
         SecurityManager sm = System.getSecurityManager();
         if (sm != null) sm.checkPermission(new PropertyPermission
                         ("user.language", "write"));

@@ -88,6 +88,7 @@ public class URLUtil {
         return strForm.toString();
     }
 
+    @SuppressWarnings({"deprecation","removal"})
     public static Permission getConnectPermission(URL url) throws IOException {
         String urlStringLowerCase = url.toString().toLowerCase(Locale.ROOT);
         if (urlStringLowerCase.startsWith("http:") || urlStringLowerCase.startsWith("https:")) {
@@ -96,15 +97,15 @@ public class URLUtil {
             String urlString = url.toString();
             int bangPos = urlString.indexOf("!/");
             urlString = urlString.substring(4, bangPos > -1 ? bangPos : urlString.length());
-            @SuppressWarnings("deprecation")
             URL u = new URL(urlString);
             return getURLConnectPermission(u);
             // If protocol is HTTP or HTTPS than use URLPermission object
         } else {
-            return url.openConnection().getPermission();
+            return  url.openConnection().getPermission();
         }
     }
 
+    @SuppressWarnings("removal")
     private static Permission getURLConnectPermission(URL url) {
         String urlString = url.getProtocol() + "://" + url.getAuthority() + url.getPath();
         return new URLPermission(urlString);

@@ -252,9 +252,9 @@ public final class RequestPublishers {
          * FilePublisher. Permission checking and construction are deliberately
          * and tightly co-located.
          */
+        @SuppressWarnings("removal")
         public static FilePublisher create(Path path)
                 throws FileNotFoundException {
-            @SuppressWarnings("removal")
             SecurityManager sm = System.getSecurityManager();
             FilePermission filePermission = null;
             boolean defaultFS = true;

@@ -257,8 +257,8 @@ final class ProcessHandleImpl implements ProcessHandle {
      *         or {@code null} if the process ID does not exist in the native system.
      * @throws SecurityException if RuntimePermission("manageProcess") is not granted
      */
+    @SuppressWarnings("removal")
     static Optional<ProcessHandle> get(long pid) {
-        @SuppressWarnings("removal")
         SecurityManager sm = System.getSecurityManager();
         if (sm != null) {
             sm.checkPermission(new RuntimePermission("manageProcess"));
@@ -298,8 +298,8 @@ final class ProcessHandleImpl implements ProcessHandle {
      * @return The ProcessHandle for the OS process.
      * @throws SecurityException if RuntimePermission("manageProcess") is not granted
      */
+    @SuppressWarnings("removal")
     public static ProcessHandleImpl current() {
-        @SuppressWarnings("removal")
         SecurityManager sm = System.getSecurityManager();
         if (sm != null) {
             sm.checkPermission(new RuntimePermission("manageProcess"));
@@ -322,8 +322,8 @@ final class ProcessHandleImpl implements ProcessHandle {
      * @throws SecurityException           if permission is not granted by the
      *                                     security policy
      */
+    @SuppressWarnings("removal")
     public Optional<ProcessHandle> parent() {
-        @SuppressWarnings("removal")
         SecurityManager sm = System.getSecurityManager();
         if (sm != null) {
             sm.checkPermission(new RuntimePermission("manageProcess"));
@@ -441,8 +441,8 @@ final class ProcessHandleImpl implements ProcessHandle {
      *            0 for all processes
      * @return a stream of ProcessHandles
      */
+    @SuppressWarnings("removal")
     static Stream<ProcessHandle> children(long pid) {
-        @SuppressWarnings("removal")
         SecurityManager sm = System.getSecurityManager();
         if (sm != null) {
             sm.checkPermission(new RuntimePermission("manageProcess"));
@@ -462,8 +462,8 @@ final class ProcessHandleImpl implements ProcessHandle {
     }
 
     @Override
+    @SuppressWarnings("removal")
     public Stream<ProcessHandle> descendants() {
-        @SuppressWarnings("removal")
         SecurityManager sm = System.getSecurityManager();
         if (sm != null) {
             sm.checkPermission(new RuntimePermission("manageProcess"));

@@ -81,9 +81,8 @@ import java.util.Iterator;
  */
 
 public abstract class CharsetProvider {
-
-    private static Void checkPermission() {
-        @SuppressWarnings("removal")
+    @SuppressWarnings("removal")
+    private static Void checkPermission() {    
         SecurityManager sm = System.getSecurityManager();
         if (sm != null)
             sm.checkPermission(new RuntimePermission("charsetProvider"));

@@ -304,8 +304,8 @@ public class LogManager {
         }
     }
 
+    @SuppressWarnings("removal")
     private static Void checkSubclassPermissions() {
-        @SuppressWarnings("removal")
         final SecurityManager sm = System.getSecurityManager();
         if (sm != null) {
             // These permission will be checked in the LogManager constructor,
@@ -2423,6 +2423,7 @@ public class LogManager {
         }
     }
 
+    @SuppressWarnings("removal")
     static final Permission CONTROL_PERMISSION =
             new LoggingPermission("control", null);
 

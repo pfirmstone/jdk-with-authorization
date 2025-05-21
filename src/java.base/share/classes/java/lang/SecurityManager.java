@@ -339,9 +339,9 @@ public class SecurityManager {
      * @see        #checkPermission(java.security.Permission) checkPermission
      * @see java.lang.RuntimePermission
      */
+    @SuppressWarnings("removal")
     public SecurityManager() {
         synchronized(SecurityManager.class) {
-            @SuppressWarnings("removal")
             SecurityManager sm = System.getSecurityManager();
             if (sm != null) {
                 // ask the currently installed security manager if we
@@ -626,7 +626,8 @@ public class SecurityManager {
      *              the specified status.
      * @see        java.lang.Runtime#exit(int) exit
      * @see        #checkPermission(java.security.Permission) checkPermission
-     */
+     */    
+    @SuppressWarnings("removal")
     public void checkExit(int status) {
         checkPermission(new RuntimePermission("exitVM."+status));
     }
@@ -660,6 +661,7 @@ public class SecurityManager {
      * @see     java.lang.Runtime#exec(java.lang.String[], java.lang.String[])
      * @see     #checkPermission(java.security.Permission) checkPermission
      */
+    @SuppressWarnings("removal")
     public void checkExec(String cmd) {
         File f = new File(cmd);
         if (f.isAbsolute()) {
@@ -698,6 +700,7 @@ public class SecurityManager {
      * @see        java.lang.Runtime#loadLibrary(java.lang.String)
      * @see        #checkPermission(java.security.Permission) checkPermission
      */
+    @SuppressWarnings("removal")
     public void checkLink(String lib) {
         if (lib == null) {
             throw new NullPointerException("library can't be null");
@@ -727,6 +730,7 @@ public class SecurityManager {
      * @see        java.io.FileDescriptor
      * @see        #checkPermission(java.security.Permission) checkPermission
      */
+    @SuppressWarnings("removal")
     public void checkRead(FileDescriptor fd) {
         if (fd == null) {
             throw new NullPointerException("file descriptor can't be null");
@@ -754,6 +758,7 @@ public class SecurityManager {
      *             {@code null}.
      * @see        #checkPermission(java.security.Permission) checkPermission
      */
+    @SuppressWarnings("removal")
     public void checkRead(String file) {
         checkPermission(new FilePermission(file,
             SecurityConstants.FILE_READ_ACTION));
@@ -789,6 +794,7 @@ public class SecurityManager {
      * @see        java.lang.SecurityManager#getSecurityContext()
      * @see        java.security.AccessControlContext#checkPermission(java.security.Permission)
      */
+    @SuppressWarnings("removal")
     public void checkRead(String file, Object context) {
         checkPermission(
             new FilePermission(file, SecurityConstants.FILE_READ_ACTION),
@@ -817,6 +823,7 @@ public class SecurityManager {
      * @see        java.io.FileDescriptor
      * @see        #checkPermission(java.security.Permission) checkPermission
      */
+    @SuppressWarnings("removal")
     public void checkWrite(FileDescriptor fd) {
         if (fd == null) {
             throw new NullPointerException("file descriptor can't be null");
@@ -845,6 +852,7 @@ public class SecurityManager {
      *             {@code null}.
      * @see        #checkPermission(java.security.Permission) checkPermission
      */
+    @SuppressWarnings("removal")
     public void checkWrite(String file) {
         checkPermission(new FilePermission(file,
             SecurityConstants.FILE_WRITE_ACTION));
@@ -873,6 +881,7 @@ public class SecurityManager {
      * @see        java.io.File#delete()
      * @see        #checkPermission(java.security.Permission) checkPermission
      */
+    @SuppressWarnings("removal")
     public void checkDelete(String file) {
         checkPermission(new FilePermission(file,
             SecurityConstants.FILE_DELETE_ACTION));
@@ -1126,6 +1135,7 @@ public class SecurityManager {
      * @see        java.lang.System#setProperties(java.util.Properties)
      * @see        #checkPermission(java.security.Permission) checkPermission
      */
+    @SuppressWarnings("removal")
     public void checkPropertiesAccess() {
         checkPermission(new PropertyPermission("*",
             SecurityConstants.PROPERTY_RW_ACTION));
@@ -1158,6 +1168,7 @@ public class SecurityManager {
      * @see        java.lang.System#getProperty(java.lang.String)
      * @see        #checkPermission(java.security.Permission) checkPermission
      */
+    @SuppressWarnings("removal")
     public void checkPropertyAccess(String key) {
         checkPermission(new PropertyPermission(key,
             SecurityConstants.PROPERTY_READ_ACTION));
@@ -1181,6 +1192,7 @@ public class SecurityManager {
      * @since   1.1
      * @see        #checkPermission(java.security.Permission) checkPermission
      */
+    @SuppressWarnings("removal")
     public void checkPrintJobAccess() {
         checkPermission(new RuntimePermission("queuePrintJob"));
     }
@@ -1326,6 +1338,7 @@ public class SecurityManager {
      * @see        java.security.Security#getProperty getProperty
      * @see        #checkPermission(Permission) checkPermission
      */
+    @SuppressWarnings("removal")
     public void checkPackageAccess(String pkg) {
         Objects.requireNonNull(pkg, "package name can't be null");
 
@@ -1342,7 +1355,6 @@ public class SecurityManager {
              * Do we need to update our property array?
              */
             if (!packageAccessValid) {
-                @SuppressWarnings("removal")
                 String tmpPropertyStr =
                     AccessController.doPrivileged(
                         new PrivilegedAction<>() {
@@ -1426,6 +1438,7 @@ public class SecurityManager {
      * @see        java.security.Security#getProperty getProperty
      * @see        #checkPermission(Permission) checkPermission
      */
+    @SuppressWarnings("removal")
     public void checkPackageDefinition(String pkg) {
         Objects.requireNonNull(pkg, "package name can't be null");
 
@@ -1442,7 +1455,6 @@ public class SecurityManager {
              * Do we need to update our property array?
              */
             if (!packageDefinitionValid) {
-                @SuppressWarnings("removal")
                 String tmpPropertyStr =
                     AccessController.doPrivileged(
                         new PrivilegedAction<>() {
@@ -1495,6 +1507,7 @@ public class SecurityManager {
      * @see        java.net.URL#setURLStreamHandlerFactory(java.net.URLStreamHandlerFactory) setURLStreamHandlerFactory
      * @see        #checkPermission(java.security.Permission) checkPermission
      */
+    @SuppressWarnings("removal")
     public void checkSetFactory() {
         checkPermission(new RuntimePermission("setFactory"));
     }
@@ -1529,6 +1542,7 @@ public class SecurityManager {
      * @since   1.1
      * @see        #checkPermission(java.security.Permission) checkPermission
      */
+    @SuppressWarnings("removal")
     public void checkSecurityAccess(String target) {
         checkPermission(new SecurityPermission(target));
     }

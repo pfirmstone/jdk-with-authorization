@@ -185,8 +185,8 @@ class WindowsFileSystem
     }
 
     @Override
+    @SuppressWarnings("removal")
     public Iterable<FileStore> getFileStores() {
-        @SuppressWarnings("removal")
         SecurityManager sm = System.getSecurityManager();
         if (sm != null) {
             try {

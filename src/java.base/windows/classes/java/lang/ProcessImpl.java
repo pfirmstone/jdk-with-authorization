@@ -637,8 +637,8 @@ final class ProcessImpl extends Process {
     }
 
     @Override
+    @SuppressWarnings("removal")
     public ProcessHandle toHandle() {
-        @SuppressWarnings("removal")
         SecurityManager sm = System.getSecurityManager();
         if (sm != null) {
             sm.checkPermission(new RuntimePermission("manageProcess"));

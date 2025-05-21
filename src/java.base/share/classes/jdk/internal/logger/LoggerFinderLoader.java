@@ -49,9 +49,11 @@ public final class LoggerFinderLoader {
     private static final Object lock = new int[0];
     static final Permission CLASSLOADER_PERMISSION =
             SecurityConstants.GET_CLASSLOADER_PERMISSION;
+    @SuppressWarnings("removal")
     static final Permission READ_PERMISSION =
             new FilePermission("<<ALL FILES>>",
                     SecurityConstants.FILE_READ_ACTION);
+    @SuppressWarnings("removal")
     public static final RuntimePermission LOGGERFINDER_PERMISSION =
                 new RuntimePermission("loggerFinder");
 

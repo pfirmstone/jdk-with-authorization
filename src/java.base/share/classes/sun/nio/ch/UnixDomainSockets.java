@@ -52,6 +52,7 @@ class UnixDomainSockets {
 
     private static final String tempDir = UnixDomainSocketsUtil.getTempDir();
 
+    @SuppressWarnings("removal")
     private static final NetPermission accessUnixDomainSocket =
             new NetPermission("accessUnixDomainSocket");
     

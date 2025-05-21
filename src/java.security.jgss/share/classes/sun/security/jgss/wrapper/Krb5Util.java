@@ -49,8 +49,8 @@ class Krb5Util {
 
     // Perform the Service Permission check using the specified
     // <code>target</code> and <code>action</code>
+    @SuppressWarnings("removal")
     static void checkServicePermission(String target, String action) {
-        @SuppressWarnings("removal")
         SecurityManager sm = System.getSecurityManager();
         if (sm != null) {
             if (SunNativeProvider.DEBUG) {

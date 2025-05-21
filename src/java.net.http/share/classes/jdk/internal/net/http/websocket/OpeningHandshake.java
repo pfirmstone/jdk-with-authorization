@@ -382,8 +382,8 @@ public class OpeningHandshake {
      *
      * @throws SecurityException if the security manager denies access
      */
+    @SuppressWarnings("removal")
     static void checkPermissions(BuilderImpl b, Proxy proxy) {
-        @SuppressWarnings("removal")
         SecurityManager sm = System.getSecurityManager();
         if (sm == null) {
             return;

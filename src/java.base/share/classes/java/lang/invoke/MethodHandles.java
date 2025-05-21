@@ -1852,11 +1852,11 @@ public final class MethodHandles {
             return makeClassDefiner(bytes.clone()).defineClass(false);
         }
 
+        @SuppressWarnings("removal")
         private void ensureDefineClassPermission() {
             if (allowedModes == TRUSTED)  return;
 
             if (!hasFullPrivilegeAccess()) {
-                @SuppressWarnings("removal")
                 SecurityManager sm = System.getSecurityManager();
                 if (sm != null)
                     sm.checkPermission(new RuntimePermission("defineClass"));

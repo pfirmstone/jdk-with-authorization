@@ -438,6 +438,7 @@ public abstract class Preferences {
      * access to the user or system root (which in turn allows for all
      * other operations).
      */
+    @SuppressWarnings("removal")
     private static Permission prefsPerm = new RuntimePermission("preferences");
 
     /**

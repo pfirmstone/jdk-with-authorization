@@ -119,8 +119,8 @@ public class LogStream extends PrintStream {
      * @deprecated no replacement
      */
     @Deprecated
+    @SuppressWarnings("removal")
     public static synchronized void setDefaultStream(PrintStream newDefault) {
-        @SuppressWarnings("removal")
         SecurityManager sm = System.getSecurityManager();
 
         if (sm != null) {

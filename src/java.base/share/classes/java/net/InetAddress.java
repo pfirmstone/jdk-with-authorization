@@ -450,6 +450,7 @@ public sealed class InetAddress implements Serializable permits Inet4Address, In
      * class, as well as to obtain resolver from an instance of that class,
      * and it is also required to obtain the operating system name resolution configurations.
      */
+    @SuppressWarnings("removal")
     private static final RuntimePermission INET_ADDRESS_RESOLVER_PERMISSION =
             new RuntimePermission("inetAddressResolverProvider");
 

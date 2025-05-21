@@ -69,82 +69,102 @@ public final class SecurityConstants {
     public static final AllPermission ALL_PERMISSION = new AllPermission();
 
     // java.net.URL
+    @SuppressWarnings("removal")
     public static final NetPermission SPECIFY_HANDLER_PERMISSION =
        new NetPermission("specifyStreamHandler");
 
     // java.net.ProxySelector
+    @SuppressWarnings("removal")
     public static final NetPermission SET_PROXYSELECTOR_PERMISSION =
        new NetPermission("setProxySelector");
 
     // java.net.ProxySelector
+    @SuppressWarnings("removal")
     public static final NetPermission GET_PROXYSELECTOR_PERMISSION =
        new NetPermission("getProxySelector");
 
     // java.net.CookieHandler
+    @SuppressWarnings("removal")
     public static final NetPermission SET_COOKIEHANDLER_PERMISSION =
        new NetPermission("setCookieHandler");
 
     // java.net.CookieHandler
+    @SuppressWarnings("removal")
     public static final NetPermission GET_COOKIEHANDLER_PERMISSION =
        new NetPermission("getCookieHandler");
 
     // java.net.ResponseCache
+    @SuppressWarnings("removal")
     public static final NetPermission SET_RESPONSECACHE_PERMISSION =
        new NetPermission("setResponseCache");
 
     // java.net.ResponseCache
+    @SuppressWarnings("removal")
     public static final NetPermission GET_RESPONSECACHE_PERMISSION =
        new NetPermission("getResponseCache");
 
     // java.net.ServerSocket, java.net.Socket
+    @SuppressWarnings("removal")
     public static final NetPermission SET_SOCKETIMPL_PERMISSION =
         new NetPermission("setSocketImpl");
 
     // java.lang.SecurityManager, sun.applet.AppletPanel
+    @SuppressWarnings("removal")
     public static final RuntimePermission CREATE_CLASSLOADER_PERMISSION =
         new RuntimePermission("createClassLoader");
 
     // java.lang.SecurityManager
+    @SuppressWarnings("removal")
     public static final RuntimePermission CHECK_MEMBER_ACCESS_PERMISSION =
         new RuntimePermission("accessDeclaredMembers");
 
     // java.lang.SecurityManager, sun.applet.AppletSecurity
+    @SuppressWarnings("removal")
     public static final RuntimePermission MODIFY_THREAD_PERMISSION =
         new RuntimePermission("modifyThread");
 
     // java.lang.SecurityManager, sun.applet.AppletSecurity
+    @SuppressWarnings("removal")
     public static final RuntimePermission MODIFY_THREADGROUP_PERMISSION =
         new RuntimePermission("modifyThreadGroup");
 
     // java.lang.Class
+    @SuppressWarnings("removal")
     public static final RuntimePermission GET_PD_PERMISSION =
         new RuntimePermission("getProtectionDomain");
 
     // java.lang.Class, java.lang.ClassLoader, java.lang.Thread
+    @SuppressWarnings("removal")
     public static final RuntimePermission GET_CLASSLOADER_PERMISSION =
         new RuntimePermission("getClassLoader");
 
     // java.lang.Thread
+    @SuppressWarnings("removal")
     public static final RuntimePermission GET_STACK_TRACE_PERMISSION =
        new RuntimePermission("getStackTrace");
 
     // java.lang.Thread
+    @SuppressWarnings("removal")
     public static final RuntimePermission SUBCLASS_IMPLEMENTATION_PERMISSION =
         new RuntimePermission("enableContextClassLoaderOverride");
 
     // java.security.AccessControlContext
+    @SuppressWarnings("removal")
     public static final SecurityPermission CREATE_ACC_PERMISSION =
        new SecurityPermission("createAccessControlContext");
 
     // java.security.AccessControlContext
+    @SuppressWarnings("removal")
     public static final SecurityPermission GET_COMBINER_PERMISSION =
        new SecurityPermission("getDomainCombiner");
 
     // java.security.Policy, java.security.ProtectionDomain
+    @SuppressWarnings("removal")
     public static final SecurityPermission GET_POLICY_PERMISSION =
         new SecurityPermission ("getPolicy");
 
     // java.lang.SecurityManager
+    @SuppressWarnings("removal")
     public static final SocketPermission LOCAL_LISTEN_PERMISSION =
         new SocketPermission("localhost:0", SOCKET_LISTEN_ACTION);
 
@@ -152,10 +172,12 @@ public final class SecurityConstants {
         GetPropertyAction.privilegedGetProperty("java.specification.version");
 
     // java.lang.reflect.AccessibleObject
+    @SuppressWarnings("removal")
     public static final ReflectPermission ACCESS_PERMISSION =
         new ReflectPermission("suppressAccessChecks");
 
     // sun.reflect.ReflectionFactory
+    @SuppressWarnings("removal")
     public static final RuntimePermission REFLECTION_FACTORY_ACCESS_PERMISSION =
         new RuntimePermission("reflectionFactoryAccess");
 

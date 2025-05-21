@@ -337,8 +337,8 @@ public class URLClassLoader extends SecureClassLoader implements Closeable {
     *
     * @since 1.7
     */
+    @SuppressWarnings("removal")
     public void close() throws IOException {
-        @SuppressWarnings("removal")
         SecurityManager security = System.getSecurityManager();
         if (security != null) {
             security.checkPermission(new RuntimePermission("closeClassLoader"));

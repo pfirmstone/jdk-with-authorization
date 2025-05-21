@@ -188,6 +188,7 @@ final class HttpClientImpl extends HttpClient implements Trackable {
             }
         }
 
+        @SuppressWarnings("removal")
         void shutdown() {
             if (delegate instanceof ExecutorService service) {
                 PrivilegedAction<?> action = () -> {

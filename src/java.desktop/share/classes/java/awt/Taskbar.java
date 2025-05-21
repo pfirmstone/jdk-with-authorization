@@ -181,8 +181,8 @@ public class Taskbar {
      *  Calls to the security manager's {@code checkPermission} method with
      *  an {@code RuntimePermission("canProcessApplicationEvents")} permissions.
      */
+    @SuppressWarnings("removal")
     private void checkEventsProcessingPermission(){
-        @SuppressWarnings("removal")
         SecurityManager sm = System.getSecurityManager();
         if (sm != null) {
             sm.checkPermission(new RuntimePermission(

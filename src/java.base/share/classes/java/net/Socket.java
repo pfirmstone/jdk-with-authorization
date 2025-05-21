@@ -504,7 +504,6 @@ public class Socket implements java.io.Closeable {
      * {@code checkConnect} method is called
      * with {@code host.getHostAddress()} and {@code port}
      * as its arguments. This could result in a SecurityException.
-     * <p>
      *
      * @param      host     the IP address.
      * @param      port      the port number.

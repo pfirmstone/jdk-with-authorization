@@ -130,9 +130,9 @@ public final class Perf {
      * @see  java.lang.RuntimePermission
      * @see  #attach
      */
+    @SuppressWarnings("removal")
     public static Perf getPerf()
-    {
-        @SuppressWarnings("removal")
+    { 
         SecurityManager security = System.getSecurityManager();
         if (security != null) {
             Permission perm = new RuntimePermission("jdk.internal.perf.Perf.getPerf");

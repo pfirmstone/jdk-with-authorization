@@ -80,8 +80,8 @@ public abstract class AccessibilityProvider {
      * @throws SecurityException If a security manager has been installed and it
      *         denies {@link RuntimePermission} {@code "accessibilityProvider"}
      */
+    @SuppressWarnings("removal")
     private static Void checkPermission() {
-        @SuppressWarnings("removal")
         SecurityManager sm = System.getSecurityManager();
         if (sm != null)
             sm.checkPermission(new RuntimePermission("accessibilityProvider"));

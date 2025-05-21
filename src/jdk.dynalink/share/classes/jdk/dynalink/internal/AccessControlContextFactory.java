@@ -74,6 +74,7 @@ public final class AccessControlContextFactory {
         return createAccessControlContext(makeRuntimePermissions(runtimePermissionNames));
     }
 
+    @SuppressWarnings("removal")
     private static Permission[] makeRuntimePermissions(final String... runtimePermissionNames) {
         return Stream.of(runtimePermissionNames).map(RuntimePermission::new).toArray(Permission[]::new);
     }

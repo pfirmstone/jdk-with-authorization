@@ -178,6 +178,7 @@ public final class ImageIO {
      * SecurityExceptions to be thrown when this convenience class is used
      * in an applet, for example.
      */
+    @SuppressWarnings("removal")
     private static boolean hasCachePermission() {
         Boolean hasPermission = getCacheInfo().getHasPermission();
 
@@ -185,7 +186,6 @@ public final class ImageIO {
             return hasPermission.booleanValue();
         } else {
             try {
-                @SuppressWarnings("removal")
                 SecurityManager security = System.getSecurityManager();
                 if (security != null) {
                     File cachedir = getCacheDirectory();

@@ -1906,10 +1906,8 @@ public final class WPrinterJob extends RasterPrinterJob
         return mAttMediaTray;
     }
 
-
-
+    @SuppressWarnings("removal")
     private boolean getPrintToFileEnabled() {
-        @SuppressWarnings("removal")
         SecurityManager security = System.getSecurityManager();
         if (security != null) {
             FilePermission printToFilePermission =

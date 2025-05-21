@@ -1264,8 +1264,8 @@ public class PrintJob2D extends PrintJob implements Printable, Runnable {
         props.setProperty(PAPERSIZE_PROP, str);
     }
 
+    @SuppressWarnings("removal")
     private void throwPrintToFile() {
-        @SuppressWarnings("removal")
         SecurityManager security = System.getSecurityManager();
         FilePermission printToFilePermission = null;
         if (security != null) {

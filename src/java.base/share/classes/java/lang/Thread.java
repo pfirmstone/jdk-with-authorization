@@ -2315,8 +2315,8 @@ public class Thread implements Runnable {
      *
      * @since 1.2
      */
+    @SuppressWarnings("removal")
     public void setContextClassLoader(ClassLoader cl) {
-        @SuppressWarnings("removal")
         SecurityManager sm = System.getSecurityManager();
         if (sm != null) {
             sm.checkPermission(new RuntimePermission("setContextClassLoader"));
@@ -2775,8 +2775,8 @@ public class Thread implements Runnable {
      * @see ThreadGroup#uncaughtException
      * @since 1.5
      */
+    @SuppressWarnings("removal")
     public static void setDefaultUncaughtExceptionHandler(UncaughtExceptionHandler ueh) {
-        @SuppressWarnings("removal")
         SecurityManager sm = System.getSecurityManager();
         if (sm != null) {
             sm.checkPermission(

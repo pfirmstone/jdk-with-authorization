@@ -165,11 +165,11 @@ public final class NetworkInterface {
         return streamFromArray(getCheckedInetAddresses());
     }
 
+    @SuppressWarnings("removal")
     private InetAddress[] getCheckedInetAddresses() {
         InetAddress[] local_addrs = new InetAddress[addrs.length];
         boolean trusted = true;
-
-        @SuppressWarnings("removal")
+        
         SecurityManager sec = System.getSecurityManager();
         if (sec != null) {
             try {
@@ -579,8 +579,8 @@ public final class NetworkInterface {
      * @throws          SocketException if an I/O error occurs.
      * @since 1.6
      */
-    public byte[] getHardwareAddress() throws SocketException {
-        @SuppressWarnings("removal")
+    @SuppressWarnings("removal")
+    public byte[] getHardwareAddress() throws SocketException {   
         SecurityManager sec = System.getSecurityManager();
         if (sec != null) {
             try {

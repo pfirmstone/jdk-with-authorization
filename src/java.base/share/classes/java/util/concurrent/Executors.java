@@ -620,6 +620,7 @@ public final class Executors {
         final AccessControlContext acc;
         final ClassLoader ccl;
 
+        @SuppressWarnings("removal")
         PrivilegedCallableUsingCurrentClassLoader(Callable<T> task) {
             SecurityManager sm = System.getSecurityManager();
             if (sm != null) {

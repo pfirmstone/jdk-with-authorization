@@ -140,8 +140,8 @@ class NativeGSSContext implements GSSContextSpi {
     }
 
     // Perform the Delegation permission check
+    @SuppressWarnings("removal")
     private void doDelegPermCheck() throws GSSException {
-        @SuppressWarnings("removal")
         SecurityManager sm = System.getSecurityManager();
         if (sm != null) {
             String targetStr = targetName.getKrbName();

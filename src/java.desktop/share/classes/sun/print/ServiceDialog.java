@@ -691,7 +691,7 @@ public class ServiceDialog extends JDialog implements ActionListener {
         }
     }
 
-    @SuppressWarnings("serial") // Superclass is not serializable across versions
+    @SuppressWarnings({"serial","removal"}) // Superclass is not serializable across versions
     private class PrintServicePanel extends JPanel
         implements ActionListener, ItemListener, PopupMenuListener
     {
@@ -902,8 +902,8 @@ public class ServiceDialog extends JDialog implements ActionListener {
          * specify printing to a file. In that case its probably right
          * to throw a SecurityException if the permission is not granted.
          */
+        @SuppressWarnings("removal")
         private void throwPrintToFile() {
-            @SuppressWarnings("removal")
             SecurityManager security = System.getSecurityManager();
             if (security != null) {
                 if (printToFilePermission == null) {

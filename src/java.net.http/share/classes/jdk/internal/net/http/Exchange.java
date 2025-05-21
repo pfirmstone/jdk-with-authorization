@@ -775,6 +775,7 @@ final class Exchange<T> {
      * Returns the security permission required for the given details.
      * If method is CONNECT, then uri must be of form "scheme://host:port"
      */
+    @SuppressWarnings("removal")
     private static URLPermission permissionForServer(URI uri,
                                                      String method,
                                                      Map<String, List<String>> headers) {
@@ -790,9 +791,9 @@ final class Exchange<T> {
      * the response. Returns a security exception representing the denied
      * permission, or null if all checks pass or there is no security manager.
      */
+    @SuppressWarnings("removal")
     private SecurityException checkPermissions() {
         String method = request.method();
-        @SuppressWarnings("removal")
         SecurityManager sm = System.getSecurityManager();
         if (sm == null || method.equals("CONNECT")) {
             // tunneling will have a null acc, which is fine. The proxy

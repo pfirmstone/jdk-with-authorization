@@ -138,8 +138,8 @@ public abstract class Policy {
         return pi.policy != null && pi.initialized == true;
     }
 
+    @SuppressWarnings("removal")
     private static void checkPermission(String type) {
-        @SuppressWarnings("removal")
         SecurityManager sm = System.getSecurityManager();
         if (sm != null) {
             sm.checkPermission(new SecurityPermission("createPolicy." + type));
@@ -279,9 +279,9 @@ public abstract class Policy {
      * @see #getPolicy()
      *
      */
+    @SuppressWarnings("removal")
     public static void setPolicy(Policy p)
     {
-        @SuppressWarnings("removal")
         SecurityManager sm = System.getSecurityManager();
         if (sm != null) sm.checkPermission(
                                  new SecurityPermission("setPolicy"));

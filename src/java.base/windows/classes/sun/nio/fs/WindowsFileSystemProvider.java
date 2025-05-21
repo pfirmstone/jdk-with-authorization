@@ -494,9 +494,9 @@ class WindowsFileSystemProvider
     }
 
     @Override
+    @SuppressWarnings("removal")
     public FileStore getFileStore(Path obj) throws IOException {
         WindowsPath file = WindowsPath.toWindowsPath(obj);
-        @SuppressWarnings("removal")
         SecurityManager sm = System.getSecurityManager();
         if (sm != null) {
             sm.checkPermission(new RuntimePermission("getFileStoreAttributes"));
@@ -542,6 +542,7 @@ class WindowsFileSystemProvider
     }
 
     @Override
+    @SuppressWarnings("removal")
     public void createSymbolicLink(Path obj1, Path obj2, FileAttribute<?>... attrs)
         throws IOException
     {
@@ -556,7 +557,6 @@ class WindowsFileSystemProvider
         }
 
         // permission check
-        @SuppressWarnings("removal")
         SecurityManager sm = System.getSecurityManager();
         if (sm != null) {
             sm.checkPermission(new LinkPermission("symbolic"));
@@ -607,12 +607,12 @@ class WindowsFileSystemProvider
     }
 
     @Override
+    @SuppressWarnings("removal")
     public void createLink(Path obj1, Path obj2) throws IOException {
         WindowsPath link = WindowsPath.toWindowsPath(obj1);
         WindowsPath existing = WindowsPath.toWindowsPath(obj2);
 
         // permission check
-        @SuppressWarnings("removal")
         SecurityManager sm = System.getSecurityManager();
         if (sm != null) {
             sm.checkPermission(new LinkPermission("hard"));
@@ -630,12 +630,12 @@ class WindowsFileSystemProvider
     }
 
     @Override
+    @SuppressWarnings("removal")
     public Path readSymbolicLink(Path obj1) throws IOException {
         WindowsPath link = WindowsPath.toWindowsPath(obj1);
         WindowsFileSystem fs = link.getFileSystem();
 
         // permission check
-        @SuppressWarnings("removal")
         SecurityManager sm = System.getSecurityManager();
         if (sm != null) {
             FilePermission perm = new FilePermission(link.getPathForPermissionCheck(),

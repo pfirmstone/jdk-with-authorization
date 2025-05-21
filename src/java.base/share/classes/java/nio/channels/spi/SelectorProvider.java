@@ -72,8 +72,8 @@ import java.util.ServiceConfigurationError;
 
 public abstract class SelectorProvider {
 
+    @SuppressWarnings("removal")
     private static Void checkPermission() {
-        @SuppressWarnings("removal")
         SecurityManager sm = System.getSecurityManager();
         if (sm != null)
             sm.checkPermission(new RuntimePermission("selectorProvider"));

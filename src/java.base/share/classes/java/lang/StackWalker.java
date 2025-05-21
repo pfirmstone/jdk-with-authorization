@@ -461,9 +461,9 @@ public final class StackWalker {
         this.continuation = continuation;
     }
 
+    @SuppressWarnings("removal")
     private static void checkPermission(Set<Option> options) {
         Objects.requireNonNull(options);
-        @SuppressWarnings("removal")
         SecurityManager sm = System.getSecurityManager();
         if (sm != null) {
             if (options.contains(Option.RETAIN_CLASS_REFERENCE)) {

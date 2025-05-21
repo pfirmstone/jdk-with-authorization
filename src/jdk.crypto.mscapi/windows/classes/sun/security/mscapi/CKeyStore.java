@@ -700,6 +700,7 @@ abstract class CKeyStore extends KeyStoreSpi {
      *  pass, where <i>name</i> is the value returned by
      *  this provider's <code>getName</code> method.
      */
+    @SuppressWarnings("removal")
     public void engineLoad(InputStream stream, char[] password)
             throws IOException, NoSuchAlgorithmException, CertificateException {
         if (stream != null && !keyStoreCompatibilityMode) {
@@ -713,7 +714,6 @@ abstract class CKeyStore extends KeyStoreSpi {
         /*
          * Use the same security check as AuthProvider.login
          */
-        @SuppressWarnings("removal")
         SecurityManager sm = System.getSecurityManager();
         if (sm != null) {
             sm.checkPermission(new SecurityPermission(

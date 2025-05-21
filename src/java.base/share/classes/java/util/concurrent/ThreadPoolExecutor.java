@@ -586,6 +586,7 @@ public class ThreadPoolExecutor extends AbstractExecutorService {
      * and failure to actually interrupt will merely delay response to
      * configuration changes so is not handled exceptionally.
      */
+    @SuppressWarnings("removal")
     private static final RuntimePermission shutdownPerm =
         new RuntimePermission("modifyThread");
 

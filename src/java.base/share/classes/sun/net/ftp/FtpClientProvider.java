@@ -54,8 +54,8 @@ public abstract class FtpClientProvider {
      * @throws SecurityException if a security manager is installed and it denies
      *         {@link RuntimePermission}{@code ("ftpClientProvider")}
      */
+    @SuppressWarnings("removal")
     protected FtpClientProvider() {
-        @SuppressWarnings("removal")
         SecurityManager sm = System.getSecurityManager();
         if (sm != null) {
             sm.checkPermission(new RuntimePermission("ftpClientProvider"));

@@ -400,8 +400,8 @@ public final class SystemModuleFinders {
          * If there is a security manager set then check permission to
          * connect to the run-time image.
          */
+        @SuppressWarnings("removal")
         private static void checkPermissionToConnect(URI uri) {
-            @SuppressWarnings("removal")
             SecurityManager sm = System.getSecurityManager();
             if (sm != null) {
                 try {

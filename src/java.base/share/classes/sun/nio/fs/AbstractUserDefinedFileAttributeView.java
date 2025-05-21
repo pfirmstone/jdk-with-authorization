@@ -39,12 +39,12 @@ abstract class AbstractUserDefinedFileAttributeView
 {
     protected AbstractUserDefinedFileAttributeView() { }
 
+    @SuppressWarnings("removal")
     protected void checkAccess(String file,
                                boolean checkRead,
                                boolean checkWrite)
     {
         assert checkRead || checkWrite;
-        @SuppressWarnings("removal")
         SecurityManager sm = System.getSecurityManager();
         if (sm != null) {
             if (checkRead)

@@ -130,11 +130,11 @@ public class SSLContext {
      *          {@code SSLPermission("setDefaultSSLContext")}
      * @since 1.6
      */
+    @SuppressWarnings("removal")
     public static void setDefault(SSLContext context) {
         if (context == null) {
             throw new NullPointerException();
         }
-        @SuppressWarnings("removal")
         SecurityManager sm = System.getSecurityManager();
         if (sm != null) {
             sm.checkPermission(new SSLPermission("setDefaultSSLContext"));

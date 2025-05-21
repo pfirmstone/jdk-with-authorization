@@ -219,13 +219,13 @@ class JarFileFactory implements URLJarFile.URLJarFileCloseController {
         }
     }
 
+    @SuppressWarnings("removal")
     private JarFile getCachedJarFile(URL url) {
         assert Thread.holdsLock(instance);
         JarFile result = fileCache.get(urlKey(url));
 
         /* if the JAR file is cached, the permission will always be there */
         if (result != null) {
-            @SuppressWarnings("removal")
             SecurityManager sm = System.getSecurityManager();
             if (sm != null) {
                 Permission perm = getPermission(result);
@@ -258,6 +258,7 @@ class JarFileFactory implements URLJarFile.URLJarFileCloseController {
         return urlstr;
     }
 
+    @SuppressWarnings("removal")
     private Permission getPermission(JarFile jarFile) {
         try {
             URLConnection uc = getConnection(jarFile);

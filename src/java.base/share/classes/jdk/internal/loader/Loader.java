@@ -627,6 +627,7 @@ public final class Loader extends SecureClassLoader {
      * Returns the permissions for the given CodeSource.
      */
     @Override
+    @SuppressWarnings("removal")
     protected PermissionCollection getPermissions(CodeSource cs) {
         PermissionCollection perms = super.getPermissions(cs);
 

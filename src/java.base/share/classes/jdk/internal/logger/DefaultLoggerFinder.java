@@ -81,6 +81,7 @@ import java.util.ResourceBundle;
  */
 public class DefaultLoggerFinder extends LoggerFinder {
 
+    @SuppressWarnings("removal")
     static final RuntimePermission LOGGERFINDER_PERMISSION =
                 new RuntimePermission("loggerFinder");
 

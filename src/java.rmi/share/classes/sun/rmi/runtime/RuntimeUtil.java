@@ -57,6 +57,7 @@ public final class RuntimeUtil {
             Integer.getInteger("sun.rmi.runtime.schedulerThreads", 1));
 
     /** permission required to get instance */
+    @SuppressWarnings("removal")
     private static final Permission GET_INSTANCE_PERMISSION =
         new RuntimePermission("sun.rmi.runtime.RuntimeUtil.getInstance");
 

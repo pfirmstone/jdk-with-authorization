@@ -195,8 +195,8 @@ public abstract class Configuration {
     private final java.security.AccessControlContext acc =
             java.security.AccessController.getContext();
 
+    @SuppressWarnings("removal")
     private static void checkPermission(String type) {
-        @SuppressWarnings("removal")
         SecurityManager sm = System.getSecurityManager();
         if (sm != null) {
             sm.checkPermission(new AuthPermission
@@ -297,8 +297,8 @@ public abstract class Configuration {
      *
      * @see #getConfiguration
      */
+    @SuppressWarnings("removal")
     public static void setConfiguration(Configuration configuration) {
-        @SuppressWarnings("removal")
         SecurityManager sm = System.getSecurityManager();
         if (sm != null)
             sm.checkPermission(new AuthPermission("setLoginConfiguration"));

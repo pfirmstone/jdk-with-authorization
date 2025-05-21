@@ -1136,13 +1136,13 @@ public class HttpURLConnection extends java.net.HttpURLConnection {
      *  access to that destination. Return null otherwise. The permission
      *  is cached in a field (which can only be changed by redirects)
      */
+    @SuppressWarnings("removal")
     SocketPermission URLtoSocketPermission(URL url) throws IOException {
 
         if (socketPermission != null) {
             return socketPermission;
         }
-
-        @SuppressWarnings("removal")
+    
         SecurityManager sm = System.getSecurityManager();
 
         if (sm == null) {

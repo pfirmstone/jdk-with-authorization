@@ -822,6 +822,7 @@ public final class HijrahChronology extends AbstractChronology implements Serial
      * @return a Properties containing the properties read from the resource.
      * @throws Exception if access to the property resource fails
      */
+    @SuppressWarnings("removal")
     private static Properties readConfigProperties(final String chronologyId, final String calendarType) throws Exception {
         String resourceName = RESOURCE_PREFIX + chronologyId + "_" + calendarType + RESOURCE_SUFFIX;
         PrivilegedAction<InputStream> getResourceAction =  calendarType.equals("islamic-umalqura") ?
@@ -836,7 +837,7 @@ public final class HijrahChronology extends AbstractChronology implements Serial
             };
         FilePermission perm1 = new FilePermission("<<ALL FILES>>", "read");
         RuntimePermission perm2 = new RuntimePermission("accessSystemModules");
-        try (@SuppressWarnings("removal") InputStream is = AccessController.doPrivileged(getResourceAction, null, perm1, perm2)) {
+        try (InputStream is = AccessController.doPrivileged(getResourceAction, null, perm1, perm2)) {
             if (is == null) {
                 throw new RuntimeException("Hijrah calendar resource not found: " + resourceName);
             }

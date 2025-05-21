@@ -200,8 +200,8 @@ interface LiveStackFrame extends StackFrame {
      * {@link StackWalker.Option#RETAIN_CLASS_REFERENCE Option.RETAIN_CLASS_REFERENCE}
      * and it denies access to {@code RuntimePermission("getStackWalkerWithClassReference")}.
      */
+    @SuppressWarnings("removal")
     public static StackWalker getStackWalker(Set<StackWalker.Option> options, ContinuationScope contScope) {
-        @SuppressWarnings("removal")
         SecurityManager sm = System.getSecurityManager();
         if (sm != null) {
             sm.checkPermission(new RuntimePermission("liveStackFrames"));
@@ -239,10 +239,10 @@ interface LiveStackFrame extends StackFrame {
      * {@link StackWalker.Option#RETAIN_CLASS_REFERENCE Option.RETAIN_CLASS_REFERENCE}
      * and it denies access to {@code RuntimePermission("getStackWalkerWithClassReference")}.
      */
+    @SuppressWarnings("removal")
     public static StackWalker getStackWalker(Set<StackWalker.Option> options,
                                              ContinuationScope contScope,
-                                             Continuation continuation) {
-        @SuppressWarnings("removal")
+                                             Continuation continuation) {  
         SecurityManager sm = System.getSecurityManager();
         if (sm != null) {
             sm.checkPermission(new RuntimePermission("liveStackFrames"));

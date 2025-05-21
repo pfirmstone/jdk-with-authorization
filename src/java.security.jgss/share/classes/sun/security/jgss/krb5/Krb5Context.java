@@ -1322,8 +1322,8 @@ class Krb5Context implements GSSContextSpi {
         }
     }
 
+    @SuppressWarnings("removal")
     private void checkPermission(String principal, String action) {
-        @SuppressWarnings("removal")
         SecurityManager sm = System.getSecurityManager();
         if (sm != null) {
             ServicePermission perm =

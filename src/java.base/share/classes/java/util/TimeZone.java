@@ -776,9 +776,9 @@ public abstract class TimeZone implements Serializable, Cloneable {
      * @see #getDefault
      * @see PropertyPermission
      */
+    @SuppressWarnings("removal")
     public static void setDefault(TimeZone zone)
     {
-        @SuppressWarnings("removal")
         SecurityManager sm = System.getSecurityManager();
         if (sm != null) {
             sm.checkPermission(new PropertyPermission

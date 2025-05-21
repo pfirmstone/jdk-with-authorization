@@ -219,6 +219,7 @@ public class FileLoginModule implements LoginModule {
      * @exception LoginException if this <code>LoginModule</code>
      *          is unable to perform the authentication.
      */
+    @SuppressWarnings("removal")
     public boolean login() throws LoginException {
 
         try {
@@ -238,8 +239,7 @@ public class FileLoginModule implements LoginModule {
                 throw e;
             } else {
                 final FilePermission fp
-                        = new FilePermission(passwordFileDisplayName, "read");
-                @SuppressWarnings("removal")
+                        = new FilePermission(passwordFileDisplayName, "read"); 
                 AccessControlException ace = new AccessControlException(
                         "access denied " + fp.toString());
                 ace.initCause(e);

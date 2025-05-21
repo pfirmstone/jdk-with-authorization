@@ -121,6 +121,7 @@ public class GSSNameElement implements GSSNameSpi {
         cleanable = Krb5Util.cleaner.register(this, disposerFor(stub, pName));
     }
 
+    @SuppressWarnings("removal")
     GSSNameElement(byte[] nameBytes, Oid nameType, GSSLibStub stub)
         throws GSSException {
         assert(stub != null);
@@ -168,7 +169,6 @@ public class GSSNameElement implements GSSNameSpi {
 
         setPrintables();
 
-        @SuppressWarnings("removal")
         SecurityManager sm = System.getSecurityManager();
         if (sm != null && !Realm.AUTODEDUCEREALM) {
             String krbName = getKrbName();

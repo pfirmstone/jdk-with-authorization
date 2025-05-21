@@ -174,6 +174,7 @@ abstract class InitialToken extends Krb5Token {
                 @SuppressWarnings("removal")
                 SecurityManager sm = System.getSecurityManager();
                 if (sm != null) {
+                    @SuppressWarnings("removal")
                     DelegationPermission perm =
                         new DelegationPermission(sb.toString());
                     sm.checkPermission(perm);

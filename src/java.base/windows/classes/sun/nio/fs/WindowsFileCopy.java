@@ -52,6 +52,7 @@ class WindowsFileCopy {
     /**
      * Copy file from source to target
      */
+    @SuppressWarnings("removal")
     static void copy(final WindowsPath source,
                      final WindowsPath target,
                      CopyOption... options)
@@ -86,7 +87,6 @@ class WindowsFileCopy {
 
         // check permissions. If the source file is a symbolic link then
         // later we must also check LinkPermission
-        @SuppressWarnings("removal")
         SecurityManager sm = System.getSecurityManager();
         if (sm != null) {
             source.checkRead();

@@ -55,6 +55,7 @@ public abstract class LdapDnsProvider {
 
     // The {@code RuntimePermission("ldapDnsProvider")} is
     // necessary to subclass and instantiate the {@code LdapDnsProvider} class.
+    @SuppressWarnings("removal")
     private static final RuntimePermission DNSPROVIDER_PERMISSION =
             new RuntimePermission("ldapDnsProvider");
 

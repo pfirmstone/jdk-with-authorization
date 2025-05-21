@@ -353,8 +353,8 @@ public final class System {
         return SelectorProvider.provider().inheritedChannel();
     }
 
+    @SuppressWarnings("removal")
     private static void checkIO() {
-        @SuppressWarnings("removal")
         SecurityManager sm = getSecurityManager();
         if (sm != null) {
             sm.checkPermission(new RuntimePermission("setIO"));
@@ -1066,9 +1066,9 @@ public final class System {
      * @see        SecurityManager#checkPermission
      * @since      1.2
      */
+    @SuppressWarnings("removal")
     public static String setProperty(String key, String value) {
         checkKey(key);
-        @SuppressWarnings("removal")
         SecurityManager sm = getSecurityManager();
         if (sm != null) {
             sm.checkPermission(new PropertyPermission(key,
@@ -1108,9 +1108,9 @@ public final class System {
      * @see        java.lang.SecurityManager#checkPropertiesAccess()
      * @since 1.5
      */
+    @SuppressWarnings("removal")
     public static String clearProperty(String key) {
         checkKey(key);
-        @SuppressWarnings("removal")
         SecurityManager sm = getSecurityManager();
         if (sm != null) {
             sm.checkPermission(new PropertyPermission(key, "write"));
@@ -1174,8 +1174,8 @@ public final class System {
      * @see    #getenv()
      * @see    ProcessBuilder#environment()
      */
+    @SuppressWarnings("removal")
     public static String getenv(String name) {
-        @SuppressWarnings("removal")
         SecurityManager sm = getSecurityManager();
         if (sm != null) {
             sm.checkPermission(new RuntimePermission("getenv."+name));
@@ -1224,8 +1224,8 @@ public final class System {
      * @see    ProcessBuilder#environment()
      * @since  1.5
      */
+    @SuppressWarnings("removal")
     public static java.util.Map<String,String> getenv() {
-        @SuppressWarnings("removal")
         SecurityManager sm = getSecurityManager();
         if (sm != null) {
             sm.checkPermission(new RuntimePermission("getenv.*"));
@@ -1671,6 +1671,7 @@ public final class System {
          * necessary to subclass and instantiate the {@code LoggerFinder} class,
          * as well as to obtain loggers from an instance of that class.
          */
+        @SuppressWarnings("removal")
         static final RuntimePermission LOGGERFINDER_PERMISSION =
                 new RuntimePermission("loggerFinder");
 

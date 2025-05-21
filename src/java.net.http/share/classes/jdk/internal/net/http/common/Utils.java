@@ -454,6 +454,7 @@ public final class Utils {
      * Returns the security permissions required to connect to the proxy, or
      * {@code null} if none is required or applicable.
      */
+    @SuppressWarnings("removal")
     public static URLPermission permissionForProxy(InetSocketAddress proxyAddress) {
         if (proxyAddress == null)
             return null;
@@ -469,6 +470,7 @@ public final class Utils {
     /**
      * Returns the security permission required for the given details.
      */
+    @SuppressWarnings("removal")
     public static URLPermission permissionForServer(URI uri,
                                                     String method,
                                                     Stream<String> headers) {

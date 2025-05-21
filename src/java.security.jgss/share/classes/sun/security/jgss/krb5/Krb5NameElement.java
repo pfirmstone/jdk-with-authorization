@@ -67,6 +67,7 @@ public class Krb5NameElement
      * needed in GSS-API format rather than in Kerberos format.
      *
      */
+    @SuppressWarnings("removal")
     static Krb5NameElement getInstance(String gssNameStr, Oid gssNameType)
         throws GSSException {
 
@@ -128,7 +129,6 @@ public class Krb5NameElement
         }
 
         if (principalName.isRealmDeduced() && !Realm.AUTODEDUCEREALM) {
-            @SuppressWarnings("removal")
             SecurityManager sm = System.getSecurityManager();
             if (sm != null) {
                 try {

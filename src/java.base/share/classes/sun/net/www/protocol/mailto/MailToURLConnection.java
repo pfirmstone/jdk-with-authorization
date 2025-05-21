@@ -113,6 +113,7 @@ public class MailToURLConnection extends URLConnection {
     }
 
     @Override
+    @SuppressWarnings("removal")
     public Permission getPermission() throws IOException {
         if (permission == null) {
             connect();

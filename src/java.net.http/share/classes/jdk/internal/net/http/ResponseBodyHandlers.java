@@ -68,6 +68,7 @@ public final class ResponseBodyHandlers {
         private final List<OpenOption> openOptions;  // immutable list
         @SuppressWarnings("removal")
         private final AccessControlContext acc;
+        @SuppressWarnings("removal")
         private final FilePermission filePermission;
 
         /**
@@ -77,10 +78,10 @@ public final class ResponseBodyHandlers {
          * PathBodyHandler. Permission checking and construction are
          * deliberately and tightly co-located.
          */
+        @SuppressWarnings("removal")
         public static PathBodyHandler create(Path file,
                                              List<OpenOption> openOptions) {
             FilePermission filePermission = null;
-            @SuppressWarnings("removal")
             SecurityManager sm = System.getSecurityManager();
             if (sm != null) {
                 try {
@@ -99,6 +100,7 @@ public final class ResponseBodyHandlers {
             return new PathBodyHandler(file, openOptions, acc, filePermission);
         }
 
+        @SuppressWarnings("removal")
         private PathBodyHandler(Path file,
                                 List<OpenOption> openOptions,
                                 @SuppressWarnings("removal") AccessControlContext acc,
@@ -172,6 +174,7 @@ public final class ResponseBodyHandlers {
         private final List<OpenOption> openOptions;
         @SuppressWarnings("removal")
         private final AccessControlContext acc;
+        @SuppressWarnings("removal")
         private final FilePermission[] filePermissions;  // may be null
 
         /**
@@ -181,6 +184,7 @@ public final class ResponseBodyHandlers {
          * FileDownloadBodyHandler. Permission checking and construction are
          * deliberately and tightly co-located.
          */
+        @SuppressWarnings("removal")
         public static FileDownloadBodyHandler create(Path directory,
                                                      List<OpenOption> openOptions) {
             String fn;
@@ -192,7 +196,6 @@ public final class ResponseBodyHandlers {
             }
 
             FilePermission filePermissions[] = null;
-            @SuppressWarnings("removal")
             SecurityManager sm = System.getSecurityManager();
             if (sm != null) {
                 FilePermission writePermission = new FilePermission(fn, "write");
@@ -222,6 +225,7 @@ public final class ResponseBodyHandlers {
             return new FileDownloadBodyHandler(directory, openOptions, acc, filePermissions);
         }
 
+        @SuppressWarnings("removal")
         private FileDownloadBodyHandler(Path directory,
                                        List<OpenOption> openOptions,
                                        @SuppressWarnings("removal") AccessControlContext acc,

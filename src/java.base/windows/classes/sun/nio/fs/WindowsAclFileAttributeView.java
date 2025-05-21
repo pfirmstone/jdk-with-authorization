@@ -62,11 +62,11 @@ class WindowsAclFileAttributeView
     }
 
     // permission check
+    @SuppressWarnings("removal")
     private void checkAccess(WindowsPath file,
                              boolean checkRead,
                              boolean checkWrite)
     {
-        @SuppressWarnings("removal")
         SecurityManager sm = System.getSecurityManager();
         if (sm != null) {
             if (checkRead)

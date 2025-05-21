@@ -328,6 +328,7 @@ public class SyncFactory {
     private static String colon = ":";
     private static String strFileSep = "/";
 
+    @SuppressWarnings("removal")
     private static synchronized void initMapIfNecessary() throws SyncFactoryException {
 
         // Local implementation class names and keys from Properties

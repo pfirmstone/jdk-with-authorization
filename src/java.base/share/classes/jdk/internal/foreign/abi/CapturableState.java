@@ -24,7 +24,7 @@
  */
 package jdk.internal.foreign.abi;
 
-import jdk.internal.foreign.Utils;
+import jdk.internal.util.OperatingSystem;
 
 import java.lang.foreign.MemoryLayout;
 import java.lang.foreign.StructLayout;

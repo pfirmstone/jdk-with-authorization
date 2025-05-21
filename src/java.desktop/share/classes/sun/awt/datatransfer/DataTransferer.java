@@ -1034,6 +1034,7 @@ search:
             return false;
         }
         try {
+            @SuppressWarnings("removal")
             FilePermission filePermission =
                     new FilePermission(file.getCanonicalPath(), "read, delete");
             if (protectionDomain.implies(filePermission)) {

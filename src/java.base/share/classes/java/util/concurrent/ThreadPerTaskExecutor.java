@@ -48,6 +48,7 @@ import jdk.internal.vm.ThreadContainers;
  */
 class ThreadPerTaskExecutor extends ThreadContainer implements ExecutorService {
     private static final JavaLangAccess JLA = SharedSecrets.getJavaLangAccess();
+    @SuppressWarnings("removal")
     private static final Permission MODIFY_THREAD = new RuntimePermission("modifyThread");
     private static final VarHandle STATE = MhUtil.findVarHandle(
             MethodHandles.lookup(), "state", int.class);

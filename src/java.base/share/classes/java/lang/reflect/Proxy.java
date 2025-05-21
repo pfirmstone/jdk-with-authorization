@@ -1060,8 +1060,8 @@ public class Proxy implements java.io.Serializable {
         }
     }
 
+    @SuppressWarnings("removal")
     private static void checkNewProxyPermission(Class<?> caller, Class<?> proxyClass) {
-        @SuppressWarnings("removal")
         SecurityManager sm = System.getSecurityManager();
         if (sm != null) {
             if (ReflectUtil.isNonPublicProxyClass(proxyClass)) {

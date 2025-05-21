@@ -242,8 +242,8 @@ public final class Runtime {
      * @see #exit(int)
      * @since 1.3
      */
+    @SuppressWarnings("removal")
     public void addShutdownHook(Thread hook) {
-        @SuppressWarnings("removal")
         SecurityManager sm = System.getSecurityManager();
         if (sm != null) {
             sm.checkPermission(new RuntimePermission("shutdownHooks"));
@@ -273,8 +273,8 @@ public final class Runtime {
      * @see #exit(int)
      * @since 1.3
      */
+    @SuppressWarnings("removal")
     public boolean removeShutdownHook(Thread hook) {
-        @SuppressWarnings("removal")
         SecurityManager sm = System.getSecurityManager();
         if (sm != null) {
             sm.checkPermission(new RuntimePermission("shutdownHooks"));

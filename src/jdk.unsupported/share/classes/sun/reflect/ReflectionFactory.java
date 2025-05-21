@@ -58,6 +58,7 @@ public class ReflectionFactory {
 
     private ReflectionFactory() {}
 
+    @SuppressWarnings("removal")
     private static final Permission REFLECTION_FACTORY_ACCESS_PERM
             = new RuntimePermission("reflectionFactoryAccess");
 

@@ -41,6 +41,7 @@ public class SecureLookupSupplier {
      */
     public static final String GET_LOOKUP_PERMISSION_NAME = "dynalink.getLookup";
 
+    @SuppressWarnings("removal")
     private static final RuntimePermission GET_LOOKUP_PERMISSION = new RuntimePermission(SecureLookupSupplier.GET_LOOKUP_PERMISSION_NAME);
 
     private final MethodHandles.Lookup lookup;
