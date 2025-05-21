@@ -29,6 +29,7 @@ import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.security.AccessControlContext;
 
 import jdk.jfr.internal.PlatformEventType;
 import jdk.jfr.internal.PlatformRecorder;
