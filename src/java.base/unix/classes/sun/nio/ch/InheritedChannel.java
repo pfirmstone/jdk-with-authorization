@@ -153,8 +153,8 @@ class InheritedChannel {
      * If there's a SecurityManager then check for the appropriate
      * RuntimePermission.
      */
+    @SuppressWarnings("removal")
     private static void checkAccess() {
-        @SuppressWarnings("removal")
         SecurityManager sm = System.getSecurityManager();
         if (sm != null) {
             sm.checkPermission(new RuntimePermission("inheritedChannel"));

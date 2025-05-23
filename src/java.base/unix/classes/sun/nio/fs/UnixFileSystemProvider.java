@@ -423,9 +423,9 @@ public abstract class UnixFileSystemProvider
     abstract FileStore getFileStore(UnixPath path) throws IOException;
 
     @Override
+    @SuppressWarnings("removal")
     public FileStore getFileStore(Path obj) throws IOException {
         UnixPath file = UnixPath.toUnixPath(obj);
-        @SuppressWarnings("removal")
         SecurityManager sm = System.getSecurityManager();
         if (sm != null) {
             sm.checkPermission(new RuntimePermission("getFileStoreAttributes"));
@@ -497,6 +497,7 @@ public abstract class UnixFileSystemProvider
     }
 
     @Override
+    @SuppressWarnings("removal")
     public void createSymbolicLink(Path obj1, Path obj2, FileAttribute<?>... attrs)
         throws IOException
     {
@@ -511,7 +512,6 @@ public abstract class UnixFileSystemProvider
         }
 
         // permission check
-        @SuppressWarnings("removal")
         SecurityManager sm = System.getSecurityManager();
         if (sm != null) {
             sm.checkPermission(new LinkPermission("symbolic"));
@@ -527,12 +527,12 @@ public abstract class UnixFileSystemProvider
     }
 
     @Override
+    @SuppressWarnings("removal")
     public void createLink(Path obj1, Path obj2) throws IOException {
         UnixPath link = UnixPath.toUnixPath(obj1);
         UnixPath existing = UnixPath.toUnixPath(obj2);
 
         // permission check
-        @SuppressWarnings("removal")
         SecurityManager sm = System.getSecurityManager();
         if (sm != null) {
             sm.checkPermission(new LinkPermission("hard"));
@@ -547,10 +547,10 @@ public abstract class UnixFileSystemProvider
     }
 
     @Override
+    @SuppressWarnings("removal")
     public Path readSymbolicLink(Path obj1) throws IOException {
         UnixPath link = UnixPath.toUnixPath(obj1);
         // permission check
-        @SuppressWarnings("removal")
         SecurityManager sm = System.getSecurityManager();
         if (sm != null) {
             FilePermission perm = new FilePermission(link.getPathForPermissionCheck(),

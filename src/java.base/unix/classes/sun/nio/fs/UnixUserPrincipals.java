@@ -129,10 +129,10 @@ public class UnixUserPrincipals {
     }
 
     // lookup user or group name
+    @SuppressWarnings("removal")
     private static int lookupName(String name, boolean isGroup)
         throws IOException
     {
-        @SuppressWarnings("removal")
         SecurityManager sm = System.getSecurityManager();
         if (sm != null) {
             sm.checkPermission(new RuntimePermission("lookupUserInformation"));

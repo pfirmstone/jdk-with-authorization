@@ -274,8 +274,8 @@ abstract class UnixFileSystem
     }
 
     @Override
+    @SuppressWarnings("removal")
     public final Iterable<FileStore> getFileStores() {
-        @SuppressWarnings("removal")
         SecurityManager sm = System.getSecurityManager();
         if (sm != null) {
             try {
@@ -987,12 +987,12 @@ abstract class UnixFileSystem
     }
 
     // copy file from source to target
+    @SuppressWarnings("removal")
     void copy(final UnixPath source,
               final UnixPath target,
               CopyOption... options) throws IOException
     {
         // permission checks
-        @SuppressWarnings("removal")
         SecurityManager sm = System.getSecurityManager();
         if (sm != null) {
             source.checkRead();

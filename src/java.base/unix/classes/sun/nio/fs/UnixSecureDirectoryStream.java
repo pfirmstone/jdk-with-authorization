@@ -441,8 +441,8 @@ class UnixSecureDirectoryStream
             super(file, followLinks);
         }
 
+        @SuppressWarnings("removal")
         private void checkWriteAndUserAccess() {
-            @SuppressWarnings("removal")
             SecurityManager sm = System.getSecurityManager();
             if (sm != null) {
                 super.checkWriteAccess();
@@ -456,8 +456,8 @@ class UnixSecureDirectoryStream
         }
 
         @Override
+        @SuppressWarnings("removal")
         public PosixFileAttributes readAttributes() throws IOException {
-            @SuppressWarnings("removal")
             SecurityManager sm = System.getSecurityManager();
             if (sm != null) {
                 if (file == null)

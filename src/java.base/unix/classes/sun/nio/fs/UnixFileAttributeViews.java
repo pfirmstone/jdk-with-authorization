@@ -158,8 +158,8 @@ class UnixFileAttributeViews {
             super(file, followLinks);
         }
 
+        @SuppressWarnings("removal")
         final void checkReadExtended() {
-            @SuppressWarnings("removal")
             SecurityManager sm = System.getSecurityManager();
             if (sm != null) {
                 file.checkRead();
@@ -167,8 +167,8 @@ class UnixFileAttributeViews {
             }
         }
 
+        @SuppressWarnings("removal")
         final void checkWriteExtended() {
-            @SuppressWarnings("removal")
             SecurityManager sm = System.getSecurityManager();
             if (sm != null) {
                 file.checkWrite();
