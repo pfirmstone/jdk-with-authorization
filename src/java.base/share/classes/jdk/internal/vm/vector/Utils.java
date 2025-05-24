@@ -26,12 +26,13 @@ package jdk.internal.vm.vector;
 
 import jdk.internal.reflect.CallerSensitive;
 import jdk.internal.reflect.Reflection;
+import sun.security.action.GetBooleanAction;
 
 /**
  * Miscellaneous utility methods.
  */
 public class Utils {
-    public static final boolean DEBUG = Boolean.getBoolean("jdk.incubator.vector.DEBUG");
+    public static final boolean DEBUG = GetBooleanAction.privilegedGetProperty("jdk.incubator.vector.DEBUG");
 
     public static boolean isNonCapturingLambda(Object o) {
         return o.getClass().getDeclaredFields().length == 0;
