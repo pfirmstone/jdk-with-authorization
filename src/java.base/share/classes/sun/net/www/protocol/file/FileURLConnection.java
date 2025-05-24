@@ -32,6 +32,7 @@ import java.io.*;
 import java.text.Collator;
 import java.security.Permission;
 import sun.net.www.*;
+import sun.security.action.GetBooleanAction;
 import java.util.*;
 import java.text.SimpleDateFormat;
 
@@ -50,7 +51,7 @@ public class FileURLConnection extends URLConnection {
     // The feature of falling back to FTP for non-local file URLs is disabled
     // by default and can be re-enabled by setting a system property
     private static final boolean FTP_FALLBACK_ENABLED =
-            Boolean.getBoolean("jdk.net.file.ftpfallback");
+            GetBooleanAction.privilegedGetProperty("jdk.net.file.ftpfallback");
 
     private final File file;
     private InputStream is;
