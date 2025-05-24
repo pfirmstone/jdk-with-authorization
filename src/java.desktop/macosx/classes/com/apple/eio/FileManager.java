@@ -259,8 +259,8 @@ public class FileManager {
          *
          * @since 1.4
          */
+    @SuppressWarnings("removal")
     public static String findFolder(short domain, int folderType, boolean createIfNeeded) throws FileNotFoundException {
-        @SuppressWarnings("removal")
         final SecurityManager security = System.getSecurityManager();
         if (security != null) {
             security.checkPermission(new RuntimePermission("canExamineFileSystem"));
@@ -287,8 +287,8 @@ public class FileManager {
          * @since 1.4
          */
     @Deprecated
+    @SuppressWarnings("removal")
     public static void openURL(String url) throws IOException {
-        @SuppressWarnings("removal")
         SecurityManager security = System.getSecurityManager();
         if (security != null) {
             security.checkPermission(new RuntimePermission("canOpenURLs"));
@@ -339,8 +339,8 @@ public class FileManager {
         }
 
         private static native String getNativeResourceFromBundle(String resourceName, String subDirName, String type) throws FileNotFoundException;
+        @SuppressWarnings("removal")
         private static String getResourceFromBundle(String resourceName, String subDirName, String type) throws FileNotFoundException {
-                @SuppressWarnings("removal")
                 final SecurityManager security = System.getSecurityManager();
                 if (security != null) security.checkPermission(new RuntimePermission("canReadBundle"));
 
@@ -358,8 +358,8 @@ public class FileManager {
          * @since Java for Mac OS X 10.5 Update 1 - 1.6
          * @since Java for Mac OS X 10.5 Update 2 - 1.5
          */
+        @SuppressWarnings("removal")
         public static String getPathToApplicationBundle() {
-                @SuppressWarnings("removal")
                 SecurityManager security = System.getSecurityManager();
                 if (security != null) security.checkPermission(new RuntimePermission("canReadBundle"));
                 return getNativePathToApplicationBundle();
