@@ -188,8 +188,8 @@ abstract sealed class KeychainStore extends KeyStoreSpi {
         jdk.internal.loader.BootLoader.loadLibrary("osxsecurity");
     }
 
+    @SuppressWarnings("removal")
     private static void permissionCheck() {
-        @SuppressWarnings("removal")
         SecurityManager sec = System.getSecurityManager();
 
         if (sec != null) {
