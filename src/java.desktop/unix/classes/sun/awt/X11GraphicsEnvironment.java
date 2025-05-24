@@ -128,7 +128,7 @@ public final class X11GraphicsEnvironment extends SunGraphicsEnvironment {
 
                 return null;
             }
-        }
+        });
     }
 
 
