@@ -1482,7 +1482,7 @@ class java_security_AccessControlContext: AllStatic {
   static int _context_offset;
   static int _privilegedContext_offset;
   static int _isPrivileged_offset;
-  static int _isAuthorized_offset;
+  static int _static_INIT_offset;
 
   static void compute_offsets();
  public:

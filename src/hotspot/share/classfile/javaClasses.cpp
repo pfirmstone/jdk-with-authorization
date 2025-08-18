@@ -4751,11 +4751,13 @@ void java_lang_invoke_ConstantCallSite::serialize_offsets(SerializeClosure* f) {
 int java_security_AccessControlContext::_context_offset;
 int java_security_AccessControlContext::_privilegedContext_offset;
 int java_security_AccessControlContext::_isPrivileged_offset;
+int java_security_AccessControlContext::_static_INIT_offset;
 
 #define ACCESSCONTROLCONTEXT_FIELDS_DO(macro) \
   macro(_context_offset,           k, "context",      protectiondomain_signature, false); \
   macro(_privilegedContext_offset, k, "privilegedContext", accesscontrolcontext_signature, false); \
-  macro(_isPrivileged_offset,      k, "isPrivileged", bool_signature, false)
+  macro(_isPrivileged_offset,      k, "isPrivileged", bool_signature, false); \
+  macro(_static_INIT_offset,       k, "INIT", bool_signature, true)
 
 void java_security_AccessControlContext::compute_offsets() {
   assert(_isPrivileged_offset == 0, "offsets should be initialized only once");
@@ -4777,8 +4779,10 @@ oop java_security_AccessControlContext::create(objArrayHandle context, bool isPr
   Klass* klass = vmClasses::AccessControlContext_klass();
   // Ensure klass is initialized
   klass->initialize(CHECK_NULL);
-  // Ensure object heap has been allocated before calling factory method.
-  if (Universe::is_fully_initialized()){ // AccessControlContext may be cached.
+  // Ensure cache is initialized before calling factory method.
+  oop base = vmClasses::AccessControlContext_klass()->static_field_base_raw();
+  bool _initialized = base->bool_field(_static_INIT_offset);
+  if (_initialized){ // AccessControlContext is cached.
       JavaValue result(T_OBJECT);
       JavaCallArguments args;
       args.push_oop(context);

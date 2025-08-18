@@ -103,6 +103,9 @@ public final class AccessControlContext {
     // Note: This field is directly used by the virtual machine
     // native codes. Don't touch it.
     private final AccessControlContext privilegedContext;
+    
+    // This field is directly used by the virtual machine native codes.
+    static volatile boolean INIT = false;
 
     @SuppressWarnings("removal")
     private final DomainCombiner combiner;
@@ -116,6 +119,7 @@ public final class AccessControlContext {
     static void initCache(ConcurrentMap<ContextKey,AccessControlContext> cache){
         if (CONTEXTS != null) return;
         CONTEXTS = cache;
+        INIT = true;
     }
 
     @SuppressWarnings("removal")
