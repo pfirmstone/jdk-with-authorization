@@ -57,7 +57,7 @@ This project's objectives are to maintain a community fork of OpenJDK that retai
 - Reimplement AccessController::doPrivileged methods with Permission arguments, to strictly limit permissions, instead of allowing privileged callers to use their privileges. Capture the caller and use DomainIdentity and "jrt:/module/class" to represent the domain of the caller restricting permissions. ✔
 - Allow Policy to grant additional permissions to those hard coded in AccessController::doPrivileged methods with Permission arguments.  ✔
 - Create a cache of AccessControlContext instances, to avoid duplication, this is necessary to support virtual threads, instantiate only when SecurityManager is enabled. ✔
-- Remove the ProtectionDomain cache from SubjectDomainCombiner, use the non blocking AccessControlContext cache and DomainIdentity to replace this functionality.
+- Remove the ProtectionDomain cache from SubjectDomainCombiner, use the non blocking AccessControlContext cache and DomainIdentity to replace this functionality. ✔
 - Update CombinerSecurityManager to use Virtual threads to hand off permission checks. ✔
 - Add LoadClassPermission to SecureClassLoader, to allow httmpd and jar file signers to control which code can be loaded by policy. ✔
 - Add SerialObjectPermission for Java Serialization, automating class whitelisting. ✔
