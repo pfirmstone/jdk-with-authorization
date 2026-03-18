@@ -25,29 +25,16 @@
 
 package java.security;
 
-import java.lang.annotation.ElementType;
-import java.lang.annotation.Retention;
-import java.lang.annotation.RetentionPolicy;
-import java.lang.annotation.Target;
 import java.lang.ref.Reference;
 import java.net.MalformedURLException;
 import java.net.URISyntaxException;
 import java.net.URL;
 import java.net.URI;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
-import java.util.Collections;
 
 import jdk.internal.vm.annotation.Hidden;
 import sun.security.util.Debug;
-import sun.security.util.FilePermCompat;
-import sun.security.util.SecurityConstants;
 import jdk.internal.reflect.CallerSensitive;
 import jdk.internal.reflect.Reflection;
-import jdk.internal.vm.annotation.DontInline;
 import jdk.internal.vm.annotation.ForceInline;
 import jdk.internal.vm.annotation.ReservedStackAccess;
 
@@ -456,15 +443,7 @@ public final class AccessController {
             throw new NullPointerException("null permissions parameter");
         }
         Class<?> caller = Reflection.getCallerClass();
-        Module module = caller.getModule();
-        StringBuilder sb = new StringBuilder();
-        sb.append("jrt:/").append(module.getName()).append("/").append(caller.getName());
-        CodeSource cs = null;
-        try {
-            cs = new CodeSource(new URI(sb.toString()).toURL(), (CodeSigner[]) null);
-        } catch (MalformedURLException | URISyntaxException e){
-            //TODO: Debug output
-        }
+        CodeSource cs = getResource(caller);
         ProtectionDomain pd = new DomainIdentity(cs, toPermissions(perms), null, null);
         if (context == null){
             context = AccessControlContext.build(
@@ -530,15 +509,7 @@ public final class AccessController {
         @SuppressWarnings("removal")
         DomainCombiner dc = parent.getCombiner();
         Class<?> caller = Reflection.getCallerClass();
-        Module module = caller.getModule();
-        StringBuilder sb = new StringBuilder();
-        sb.append("jrt:/").append(module.getName()).append("/").append(caller.getName());
-        CodeSource cs = null;
-        try {
-            cs = new CodeSource(new URI(sb.toString()).toURL(), (CodeSigner[]) null);
-        } catch (MalformedURLException | URISyntaxException e){
-            //TODO: Debug output
-        }
+        CodeSource cs = getResource(caller);
         ProtectionDomain pd = new DomainIdentity(cs, toPermissions(perms), null, null);
         if (context == null){
             context = AccessControlContext.build(new ProtectionDomain[]{pd}, dc, false);
@@ -867,16 +838,7 @@ public final class AccessController {
             throw new NullPointerException("null permissions parameter");
         }
         Class<?> caller = Reflection.getCallerClass();
-        Module module = caller.getModule();
-        StringBuilder sb = new StringBuilder();
-        sb.append("jrt:/").append(module.getName()).append("/").append(caller.getName());
-        CodeSource cs = null;
-        try {
-            URL url = new URI(sb.toString()).toURL();
-            cs = new CodeSource(new URI(sb.toString()).toURL(), (CodeSigner[]) null);
-        } catch (MalformedURLException | URISyntaxException e){
-            //TODO: Debug output
-        }
+        CodeSource cs = getResource(caller);
         ProtectionDomain pd = new DomainIdentity(cs, toPermissions(perms), null, null);
         if (context == null){
             context = AccessControlContext.build(
@@ -958,16 +920,7 @@ public final class AccessController {
         @SuppressWarnings("removal")
         DomainCombiner dc = parent.getCombiner();
         Class<?> caller = Reflection.getCallerClass();
-        Module module = caller.getModule();
-        StringBuilder sb = new StringBuilder();
-        sb.append("jrt:/").append(module.getName()).append("/").append(caller.getName());
-        CodeSource cs = null;
-        try {
-            URL url = new URI(sb.toString()).toURL();
-            cs = new CodeSource(new URI(sb.toString()).toURL(), (CodeSigner[]) null);
-        } catch (MalformedURLException | URISyntaxException e){
-            //TODO: Debug output
-        }
+        CodeSource cs = getResource(caller);
         ProtectionDomain pd = new ProtectionDomain(cs, toPermissions(perms), null, null);
         if (context == null){
             context = AccessControlContext.build(
@@ -1101,5 +1054,41 @@ public final class AccessController {
             p.add(perms[i]);
         }
         return p;
+    }
+    
+    private static CodeSource getResource(Class<?> clazz){
+        // Don't use lambda, in case of bootstrap issues.
+        return doPrivileged(new PrivilegedAction<CodeSource>(){
+            @Override
+            public CodeSource run() {
+                // Reuse Certificates in case there are multiple instances
+                // with different signers and they need to be destinguished?
+                // This could interfere with Certificate based grants?  No,
+                // Certificate grants shouldn't be broad brushed, it should be 
+                // a combination of URI, Certificates and Principals that grant 
+                // permission, otherwise it's bad policy, similar to AllPermission.
+                // EG URL spoofed address might have URI and Principals, but not
+                // Certificates, we don't want to grant imposter code permission,
+                // all conditions must be satisfied.
+                ProtectionDomain callerDomain = clazz.getProtectionDomain();
+                CodeSource callerCodeSource = callerDomain.getCodeSource();
+                Module module = clazz.getModule();
+                String moduleName = module.getName();
+                if (moduleName != null){
+                    StringBuilder sb = new StringBuilder();
+                    sb.append("jrt:/").append(moduleName).append("/").append(clazz.getName());
+                    try {
+                        URL url = new URI(sb.toString()).toURL();
+                        return new CodeSource(new URI(sb.toString()).toURL(), callerCodeSource.getCertificates());
+                    } catch (MalformedURLException | URISyntaxException e){
+                        //TODO: Debug output
+                    }
+                }
+                // For non module code.
+                ClassLoader callerLoader = clazz.getClassLoader();
+                URL url = callerLoader.getResource(clazz.getName());
+                return new CodeSource(url, callerCodeSource.getCertificates());
+            }
+        });
     }
 }
