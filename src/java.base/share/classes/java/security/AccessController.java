@@ -1079,7 +1079,9 @@ public final class AccessController {
                     sb.append("jrt:/").append(moduleName).append("/").append(clazz.getName());
                     try {
                         URL url = new URI(sb.toString()).toURL();
-                        return new CodeSource(new URI(sb.toString()).toURL(), callerCodeSource.getCertificates());
+                        return new CodeSource(new URI(sb.toString()).toURL(), 
+                                callerCodeSource != null?
+                                callerCodeSource.getCertificates() : null);
                     } catch (MalformedURLException | URISyntaxException e){
                         //TODO: Debug output
                     }
@@ -1087,7 +1089,8 @@ public final class AccessController {
                 // For non module code.
                 ClassLoader callerLoader = clazz.getClassLoader();
                 URL url = callerLoader.getResource(clazz.getName());
-                return new CodeSource(url, callerCodeSource.getCertificates());
+                return new CodeSource(url, callerCodeSource != null?
+                                callerCodeSource.getCertificates() : null);
             }
         });
     }
