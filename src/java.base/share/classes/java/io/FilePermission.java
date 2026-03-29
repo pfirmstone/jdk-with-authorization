@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 1997, 2025, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 1997, 2024, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -67,7 +67,7 @@ import sun.security.util.SecurityConstants;
  * <P>
  * The actions string is converted to lowercase before processing.
  *
- * @deprecated
+ * @apiNote
  * This permission cannot be used for controlling access to resources
  * as the Security Manager is no longer supported.
  *
@@ -83,7 +83,6 @@ import sun.security.util.SecurityConstants;
  * @serial exclude
  */
 
-@Deprecated(since="25", forRemoval=true)
 public final class FilePermission extends Permission implements Serializable {
 
     /**
@@ -1116,7 +1115,6 @@ final class FilePermissionCollection extends PermissionCollection
      *                                has been marked readonly
      */
     @Override
-    @SuppressWarnings("removal")
     public void add(Permission permission) {
         if (! (permission instanceof FilePermission fp))
             throw new IllegalArgumentException("invalid permission: "+
@@ -1154,7 +1152,6 @@ final class FilePermissionCollection extends PermissionCollection
      * the set, false if not.
      */
     @Override
-    @SuppressWarnings("removal")
     public boolean implies(Permission permission) {
         if (! (permission instanceof FilePermission fperm))
             return false;
@@ -1183,7 +1180,6 @@ final class FilePermissionCollection extends PermissionCollection
      * @return an enumeration of all the FilePermission objects.
      */
     @Override
-    @SuppressWarnings("removal")
     public Enumeration<Permission> elements() {
         return perms.elements();
     }

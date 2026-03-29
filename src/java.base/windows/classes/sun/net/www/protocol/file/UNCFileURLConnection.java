@@ -41,7 +41,6 @@ final class UNCFileURLConnection extends FileURLConnection {
     }
 
     @Override
-    @SuppressWarnings("removal")
     public Permission getPermission() {
         Permission perm = permission;
         if (perm == null) {
@@ -50,3 +49,4 @@ final class UNCFileURLConnection extends FileURLConnection {
         return perm;
     }
 }
+
