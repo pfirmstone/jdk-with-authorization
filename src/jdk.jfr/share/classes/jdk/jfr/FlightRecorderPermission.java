@@ -25,6 +25,8 @@
 
 package jdk.jfr;
 
+import jdk.jfr.internal.SecuritySupport;
+
 import java.util.Objects;
 
 /**
