@@ -107,7 +107,7 @@ public abstract class Permission implements Guard {
         @SuppressWarnings("removal")
         SecurityManager sm = System.getSecurityManager();        
         if (sm != null) {
-            if (object instanceof AccessControlContext) sm.checkPermission(this, context);
+            if (context instanceof AccessControlContext) sm.checkPermission(this, context);
             else sm.checkPermission(this);
         }
     }
