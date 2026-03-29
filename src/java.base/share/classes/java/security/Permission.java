@@ -88,7 +88,10 @@ public abstract class Permission implements Guard {
      * Returns silently if access is granted. Otherwise, throws
      * a {@code SecurityException}.
      *
-     * @param object the object being guarded (currently ignored).
+     * @param context   a system-dependent security context.  If context is
+     *                  an instance of {@code AccessControlContext} 
+     *                  the two argument {@code SecurityManager.checkPermission} 
+     *                  method is called.
      *
      * @throws SecurityException
      *        if a security manager exists and its
@@ -100,10 +103,13 @@ public abstract class Permission implements Guard {
      *
      */
     @Override
-    public void checkGuard(Object object) throws SecurityException {
+    public void checkGuard(Object context) throws SecurityException {
         @SuppressWarnings("removal")
-        SecurityManager sm = System.getSecurityManager();
-        if (sm != null) sm.checkPermission(this);
+        SecurityManager sm = System.getSecurityManager();        
+        if (sm != null) {
+            if (object instanceof AccessControlContext) sm.checkPermission(this, context);
+            else sm.checkPermission(this);
+        }
     }
 
     /**

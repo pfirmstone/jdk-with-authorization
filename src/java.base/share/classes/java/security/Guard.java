@@ -51,7 +51,8 @@ public interface Guard {
      * {@code object}. Returns silently if access is allowed.
      * Otherwise, throws a {@code SecurityException}.
      * 
-     * @param object the object being protected by the guard.
+     * @param object the object being protected by the guard, or the 
+     *               system-dependent security context.
      *
      * @throws    SecurityException if access is denied.
      *
