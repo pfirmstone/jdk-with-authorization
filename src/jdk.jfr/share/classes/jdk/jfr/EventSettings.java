@@ -159,6 +159,11 @@ public abstract class EventSettings {
         public boolean isVisible(EventType t) {
             return t.isVisible();
         }
+
+        @Override
+        public AccessControlContext getContext(SettingControl sc) {
+            return sc.getContext();
+        }
     }
 
     // Used to provide EventSettings for jdk.management.jfr module
