@@ -68,7 +68,6 @@ final class EventInstrumentation {
     private static final ClassDesc TYPE_ISE = classDesc(IllegalStateException.class);
     private static final ClassDesc TYPE_EVENT_WRITER = classDesc(EventWriter.class);
     private static final ClassDesc TYPE_EVENT_WRITER_FACTORY = ClassDesc.of("jdk.jfr.internal.event.EventWriterFactory");
-    private static final ClassDesc TYPE_SETTING_DEFINITION = classDesc(SettingDefinition.class);
     private static final ClassDesc TYPE_OBJECT = classDesc(Object.class);
     private static final MethodDesc METHOD_BEGIN = MethodDesc.of("begin", "()V");
     private static final MethodDesc METHOD_COMMIT = MethodDesc.of("commit", "()V");
