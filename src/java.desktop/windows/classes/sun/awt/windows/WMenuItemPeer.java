@@ -49,11 +49,13 @@ class WMenuItemPeer extends WObjectPeer implements MenuItemPeer {
     // MenuItemPeer implementation
 
     private synchronized native void _dispose();
+    @Override
     protected void disposeImpl() {
         WToolkit.targetDisposedPeer(target, this);
         _dispose();
     }
 
+    @Override
     public void setEnabled(boolean b) {
         enable(b);
     }
@@ -72,6 +74,7 @@ class WMenuItemPeer extends WObjectPeer implements MenuItemPeer {
         }
     }
 
+    @Override
     public void setLabel(String label) {
         //Fix for 6288578: PIT. Windows: Shortcuts displayed for the menuitems in a popup menu
         readShortcutLabel();
@@ -173,6 +176,7 @@ class WMenuItemPeer extends WObjectPeer implements MenuItemPeer {
 
     private native void _setFont(Font f);
 
+    @Override
     public void setFont(final Font f) {
         _setFont(f);
     }

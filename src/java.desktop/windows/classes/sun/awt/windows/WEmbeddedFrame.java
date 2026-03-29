@@ -39,7 +39,7 @@ import java.security.PrivilegedAction;
 import  java.security.AccessController;
 
 @SuppressWarnings("serial") // JDK-implementation class
-public class WEmbeddedFrame extends EmbeddedFrame {
+public final class WEmbeddedFrame extends EmbeddedFrame {
 
     static {
         initIDs();
@@ -84,6 +84,7 @@ public class WEmbeddedFrame extends EmbeddedFrame {
         }
     }
 
+    @Override
     public void addNotify() {
         if (!isDisplayable()) {
             WToolkit toolkit = (WToolkit)Toolkit.getDefaultToolkit();
@@ -236,6 +237,7 @@ public class WEmbeddedFrame extends EmbeddedFrame {
     public void activateEmbeddingTopLevel() {
     }
 
+    @Override
     public void synthesizeWindowActivation(final boolean activate) {
         final FramePeer peer = AWTAccessor.getComponentAccessor().getPeer(this);
         if (!activate || EventQueue.isDispatchThread()) {
@@ -253,7 +255,9 @@ public class WEmbeddedFrame extends EmbeddedFrame {
         }
     }
 
+    @Override
     public void registerAccelerator(AWTKeyStroke stroke) {}
+    @Override
     public void unregisterAccelerator(AWTKeyStroke stroke) {}
 
     /**
@@ -268,6 +272,7 @@ public class WEmbeddedFrame extends EmbeddedFrame {
      * NOTE: This method may be called by privileged threads.
      *     DO NOT INVOKE CLIENT CODE ON THIS THREAD!
      */
+    @Override
     public void notifyModalBlocked(Dialog blocker, boolean blocked) {
         try {
             ComponentPeer thisPeer = (ComponentPeer)WToolkit.targetToPeer(this);
