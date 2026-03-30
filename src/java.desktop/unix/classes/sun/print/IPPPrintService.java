@@ -106,7 +106,7 @@ import javax.print.event.PrintServiceAttributeListener;
 import static java.nio.charset.StandardCharsets.ISO_8859_1;
 import static java.nio.charset.StandardCharsets.UTF_8;
 
-public class IPPPrintService implements PrintService, SunPrinterJobService {
+public final class IPPPrintService implements PrintService, SunPrinterJobService {
 
     public static final boolean debugPrint;
     private static final String debugPrefix = "IPPPrintService>> ";
@@ -512,6 +512,7 @@ public class IPPPrintService implements PrintService, SunPrinterJobService {
     }
 
 
+    @Override
     public DocPrintJob createPrintJob() {
         @SuppressWarnings("removal")
         SecurityManager security = System.getSecurityManager();
@@ -523,6 +524,7 @@ public class IPPPrintService implements PrintService, SunPrinterJobService {
     }
 
 
+    @Override
     public synchronized Object
         getSupportedAttributeValues(Class<? extends Attribute> category,
                                     DocFlavor flavor,
@@ -855,7 +857,7 @@ public class IPPPrintService implements PrintService, SunPrinterJobService {
 
     //This class is for getting all pre-defined Finishings
     @SuppressWarnings("serial") // JDK implementation class
-    private static class ExtFinishing extends Finishings {
+    private static final class ExtFinishing extends Finishings {
         ExtFinishing(int value) {
             super(100); // 100 to avoid any conflicts with predefined values.
         }
@@ -867,6 +869,7 @@ public class IPPPrintService implements PrintService, SunPrinterJobService {
     }
 
 
+    @Override
     public AttributeSet getUnsupportedAttributes(DocFlavor flavor,
                                                  AttributeSet attributes) {
         if (flavor != null && !isDocFlavorSupported(flavor)) {
@@ -901,6 +904,7 @@ public class IPPPrintService implements PrintService, SunPrinterJobService {
     }
 
 
+    @Override
     public synchronized DocFlavor[] getSupportedDocFlavors() {
 
         if (supportedDocFlavors != null) {
@@ -997,6 +1001,7 @@ public class IPPPrintService implements PrintService, SunPrinterJobService {
     }
 
 
+    @Override
     public boolean isDocFlavorSupported(DocFlavor flavor) {
         if (supportedDocFlavors == null) {
             getSupportedDocFlavors();
@@ -1094,6 +1099,7 @@ public class IPPPrintService implements PrintService, SunPrinterJobService {
         return null;
     }
 
+    @Override
     public synchronized Class<?>[] getSupportedAttributeCategories() {
         if (supportedCats != null) {
             Class<?> [] copyCats = new Class<?>[supportedCats.length];
@@ -1170,6 +1176,7 @@ public class IPPPrintService implements PrintService, SunPrinterJobService {
     }
 
 
+    @Override
     public boolean
         isAttributeCategorySupported(Class<? extends Attribute> category)
     {
@@ -1207,6 +1214,7 @@ public class IPPPrintService implements PrintService, SunPrinterJobService {
         return false;
     }
 
+    @Override
     @SuppressWarnings("unchecked")
     public synchronized <T extends PrintServiceAttribute>
         T getAttribute(Class<T> category)
@@ -1276,6 +1284,7 @@ public class IPPPrintService implements PrintService, SunPrinterJobService {
     }
 
 
+    @Override
     public synchronized PrintServiceAttributeSet getAttributes() {
         if (!init) {
             // get all attributes for the first time.
@@ -1396,6 +1405,7 @@ public class IPPPrintService implements PrintService, SunPrinterJobService {
     }
 
 
+    @Override
     public boolean isAttributeValueSupported(Attribute attr,
                                              DocFlavor flavor,
                                              AttributeSet attributes) {
@@ -1545,6 +1555,7 @@ public class IPPPrintService implements PrintService, SunPrinterJobService {
     }
 
 
+    @Override
     public synchronized Object
         getDefaultAttributeValue(Class<? extends Attribute> category)
     {
@@ -1747,6 +1758,7 @@ public class IPPPrintService implements PrintService, SunPrinterJobService {
         return false;
     }
 
+    @Override
     public ServiceUIFactory getServiceUIFactory() {
         return null;
     }
@@ -1759,6 +1771,7 @@ public class IPPPrintService implements PrintService, SunPrinterJobService {
         }
     }
 
+    @Override
     public void addPrintServiceAttributeListener(
                                  PrintServiceAttributeListener listener) {
         synchronized (this) {
@@ -1772,6 +1785,7 @@ public class IPPPrintService implements PrintService, SunPrinterJobService {
         }
     }
 
+    @Override
     public void removePrintServiceAttributeListener(
                                   PrintServiceAttributeListener listener) {
         synchronized (this) {
@@ -1790,6 +1804,7 @@ public class IPPPrintService implements PrintService, SunPrinterJobService {
         return printer;
     }
 
+    @Override
     public String getName() {
         /*
          * Mac is using printer-info IPP attribute for its human-readable printer
@@ -1808,6 +1823,7 @@ public class IPPPrintService implements PrintService, SunPrinterJobService {
     }
 
 
+    @Override
     public boolean usesClass(Class<?> c) {
         return (c == sun.print.PSPrinterJob.class);
     }
@@ -2140,16 +2156,19 @@ public class IPPPrintService implements PrintService, SunPrinterJobService {
         return (s.length() == 2) ? s :  "0"+s;
     }
 
+    @Override
     public String toString() {
         return "IPP Printer : " + getName();
     }
 
+    @Override
     public boolean equals(Object obj) {
         return  (obj == this ||
                  (obj instanceof IPPPrintService &&
                   ((IPPPrintService)obj).getName().equals(getName())));
     }
 
+    @Override
     public int hashCode() {
         return this.getClass().hashCode()+getName().hashCode();
     }

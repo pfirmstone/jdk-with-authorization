@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008, 2023, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2008, 2025, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -36,9 +36,9 @@ import java.io.IOException;
 import java.security.AccessController;
 import java.security.PrivilegedActionException;
 import java.security.PrivilegedExceptionAction;
+import jdk.internal.util.Exceptions;
 import jdk.internal.invoke.MhUtil;
 import jdk.internal.misc.Unsafe;
-import sun.net.util.SocketExceptions;
 
 /**
  * Windows implementation of AsynchronousSocketChannel using overlapped I/O.
@@ -256,7 +256,7 @@ class WindowsAsynchronousSocketChannelImpl
 
             if (exc != null) {
                 closeChannel();
-                exc = SocketExceptions.of(toIOException(exc), remote);
+                exc = Exceptions.ioException(toIOException(exc), remote);
                 result.setFailure(exc);
             }
             Invoker.invoke(result);
@@ -283,7 +283,7 @@ class WindowsAsynchronousSocketChannelImpl
             if (exc != null) {
                 closeChannel();
                 IOException ee = toIOException(exc);
-                ee = SocketExceptions.of(ee, remote);
+                ee = Exceptions.ioException(ee, remote);
                 result.setFailure(ee);
             }
 
@@ -299,12 +299,12 @@ class WindowsAsynchronousSocketChannelImpl
          */
         @Override
         public void failed(int error, IOException x) {
-            x = SocketExceptions.of(x, remote);
+            x = Exceptions.ioException(x, remote);
             if (isOpen()) {
                 closeChannel();
                 result.setFailure(x);
             } else {
-                x = SocketExceptions.of(new AsynchronousCloseException(), remote);
+                x = Exceptions.ioException(new AsynchronousCloseException(), remote);
                 result.setFailure(x);
             }
             Invoker.invoke(result);

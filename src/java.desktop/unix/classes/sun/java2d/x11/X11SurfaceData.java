@@ -196,6 +196,7 @@ public abstract class X11SurfaceData extends XSurfaceData {
 
     private static Boolean accelerationEnabled = null;
 
+    @Override
     public Raster getRaster(int x, int y, int w, int h) {
         throw new InternalError("not implemented yet");
     }
@@ -276,6 +277,7 @@ public abstract class X11SurfaceData extends XSurfaceData {
         return X11SurfaceDataProxy.createProxy(srcData, graphicsConfig);
     }
 
+    @Override
     public void validatePipe(SunGraphics2D sg2d) {
         if (sg2d.antialiasHint != SunHints.INTVAL_ANTIALIAS_ON &&
             sg2d.paintState <= SunGraphics2D.PAINT_ALPHACOLOR &&
@@ -380,6 +382,7 @@ public abstract class X11SurfaceData extends XSurfaceData {
         }
     }
 
+    @Override
     public RenderLoops getRenderLoops(SunGraphics2D sg2d) {
         if (sg2d.paintState <= SunGraphics2D.PAINT_ALPHACOLOR &&
             sg2d.compositeState <= SunGraphics2D.COMP_ISCOPY)
@@ -389,6 +392,7 @@ public abstract class X11SurfaceData extends XSurfaceData {
         return super.getRenderLoops(sg2d);
     }
 
+    @Override
     public GraphicsConfiguration getDeviceConfiguration() {
         return graphicsConfig;
     }
@@ -462,6 +466,7 @@ public abstract class X11SurfaceData extends XSurfaceData {
      */
     public abstract boolean canSourceSendExposures(int x, int y, int w, int h);
 
+    @Override
     public boolean copyArea(SunGraphics2D sg2d,
                             int x, int y, int w, int h, int dx, int dy)
     {
@@ -595,6 +600,7 @@ public abstract class X11SurfaceData extends XSurfaceData {
         return sType;
     }
 
+    @Override
     public void invalidate() {
         if (isValid()) {
             setInvalid();
@@ -711,10 +717,12 @@ public abstract class X11SurfaceData extends XSurfaceData {
             }
         }
 
+        @Override
         public SurfaceData getReplacement() {
             return peer.getSurfaceData();
         }
 
+        @Override
         public Rectangle getBounds() {
             Rectangle r = peer.getBounds();
             r.x = r.y = 0;
@@ -731,6 +739,7 @@ public abstract class X11SurfaceData extends XSurfaceData {
         /**
          * Returns destination Component associated with this SurfaceData.
          */
+        @Override
         public Object getDestination() {
             return peer.getTarget();
         }
@@ -771,6 +780,7 @@ public abstract class X11SurfaceData extends XSurfaceData {
             makePipes();
         }
 
+        @Override
         public SurfaceData getReplacement() {
             return restoreContents(offscreenImage);
         }
@@ -783,10 +793,12 @@ public abstract class X11SurfaceData extends XSurfaceData {
          * it could choose wrong loop (blit instead of blitbg,
          * for example).
          */
+        @Override
         public int getTransparency() {
             return transparency;
         }
 
+        @Override
         public Rectangle getBounds() {
             return new Rectangle(width, height);
         }
@@ -796,6 +808,7 @@ public abstract class X11SurfaceData extends XSurfaceData {
             return (x < 0 || y < 0 || (x+w) > width || (y+h) > height);
         }
 
+        @Override
         public void flush() {
             /*
              * We need to invalidate the surface before disposing the
@@ -812,6 +825,7 @@ public abstract class X11SurfaceData extends XSurfaceData {
         /**
          * Returns destination Image associated with this SurfaceData.
          */
+        @Override
         public Object getDestination() {
             return offscreenImage;
         }
@@ -829,7 +843,8 @@ public abstract class X11SurfaceData extends XSurfaceData {
 
     private static LazyPipe lazypipe = new LazyPipe();
 
-    public static class LazyPipe extends ValidatePipe {
+    public static final class LazyPipe extends ValidatePipe {
+        @Override
         public boolean validate(SunGraphics2D sg2d) {
             X11SurfaceData xsd = (X11SurfaceData) sg2d.surfaceData;
             if (!xsd.isDrawableValid()) {

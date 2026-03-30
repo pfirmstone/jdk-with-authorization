@@ -74,7 +74,7 @@ import javax.print.attribute.standard.Sides;
 import javax.print.event.PrintServiceAttributeListener;
 
 
-public class UnixPrintService implements PrintService, AttributeUpdater,
+public final class UnixPrintService implements PrintService, AttributeUpdater,
                                          SunPrinterJobService {
 
     /* define doc flavors for text types in the default encoding of
@@ -209,6 +209,7 @@ public class UnixPrintService implements PrintService, AttributeUpdater,
         isInvalid = true;
     }
 
+    @Override
     public String getName() {
         return printer;
     }
@@ -417,6 +418,7 @@ public class UnixPrintService implements PrintService, AttributeUpdater,
         return false;
     }
 
+    @Override
     public DocPrintJob createPrintJob() {
       @SuppressWarnings("removal")
       SecurityManager security = System.getSecurityManager();
@@ -434,6 +436,7 @@ public class UnixPrintService implements PrintService, AttributeUpdater,
         }
     }
 
+    @Override
     public PrintServiceAttributeSet getUpdatedAttributes() {
         PrintServiceAttributeSet currSet = getDynamicAttributes();
         if (lastSet == null) {
@@ -463,6 +466,7 @@ public class UnixPrintService implements PrintService, AttributeUpdater,
         }
     }
 
+    @Override
     public void addPrintServiceAttributeListener(
                                  PrintServiceAttributeListener listener) {
         synchronized (this) {
@@ -476,6 +480,7 @@ public class UnixPrintService implements PrintService, AttributeUpdater,
         }
     }
 
+    @Override
     public void removePrintServiceAttributeListener(
                                   PrintServiceAttributeListener listener) {
         synchronized (this) {
@@ -490,6 +495,7 @@ public class UnixPrintService implements PrintService, AttributeUpdater,
         }
     }
 
+    @Override
     @SuppressWarnings("unchecked")
     public <T extends PrintServiceAttribute>
         T getAttribute(Class<T> category)
@@ -516,6 +522,7 @@ public class UnixPrintService implements PrintService, AttributeUpdater,
         }
     }
 
+    @Override
     public PrintServiceAttributeSet getAttributes() {
         PrintServiceAttributeSet attrs = new HashPrintServiceAttributeSet();
         attrs.add(getPrinterName());
@@ -552,6 +559,7 @@ public class UnixPrintService implements PrintService, AttributeUpdater,
         }
     }
 
+    @Override
     public DocFlavor[] getSupportedDocFlavors() {
         if (supportedDocFlavors == null) {
             initSupportedDocFlavors();
@@ -563,6 +571,7 @@ public class UnixPrintService implements PrintService, AttributeUpdater,
         return flavors;
     }
 
+    @Override
     public boolean isDocFlavorSupported(DocFlavor flavor) {
         if (supportedDocFlavors == null) {
             initSupportedDocFlavors();
@@ -575,6 +584,7 @@ public class UnixPrintService implements PrintService, AttributeUpdater,
         return false;
     }
 
+    @Override
     public Class<?>[] getSupportedAttributeCategories() {
         ArrayList<Class<?>> categList = new ArrayList<>(otherAttrCats.length);
         for (Class<?> c : otherAttrCats) {
@@ -587,6 +597,7 @@ public class UnixPrintService implements PrintService, AttributeUpdater,
         return categList.toArray(new Class<?>[categList.size()]);
     }
 
+    @Override
     public boolean
         isAttributeCategorySupported(Class<? extends Attribute> category)
     {
@@ -609,6 +620,7 @@ public class UnixPrintService implements PrintService, AttributeUpdater,
     /* return defaults for all attributes for which there is a default
      * value
      */
+    @Override
     public Object
         getDefaultAttributeValue(Class<? extends Attribute> category)
     {
@@ -700,6 +712,7 @@ public class UnixPrintService implements PrintService, AttributeUpdater,
         }
     }
 
+    @Override
     public Object
         getSupportedAttributeValues(Class<? extends Attribute> category,
                                     DocFlavor flavor,
@@ -916,6 +929,7 @@ public class UnixPrintService implements PrintService, AttributeUpdater,
             flavor.equals(DocFlavor.URL.PNG);
     }
 
+    @Override
     public boolean isAttributeValueSupported(Attribute attr,
                                              DocFlavor flavor,
                                              AttributeSet attributes) {
@@ -1007,6 +1021,7 @@ public class UnixPrintService implements PrintService, AttributeUpdater,
         return true;
     }
 
+    @Override
     public AttributeSet getUnsupportedAttributes(DocFlavor flavor,
                                                  AttributeSet attributes) {
 
@@ -1041,24 +1056,29 @@ public class UnixPrintService implements PrintService, AttributeUpdater,
         }
     }
 
+    @Override
     public ServiceUIFactory getServiceUIFactory() {
         return null;
     }
 
+    @Override
     public String toString() {
         return "Unix Printer : " + getName();
     }
 
+    @Override
     public boolean equals(Object obj) {
         return  (obj == this ||
                  (obj instanceof UnixPrintService &&
                   ((UnixPrintService)obj).getName().equals(getName())));
     }
 
+    @Override
     public int hashCode() {
         return this.getClass().hashCode()+getName().hashCode();
     }
 
+    @Override
     public boolean usesClass(Class<?> c) {
         return (c == sun.print.PSPrinterJob.class);
     }

@@ -77,6 +77,8 @@ public final class SecuritySupport {
 
     public static final String REGISTER_EVENT = "registerEvent";
     public static final String ACCESS_FLIGHT_RECORDER = "accessFlightRecorder";
+    private static final Module JFR_MODULE = Event.class.getModule();
+    private static final String TRACING_PACKAGE_NAME = "jdk.jfr.tracing";
     private static final MethodHandles.Lookup LOOKUP = MethodHandles.lookup();
     private static final Module JFR_MODULE = Event.class.getModule();
     public  static final SafePath JFC_DIRECTORY = getPathInProperty("java.home", "lib/jfr");
@@ -319,6 +321,10 @@ public final class SecuritySupport {
 
     static void addEventsExport(Class<?> clazz) {
         Modules.addExports(JFR_MODULE, EVENTS_PACKAGE_NAME, clazz.getModule());
+    }
+
+    public static void addTracingExport() {
+        Modules.addExports(JFR_MODULE, TRACING_PACKAGE_NAME);
     }
 
     static void addReadEdge(Class<?> clazz) {

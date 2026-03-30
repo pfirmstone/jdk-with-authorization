@@ -43,6 +43,9 @@ import java.security.PrivilegedExceptionAction;
 import java.util.Set;
 
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
+import static jdk.internal.util.Exceptions.filterNonSocketInfo;
+import static jdk.internal.util.Exceptions.formatMsg;
+
 
 // Make a socket channel look like a socket.
 //
@@ -101,7 +104,8 @@ class SocketAdaptor
             if (sc.isConnected())
                 throw new SocketException("Already connected");
             close();
-            throw new UnknownHostException(remote.toString());
+            throw new UnknownHostException(
+                formatMsg(filterNonSocketInfo(remote.toString())));
         }
         if (timeout < 0)
             throw new IllegalArgumentException("connect: timeout can't be negative");

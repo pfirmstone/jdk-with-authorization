@@ -2705,10 +2705,6 @@ public final class System {
                 ((ThreadLocal<?>)local).removeCarrierThreadLocal();
             }
 
-            public boolean isCarrierThreadLocalPresent(CarrierThreadLocal<?> local) {
-                return ((ThreadLocal<?>)local).isCarrierThreadLocalPresent();
-            }
-
             public Object[] scopedValueCache() {
                 return Thread.scopedValueCache();
             }

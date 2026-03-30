@@ -383,7 +383,7 @@ public final class Subject implements java.io.Serializable {
     @SuppressWarnings("removal")
     public static Subject current() {
         if (!SharedSecrets.getJavaLangAccess().allowSecurityManager()) {
-            return SCOPED_SUBJECT.orElse(null);
+            return SCOPED_SUBJECT.isBound() ? SCOPED_SUBJECT.get() : null;
         } else {
             return getSubject(AccessController.getContext());
         }

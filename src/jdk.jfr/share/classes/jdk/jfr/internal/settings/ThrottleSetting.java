@@ -37,7 +37,6 @@ import jdk.jfr.Label;
 import jdk.jfr.MetadataDefinition;
 import jdk.jfr.Name;
 import jdk.jfr.internal.PlatformEventType;
-import jdk.jfr.internal.Throttle;
 import jdk.jfr.internal.Type;
 import jdk.jfr.internal.util.Rate;
 import jdk.jfr.internal.util.TimespanUnit;
@@ -48,7 +47,7 @@ import jdk.jfr.internal.util.Utils;
 @Description("Throttles the emission rate for an event")
 @Name(Type.SETTINGS_PREFIX + "Throttle")
 public final class ThrottleSetting extends JDKSettingControl {
-    public static final String DEFAULT_VALUE = Throttle.DEFAULT;
+    public static final String DEFAULT_VALUE = "off";
     private final PlatformEventType eventType;
     private final String defaultValue;
     private String value;

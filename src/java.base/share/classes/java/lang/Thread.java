@@ -250,7 +250,7 @@ public class Thread implements Runnable {
     private AccessControlContext inheritedAccessControlContext;
 
     // Additional fields for platform threads.
-    // All fields, except task, are accessed directly by the VM.
+    // All fields, except task and terminatingThreadLocals, are accessed directly by the VM.
     private static class FieldHolder {
         final ThreadGroup group;
         final Runnable task;
@@ -258,6 +258,9 @@ public class Thread implements Runnable {
         volatile int priority;
         volatile boolean daemon;
         volatile int threadStatus;
+
+        // This map is maintained by the ThreadLocal class
+        ThreadLocal.ThreadLocalMap terminatingThreadLocals;
 
         FieldHolder(ThreadGroup group,
                     Runnable task,
@@ -274,17 +277,41 @@ public class Thread implements Runnable {
     }
     private final FieldHolder holder;
 
+    ThreadLocal.ThreadLocalMap terminatingThreadLocals() {
+        return holder.terminatingThreadLocals;
+    }
+
+    void setTerminatingThreadLocals(ThreadLocal.ThreadLocalMap map) {
+        holder.terminatingThreadLocals = map;
+    }
+
     /*
      * ThreadLocal values pertaining to this thread. This map is maintained
      * by the ThreadLocal class.
      */
-    ThreadLocal.ThreadLocalMap threadLocals;
+    private ThreadLocal.ThreadLocalMap threadLocals;
+
+    ThreadLocal.ThreadLocalMap threadLocals() {
+        return threadLocals;
+    }
+
+    void setThreadLocals(ThreadLocal.ThreadLocalMap map) {
+        threadLocals = map;
+    }
 
     /*
      * InheritableThreadLocal values pertaining to this thread. This map is
      * maintained by the InheritableThreadLocal class.
      */
-    ThreadLocal.ThreadLocalMap inheritableThreadLocals;
+    private ThreadLocal.ThreadLocalMap inheritableThreadLocals;
+
+    ThreadLocal.ThreadLocalMap inheritableThreadLocals() {
+        return inheritableThreadLocals;
+    }
+
+    void setInheritableThreadLocals(ThreadLocal.ThreadLocalMap map) {
+        inheritableThreadLocals = map;
+    }
 
     /*
      * Scoped value bindings are maintained by the ScopedValue class.
@@ -1629,7 +1656,7 @@ public class Thread implements Runnable {
         }
 
         try {
-            if (threadLocals != null && TerminatingThreadLocal.REGISTRY.isPresent()) {
+            if (terminatingThreadLocals() != null) {
                 TerminatingThreadLocal.threadTerminated();
             }
         } finally {
