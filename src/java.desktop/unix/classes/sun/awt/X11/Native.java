@@ -35,7 +35,7 @@ import java.security.PrivilegedAction;
  * native data types on different platforms similarly.
  */
 
-class Native {
+final class Native {
 
     private static Unsafe unsafe = XlibWrapper.unsafe;
 

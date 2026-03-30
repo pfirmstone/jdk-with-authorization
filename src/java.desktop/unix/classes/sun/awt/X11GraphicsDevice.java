@@ -630,6 +630,7 @@ public final class X11GraphicsDevice extends GraphicsDevice
         topLevels.remove(client);
     }
 
+    @Override
     public String toString() {
         return ("X11GraphicsDevice[screen="+screen+"]");
     }

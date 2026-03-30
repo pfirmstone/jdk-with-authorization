@@ -669,7 +669,7 @@ final class VirtualThread extends BaseVirtualThread {
 
         // notify container
         if (notifyContainer) {
-            threadContainer().onExit(this);
+            threadContainer().remove(this);
         }
 
         // clear references to thread locals
@@ -697,7 +697,7 @@ final class VirtualThread extends BaseVirtualThread {
         boolean addedToContainer = false;
         boolean started = false;
         try {
-            container.onStart(this);  // may throw
+            container.add(this);  // may throw
             addedToContainer = true;
 
             // scoped values may be inherited

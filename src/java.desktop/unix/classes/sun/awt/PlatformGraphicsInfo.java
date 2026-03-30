@@ -31,7 +31,7 @@ import java.awt.Toolkit;
 import java.security.AccessController;
 import java.security.PrivilegedAction;
 
-public class PlatformGraphicsInfo {
+public final class PlatformGraphicsInfo {
 
     public static GraphicsEnvironment createGE() {
         return new X11GraphicsEnvironment();

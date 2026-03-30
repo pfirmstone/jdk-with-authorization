@@ -80,6 +80,7 @@ public abstract class InfoWindow extends Window {
         closer = new Closer();
     }
 
+    @Override
     public Component add(Component c) {
         container.add(c, BorderLayout.CENTER);
         return c;
@@ -116,15 +117,17 @@ public abstract class InfoWindow extends Window {
         closer.schedule();
     }
 
+    @Override
     @SuppressWarnings("deprecation")
     public void hide() {
         closer.close();
     }
 
-    private class Closer implements Runnable {
+    private final class Closer implements Runnable {
         Runnable action;
         int time;
 
+        @Override
         public void run() {
             doClose();
         }
@@ -168,7 +171,7 @@ public abstract class InfoWindow extends Window {
     }
 
     @SuppressWarnings("serial") // JDK-implementation class
-    public static class Tooltip extends InfoWindow {
+    public static final class Tooltip extends InfoWindow {
 
         public interface LiveArguments extends InfoWindow.LiveArguments {
             /** The tooltip to be displayed. */
@@ -264,7 +267,7 @@ public abstract class InfoWindow extends Window {
     }
 
     @SuppressWarnings("serial") // JDK-implementation class
-    public static class Balloon extends InfoWindow {
+    public static final class Balloon extends InfoWindow {
 
         public interface LiveArguments extends InfoWindow.LiveArguments {
             /** The action to be performed upon clicking the balloon. */
@@ -432,6 +435,7 @@ public abstract class InfoWindow extends Window {
                 });
         }
 
+        @Override
         public void dispose() {
             displayer.thread.interrupt();
             super.dispose();
@@ -461,7 +465,8 @@ public abstract class InfoWindow extends Window {
             }
         }
         @SuppressWarnings("deprecation")
-        private class ActionPerformer extends MouseAdapter {
+        private final class ActionPerformer extends MouseAdapter {
+            @Override
             public void mouseClicked(MouseEvent e) {
                 // hide the balloon by any click
                 hide();
@@ -474,7 +479,7 @@ public abstract class InfoWindow extends Window {
             }
         }
 
-        private class Displayer implements Runnable {
+        private final class Displayer implements Runnable {
             final int MAX_CONCURRENT_MSGS = 10;
 
             ArrayBlockingQueue<Message> messageQueue = new ArrayBlockingQueue<Message>(MAX_CONCURRENT_MSGS);
@@ -521,7 +526,7 @@ public abstract class InfoWindow extends Window {
             }
         }
 
-        private static class Message {
+        private static final class Message {
             String caption, text, messageType;
 
             Message(String caption, String text, String messageType) {
@@ -532,4 +537,3 @@ public abstract class InfoWindow extends Window {
         }
     }
 }
-
