@@ -24,6 +24,8 @@
  */
 package java.util.concurrent;
 
+import java.security.AccessController;
+import java.security.PrivilegedAction;
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.VarHandle;
 import java.time.Duration;
@@ -126,18 +128,34 @@ final class StructuredTaskScopeImpl<T, R> implements StructuredTaskScope<T, R> {
             throw new IllegalStateException("join not called");
         }
     }
+    
+    /**
+     * Interrupt all unfinished threads.
+     */
+    private void implInterruptAll() {
+        flock.threads()
+            .filter(t -> t != Thread.currentThread())
+            .forEach(t -> {
+                try {
+                    t.interrupt();
+                } catch (Throwable ignore) { }
+            });
+    }
 
     /**
      * Interrupts all threads in this scope, except the current thread.
      */
+    @SuppressWarnings("removal")
     private void interruptAll() {
-        flock.threads()
-                .filter(t -> t != Thread.currentThread())
-                .forEach(t -> {
-                    try {
-                        t.interrupt();
-                    } catch (Throwable ignore) { }
-                });
+        if (System.getSecurityManager() == null) {
+            implInterruptAll();
+        } else {
+            PrivilegedAction<Void> pa = () -> {
+                implInterruptAll();
+                return null;
+            };
+            AccessController.doPrivileged(pa);
+        }
     }
 
     /**
