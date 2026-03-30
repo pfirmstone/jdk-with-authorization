@@ -3605,9 +3605,9 @@ public class ForkJoinPool extends AbstractExecutorService
             String name = poolName + "-delayScheduler";
             if (workerNamePrefix == null)
                 asyncCommonPool();  // override common parallelism zero
-            lockRunState();
+            long isShutdown = lockRunState() & SHUTDOWN;
             try {
-                if ((ds = delayScheduler) == null) {
+                if (isShutdown == 0L && (ds = delayScheduler) == null) {
                     ds = delayScheduler = new DelayScheduler(this, name);
                     start = true;
                 }
@@ -3615,12 +3615,20 @@ public class ForkJoinPool extends AbstractExecutorService
                 unlockRunState();
             }
             if (start) { // start outside of lock
-                // exceptions on start passed to (external) callers
                 SharedThreadContainer ctr;
-                if ((ctr = container) != null)
-                    ctr.start(ds);
-                else
-                    ds.start();
+                try {
+                    if ((ctr = container) != null)
+                        ctr.start(ds);
+                    else
+                        ds.start();
+                } catch (RuntimeException | Error ex) { // back out
+                    lockRunState();
+                    ds = delayScheduler = null;
+                    unlockRunState();
+                    tryTerminate(false, false);
+                    if (ex instanceof Error)
+                        throw ex;
+                }
             }
         }
         return ds;
