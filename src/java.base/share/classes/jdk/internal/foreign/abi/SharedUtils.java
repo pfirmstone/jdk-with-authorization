@@ -63,6 +63,8 @@ import java.util.Objects;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
+import sun.security.action.GetIntegerAction;
+
 import static java.lang.foreign.ValueLayout.*;
 import static java.lang.invoke.MethodHandles.*;
 import static java.lang.invoke.MethodType.methodType;
@@ -390,7 +392,7 @@ public final class SharedUtils {
                 : chunkOffset;
     }
 
-    private static final int LINKER_STACK_SIZE = Integer.getInteger("jdk.internal.foreign.LINKER_STACK_SIZE", 256);
+    private static final int LINKER_STACK_SIZE = GetIntegerAction.privilegedGetProperty("jdk.internal.foreign.LINKER_STACK_SIZE", 256);
     private static final BufferStack LINKER_STACK = BufferStack.of(LINKER_STACK_SIZE, 1);
 
     @ForceInline
