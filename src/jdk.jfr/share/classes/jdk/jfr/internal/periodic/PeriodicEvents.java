@@ -58,7 +58,7 @@ public final class PeriodicEvents {
     // State only to be read and modified by periodic task thread
     private static long lastTimeMillis;
 
-    public static void addJDKEvent(Class<? extends Event> eventClass, Runnable runnable) {
+    public static void addJavaEvent(Class<? extends Event> eventClass, Runnable runnable) {
         taskRepository.add(new JDKEventTask(eventClass, runnable));
     }
 
