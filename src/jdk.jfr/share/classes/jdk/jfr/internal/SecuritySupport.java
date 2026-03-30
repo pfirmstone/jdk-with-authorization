@@ -337,7 +337,7 @@ public final class SecuritySupport {
         return doPrivilegedWithReturn(() -> Boolean.getBoolean(propertyName), new PropertyPermission(propertyName, "read"));
     }
 
-    private static SafePath getPathInProperty(String prop, String subPath) {
+    public static SafePath getPathInProperty(String prop, String subPath) {
         return doPrivilegedWithReturn(() -> {
             String path = System.getProperty(prop);
             if (path == null) {
