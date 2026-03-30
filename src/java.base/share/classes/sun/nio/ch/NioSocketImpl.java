@@ -101,8 +101,6 @@ public final class NioSocketImpl extends SocketImpl implements PlatformSocketImp
     private static final int ST_CLOSED = 5;
     private volatile int state;  // need stateLock to change
 
-    // set by SocketImpl.create, protected by stateLock
-    private boolean stream;
     private Cleanable cleaner;
 
     // set to true when the socket is in non-blocking mode
@@ -452,27 +450,22 @@ public final class NioSocketImpl extends SocketImpl implements PlatformSocketImp
      */
     @Override
     protected void create(boolean stream) throws IOException {
+        if (!stream) {
+            throw new IOException("Datagram socket creation not supported");
+        }
         synchronized (stateLock) {
             if (state != ST_NEW)
                 throw new IOException("Already created");
             if (!stream)
                 ResourceManager.beforeUdpCreate();
             FileDescriptor fd;
-            try {
-                if (server) {
-                    assert stream;
-                    fd = Net.serverSocket(true);
-                } else {
-                    fd = Net.socket(stream);
-                }
-            } catch (IOException ioe) {
-                if (!stream)
-                    ResourceManager.afterUdpClose();
-                throw ioe;
+            if (server) {
+                fd = Net.serverSocket();
+            } else {
+                fd = Net.socket();
             }
-            Runnable closer = closerFor(fd, stream);
+            Runnable closer = closerFor(fd);
             this.fd = fd;
-            this.stream = stream;
             this.cleaner = CleanerFactory.cleaner().register(this, closer);
             this.state = ST_UNCONNECTED;
         }
@@ -662,8 +655,6 @@ public final class NioSocketImpl extends SocketImpl implements PlatformSocketImp
     private FileDescriptor beginAccept() throws SocketException {
         synchronized (stateLock) {
             ensureOpen();
-            if (!stream)
-                throw new SocketException("Not a stream socket");
             if (localport == 0)
                 throw new SocketException("Not bound");
             readerThread = NativeThread.current();
@@ -773,10 +764,9 @@ public final class NioSocketImpl extends SocketImpl implements PlatformSocketImp
         }
 
         // set the fields
-        Runnable closer = closerFor(newfd, true);
+        Runnable closer = closerFor(newfd);
         synchronized (nsi.stateLock) {
             nsi.fd = newfd;
-            nsi.stream = true;
             nsi.cleaner = CleanerFactory.cleaner().register(nsi, closer);
             nsi.localport = localAddress.getPort();
             nsi.address = isaa[0].getAddress();
@@ -1196,27 +1186,14 @@ public final class NioSocketImpl extends SocketImpl implements PlatformSocketImp
     /**
      * Returns an action to close the given file descriptor.
      */
-    private static Runnable closerFor(FileDescriptor fd, boolean stream) {
-        if (stream) {
-            return () -> {
-                try {
-                    nd.close(fd);
-                } catch (IOException ioe) {
-                    throw new UncheckedIOException(ioe);
-                }
-            };
-        } else {
-            return () -> {
-                try {
-                    nd.close(fd);
-                } catch (IOException ioe) {
-                    throw new UncheckedIOException(ioe);
-                } finally {
-                    // decrement
-                    ResourceManager.afterUdpClose();
-                }
-            };
-        }
+    private static Runnable closerFor(FileDescriptor fd) {
+        return () -> {
+            try {
+                nd.close(fd);
+            } catch (IOException ioe) {
+                throw new UncheckedIOException(ioe);
+            }
+        };
     }
 
     /**
