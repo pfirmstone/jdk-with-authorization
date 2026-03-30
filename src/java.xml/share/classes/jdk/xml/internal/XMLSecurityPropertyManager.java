@@ -178,29 +178,4 @@ public final class XMLSecurityPropertyManager extends FeaturePropertyBase implem
             }
         }
     }
-
-    /**
-     * Read from system properties, or those in jaxp.properties
-     *
-     * @param property the property
-     * @param systemProperty the name of the system property
-     */
-    private void getSystemProperty(Property property, String systemProperty) {
-        try {
-            String value = SecuritySupport.getSystemProperty(systemProperty);
-            if (value != null) {
-                values[property.ordinal()] = value;
-                states[property.ordinal()] = State.SYSTEMPROPERTY;
-                return;
-            }
-
-            value = SecuritySupport.readConfig(systemProperty);
-            if (value != null) {
-                values[property.ordinal()] = value;
-                states[property.ordinal()] = State.JAXPDOTPROPERTIES;
-            }
-        } catch (NumberFormatException e) {
-            //invalid setting ignored
-        }
-    }
 }
