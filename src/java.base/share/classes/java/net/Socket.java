@@ -465,7 +465,6 @@ public class Socket implements java.io.Closeable {
      * {@code checkConnect} method is called
      * with the host address and {@code port}
      * as its arguments. This could result in a SecurityException.
-     * <p>
      *
      * @param      host     the host name, or {@code null} for the loopback address.
      * @param      port     the port number.
@@ -504,7 +503,6 @@ public class Socket implements java.io.Closeable {
      * {@code checkConnect} method is called
      * with {@code host.getHostAddress()} and {@code port}
      * as its arguments. This could result in a SecurityException.
-     * <p>
      *
      * @param      host     the IP address.
      * @param      port      the port number.
