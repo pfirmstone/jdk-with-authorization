@@ -1,9 +1,5 @@
 /*
-<<<<<<<< HEAD:test/jdk/com/sun/net/httpserver/simpleserver/SecurityManagerTest.java
- * Copyright (c) 2021, Oracle and/or its affiliates. All rights reserved.
-========
  * Copyright (c) 2021, 2025, Oracle and/or its affiliates. All rights reserved.
->>>>>>>> b685ea54081fcf54a6567dddb49b63435a6e1ea4:test/jdk/com/sun/net/httpserver/simpleserver/DocRootDirPermissionsTest.java
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
