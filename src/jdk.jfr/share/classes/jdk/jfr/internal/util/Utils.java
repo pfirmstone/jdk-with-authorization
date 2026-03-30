@@ -53,7 +53,9 @@ import jdk.jfr.internal.LogLevel;
 import jdk.jfr.internal.LogTag;
 import jdk.jfr.internal.Logger;
 import jdk.jfr.internal.MirrorEvent;
+import jdk.jfr.internal.PlatformEventType;
 import jdk.jfr.internal.SecuritySupport;
+import jdk.jfr.internal.SecuritySupport.SafePath;
 import jdk.jfr.internal.Type;
 import jdk.jfr.internal.management.HiddenWait;
 import jdk.jfr.internal.settings.PeriodSetting;
@@ -447,5 +449,38 @@ public final class Utils {
             }
         }
         return null;
+    }
+
+    public static Path getPathInProperty(String prop, String subPath) {
+        SafePath path = SecuritySupport.getPathInProperty(prop, subPath);
+        if (path == null) return null;
+        return path.toPath();
+    }
+
+
+    public static String validTimespanInfinity(PlatformEventType type, String annotation, String userDefault, String systemDefault) {
+        if (systemDefault.equals(userDefault)) {
+            return systemDefault; // Fast path to avoid parsing
+        }
+        if (ValueParser.parseTimespanWithInfinity(userDefault, ValueParser.MISSING) != ValueParser.MISSING) {
+            return userDefault;
+        }
+        warnInvalidAnnotation(type, annotation, userDefault, systemDefault);
+        return systemDefault;
+    }
+
+    public static void warnInvalidAnnotation(PlatformEventType type, String annotation, String userDefault, String systemDefault) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("Programming error. Event setting ");
+        sb.append("@").append(annotation).append("(\"").append(userDefault).append("\")");
+        sb.append(" is invalid on event ");
+        sb.append(type.getName());
+        sb.append(", using ");
+        sb.append("@").append(annotation).append("(\"").append(systemDefault).append("\")");
+        sb.append( " instead.");
+        if (type.isSystem()) {
+            throw new InternalError(sb.toString()); // Fail fast for JDK and JVM events
+        }
+        Logger.log(LogTag.JFR_SETTING, LogLevel.WARN, sb.toString());
     }
 }

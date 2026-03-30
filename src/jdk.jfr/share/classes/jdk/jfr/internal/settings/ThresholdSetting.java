@@ -37,6 +37,7 @@ import jdk.jfr.Name;
 import jdk.jfr.Timespan;
 import jdk.jfr.internal.PlatformEventType;
 import jdk.jfr.internal.Type;
+import jdk.jfr.internal.util.Utils;
 import jdk.jfr.internal.util.ValueParser;
 
 @MetadataDefinition
@@ -47,11 +48,14 @@ import jdk.jfr.internal.util.ValueParser;
 public final class ThresholdSetting extends JDKSettingControl {
     public static final String DEFAULT_VALUE = "0 ns";
     private static final long typeId = Type.getTypeId(ThresholdSetting.class);
-    private String value = DEFAULT_VALUE;
     private final PlatformEventType eventType;
+    private final String defaultValue;
+    private String value;
 
-    public ThresholdSetting(PlatformEventType eventType) {
+    public ThresholdSetting(PlatformEventType eventType, String defaultValue) {
        this.eventType = Objects.requireNonNull(eventType);
+       this.defaultValue = Utils.validTimespanInfinity(eventType, "Threshold", defaultValue, DEFAULT_VALUE);
+       this.value = defaultValue;
     }
 
     @Override
@@ -67,7 +71,7 @@ public final class ThresholdSetting extends JDKSettingControl {
                 }
             }
         }
-        return Objects.requireNonNullElse(text, DEFAULT_VALUE);
+        return Objects.requireNonNullElse(text, defaultValue);
     }
 
     @Override

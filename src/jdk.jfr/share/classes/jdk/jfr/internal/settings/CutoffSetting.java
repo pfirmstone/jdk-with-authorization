@@ -38,6 +38,7 @@ import jdk.jfr.Timespan;
 import jdk.jfr.internal.PlatformEventType;
 import jdk.jfr.internal.Type;
 import jdk.jfr.internal.util.ValueParser;
+import jdk.jfr.internal.util.Utils;
 
 @MetadataDefinition
 @Label("Cutoff")
@@ -46,11 +47,14 @@ import jdk.jfr.internal.util.ValueParser;
 @Timespan
 public final class CutoffSetting extends JDKSettingControl {
     public static final String DEFAULT_VALUE = ValueParser.INFINITY;
-    private String value = DEFAULT_VALUE;
     private final PlatformEventType eventType;
+    private final String defaultValue;
+    private String value;
 
-    public CutoffSetting(PlatformEventType eventType) {
-       this.eventType = Objects.requireNonNull(eventType);
+    public CutoffSetting(PlatformEventType eventType, String defaultValue) {
+        this.eventType = Objects.requireNonNull(eventType);
+        this.defaultValue = Utils.validTimespanInfinity(eventType, "Cutoff", defaultValue, DEFAULT_VALUE);
+        this.value = defaultValue;
     }
 
     @Override
@@ -64,7 +68,7 @@ public final class CutoffSetting extends JDKSettingControl {
                 max = nanos;
             }
         }
-        return Objects.requireNonNullElse(text, DEFAULT_VALUE);
+        return Objects.requireNonNullElse(text, defaultValue);
     }
 
     @Override
