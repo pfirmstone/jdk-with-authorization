@@ -25,6 +25,7 @@
 
 package jdk.internal.foreign;
 
+import jdk.internal.loader.NativeLibraries;
 import jdk.internal.loader.NativeLibrary;
 import jdk.internal.loader.RawNativeLibraries;
 import jdk.internal.util.OperatingSystem;
@@ -70,7 +71,7 @@ public final class SystemLookup implements SymbolLookup {
             if (Utils.IS_WINDOWS) {
                 return makeWindowsLookup();
             } else {
-                return libLookup(libs -> libs.load(jdkLibraryPath("syslookup")));
+                return sysLookup();
             }
         } catch (Throwable ex) {
             // This can happen in the event of a library loading failure - e.g. if one of the libraries the
@@ -100,13 +101,12 @@ public final class SystemLookup implements SymbolLookup {
             }
         });
         Path stdLib = useUCRT ? ucrtbase : msvcrt;
-        SymbolLookup lookup = libLookup(libs -> libs.load(stdLib));
+        SymbolLookup lookup = stdLibLookup(libs -> libs.load(stdLib));
 
         if (useUCRT) {
             // use a fallback lookup to look up inline functions from fallback lib
 
-            SymbolLookup fallbackLibLookup =
-                    libLookup(libs -> libs.load(jdkLibraryPath("syslookup")));
+            SymbolLookup fallbackLibLookup = sysLookup();
 
             @SuppressWarnings("restricted")
             MemorySegment funcs = fallbackLibLookup.findOrThrow("funcs")
@@ -126,8 +126,7 @@ public final class SystemLookup implements SymbolLookup {
         return lookup;
     }
 
-    private static SymbolLookup libLookup(Function<RawNativeLibraries, NativeLibrary> loader) {
-        NativeLibrary lib = loader.apply(RawNativeLibraries.newInstance(MethodHandles.lookup()));
+    private static SymbolLookup lookup(NativeLibrary lib) {
         return name -> {
             Objects.requireNonNull(name);
             if (Utils.containsNullChars(name)) return Optional.empty();
@@ -142,16 +141,17 @@ public final class SystemLookup implements SymbolLookup {
         };
     }
 
-    /*
-     * Returns the path of the given library name from JDK
-     */
-    private static Path jdkLibraryPath(String name) {
-        Path javahome = Path.of(GetPropertyAction.privilegedGetProperty("java.home"));
-        String lib = Utils.IS_WINDOWS ? "bin" : "lib";
-        String libname = System.mapLibraryName(name);
-        return javahome.resolve(lib).resolve(libname);
+    private static SymbolLookup stdLibLookup(Function<RawNativeLibraries, NativeLibrary> loader) {
+        NativeLibrary lib = loader.apply(RawNativeLibraries.newInstance(MethodHandles.lookup()));
+        return lookup(lib);
     }
 
+    @SuppressWarnings("restricted")
+    private static SymbolLookup sysLookup() {
+        NativeLibraries libs = NativeLibraries.newInstance(null);
+        NativeLibrary lib = libs.loadLibrary(SymbolLookup.class, "syslookup");
+        return lookup(lib);
+    }
 
     public static SystemLookup getInstance() {
         return INSTANCE;

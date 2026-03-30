@@ -542,6 +542,7 @@ inline void ExceptionMark::check_no_pending_exception() {
   if (_thread->has_pending_exception()) {
     oop exception = _thread->pending_exception();
     _thread->clear_pending_exception(); // Needed to avoid infinite recursion
+    ResourceMark rm;
     exception->print();
     fatal("ExceptionMark constructor expects no pending exceptions");
   }
@@ -553,6 +554,7 @@ ExceptionMark::~ExceptionMark() {
     Handle exception(_thread, _thread->pending_exception());
     _thread->clear_pending_exception(); // Needed to avoid infinite recursion
     if (is_init_completed()) {
+      ResourceMark rm;
       exception->print();
       fatal("ExceptionMark destructor expects no pending exceptions");
     } else {
