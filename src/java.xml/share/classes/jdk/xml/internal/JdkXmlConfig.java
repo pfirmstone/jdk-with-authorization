@@ -140,21 +140,21 @@ public class JdkXmlConfig {
         Properties properties = new Properties();
         // load the default configuration file
         boolean found = loadProperties(
-                Paths.get(System.getProperty("java.home"),
+                Paths.get(SecuritySupport.getSystemProperty("java.home"),
                                 "conf", "jaxp.properties")
                         .toAbsolutePath().normalize().toString());
 
         // attempts to find stax.properties only if jaxp.properties is not available
         if (stax && !found) {
             found = loadProperties(
-                    Paths.get(System.getProperty("java.home"),
+                    Paths.get(SecuritySupport.getSystemProperty("java.home"),
                                     "conf", "stax.properties")
                             .toAbsolutePath().normalize().toString()
             );
         }
 
         // load the custom configure on top of the default if any
-        String configFile = System.getProperty(JdkConstants.CONFIG_FILE_PROPNAME);
+        String configFile = SecuritySupport.getSystemProperty(JdkConstants.CONFIG_FILE_PROPNAME);
         if (configFile != null) {
             loadProperties(configFile);
         }
