@@ -59,6 +59,7 @@ import java.security.PrivilegedActionException;
 import java.security.PrivilegedExceptionAction;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.function.Supplier;
 import java.util.jar.JarEntry;
 import java.util.spi.ResourceBundleControlProvider;
 import java.util.spi.ResourceBundleProvider;
@@ -495,7 +496,20 @@ public abstract class ResourceBundle {
     /**
      * A Set of the keys contained only in this ResourceBundle.
      */
-    private volatile Set<String> keySet;
+    private final Supplier<Set<String>> keySet = StableValue.supplier(
+            new Supplier<>() { public Set<String> get() { return keySet0(); }});
+
+    private Set<String> keySet0() {
+        final Set<String> keys = new HashSet<>();
+        final Enumeration<String> enumKeys = getKeys();
+        while (enumKeys.hasMoreElements()) {
+            final String key = enumKeys.nextElement();
+            if (handleGetObject(key) != null) {
+                keys.add(key);
+            }
+        }
+        return keys;
+    }
 
     /**
      * Sole constructor.  (For invocation by subclass constructors, typically
@@ -2332,22 +2346,7 @@ public abstract class ResourceBundle {
      * @since 1.6
      */
     protected Set<String> handleKeySet() {
-        if (keySet == null) {
-            synchronized (this) {
-                if (keySet == null) {
-                    Set<String> keys = new HashSet<>();
-                    Enumeration<String> enumKeys = getKeys();
-                    while (enumKeys.hasMoreElements()) {
-                        String key = enumKeys.nextElement();
-                        if (handleGetObject(key) != null) {
-                            keys.add(key);
-                        }
-                    }
-                    keySet = keys;
-                }
-            }
-        }
-        return keySet;
+        return keySet.get();
     }
 
 
