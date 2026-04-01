@@ -36,6 +36,7 @@ import java.net.http.HttpRequest.BodyPublisher;
 import java.nio.ByteBuffer;
 import java.nio.charset.Charset;
 import java.nio.file.Files;
+import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.security.AccessControlContext;
 import java.security.AccessController;
@@ -315,19 +316,42 @@ public final class RequestPublishers {
                                                      boolean defaultFS) {
             try {
                 if (acc != null) {
-                    PrivilegedExceptionAction<InputStream> pa = defaultFS
-                            ? () -> new FileInputStream(path.toFile())
-                            : () -> Files.newInputStream(path);
+                    PrivilegedExceptionAction<InputStream> pa =
+                    () -> {
+                        // Throw `FileNotFoundException` to match the specification of `BodyPublishers::ofFile
+                        if (!Files.isRegularFile(path)) {
+                            throw new FileNotFoundException(
+                                    path + " (Not a regular file)");
+                        }
+                        return defaultFS ?
+                                new FileInputStream(path.toFile()):
+                                Files.newInputStream(path);
+                    };
                     return perm != null
                             ? AccessController.doPrivileged(pa, acc, perm)
                             : AccessController.doPrivileged(pa, acc);
                 } else {
-                    return defaultFS
-                            ? new FileInputStream(path.toFile())
-                            : Files.newInputStream(path);
+                    if (!Files.isRegularFile(path)) {
+                        throw new FileNotFoundException(path + " (Not a regular file)");
+                    }
+                    return defaultFS ? 
+                                    new FileInputStream(path.toFile()):
+                                    Files.newInputStream(path);
                 }
+            } catch (NoSuchFileException nsfe){
+                // Throw `FileNotFoundException` to match the specification of `BodyPublishers::ofFile`
+                FileNotFoundException fnfe = new FileNotFoundException(path + " (No such file or directory)");
+                fnfe.initCause(nsfe);
+                throw toUncheckedException(fnfe);
             } catch (PrivilegedActionException pae) {
-                throw toUncheckedException(pae.getCause());
+                Throwable cause = pae.getCause();
+                if (cause instanceof NoSuchFileException nsfe){
+                    // Throw `FileNotFoundException` to match the specification of `BodyPublishers::ofFile`
+                    FileNotFoundException fnfe = new FileNotFoundException(path + " (No such file or directory)");
+                    fnfe.initCause(nsfe);
+                    throw toUncheckedException(fnfe);
+                }
+                throw toUncheckedException(cause);
             } catch (IOException io) {
                 throw new UncheckedIOException(io);
             }

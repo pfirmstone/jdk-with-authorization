@@ -53,7 +53,6 @@ import java.security.PrivilegedAction;
 import java.security.PrivilegedExceptionAction;
 import java.util.Objects;
 import java.util.Set;
-import java.util.concurrent.locks.ReentrantLock;
 
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
 import static jdk.internal.util.Exceptions.formatMsg;
@@ -398,44 +397,19 @@ public class DatagramSocketAdaptor
 
     // -- java.net.MulticastSocket --
 
-    // used to coordinate changing TTL with the deprecated send method
-    private final ReentrantLock sendLock = new ReentrantLock();
-
     // cached outgoing interface (for use by setInterface/getInterface)
     private final Object outgoingInterfaceLock = new Object();
     private NetworkInterface outgoingNetworkInterface;
     private InetAddress outgoingInetAddress;
 
     @Override
-    @SuppressWarnings("removal")
-    public void setTTL(byte ttl) throws IOException {
-        setTimeToLive(Byte.toUnsignedInt(ttl));
-    }
-
-    @Override
     public void setTimeToLive(int ttl) throws IOException {
-        sendLock.lock();
-        try {
-            setIntOption(StandardSocketOptions.IP_MULTICAST_TTL, ttl);
-        } finally {
-            sendLock.unlock();
-        }
-    }
-
-    @Override
-    @SuppressWarnings("removal")
-    public byte getTTL() throws IOException {
-        return (byte) getTimeToLive();
+        setIntOption(StandardSocketOptions.IP_MULTICAST_TTL, ttl);
     }
 
     @Override
     public int getTimeToLive() throws IOException {
-        sendLock.lock();
-        try {
-            return getIntOption(StandardSocketOptions.IP_MULTICAST_TTL);
-        } finally {
-            sendLock.unlock();
-        }
+        return getIntOption(StandardSocketOptions.IP_MULTICAST_TTL);
     }
 
     @Override
@@ -596,23 +570,6 @@ public class DatagramSocketAdaptor
     public boolean getLoopbackMode() throws SocketException {
         boolean enabled = getBooleanOption(StandardSocketOptions.IP_MULTICAST_LOOP);
         return !enabled;
-    }
-
-    @Override
-    @SuppressWarnings("removal")
-    public void send(DatagramPacket p, byte ttl) throws IOException {
-        sendLock.lock();
-        try {
-            int oldValue = getTimeToLive();
-            try {
-                setTTL(ttl);
-                send(p);
-            } finally {
-                setTimeToLive(oldValue);
-            }
-        } finally {
-            sendLock.unlock();
-        }
     }
 
     /**

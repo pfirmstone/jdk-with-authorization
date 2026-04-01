@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2020, 2023, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2020, 2025, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -102,7 +102,6 @@ public class SendPortZero {
     @Test(dataProvider = "data")
     public void testSend(MulticastSocket ms, DatagramPacket pkt) {
         assertThrows(SE, () -> ms.send(pkt));
-        assertThrows(SE, () -> ms.send(pkt, (byte) 0));
     }
 
     // Check that 0 port check doesn't override security manager check
@@ -115,7 +114,6 @@ public class SendPortZero {
             System.setSecurityManager(new SecurityManager());
 
             assertThrows(ACE, () -> ms.send(pkt));
-            assertThrows(ACE, () -> ms.send(pkt, (byte) 0));
         } finally {
             System.setSecurityManager(null);
             Policy.setPolicy(defaultPolicy);
