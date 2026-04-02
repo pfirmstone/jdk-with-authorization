@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2005, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2005, 2025, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -31,7 +31,6 @@ import java.security.AccessController;
 import java.security.PrivilegedAction;
 
 import jdk.internal.util.OperatingSystem;
-import jdk.internal.util.StaticProperty;
 import org.ietf.jgss.Oid;
 import sun.security.action.GetBooleanAction;
 import static sun.security.util.SecurityConstants.PROVIDER_VER;
@@ -100,7 +99,7 @@ public final class SunNativeProvider extends Provider {
                 };
                 case WINDOWS -> new String[]{
                         // Full path needed, DLL is in jre/bin
-                        StaticProperty.javaHome() + "\\bin\\sspi_bridge.dll",
+                        System.getProperty("java.home") + "\\bin\\sspi_bridge.dll",
                 };
                 case AIX -> new String[]{
                         "/opt/freeware/lib64/libgssapi_krb5.so",
