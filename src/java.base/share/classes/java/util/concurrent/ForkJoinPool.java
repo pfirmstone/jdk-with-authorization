@@ -146,7 +146,7 @@ import static java.util.concurrent.DelayScheduler.ScheduledForkJoinTask;
  * tasks, as well as method {@link #submitWithTimeout} to cancel tasks
  * that take too long. The scheduled functions or actions may create
  * and invoke other {@linkplain ForkJoinTask ForkJoinTasks}. Delayed
- * actions become <em>enabled</em> and behave as ordinary submitted
+ * actions become enabled for execution and behave as ordinary submitted
  * tasks when their delays elapse.  Scheduling methods return
  * {@linkplain ForkJoinTask ForkJoinTasks} that implement the {@link
  * ScheduledFuture} interface. Resource exhaustion encountered after
@@ -159,7 +159,7 @@ import static java.util.concurrent.DelayScheduler.ScheduledForkJoinTask;
  * to disable all delayed tasks upon shutdown, and method {@link
  * #shutdownNow} may be used to instead unconditionally initiate pool
  * termination. Monitoring methods such as {@link #getQueuedTaskCount}
- * do not include scheduled tasks that are not yet enabled to execute,
+ * do not include scheduled tasks that are not yet enabled for execution,
  * which are reported separately by method {@link
  * #getDelayedTaskCount}.
  *
@@ -3658,7 +3658,7 @@ public class ForkJoinPool extends AbstractExecutorService
     }
 
     /**
-     * Submits a one-shot task that becomes enabled after the given
+     * Submits a one-shot task that becomes enabled for execution after the given
      * delay.  At that point it will execute unless explicitly
      * cancelled, or fail to execute (eventually reporting
      * cancellation) when encountering resource exhaustion, or the
@@ -3686,7 +3686,7 @@ public class ForkJoinPool extends AbstractExecutorService
     }
 
     /**
-     * Submits a value-returning one-shot task that becomes enabled
+     * Submits a value-returning one-shot task that becomes enabled for execution
      * after the given delay. At that point it will execute unless
      * explicitly cancelled, or fail to execute (eventually reporting
      * cancellation) when encountering resource exhaustion, or the
@@ -3715,7 +3715,7 @@ public class ForkJoinPool extends AbstractExecutorService
     }
 
     /**
-     * Submits a periodic action that becomes enabled first after the
+     * Submits a periodic action that becomes enabled for execution first after the
      * given initial delay, and subsequently with the given period;
      * that is, executions will commence after
      * {@code initialDelay}, then {@code initialDelay + period}, then
@@ -3769,7 +3769,7 @@ public class ForkJoinPool extends AbstractExecutorService
     }
 
     /**
-     * Submits a periodic action that becomes enabled first after the
+     * Submits a periodic action that becomes enabled for execution first after the
      * given initial delay, and subsequently with the given delay
      * between the termination of one execution and the commencement of
      * the next.

@@ -59,7 +59,7 @@ import java.security.AccessController;
  * capabilities of {@link ThreadPoolExecutor} (which this class
  * extends) are required.
  *
- * <p>Delayed tasks execute no sooner than they are enabled, but
+ * <p>Delayed tasks execute no sooner than they are enabled for execution, but
  * without any real-time guarantees about when, after they are
  * enabled, they will commence. Tasks scheduled for exactly the same
  * execution time are enabled in first-in-first-out (FIFO) order of
@@ -578,7 +578,7 @@ public class ScheduledThreadPoolExecutor
     }
 
     /**
-     * Submits a periodic action that becomes enabled first after the
+     * Submits a periodic action that becomes enabled for execution first after the
      * given initial delay, and subsequently with the given period;
      * that is, executions will commence after
      * {@code initialDelay}, then {@code initialDelay + period}, then
@@ -635,7 +635,7 @@ public class ScheduledThreadPoolExecutor
     }
 
     /**
-     * Submits a periodic action that becomes enabled first after the
+     * Submits a periodic action that becomes enabled for execution first after the
      * given initial delay, and subsequently with the given delay
      * between the termination of one execution and the commencement of
      * the next.
