@@ -81,6 +81,7 @@ import sun.net.www.HeaderParser;
 
 import static java.lang.String.format;
 import static java.nio.charset.StandardCharsets.US_ASCII;
+import static java.util.stream.Collectors.joining;
 import static java.net.Authenticator.RequestorType.PROXY;
 import static java.net.Authenticator.RequestorType.SERVER;
 
