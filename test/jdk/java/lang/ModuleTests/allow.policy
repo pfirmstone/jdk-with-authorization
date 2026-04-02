@@ -24,5 +24,7 @@
 grant {
     permission java.lang.RuntimePermission "getClassLoader";
     permission java.lang.RuntimePermission "accessSystemModules";
-    permission java.io.FilePermission "${java.home}/modules/-", "read";    // exploded build
+    permission java.io.FilePermission "${test.jdk}${/}lib${/}modules${/}-", "read";
+    permission java.io.FilePermission "${test.jdk}${/}lib${/}modules", "read";
+    permission java.io.FilePermission "${test.src}${/}META-INF${/}services${/}java.net.spi.InetAddressResolverProvider", "read";
 };
