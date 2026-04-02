@@ -52,10 +52,10 @@ import sun.net.www.URLConnection;
 public class JavaRuntimeURLConnection extends URLConnection {
 
     // ImageReader to access resources in jimage
-    private static final ImageReader reader;
+    private static final ImageReader READER;
     static {
         PrivilegedAction<ImageReader> pa = ImageReaderFactory::getImageReader;
-        reader = AccessController.doPrivileged(pa);
+        READER = AccessController.doPrivileged(pa);
     }
 
     // The module and resource name in the URL (i.e. "jrt:/[$MODULE[/$PATH]]").
