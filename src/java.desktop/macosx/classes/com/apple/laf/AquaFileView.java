@@ -39,7 +39,7 @@ import com.apple.laf.AquaUtils.RecyclableSingleton;
 
 import static java.nio.charset.StandardCharsets.UTF_8;
 
-class AquaFileView extends FileView {
+final class AquaFileView extends FileView {
     private static final boolean DEBUG = false;
 
     private static final int UNINITALIZED_LS_INFO = -1;
@@ -103,7 +103,7 @@ class AquaFileView extends FileView {
         return getNativePathToSharedJDKBundle();
     }
 
-    static class FileInfo {
+    static final class FileInfo {
         final boolean isDirectory;
         final String absolutePath;
         byte[] pathBytes;
@@ -156,6 +156,7 @@ class AquaFileView extends FileView {
         return fFileChooserUI.fApplicationIsTraversable == AquaFileChooserUI.kOpenAlways;
     }
 
+    @Override
     public String getName(final File f) {
         final FileInfo info = getFileInfoFor(f);
         if (info.displayName != null) return info.displayName;
@@ -177,15 +178,18 @@ class AquaFileView extends FileView {
         return displayName;
     }
 
+    @Override
     public String getDescription(final File f) {
         return f.getName();
     }
 
+    @Override
     public String getTypeDescription(final File f) {
         if (f.isDirectory()) return _directoryDescriptionText();
         return _fileDescriptionText();
     }
 
+    @Override
     public Icon getIcon(final File f) {
         final FileInfo info = getFileInfoFor(f);
         if (info.icon != null) return info.icon;
@@ -216,6 +220,7 @@ class AquaFileView extends FileView {
     }
 
     // aliases are traversable though they aren't directories
+    @Override
     public Boolean isTraversable(final File f) {
         if (f.isDirectory()) {
             // Doesn't matter if it's a package or app, because they're traversable

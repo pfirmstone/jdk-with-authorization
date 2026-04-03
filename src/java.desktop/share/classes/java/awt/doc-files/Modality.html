@@ -118,16 +118,9 @@
       </li><li>Application-modal dialogs<br>
         An application-modal dialog blocks all windows from the same
         application except for those from its child hierarchy.
-        If there are several applets launched in a browser, they can be
-        treated either as separate applications or a single application.
-	This behavior is implementation-dependent.
       </li><li>Toolkit-modal dialogs<br>
         A toolkit-modal dialog blocks all windows that run in the same
-        toolkit except those from its child hierarchy. If there
-        are several applets launched all of them run with the same toolkit,
-        so a toolkit-modal dialog shown from an applet may affect other
-        applets and all windows of the browser instance which embeds the
-        Java runtime environment for this toolkit.
+        toolkit except those from its child hierarchy. 
         See the security section below.
     </li></ol>
     <p>
@@ -337,12 +330,9 @@
     <p>
       A special <code>AWTPermission</code>, <code>"toolkitModality"</code>,
       is required to show toolkit-modal
-      dialogs. This would prevent, for example, blocking a browser or
-      Java Web Start (JWS) by modal dialogs shown from applets.
+      dialogs. 
     </p><p>
       The same permission is required to exclude a window from toolkit modality.
-      This would prevent, for example, a dialog shown from an applet not to be
-      blocked by a browser's or JWS's modal dialog.
 
     <a id="PlatformSupport"></a>
     </p><h2>Platform support</h2>
@@ -371,8 +361,8 @@
       calls: <code>Dialog.setModal(true)</code>,
       <code>Dialog(owner, true)</code>, etc. Prior to JDK 6
       the default type was toolkit-modal,
-      but the only distinction between application- and toolkit-modality is for
-      applets and applications launched from Java Web Start.
+      and now with single application per-VM there is no
+      distinction between application- and toolkit-modality.
 
     <a id="Examples"></a>
     </p><h2>Examples</h2>

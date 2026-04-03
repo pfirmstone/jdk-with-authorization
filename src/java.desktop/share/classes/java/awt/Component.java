@@ -25,7 +25,6 @@
 
 package java.awt;
 
-import java.applet.Applet;
 import java.awt.dnd.DropTarget;
 import java.awt.event.ActionEvent;
 import java.awt.event.AdjustmentEvent;
@@ -240,8 +239,7 @@ public abstract class Component implements ImageObserver, MenuContainer,
     transient Container parent;
 
     /**
-     * The {@code AppContext} of the component. Applets/Plugin may
-     * change the AppContext.
+     * The {@code AppContext} of the component.
      */
     transient AppContext appContext;
 
@@ -3975,10 +3973,9 @@ public abstract class Component implements ImageObserver, MenuContainer,
 
     /**
      * Inner class for flipping buffers on a component.  That component must
-     * be a {@code Canvas} or {@code Window} or {@code Applet}.
+     * be a {@code Canvas} or {@code Window}.
      * @see Canvas
      * @see Window
-     * @see Applet
      * @see java.awt.image.BufferStrategy
      * @author Michael Martak
      * @since 1.4
@@ -4026,11 +4023,9 @@ public abstract class Component implements ImageObserver, MenuContainer,
 
         /**
          * Creates a new flipping buffer strategy for this component.
-         * The component must be a {@code Canvas} or {@code Window} or
-         * {@code Applet}.
+         * The component must be a {@code Canvas} or {@code Window}.
          * @see Canvas
          * @see Window
-         * @see Applet
          * @param numBuffers the number of buffers
          * @param caps the capabilities of the buffers
          * @throws AWTException if the capabilities supplied could not be
@@ -4048,11 +4043,10 @@ public abstract class Component implements ImageObserver, MenuContainer,
             throws AWTException
         {
             if (!(Component.this instanceof Window) &&
-                !(Component.this instanceof Canvas) &&
-                !(Component.this instanceof Applet))
+                !(Component.this instanceof Canvas))
             {
                 throw new ClassCastException(
-                        "Component must be a Canvas or Window or Applet");
+                        "Component must be a Canvas or Window");
             }
             this.numBuffers = numBuffers;
             this.caps = caps;
@@ -8204,12 +8198,6 @@ public abstract class Component implements ImageObserver, MenuContainer,
                 toFocus = policy.getDefaultComponent(rootAncestor);
                 if (focusLog.isLoggable(PlatformLogger.Level.FINER)) {
                     focusLog.finer("default component is " + toFocus);
-                }
-            }
-            if (toFocus == null) {
-                Applet applet = EmbeddedFrame.getAppletIfAncestorOf(this);
-                if (applet != null) {
-                    toFocus = applet;
                 }
             }
             candidate = toFocus;

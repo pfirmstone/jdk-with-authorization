@@ -33,7 +33,7 @@ import javax.swing.plaf.UIResource;
 import com.apple.laf.AquaUtils.RecyclableSingleton;
 
 @SuppressWarnings({"removal", "restricted"})
-public class AquaNativeResources {
+public final class AquaNativeResources {
     static {
         java.security.AccessController.doPrivileged(
             new java.security.PrivilegedAction<Void>() {
@@ -46,7 +46,7 @@ public class AquaNativeResources {
 
     // TODO: removing CColorPaint for now
     @SuppressWarnings("serial") // JDK implementation class
-    static class CColorPaintUIResource extends Color/*CColorPaint*/ implements UIResource {
+    static final class CColorPaintUIResource extends Color/*CColorPaint*/ implements UIResource {
         // The color passed to this MUST be a retained NSColor, and the CColorPaintUIResource
         //  takes ownership of that retain.
         public CColorPaintUIResource(long color, int r, int g, int b, int a) {

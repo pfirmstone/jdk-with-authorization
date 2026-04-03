@@ -144,6 +144,7 @@ public final class CFontManager extends SunFontManager {
         }
     }
 
+    @Override
     protected void registerFontsInDir(final String dirName, boolean useJavaRasterizer,
                                       int fontRank, boolean defer, boolean resolveSymLinks) {
 
@@ -205,6 +206,7 @@ public final class CFontManager extends SunFontManager {
     Object waitForFontsToBeLoaded  = new Object();
     private boolean loadedAllFonts = false;
 
+    @Override
     @SuppressWarnings("removal")
     public void loadFonts()
     {

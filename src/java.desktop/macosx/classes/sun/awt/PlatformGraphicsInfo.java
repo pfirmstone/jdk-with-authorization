@@ -31,7 +31,7 @@ import java.security.AccessController;
 import java.security.PrivilegedAction;
 
 @SuppressWarnings({"removal", "restricted"})
-public class PlatformGraphicsInfo {
+public final class PlatformGraphicsInfo {
 
     static {
         AccessController.doPrivileged((PrivilegedAction<Void>) () -> {

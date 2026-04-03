@@ -40,7 +40,7 @@ import com.apple.laf.AquaUtils.RecyclableSingleton;
 import com.apple.laf.AquaUtils.RecyclableSingletonFromDefaultConstructor;
 import sun.security.action.GetPropertyAction;
 
-public class AquaUtilControlSize {
+public final class AquaUtilControlSize {
     protected static final String CLIENT_PROPERTY_KEY = "JComponent.sizeVariant";
     protected static final String SYSTEM_PROPERTY_KEY = "swing.component.sizevariant";
 
@@ -131,7 +131,7 @@ public class AquaUtilControlSize {
         c.setBorder(derivedBorder);
     }
 
-    protected static class PropertySizeListener implements PropertyChangeListener {
+    protected static final class PropertySizeListener implements PropertyChangeListener {
         @Override
         public void propertyChange(final PropertyChangeEvent evt) {
             final String key = evt.getPropertyName();
@@ -208,7 +208,7 @@ public class AquaUtilControlSize {
         }
     }
 
-    public static class SizeVariant {
+    public static final class SizeVariant {
         Size size = Size.REGULAR;
         Insets insets = new InsetsUIResource(0, 0, 0, 0);
         Insets margins = new InsetsUIResource(0, 0, 0, 0);

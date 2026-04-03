@@ -233,7 +233,7 @@ public final class LWCToolkit extends LWToolkit {
     }
 
     @SuppressWarnings("serial") // JDK implementation class
-    private static class AppleSpecificColor extends Color {
+    private static final class AppleSpecificColor extends Color {
         private final int index;
         AppleSpecificColor(int index) {
             super(appleColors[index]);
@@ -429,7 +429,7 @@ public final class LWCToolkit extends LWToolkit {
         // TODO Auto-generated method stub
     }
 
-    static class OSXPlatformFont extends sun.awt.PlatformFont {
+    static final class OSXPlatformFont extends sun.awt.PlatformFont {
         OSXPlatformFont(String name, int style)
         {
             super(name, style);

@@ -1451,17 +1451,11 @@ public abstract class Toolkit {
     }
 
     /**
-     * Get the application's or applet's EventQueue instance.
-     * Depending on the Toolkit implementation, different EventQueues
-     * may be returned for different applets.  Applets should
-     * therefore not assume that the EventQueue instance returned
-     * by this method will be shared by other applets or the system.
-     *
-     * <p> If there is a security manager then its
+     * If there is a security manager then its
      * {@link SecurityManager#checkPermission checkPermission} method
      * is called to check {@code AWTPermission("accessEventQueue")}.
      *
-     * @return    the {@code EventQueue} object
+     * {@return the {@code EventQueue} for this application}
      * @throws  SecurityException
      *          if a security manager is set and it denies access to
      *          the {@code EventQueue}
@@ -1477,9 +1471,9 @@ public abstract class Toolkit {
     }
 
     /**
-     * Gets the application's or applet's {@code EventQueue}
-     * instance, without checking access.  For security reasons,
-     * this can only be called from a {@code Toolkit} subclass.
+     * A method used by toolkit subclasses to get the {@code EventQueue}.
+     * This may be more direct or more efficient than calling
+     * {@code getSystemEventQueue()}.
      * @return the {@code EventQueue} object
      */
     protected abstract EventQueue getSystemEventQueueImpl();
