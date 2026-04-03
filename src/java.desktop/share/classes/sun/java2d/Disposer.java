@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2002, 2025, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -25,16 +25,16 @@
 
 package sun.java2d;
 
-import sun.awt.util.ThreadGroupUtils;
-
+import java.lang.ref.PhantomReference;
 import java.lang.ref.Reference;
 import java.lang.ref.ReferenceQueue;
-import java.lang.ref.PhantomReference;
 import java.lang.ref.WeakReference;
 import java.security.AccessController;
 import java.security.PrivilegedAction;
 import java.util.Hashtable;
 import java.util.concurrent.ConcurrentLinkedDeque;
+
+import sun.awt.util.ThreadGroupUtils;
 
 /**
  * This class is used for registering and disposing the native
@@ -56,10 +56,7 @@ public class Disposer implements Runnable {
     private static final Hashtable<java.lang.ref.Reference<Object>, DisposerRecord> records =
         new Hashtable<>();
 
-    private static Disposer disposerInstance;
-    public static final int WEAK = 0;
-    public static final int PHANTOM = 1;
-    public static int refType = PHANTOM;
+    private static final Disposer disposerInstance;
 
     static {
         java.security.AccessController.doPrivileged(
@@ -70,17 +67,6 @@ public class Disposer implements Runnable {
                 }
             });
         initIDs();
-        String type = java.security.AccessController.doPrivileged(
-                new sun.security.action.GetPropertyAction("sun.java2d.reftype"));
-        if (type != null) {
-            if (type.equals("weak")) {
-                refType = WEAK;
-                System.err.println("Using WEAK refs");
-            } else {
-                refType = PHANTOM;
-                System.err.println("Using PHANTOM refs");
-            }
-        }
         disposerInstance = new Disposer();
         AccessController.doPrivileged((PrivilegedAction<Void>) () -> {
             String name = "Java2D Disposer";
@@ -130,13 +116,7 @@ public class Disposer implements Runnable {
         if (target instanceof DisposerTarget) {
             target = ((DisposerTarget)target).getDisposerReferent();
         }
-        java.lang.ref.Reference<Object> ref;
-        if (refType == PHANTOM) {
-            ref = new PhantomReference<>(target, queue);
-        } else {
-            ref = new WeakReference<>(target, queue);
-        }
-        records.put(ref, rec);
+        records.put(new PhantomReference<>(target, queue), rec);
     }
 
     public void run() {
@@ -149,7 +129,7 @@ public class Disposer implements Runnable {
                 obj = null;
                 rec = null;
                 clearDeferredRecords();
-            } catch (Exception e) {
+            } catch (Throwable t) {
                 System.out.println("Exception while removing reference.");
             }
         }
@@ -169,7 +149,7 @@ public class Disposer implements Runnable {
     private static void safeDispose(DisposerRecord rec) {
         try {
             rec.dispose();
-        } catch (final Exception e) {
+        } catch (final Throwable t) {
             System.out.println("Exception while disposing deferred rec.");
         }
     }
@@ -224,7 +204,7 @@ public class Disposer implements Runnable {
                     deferredRecords.offerLast(rec);
                 }
             }
-        } catch (Exception e) {
+        } catch (Throwable t) {
             System.out.println("Exception while removing reference.");
         } finally {
             pollingQueue = false;

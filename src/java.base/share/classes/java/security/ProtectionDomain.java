@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 1997, 2022, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 1997, 2025, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -25,15 +25,11 @@
 
 package java.security;
 
-import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.Enumeration;
 import java.util.Iterator;
-import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.WeakHashMap;
 import jdk.internal.access.JavaSecurityAccess;
 import jdk.internal.access.SharedSecrets;
@@ -42,14 +38,8 @@ import sun.security.provider.PolicyFile;
 import sun.security.util.Debug;
 import sun.security.util.FilePermCompat;
 import sun.security.util.SecurityConstants;
-import java.security.Permissions;
-import au.zeus.jdk.net.Uri;
 import au.zeus.jdk.authorization.policy.PermissionComparator;
-import java.net.URL;
-import java.net.URISyntaxException;
-import java.security.Permission;
 import java.util.Set;
-import java.util.SortedSet;
 import java.util.TreeSet;
 
 /**
@@ -327,7 +317,7 @@ public class ProtectionDomain {
      * of the {@code PermissionCollection} supplied at construction and
      * the current policy binding.
      *
-     * @param perm the {code Permission} object to check.
+     * @param perm the {@code Permission} object to check.
      *
      * @return {@code true} if {@code perm} is implied by this
      * {@code ProtectionDomain}.
@@ -385,20 +375,16 @@ public class ProtectionDomain {
         Policy policy = Policy.getPolicyNoCheck();
         // Reminder: Policy cannot check static permissions when a domain has
         // a null codesource.
-        if (policy instanceof PolicyFile) {
+        if (policy != null){
+            if (policy.implies(this, perm)) return true;
             // The PolicyFile implementation supports compatibility
             // inside, and it also covers the static permissions,
             // but it cannot check static permissions with a null
             // codesource.
-            if (policy.implies(this, perm)) return true;
-        } else {
-            if (policy.implies(this, perm)) {
-                return true;
-            }
-            p2 = FilePermCompat.newPermUsingAltPath(perm);
-            p2Calculated = true;
-            if (p2 != null && policy.implies(this, p2)) {
-                return true;
+            if (!(policy instanceof PolicyFile)){
+                p2 = FilePermCompat.newPermUsingAltPath(perm);
+                p2Calculated = true;
+                if (p2 != null && policy.implies(this, p2)) return true;
             }
         }
         // Warning: poor scalability, this supports
