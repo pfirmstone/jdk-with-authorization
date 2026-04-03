@@ -38,6 +38,7 @@ import java.security.PrivilegedAction;
 import java.security.AccessController;
 import java.security.AccessControlContext;
 import sun.security.action.GetIntegerAction;
+import sun.security.util.SecurityConstants;
 
 /**
  * Base implementation of AsynchronousChannelGroup
@@ -258,7 +259,7 @@ abstract class AsynchronousChannelGroupImpl
                 }
             },
             null,
-            new RuntimePermission("modifyThread"));
+            SecurityConstants.MODIFY_THREAD_PERMISSION);
     }
 
     @Override
