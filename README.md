@@ -7,6 +7,7 @@ This project's objectives are to maintain a community fork of OpenJDK that retai
 - Research improvements to Authorization.
 - High performance and scalability.
 - Provide a workable practical implementation to improve Java security against injection style attacks using POLP whitelisting, rather than theoretical vapourware.
+- People interested in sandboxing untrusted code should consider investigating Graal Expresso https://www.graalvm.org/latest/reference-manual/espresso/
 
 ## Principle of Least Privilege Policy Writer
 - This tool automates writing of your policy files, using principles of least privilege, this creates a minefield of SecurityException's for attackers to navigate inside your perimeter defences.
