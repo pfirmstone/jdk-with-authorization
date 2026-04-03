@@ -1455,7 +1455,7 @@ public abstract class Toolkit {
      * {@link SecurityManager#checkPermission checkPermission} method
      * is called to check {@code AWTPermission("accessEventQueue")}.
      *
-     * {@return the {@code EventQueue} for this application}
+     * @return the {@code EventQueue} for this application
      * @throws  SecurityException
      *          if a security manager is set and it denies access to
      *          the {@code EventQueue}
