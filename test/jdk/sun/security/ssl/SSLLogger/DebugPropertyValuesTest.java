@@ -23,7 +23,7 @@
 
 /**
  * @test
- * @bug 8350582
+ * @bug 8350582 8340312
  * @library /test/lib /javax/net/ssl/templates
  * @summary Correct the parsing of the ssl value in javax.net.debug
  * @run junit DebugPropertyValuesTest
@@ -78,6 +78,12 @@ public class DebugPropertyValuesTest extends SSLSocketTemplate {
                 List.of("properties: Initial security property:",
                         "certpath: Cert path validation succeeded"));
         debugMessages.put("logger",
+        debugMessages.put("java.security.debug",
+                List.of("properties\\[.*\\|main\\|.*" + DATE_REGEX + ".*\\]:",
+                        "certpath\\[.*\\|main\\|.*" + DATE_REGEX + ".*\\]:"));
+        // "ALL" shouldn't be seen as a valid Level
+        debugMessages.put("javax.net.debug.logger.ALL", List.of("ALL:"));
+        debugMessages.put("javax.net.debug.logger",
                 List.of("FINE: adding as trusted certificates",
                         "FINE: WRITE: TLSv1.3 application_data"));
     }
