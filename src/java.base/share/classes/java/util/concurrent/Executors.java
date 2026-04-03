@@ -45,6 +45,7 @@ import java.security.PrivilegedActionException;
 import java.security.PrivilegedExceptionAction;
 import java.util.Collection;
 import java.util.List;
+import java.util.Objects;
 import java.util.concurrent.atomic.AtomicInteger;
 import jdk.internal.ref.CleanerFactory;
 import sun.security.util.SecurityConstants;
@@ -475,10 +476,8 @@ public final class Executors {
      * @throws NullPointerException if action null
      */
     public static Callable<Object> callable(final PrivilegedAction<?> action) {
-        if (action == null)
-            throw new NullPointerException();
-        return new Callable<Object>() {
-            public Object call() { return action.run(); }};
+        Objects.requireNonNull(action, "action");
+        return () -> action.run();
     }
 
     /**
@@ -490,15 +489,13 @@ public final class Executors {
      * @throws NullPointerException if action null
      */
     public static Callable<Object> callable(final PrivilegedExceptionAction<?> action) {
-        if (action == null)
-            throw new NullPointerException();
-        return new Callable<Object>() {
-            public Object call() throws Exception { return action.run(); }};
+        Objects.requireNonNull(action, "action");
+        return () -> action.run();
     }
 
     /**
      * Returns a {@link Callable} object that will, when called,
-     * execute the given {@code callable} under the current access
+     * execute the given {@code task} under the current access
      * control context. This method should normally be invoked within
      * an {@link AccessController#doPrivileged AccessController.doPrivileged}
      * action to create callables that will, if possible, execute
@@ -510,41 +507,40 @@ public final class Executors {
      * package private in future, as all tasks will by default be decorated
      * with context when SecurityManager is in force.
      * 
-     * @param callable the underlying task
-     * @param <T> the type of the callable's result
+     * @param task the underlying task
+     * @param <T> the type of the task's result
      * @return a callable object
-     * @throws NullPointerException if callable null
+     * @throws NullPointerException if task null
      */
-    public static <T> Callable<T> privilegedCallable(Callable<T> callable) {
-        if (callable == null)
-            throw new NullPointerException();
-        return new PrivilegedCallable<T>(callable);
+    public static <T> Callable<T> privilegedCallable(Callable<T> task) {
+        Objects.requireNonNull(task, "task");
+        return new PrivilegedCallable<>(task);
     }
     
     /**
      * Returns a {@link Callable} object that will, when called,
-     * execute the given {@code callable} under the current access
+     * execute the given {@code task} under the current access
      * control context. This method should normally be invoked within
      * an {@link AccessController#doPrivileged AccessController.doPrivileged}
      * action to create callables that will, if possible, execute
      * under the selected permission settings holding within that
      * action; or if not possible, throw an associated {@link
      * AccessControlException}.
-     * @param callable the underlying task
+     * @param task the underlying task
      * @param context the AccessControlContext
-     * @param <T> the type of the callable's result
+     * @param <T> the type of the task's result
      * @return a callable object
-     * @throws NullPointerException if callable or context is null
+     * @throws NullPointerException if task or context is null
      */
-    static <T> Callable<T> privilegedCallable(Callable<T> callable, AccessControlContext context) {
-        if (callable == null || context == null)
-            throw new NullPointerException();
-        return new PrivilegedCallable<T>(callable, context);
+    static <T> Callable<T> privilegedCallable(Callable<T> task, AccessControlContext context) {
+        Objects.requireNonNull(task, "task");
+        Objects.requireNonNull(context, "context");
+        return new PrivilegedCallable<>(task, context);
     }
     
     /**
      * Returns a {@link Runnable} object that will, when run,
-     * execute the given {@code runnable} under the current access
+     * execute the given {@code task} under the current access
      * control context. This method should normally be invoked within
      * an {@link AccessController#doPrivileged AccessController.doPrivileged}
      * action to create runnables that will, if possible, execute
@@ -552,19 +548,18 @@ public final class Executors {
      * action; or if not possible, throw an associated {@link
      * AccessControlException}.
      * 
-     * @param runnable the underlying task
+     * @param task the underlying task
      * @return runnable dectorated with context.
-     * @throws NullPointerException if callable null
+     * @throws NullPointerException if task null
      */
-    static Runnable privilegedRunnable(Runnable runnable) {
-        if (runnable == null)
-            throw new NullPointerException();
-        return new PrivilegedRunnable(runnable);
+    static Runnable privilegedRunnable(Runnable task) {
+        Objects.requireNonNull(task, "task");
+        return new PrivilegedRunnable(task);
     }
     
     /**
      * Returns a {@link Runnable} object that will, when run,
-     * execute the given {@code runnable} under the current access
+     * execute the given {@code task} under the current access
      * control context. This method should normally be invoked within
      * an {@link AccessController#doPrivileged AccessController.doPrivileged}
      * action to create runnables that will, if possible, execute
@@ -572,20 +567,20 @@ public final class Executors {
      * action; or if not possible, throw an associated {@link
      * AccessControlException}.
      * 
-     * @param runnable the underlying task
+     * @param task the underlying task
      * @param context the AccessControlContext
      * @return runnable dectorated with context.
-     * @throws NullPointerException if callable or context null
+     * @throws NullPointerException if task or context null
      */
-    static Runnable privilegedRunnable(Runnable runnable, AccessControlContext context) {
-        if (runnable == null || context == null)
-            throw new NullPointerException();
-        return new PrivilegedRunnable(runnable, context);
+    static Runnable privilegedRunnable(Runnable task, AccessControlContext context) {
+        Objects.requireNonNull(task, "task");
+        Objects.requireNonNull(context, "context");
+        return new PrivilegedRunnable(task, context);
     }
 
     /**
      * Returns a {@link Callable} object that will, when called,
-     * execute the given {@code callable} under the current access
+     * execute the given {@code task} under the current access
      * control context, with the current context class loader as the
      * context class loader. This method should normally be invoked
      * within an
@@ -597,18 +592,17 @@ public final class Executors {
      * <p> Deprecated since 17, removed or disabled since 24,
      * retained and maintained operational for Authorization.
      * 
-     * @param callable the underlying task
-     * @param <T> the type of the callable's result
+     * @param task the underlying task
+     * @param <T> the type of the task's result
      * @return a callable object
-     * @throws NullPointerException if callable null
+     * @throws NullPointerException if task null
      * @throws AccessControlException if the current access control
      * context does not have permission to both set and get context
      * class loader
      */
-    public static <T> Callable<T> privilegedCallableUsingCurrentClassLoader(Callable<T> callable) {
-        if (callable == null)
-            throw new NullPointerException();
-        return new PrivilegedCallableUsingCurrentClassLoader<T>(callable);
+    public static <T> Callable<T> privilegedCallableUsingCurrentClassLoader(Callable<T> task) {
+        Objects.requireNonNull(task, "task");
+        return new PrivilegedCallableUsingCurrentClassLoader<>(task);
     }
 
     // Non-public classes supporting the public methods
@@ -652,19 +646,17 @@ public final class Executors {
         }
 
         @SuppressWarnings("removal")
+        @Override
         public T call() throws Exception {
             try {
                 return AccessController.doPrivileged(
-                    new PrivilegedExceptionAction<T>() {
-                        public T run() throws Exception {
-                            return task.call();
-                        }
-                    }, acc);
+                        (PrivilegedExceptionAction<T>) () -> task.call(), acc);
             } catch (PrivilegedActionException e) {
                 throw e.getException();
             }
         }
 
+        @Override
         public String toString() {
             return super.toString() + "[Wrapped task = " + task + "]";
         }
@@ -690,16 +682,15 @@ public final class Executors {
         }
 
         @SuppressWarnings("removal")
+        @Override
         public void run(){
-            AccessController.doPrivileged(
-                new PrivilegedAction<Object>() {
-                    public Object run(){
-                        task.run();
-                        return null;
-                    }
-                }, acc);
+            AccessController.doPrivileged((PrivilegedAction<Object>) () -> {
+                task.run();
+                return null;
+            }, acc);
         }
 
+        @Override
         public String toString() {
             return super.toString() + "[Wrapped task = " + task + "]";
         }
@@ -716,47 +707,44 @@ public final class Executors {
         final ClassLoader ccl;
 
         PrivilegedCallableUsingCurrentClassLoader(Callable<T> task) {
-            SecurityManager sm = System.getSecurityManager();
-            if (sm != null) {
-                // Calls to getContextClassLoader from this class
-                // never trigger a security check, but we check
-                // whether our callers have this permission anyways.
-                sm.checkPermission(SecurityConstants.GET_CLASSLOADER_PERMISSION);
-
-                // Whether setContextClassLoader turns out to be necessary
-                // or not, we fail fast if permission is not available.
-                sm.checkPermission(new RuntimePermission("setContextClassLoader"));
-            }
+            // Calls to getContextClassLoader from this class
+            // never trigger a security check, but we check
+            // whether our callers have this permission anyways.
+            SecurityConstants.GET_CLASSLOADER_PERMISSION.checkGuard(null);
+            // Whether setContextClassLoader turns out to be necessary
+            // or not, we fail fast if permission is not available.
+            SecurityConstants.SET_CONTEXT_CLASSLOADER_PERMISSION.checkGuard(null);
             this.task = task;
             this.acc = AccessController.getContext();
             this.ccl = Thread.currentThread().getContextClassLoader();
         }
 
         @SuppressWarnings("removal")
+        @Override
         public T call() throws Exception {
             try {
                 return AccessController.doPrivileged(
-                    new PrivilegedExceptionAction<T>() {
-                        public T run() throws Exception {
-                            Thread t = Thread.currentThread();
-                            ClassLoader cl = t.getContextClassLoader();
-                            if (ccl == cl) {
-                                return task.call();
-                            } else {
-                                t.setContextClassLoader(ccl);
-                                try {
-                                    return task.call();
-                                } finally {
-                                    t.setContextClassLoader(cl);
-                                }
-                            }
+                        (PrivilegedExceptionAction<T>) () -> 
+                {
+                    Thread t = Thread.currentThread();
+                    ClassLoader cl = t.getContextClassLoader();
+                    if (ccl == cl) {
+                        return task.call();
+                    } else {
+                        t.setContextClassLoader(ccl);
+                        try {
+                            return task.call();
+                        } finally {
+                            t.setContextClassLoader(cl);
                         }
-                    }, acc);
+                    }
+                }, acc);
             } catch (PrivilegedActionException e) {
                 throw e.getException();
             }
         }
 
+        @Override
         public String toString() {
             return super.toString() + "[Wrapped task = " + task + "]";
         }
@@ -803,31 +791,25 @@ public final class Executors {
         @SuppressWarnings("removal")
         PrivilegedThreadFactory() {
             super();
-            SecurityManager sm = System.getSecurityManager();
-            if (sm != null) {
-                // Calls to getContextClassLoader from this class
-                // never trigger a security check, but we check
-                // whether our callers have this permission anyways.
-                sm.checkPermission(SecurityConstants.GET_CLASSLOADER_PERMISSION);
-
-                // Fail fast
-                sm.checkPermission(new RuntimePermission("setContextClassLoader"));
-            }
+            // Calls to getContextClassLoader from this class
+            // never trigger a security check, but we check
+            // whether our callers have this permission anyways.
+            SecurityConstants.GET_CLASSLOADER_PERMISSION.checkGuard(null);
+            // Fail fast
+            SecurityConstants.SET_CONTEXT_CLASSLOADER_PERMISSION.checkGuard(null);
             this.acc = AccessController.getContext();
             this.ccl = Thread.currentThread().getContextClassLoader();
         }
 
+        @Override
         public Thread newThread(final Runnable r) {
-            return super.newThread(new Runnable() {
-                public void run() {
-                    AccessController.doPrivileged(new PrivilegedAction<>() {
-                        public Void run() {
-                            Thread.currentThread().setContextClassLoader(ccl);
-                            r.run();
-                            return null;
-                        }
-                    }, acc);
-                }
+            return super.newThread(() -> {
+                AccessController.doPrivileged((PrivilegedAction<Void>) () -> 
+                {
+                    Thread.currentThread().setContextClassLoader(ccl);
+                    r.run();
+                    return null;
+                }, acc);
             });
         }
     }

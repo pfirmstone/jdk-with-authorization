@@ -298,6 +298,7 @@ public abstract class AbstractExecutorService implements ExecutorService {
         try {
             if (context != null){
                 for (Callable<T> t : tasks) {
+                    Objects.requireNonNull(t);
                     RunnableFuture<T> f = newTaskFor(Executors.privilegedCallable(t, context));
                     futures.add(f);
                     execute(f);
@@ -345,8 +346,10 @@ public abstract class AbstractExecutorService implements ExecutorService {
                 for (Callable<T> t : tasks)
                     futures.add(newTaskFor(t));
             } else {
-                for (Callable<T> t : tasks)
+                for (Callable<T> t : tasks){
+                    Objects.requireNonNull(t);
                     futures.add(newTaskFor(Executors.privilegedCallable(t, context)));
+                }
             }
 
             final int size = futures.size();

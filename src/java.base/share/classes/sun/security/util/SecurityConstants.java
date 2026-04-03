@@ -100,7 +100,7 @@ public final class SecurityConstants {
     public static final NetPermission SET_SOCKETIMPL_PERMISSION =
         new NetPermission("setSocketImpl");
 
-    // java.lang.SecurityManager, sun.applet.AppletPanel
+    // java.lang.SecurityManager
     public static final RuntimePermission CREATE_CLASSLOADER_PERMISSION =
         new RuntimePermission("createClassLoader");
 
@@ -108,11 +108,11 @@ public final class SecurityConstants {
     public static final RuntimePermission CHECK_MEMBER_ACCESS_PERMISSION =
         new RuntimePermission("accessDeclaredMembers");
 
-    // java.lang.SecurityManager, sun.applet.AppletSecurity
+    // java.lang.SecurityManager
     public static final RuntimePermission MODIFY_THREAD_PERMISSION =
         new RuntimePermission("modifyThread");
 
-    // java.lang.SecurityManager, sun.applet.AppletSecurity
+    // java.lang.SecurityManager
     public static final RuntimePermission MODIFY_THREADGROUP_PERMISSION =
         new RuntimePermission("modifyThreadGroup");
 
@@ -123,6 +123,10 @@ public final class SecurityConstants {
     // java.lang.Class, java.lang.ClassLoader, java.lang.Thread
     public static final RuntimePermission GET_CLASSLOADER_PERMISSION =
         new RuntimePermission("getClassLoader");
+    
+    // java.util.concurrent.Executors
+    public static final RuntimePermission SET_CONTEXT_CLASSLOADER_PERMISSION = 
+            new RuntimePermission("setContextClassLoader");
 
     // java.lang.Thread
     public static final RuntimePermission GET_STACK_TRACE_PERMISSION =
