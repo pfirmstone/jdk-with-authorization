@@ -41,6 +41,7 @@ import jdk.internal.jimage.ImageReaderFactory;
 
 import sun.net.www.ParseUtil;
 import sun.net.www.URLConnection;
+import sun.security.util.SecurityConstants;
 
 /**
  * URLConnection implementation that can be used to connect to resources
@@ -132,7 +133,7 @@ public class JavaRuntimeURLConnection extends URLConnection {
 
     @Override
     public Permission getPermission() {
-        return new RuntimePermission("accessSystemModules");
+        return SecurityConstants.ACCESS_SYSTEM_MODULES;
     }
 
     // Perform percent decoding of the resource name/path from the URL.
