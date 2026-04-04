@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2014, 2019, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2014, 2025, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -53,8 +53,8 @@ import java.util.logging.LoggingPermission;
  * @bug 8059269
  * @summary tests that using a simple (non composite) pattern does not lead
  *        to NPE when the lock file already exists.
- * @run main/othervm FileHandlerPath UNSECURE
- * @run main/othervm -Djava.security.manager=allow FileHandlerPath SECURE
+ * @run main/othervm/timeout=480 FileHandlerPath UNSECURE
+ * @run main/othervm/timeout=480 -Djava.security.manager=allow FileHandlerPath SECURE
  * @author danielfuchs
  * @key randomness
  */

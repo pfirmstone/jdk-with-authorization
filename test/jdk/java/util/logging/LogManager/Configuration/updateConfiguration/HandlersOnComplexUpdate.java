@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2015, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2015, 2025, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -49,6 +49,7 @@ import java.util.logging.FileHandler;
 import java.util.logging.LogManager;
 import java.util.logging.Logger;
 import java.util.logging.LoggingPermission;
+import jdk.test.lib.Utils;
 
 /**
  * @test
@@ -58,6 +59,7 @@ import java.util.logging.LoggingPermission;
  *          Test a complex reconfiguration where a logger with handlers
  *          suddenly appears in the hierarchy between a child logger and the
  *          root logger.
+ * @library /test/lib
  * @run main/othervm HandlersOnComplexUpdate UNSECURE
  * @run main/othervm -Djava.security.manager=allow HandlersOnComplexUpdate SECURE
  * @author danielfuchs
@@ -80,13 +82,8 @@ public class HandlersOnComplexUpdate {
         }
     }
 
-    public static final double TIMEOUT_FACTOR;
-    static {
-        String toFactor = System.getProperty("test.timeout.factor", "1.0");
-        TIMEOUT_FACTOR = Double.parseDouble(toFactor);
-    }
     static int adjustCount(int count) {
-        return Math.min(count, (int) Math.ceil(TIMEOUT_FACTOR * count));
+        return Math.min(count, (int) Math.ceil(Utils.TIMEOUT_FACTOR * count));
     }
 
     private static final String PREFIX =
