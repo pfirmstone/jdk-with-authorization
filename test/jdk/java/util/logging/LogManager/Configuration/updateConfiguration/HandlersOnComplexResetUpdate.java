@@ -40,6 +40,7 @@ import java.util.Collections;
 import java.util.Enumeration;
 import java.util.List;
 import java.util.Properties;
+import java.util.PropertyPermission;
 import java.util.UUID;
 import java.util.concurrent.Callable;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -61,7 +62,7 @@ import jdk.test.lib.Utils;
  *          root logger.
  * @library /test/lib
  * @run main/othervm HandlersOnComplexResetUpdate UNSECURE
- * @run main/othervm -Djava.security.manager=allow HandlersOnComplexResetUpdate SECURE
+ * @run main/othervm -Djava.security.manager=allow -Djava.security.debug=access:failure HandlersOnComplexResetUpdate SECURE
  * @author danielfuchs
  */
 public class HandlersOnComplexResetUpdate {
@@ -529,7 +530,22 @@ public class HandlersOnComplexResetUpdate {
             permissions.add(new LoggingPermission("control", null));
             permissions.add(new FilePermission(PREFIX+".lck", "read,write,delete"));
             permissions.add(new FilePermission(PREFIX, "read,write"));
-
+            // The following are for class init of jdk.test.lib.Utils
+            permissions.add(new PropertyPermission("test.class.path", "read"));
+            permissions.add(new PropertyPermission("line.separator", "read"));
+            permissions.add(new PropertyPermission("test.vm.opts", "read"));
+            permissions.add(new PropertyPermission("test.java.opts", "read"));
+            permissions.add(new PropertyPermission("test.src", "read"));
+            permissions.add(new PropertyPermission("test.root", "read"));
+            permissions.add(new PropertyPermission("test.jdk", "read"));
+            permissions.add(new PropertyPermission("compile.jdk", "read"));
+            permissions.add(new PropertyPermission("test.classes", "read"));
+            permissions.add(new PropertyPermission("test.nativepath", "read"));
+            permissions.add(new PropertyPermission("file.separator", "read"));
+            permissions.add(new PropertyPermission("test.name", "read"));
+            permissions.add(new PropertyPermission("jdk.test.lib.random.seed", "read"));
+            permissions.add(new PropertyPermission("test.timeout.factor", "read"));
+                   
             // these are used for configuring the test itself...
             allPermissions = new Permissions();
             allPermissions.add(new java.security.AllPermission());
