@@ -54,7 +54,7 @@ public abstract class PrivateAccess {
 
     public static PrivateAccess getInstance() {
         // Can't be initialized in <clinit> because it may
-        // deadlock with FlightRecorderPermission.<clinit>
+        // deadlock with EventSettings.<clinit>
         if (instance == null) {
             // Will trigger
             // EventSettings.<clinit>
