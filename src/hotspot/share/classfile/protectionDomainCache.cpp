@@ -36,7 +36,7 @@
 #include "runtime/atomic.hpp"
 #include "runtime/mutexLocker.hpp"
 #include "utilities/growableArray.hpp"
-#include "utilities/resourceHash.hpp"
+#include "utilities/hashTable.hpp"
 
 unsigned int ProtectionDomainCacheTable::compute_hash(const WeakHandle& protection_domain) {
   // The protection domain in the hash computation is passed from a Handle so cannot resolve to null.
@@ -50,7 +50,7 @@ bool ProtectionDomainCacheTable::equals(const WeakHandle& protection_domain1, co
 
 // WeakHandle is both the key and the value.  We need it as the key to compare the oops that each point to
 // for equality.  We need it as the value to return the one that already exists to link in the DictionaryEntry.
-using InternalProtectionDomainCacheTable = ResourceHashtable<WeakHandle, WeakHandle, 1009, AnyObj::C_HEAP, mtClass,
+using InternalProtectionDomainCacheTable = HashTable<WeakHandle, WeakHandle, 1009, AnyObj::C_HEAP, mtClass,
                   ProtectionDomainCacheTable::compute_hash,
                   ProtectionDomainCacheTable::equals>;
 static InternalProtectionDomainCacheTable* _pd_cache_table;
