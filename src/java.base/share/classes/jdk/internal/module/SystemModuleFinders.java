@@ -34,6 +34,7 @@ import java.lang.module.ModuleReader;
 import java.lang.module.ModuleReference;
 import java.lang.reflect.Constructor;
 import java.net.URI;
+import java.net.URLConnection;
 import java.nio.ByteBuffer;
 import java.nio.file.Files;
 import java.nio.file.Path;
