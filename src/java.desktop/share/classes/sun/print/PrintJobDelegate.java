@@ -42,6 +42,7 @@ import java.awt.print.PrinterException;
 import java.awt.print.PrinterJob;
 
 import java.io.File;
+import java.io.FilePermission;
 import java.io.IOException;
 
 import java.net.URI;
@@ -309,6 +310,11 @@ public class PrintJobDelegate implements Printable, Runnable {
     private void initPrintJob2D(Frame frame,  String doctitle,
                                 JobAttributes jobAttributes,
                                 PageAttributes pageAttributes) {
+        @SuppressWarnings("removal")
+        SecurityManager security = System.getSecurityManager();
+        if (security != null) {
+            security.checkPrintJobAccess();
+        }
 
         if (frame == null &&
             (jobAttributes == null ||
@@ -344,6 +350,7 @@ public class PrintJobDelegate implements Printable, Runnable {
         // Verify that the app has access to the file system
         DestinationType dest= this.jobAttributes.getDestination();
         if (dest == DestinationType.FILE) {
+            throwPrintToFile();
 
             // check if given filename is valid
             String destStr = jobAttributes.getFileName();
@@ -360,6 +367,11 @@ public class PrintJobDelegate implements Printable, Runnable {
                 } catch (IOException ioe) {
                     throw new IllegalArgumentException("Cannot write to file:"+
                                                        destStr);
+                } catch (SecurityException se) {
+                    //There is already file read/write access so at this point
+                    // only delete access is denied.  Just ignore it because in
+                    // most cases the file created in createNewFile gets overwritten
+                    // anyway.
                 }
 
                  File pFile = f.getParentFile();
@@ -665,18 +677,29 @@ public class PrintJobDelegate implements Printable, Runnable {
                 attributes.add(defaultDest);
             } else {
                 URI uri = null;
-                if (fileName != null) {
-                    if (fileName.isEmpty()) {
-                        fileName = ".";
+                try{
+                    if (fileName != null) {
+                        if (fileName.isEmpty()) {
+                            fileName = ".";
+                        }
+                    } else {
+                        // defaultDest should not be null.  The following code
+                        // is only added to safeguard against a possible
+                        // buggy implementation of a PrintService having a
+                        // null default Destination.
+                        fileName = "out.prn";
                     }
-                } else {
-                    // defaultDest should not be null.  The following code
-                    // is only added to safeguard against a possible
-                    // buggy implementation of a PrintService having a
-                    // null default Destination.
-                    fileName = "out.prn";
+                    uri = (new File(fileName)).toURI();
+                } catch (SecurityException se) {
+                    try {
+                        // '\\' file separator is illegal character in opaque
+                        // part and causes URISyntaxException, so we replace
+                        // it with '/'
+                        fileName = fileName.replace('\\', '/');
+                        uri = new URI("file:"+fileName);
+                    } catch (URISyntaxException e) {
+                    }
                 }
-                uri = (new File(fileName)).toURI();
                 if (uri != null) {
                     attributes.add(new Destination(uri));
                 }
@@ -1222,6 +1245,19 @@ public class PrintJobDelegate implements Printable, Runnable {
             str = media.toString();
         }
         props.setProperty(PAPERSIZE_PROP, str);
+    }
+    
+    private void throwPrintToFile() {
+        @SuppressWarnings("removal")
+        SecurityManager security = System.getSecurityManager();
+        FilePermission printToFilePermission = null;
+        if (security != null) {
+            if (printToFilePermission == null) {
+                printToFilePermission =
+                    new FilePermission("<<ALL FILES>>", "read,write");
+            }
+            security.checkPermission(printToFilePermission);
+        }
     }
 
 }
