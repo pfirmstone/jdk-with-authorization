@@ -47,7 +47,7 @@ import org.junit.jupiter.api.Test;
 public class DebugOptions {
 
     static final String DATE_REGEX = "\\d{4}-\\d{2}-\\d{2}";
-
+/*
     static final String EXPECTED_PROP_REGEX =
             "properties\\[.*\\|main|" + DATE_REGEX + ".*\\]:";
     static final String EXPECTED_PROP_KEYSTORE_REGEX =
@@ -57,8 +57,83 @@ public class DebugOptions {
             "properties\\[.*\\|main.*\\|" + DATE_REGEX +
             ".*\\]((.*\\R)*)keystore\\[.*\\|main.*\\|"
             + DATE_REGEX + ".*\\]:";
+*/
 
     private static final List<String[]> patternMatches = List.of(
+            // no extra info present
+            new String[]{"properties",
+                        "properties: Initial",
+                        "properties\\["},
+            // thread info only
+            new String[]{"properties+thread",
+                        "properties\\[.*\\|main\\|.*java.*]:",
+                        "properties\\[" + DATE_REGEX},
+            // timestamp info only
+            new String[]{"properties+timestamp",
+                        "properties\\[" + DATE_REGEX + ".*\\]",
+                        "\\|main\\]:"},
+            // both thread and timestamp
+            new String[]{"properties+timestamp+thread",
+                        "properties\\[.*\\|main|" + DATE_REGEX + ".*\\]:",
+                        "properties:"},
+                // flip the arguments of previous test
+            new String[]{"properties+thread+timestamp",
+                        "properties\\[.*\\|main|" + DATE_REGEX + ".*\\]:",
+                        "properties:"},
+                // comma not valid separator, ignore extra info printing request
+            new String[]{"properties,thread,timestamp",
+                        "properties:",
+                        "properties\\[.*\\|main|" + DATE_REGEX + ".*\\]:"},
+                // no extra info for keystore debug prints
+            new String[]{"properties+thread+timestamp,keystore",
+                        "properties\\[.*\\|main|" + DATE_REGEX + ".*\\]:",
+                        "keystore\\["},
+                // flip arguments around in last test - same outcome expected
+            new String[]{"keystore,properties+thread+timestamp",
+                        "properties\\[.*\\|main|" + DATE_REGEX + ".*\\]:",
+                        "keystore\\["},
+                // turn on thread info for both keystore and properties components
+            new String[]{"keystore+thread,properties+thread",
+                        "properties\\[.*\\|main|.*\\Rkeystore\\[.*\\|main|.*\\]:",
+                        "\\|" + DATE_REGEX + ".*\\]:"},
+                // same as above with erroneous comma at end of string. same output expected
+            new String[]{"keystore+thread,properties+thread,",
+                        "properties\\[.*\\|main|.*\\Rkeystore\\[.*\\|main|.*\\]:",
+                        "\\|" + DATE_REGEX + ".*\\]:"},
+                // turn on thread info for properties and timestamp for keystore
+            new String[]{"keystore+timestamp,properties+thread",
+                        "properties\\[.*\\|main|.*\\Rkeystore\\[" + DATE_REGEX + ".*\\]:",
+                        "properties\\[.*\\|" + DATE_REGEX + ".*\\]:"},
+                // turn on thread info for all components
+            new String[]{"all+thread",
+                        "properties\\[.*\\|main.*((.*\\R)*)keystore\\[.*\\|main.*java.*\\]:",
+                        "properties\\[" + DATE_REGEX + ".*\\]:"},
+                // turn on thread info and timestamp for all components
+            new String[]{"all+thread+timestamp",
+                        "properties\\[.*\\|main.*\\|" + DATE_REGEX +
+                                ".*\\]((.*\\R)*)keystore\\[.*\\|main.*\\|" + DATE_REGEX + ".*\\]:",
+                        "properties:"},
+                // all decorator option should override other component options
+            new String[]{"all+thread+timestamp,properties",
+                        "properties\\[.*\\|main.*\\|" + DATE_REGEX +
+                                ".*\\]((.*\\R)*)keystore\\[.*\\|main.*\\|" + DATE_REGEX + ".*\\]:",
+                        "properties:"},
+                // thread details should only be printed for properties option
+            new String[]{"properties+thread,all",
+                        "properties\\[.*\\|main\\|.*\\]:",
+                        "keystore\\[.*\\|main\\|.*\\]:"},
+                // thread details should be printed for all statements
+            new String[]{"properties,all+thread",
+                        "properties\\[.*\\|main.*java" +
+                                ".*\\]((.*\\R)*)keystore\\[.*\\|main.*java.*\\]:",
+                        "properties:"}
+            
+/*
+            Note that we are unable to support the following with 
+            SecurityManager enabled as it causes too early class loading of StackWalker.
+            Commented out for easier merge conflict detection and resolution.
+            
+            8350689: Turn on timestamp and thread metadata by default for java.security.debug
             // test for thread and timestamp info
             new String[]{"properties",
                     EXPECTED_PROP_REGEX,
@@ -83,6 +158,7 @@ public class DebugOptions {
             new String[]{"all+thread",
                     EXPECTED_ALL_REGEX,
                     "properties:"}
+*/
     );
 
     /**
