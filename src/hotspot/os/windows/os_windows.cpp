@@ -3321,8 +3321,8 @@ size_t os::commit_memory_limit() {
     warning("Attempt to query job object information failed for commit limit: %s", buf_len != 0 ? buf : "<unknown error>");
 
     // Conservatively assume no limit when there was an error calling QueryInformationJobObject.
-    //return SIZE_MAX;
-  //}
+    return SIZE_MAX;
+  }
 
   if (jeli.BasicLimitInformation.LimitFlags & JOB_OBJECT_LIMIT_PROCESS_MEMORY) {
     return jeli.ProcessMemoryLimit;
