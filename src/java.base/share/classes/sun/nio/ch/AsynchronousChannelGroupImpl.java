@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2008, 2025, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -30,6 +30,7 @@ import java.nio.channels.AsynchronousChannelGroup;
 import java.nio.channels.spi.AsynchronousChannelProvider;
 import java.io.IOException;
 import java.io.FileDescriptor;
+import java.util.Objects;
 import java.util.Queue;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -321,6 +322,7 @@ abstract class AsynchronousChannelGroupImpl
      */
     @Override
     public final void execute(Runnable task) {
+        Objects.requireNonNull(task, "task");
         @SuppressWarnings("removal")
         SecurityManager sm = System.getSecurityManager();
         if (sm != null) {
