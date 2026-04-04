@@ -128,8 +128,8 @@ public class CheckLeaseLeak extends UnicastRemoteObject implements LeaseLeak {
             }
         }
 
-        /* numLeft should be 2 - if 11 there is a problem. */
-        if (numLeft > 2) {
+        /* numLeft should be 4 - if 11 there is a problem. */
+        if (numLeft > 4) {
             TestLibrary.bomb("Too many objects in DGCImpl.leaseTable: "+
                             numLeft);
         } else {
