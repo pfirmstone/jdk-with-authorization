@@ -34,7 +34,6 @@ import java.util.logging.Level;
 import java.util.logging.LogManager;
 import java.util.logging.Logger;
 import java.util.logging.LoggingPermission;
-import jdk.internal.access.JavaAWTAccess;
 import jdk.internal.access.SharedSecrets;
 
 /**
@@ -76,16 +75,11 @@ public class RootLevelInConfigFile {
 
         LogManager.getLogManager().readConfiguration();
 
-        final JavaAWTAccessStub access = new JavaAWTAccessStub();
-        SharedSecrets.setJavaAWTAccess(access);
-
         test("security and no context");
 
         for (Context ctx : Context.values()) {
 
             LogManager.getLogManager().readConfiguration();
-
-            access.setContext(ctx);
 
             test("security and context " + ctx);
         }
@@ -194,18 +188,5 @@ public class RootLevelInConfigFile {
     }
 
     static enum Context { ONE, TWO };
-
-    static final class JavaAWTAccessStub implements JavaAWTAccess {
-        private Context context;
-
-        public void setContext(Context context) {
-            this.context = context;
-        }
-
-        @Override
-        public Object getAppletContext() {
-            return context;
-        }
-    }
 
 }
