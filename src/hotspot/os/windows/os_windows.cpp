@@ -3299,15 +3299,15 @@ static char* map_or_reserve_memory_aligned(size_t size, size_t alignment, int fi
 size_t os::commit_memory_limit() {
   JOBOBJECT_EXTENDED_LIMIT_INFORMATION jeli = {};
   BOOL res = QueryInformationJobObject(nullptr, JobObjectExtendedLimitInformation, &jeli, sizeof(jeli), nullptr);
-
-  if (!res) {
-    char buf[512];
-    size_t buf_len = os::lasterror(buf, sizeof(buf));
-    warning("Attempt to query job object information failed: %s", buf_len != 0 ? buf : "<unknown error>");
+  // TODO: consider whether we should warn if this call fails, and if so, how to do that without causing problems in the minidump generation (e.g. by calling os::lasterror and printing the message into the log, which should be captured in the minidump).
+  //if (!res) {
+    //char buf[512];
+    //size_t buf_len = os::lasterror(buf, sizeof(buf));
+    //warning("Attempt to query job object information failed: %s", buf_len != 0 ? buf : "<unknown error>");
 
     // Conservatively assume no limit when there was an error calling QueryInformationJobObject.
-    return SIZE_MAX;
-  }
+    //return SIZE_MAX;
+  //}
 
   if (jeli.BasicLimitInformation.LimitFlags & JOB_OBJECT_LIMIT_PROCESS_MEMORY) {
     return jeli.ProcessMemoryLimit;
