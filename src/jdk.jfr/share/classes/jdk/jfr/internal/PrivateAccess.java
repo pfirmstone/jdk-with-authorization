@@ -33,7 +33,6 @@ import jdk.jfr.AnnotationElement;
 import jdk.jfr.Configuration;
 import jdk.jfr.EventSettings;
 import jdk.jfr.EventType;
-import jdk.jfr.FlightRecorderPermission;
 import jdk.jfr.Recording;
 import jdk.jfr.SettingControl;
 import jdk.jfr.SettingDescriptor;

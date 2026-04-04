@@ -39,14 +39,17 @@ import java.security.PrivilegedAction;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.Iterator;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.ServiceConfigurationError;
+import java.util.Objects;
 import java.util.ServiceLoader;
 import java.util.Set;
 import java.util.SortedMap;
 import java.util.TreeMap;
+import java.util.function.Supplier;
 
 
 /**
@@ -394,17 +397,7 @@ public abstract class Charset
             };
     }
 
-    private static class ThreadTrackHolder {
-        static final ThreadTracker TRACKER = new ThreadTracker();
-    }
-
-    private static Object tryBeginLookup() {
-        return ThreadTrackHolder.TRACKER.tryBegin();
-    }
-
-    private static void endLookup(Object key) {
-        ThreadTrackHolder.TRACKER.end(key);
-    }
+    private static final ScopedValue<Boolean> IN_LOOKUP = ScopedValue.newInstance();
 
     @SuppressWarnings("removal")
     private static Charset lookupViaProviders(final String charsetName) {
@@ -420,59 +413,65 @@ public abstract class Charset
         if (!VM.isBooted())
             return null;
 
-        Object key = tryBeginLookup();
-        if (key == null) {
+        if (IN_LOOKUP.isBound()) {
             // Avoid recursive provider lookups
             return null;
         }
         try {
-            return AccessController.doPrivileged(
-                new PrivilegedAction<>() {
-                    public Charset run() {
-                        for (Iterator<CharsetProvider> i = providers();
-                             i.hasNext();) {
-                            CharsetProvider cp = i.next();
-                            Charset cs = cp.charsetForName(charsetName);
-                            if (cs != null)
-                                return cs;
+            return ScopedValue.where(IN_LOOKUP, true).call(
+                    new ScopedValue.CallableOp<Charset, Exception>() {
+                        @Override
+                        public Charset call() {
+                            return AccessController.doPrivileged(
+                                (PrivilegedAction<Charset>) () -> 
+                                {
+                                    for (Iterator<CharsetProvider> i = providers(); i.hasNext(); ) {
+                                        CharsetProvider cp = i.next();
+                                        Charset cs = cp.charsetForName(charsetName);
+                                        if (cs != null)
+                                            return cs;
+                                    }
+                                    return null;
+                                }
+                            );
                         }
-                        return null;
                     }
-                });
-
-        } finally {
-            endLookup(key);
+            );
+        } catch (Exception t) {
+            // Should not happen
+            throw new RuntimeException(t);
         }
+
     }
 
     /* The extended set of charsets */
-    private static class ExtendedProviderHolder {
-        static final CharsetProvider[] extendedProviders = extendedProviders();
+    private static final Supplier<List<CharsetProvider>> EXTENDED_PROVIDERS = StableValue.supplier(
+            new Supplier<>() { public List<CharsetProvider> get() { return extendedProviders0(); }});
         // returns ExtendedProvider, if installed
         @SuppressWarnings("removal")
-        private static CharsetProvider[] extendedProviders() {
-            return AccessController.doPrivileged(new PrivilegedAction<>() {
-                    public CharsetProvider[] run() {
-                        CharsetProvider[] cps = new CharsetProvider[1];
-                        int n = 0;
-                        ServiceLoader<CharsetProvider> sl =
-                            ServiceLoader.loadInstalled(CharsetProvider.class);
-                        for (CharsetProvider cp : sl) {
-                            if (n + 1 > cps.length) {
-                                cps = Arrays.copyOf(cps, cps.length << 1);
-                            }
-                            cps[n++] = cp;
-                        }
-                        return n == cps.length ? cps : Arrays.copyOf(cps, n);
-                    }});
-        }
+    private static List<CharsetProvider> extendedProviders0() {
+        return AccessController.doPrivileged(
+            (PrivilegedAction<List<CharsetProvider>>) () -> 
+            {
+                CharsetProvider[] cps = new CharsetProvider[1];
+                int n = 0;
+                final ServiceLoader<CharsetProvider> sl =
+                        ServiceLoader.loadInstalled(CharsetProvider.class);
+                for (CharsetProvider cp : sl) {
+                    if (n + 1 > cps.length) {
+                        cps = Arrays.copyOf(cps, cps.length << 1);
+                    }
+                    cps[n++] = cp;
+                }
+                return List.of(n == cps.length ? cps : Arrays.copyOf(cps, n));
+            }
+        );
     }
 
     private static Charset lookupExtendedCharset(String charsetName) {
         if (!VM.isBooted())  // see lookupViaProviders()
             return null;
-        CharsetProvider[] ecps = ExtendedProviderHolder.extendedProviders;
-        for (CharsetProvider cp : ecps) {
+        for (CharsetProvider cp : EXTENDED_PROVIDERS.get()) {
             Charset cs = cp.charsetForName(charsetName);
             if (cs != null)
                 return cs;
@@ -631,26 +630,34 @@ public abstract class Charset
     @SuppressWarnings("removal")
     public static SortedMap<String,Charset> availableCharsets() {
         return AccessController.doPrivileged(
-            new PrivilegedAction<>() {
-                public SortedMap<String,Charset> run() {
-                    TreeMap<String,Charset> m =
+            (PrivilegedAction<SortedMap<String,Charset>>) () -> 
+            {
+                TreeMap<String,Charset> m =
                         new TreeMap<>(
-                            String.CASE_INSENSITIVE_ORDER);
-                    put(standardProvider.charsets(), m);
-                    CharsetProvider[] ecps = ExtendedProviderHolder.extendedProviders;
-                    for (CharsetProvider ecp :ecps) {
-                        put(ecp.charsets(), m);
-                    }
-                    for (Iterator<CharsetProvider> i = providers(); i.hasNext();) {
-                        CharsetProvider cp = i.next();
-                        put(cp.charsets(), m);
-                    }
-                    return Collections.unmodifiableSortedMap(m);
+                                String.CASE_INSENSITIVE_ORDER);
+                put(standardProvider.charsets(), m);
+                for (CharsetProvider ecp : EXTENDED_PROVIDERS.get()) {
+                    put(ecp.charsets(), m);
                 }
-            });
+                for (Iterator<CharsetProvider> i = providers(); i.hasNext();) {
+                    CharsetProvider cp = i.next();
+                    put(cp.charsets(), m);
+                }
+                return Collections.unmodifiableSortedMap(m);
+            }
+        );
     }
 
-    private @Stable static Charset defaultCharset;
+    private static final Supplier<Charset> defaultCharset = StableValue.supplier(
+            new Supplier<>() { public Charset get() { return defaultCharset0(); }});
+
+    private static Charset defaultCharset0() {
+        // do not look for providers other than the standard one
+        final Charset cs = standardProvider.charsetForName(StaticProperty.fileEncoding());
+        return (cs == null)
+                ? sun.nio.cs.UTF_8.INSTANCE
+                : cs;
+    }
 
     /**
      * Returns the default charset of this Java virtual machine.
@@ -671,25 +678,19 @@ public abstract class Charset
      * @since 1.5
      */
     public static Charset defaultCharset() {
-        if (defaultCharset == null) {
-            synchronized (Charset.class) {
-                // do not look for providers other than the standard one
-                Charset cs = standardProvider.charsetForName(StaticProperty.fileEncoding());
-                if (cs != null)
-                    defaultCharset = cs;
-                else
-                    defaultCharset = sun.nio.cs.UTF_8.INSTANCE;
-            }
-        }
-        return defaultCharset;
+        return defaultCharset.get();
     }
 
 
     /* -- Instance fields and methods -- */
 
-    private final String name;          // tickles a bug in oldjavac
-    private final String[] aliases;     // tickles a bug in oldjavac
-    private Set<String> aliasSet;
+    @Stable
+    private final String name;
+    @Stable
+    private final String[] aliases;
+    @Stable
+    private final Supplier<Set<String>> aliasSet = StableValue.supplier(
+            new Supplier<>() { public Set<String> get() { return Set.of(aliases); }});
 
     /**
      * Initializes a new charset with the given canonical name and alias
@@ -741,12 +742,7 @@ public abstract class Charset
      * @return  An immutable set of this charset's aliases
      */
     public final Set<String> aliases() {
-        Set<String> set = this.aliasSet;
-        if (set == null) {
-            set = Set.of(aliases);
-            this.aliasSet = set;
-        }
-        return set;
+        return aliasSet.get();
     }
 
     /**

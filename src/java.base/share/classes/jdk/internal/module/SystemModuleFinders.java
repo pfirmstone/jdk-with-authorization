@@ -467,6 +467,7 @@ public final class SystemModuleFinders {
 
         @Override
         public Optional<URI> find(String name) throws IOException {
+            Objects.requireNonNull(name);
             String resourcePath = "/" + module + "/" + name;
             if (containsResource(resourcePath)) {
                 URI u = JNUA.create("jrt", resourcePath);
