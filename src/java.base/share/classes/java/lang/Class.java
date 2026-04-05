@@ -85,6 +85,7 @@ import jdk.internal.reflect.ConstantPool;
 import jdk.internal.reflect.Reflection;
 import jdk.internal.reflect.ReflectionFactory;
 import jdk.internal.vm.annotation.ForceInline;
+import jdk.internal.util.ModifiedUtf;
 import jdk.internal.vm.annotation.AOTRuntimeSetup;
 import jdk.internal.vm.annotation.AOTSafeClassInitializer;
 import jdk.internal.vm.annotation.IntrinsicCandidate;
@@ -475,6 +476,7 @@ public final class Class<T> implements java.io.Serializable,
     @CallerSensitiveAdapter
     private static Class<?> forName(String className, Class<?> caller)
             throws ClassNotFoundException {
+        validateClassNameLength(className);
         ClassLoader loader = (caller == null) ? ClassLoader.getSystemClassLoader()
                                               : ClassLoader.getClassLoader(caller);
         return forName0(className, true, loader, caller);
@@ -593,6 +595,7 @@ public final class Class<T> implements java.io.Serializable,
                 }
             }
         }
+        validateClassNameLength(name);
         return forName0(name, initialize, loader, caller);
     }
 
@@ -668,6 +671,9 @@ public final class Class<T> implements java.io.Serializable,
     private static Class<?> forName(Module module, String name, Class<?> caller) {
         Objects.requireNonNull(module);
         Objects.requireNonNull(name);
+        if (!ModifiedUtf.isValidLengthInConstantPool(name)) {
+            return null;
+        }
 
         ClassLoader cl;
         SecurityManager sm = System.getSecurityManager();
@@ -4850,4 +4856,14 @@ public final class Class<T> implements java.io.Serializable,
      int getClassFileAccessFlags() {
          return classFileAccessFlags;
      }
+
+    // Validates the length of the class name and throws an exception if it exceeds the maximum allowed length.
+    private static void validateClassNameLength(String name) throws ClassNotFoundException {
+        if (!ModifiedUtf.isValidLengthInConstantPool(name)) {
+            throw new ClassNotFoundException(
+                    "Class name length exceeds limit of "
+                    + ModifiedUtf.CONSTANT_POOL_UTF8_MAX_BYTES
+                    + ": " + name.substring(0,256) + "...");
+        }
+    }
 }
