@@ -801,22 +801,14 @@ public abstract class PKCS11Test {
         }
     }
 
-    private static Path fetchNssLib(Class<?> clazz, Path libraryName) {
-        Path path = null;
+    private static Path fetchNssLib(Class<?> clazz, Path libraryName) throws IOException {
+        Path p;
         try {
-            Path p = ArtifactResolver.resolve(clazz).entrySet().stream()
-                    .findAny().get().getValue();
-            path = findNSSLibrary(p, libraryName);
-        } catch (ArtifactResolverException | IOException e) {
-            Throwable cause = e.getCause();
-            if (cause == null) {
-                System.out.println("Cannot resolve artifact, "
-                        + "please check if JIB jar is present in classpath.");
-            } else {
-                throw new RuntimeException("Fetch artifact failed: " + clazz
-                        + "\nPlease make sure the artifact is available.", e);
-            }
+            p = ArtifactResolver.fetchOne(clazz);
+        } catch (IOException exc) {
+            throw new SkippedException("Could not find NSS", exc);
         }
+        Path path = findNSSLibrary(p, libraryName);
         Policy.setPolicy(null); // Clear the policy created by JIB if any
         return path;
     }
