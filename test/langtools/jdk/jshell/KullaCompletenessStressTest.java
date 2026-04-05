@@ -30,15 +30,24 @@
  */
 
 import java.io.File;
+import java.io.IOException;
 
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInstance;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
 
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 public class KullaCompletenessStressTest extends CompletenessStressTest {
+    
+    @ParameterizedTest
+    @MethodSource("dataProvider")
+    public void fileTest(String fileName) throws IOException {
+        testFile(fileName);
+    }
+    
     @Override
-    @Test
     public File[] getDirectoriesToTest() {
         String src = System.getProperty("test.src");
         File file;
