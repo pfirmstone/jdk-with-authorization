@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002, 2022, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2002, 2025, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -262,7 +262,6 @@ public final class PKIXValidator extends Validator {
         // apparently issued by trust anchor?
         X509Certificate last = chain[chain.length - 1];
         X500Principal issuer = last.getIssuerX500Principal();
-        X500Principal subject = last.getSubjectX500Principal();
         if (trustedSubjects.containsKey(issuer)) {
             return doValidate(chain, pkixParameters);
         }

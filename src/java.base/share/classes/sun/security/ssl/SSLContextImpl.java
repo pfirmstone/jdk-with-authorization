@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 1999, 2023, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 1999, 2025, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -34,6 +34,7 @@ import java.util.concurrent.locks.ReentrantLock;
 import javax.net.ssl.*;
 import sun.security.action.GetPropertyAction;
 import sun.security.provider.certpath.AlgorithmChecker;
+import sun.security.ssl.SSLAlgorithmConstraints.SIGNATURE_CONSTRAINTS_MODE;
 import sun.security.validator.Validator;
 
 /**
@@ -479,6 +480,10 @@ public abstract class SSLContextImpl extends SSLContextSpi {
         }
 
         return availableProtocols;
+    }
+
+    public boolean isUsableWithQuic() {
+        return trustManager instanceof X509TrustManagerImpl;
     }
 
     /*
@@ -1464,22 +1469,8 @@ final class AbstractTrustManagerWrapper extends X509ExtendedTrustManager
                                     identityAlg, checkClientTrusted);
             }
 
-            // try the best to check the algorithm constraints
-            AlgorithmConstraints constraints;
-            if (ProtocolVersion.useTLS12PlusSpec(session.getProtocol())) {
-                if (session instanceof ExtendedSSLSession extSession) {
-                    String[] peerSupportedSignAlgs =
-                            extSession.getLocalSupportedSignatureAlgorithms();
-
-                    constraints = SSLAlgorithmConstraints.forSocket(
-                                    sslSocket, peerSupportedSignAlgs, true);
-                } else {
-                    constraints =
-                            SSLAlgorithmConstraints.forSocket(sslSocket, true);
-                }
-            } else {
-                constraints = SSLAlgorithmConstraints.forSocket(sslSocket, true);
-            }
+            AlgorithmConstraints constraints = SSLAlgorithmConstraints.forSocket(
+                    sslSocket, SIGNATURE_CONSTRAINTS_MODE.LOCAL, true);
 
             checkAlgorithmConstraints(chain, constraints, checkClientTrusted);
         }
@@ -1489,6 +1480,7 @@ final class AbstractTrustManagerWrapper extends X509ExtendedTrustManager
             String authType, SSLEngine engine,
             boolean checkClientTrusted) throws CertificateException {
         if (engine != null) {
+
             SSLSession session = engine.getHandshakeSession();
             if (session == null) {
                 throw new CertificateException("No handshake session");
@@ -1502,22 +1494,8 @@ final class AbstractTrustManagerWrapper extends X509ExtendedTrustManager
                                     identityAlg, checkClientTrusted);
             }
 
-            // try the best to check the algorithm constraints
-            AlgorithmConstraints constraints;
-            if (ProtocolVersion.useTLS12PlusSpec(session.getProtocol())) {
-                if (session instanceof ExtendedSSLSession extSession) {
-                    String[] peerSupportedSignAlgs =
-                            extSession.getLocalSupportedSignatureAlgorithms();
-
-                    constraints = SSLAlgorithmConstraints.forEngine(
-                                    engine, peerSupportedSignAlgs, true);
-                } else {
-                    constraints =
-                            SSLAlgorithmConstraints.forEngine(engine, true);
-                }
-            } else {
-                constraints = SSLAlgorithmConstraints.forEngine(engine, true);
-            }
+            AlgorithmConstraints constraints = SSLAlgorithmConstraints.forEngine(
+                    engine, SIGNATURE_CONSTRAINTS_MODE.LOCAL, true);
 
             checkAlgorithmConstraints(chain, constraints, checkClientTrusted);
         }
