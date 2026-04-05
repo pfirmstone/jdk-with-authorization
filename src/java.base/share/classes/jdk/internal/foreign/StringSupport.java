@@ -74,7 +74,7 @@ public final class StringSupport {
         final byte[] bytes = new byte[len];
         MemorySegment.copy(segment, JAVA_BYTE, offset, bytes, 0, len);
         try {
-            return JAVA_LANG_ACCESS.uncheckedNewStringNoRepl(bytes, charset);
+            return JAVA_LANG_ACCESS.uncheckedNewStringOrThrow(bytes, charset);
         } catch (CharacterCodingException _) {
             // use replacement characters for malformed input
             return new String(bytes, charset);
@@ -93,7 +93,7 @@ public final class StringSupport {
         byte[] bytes = new byte[len];
         MemorySegment.copy(segment, JAVA_BYTE, offset, bytes, 0, len);
         try {
-            return JAVA_LANG_ACCESS.uncheckedNewStringNoRepl(bytes, charset);
+            return JAVA_LANG_ACCESS.uncheckedNewStringOrThrow(bytes, charset);
         } catch (CharacterCodingException _) {
           // use replacement characters for malformed input
           return new String(bytes, charset);
@@ -112,7 +112,7 @@ public final class StringSupport {
         byte[] bytes = new byte[len];
         MemorySegment.copy(segment, JAVA_BYTE, offset, bytes, 0, len);
         try {
-            return JAVA_LANG_ACCESS.uncheckedNewStringNoRepl(bytes, charset);
+            return JAVA_LANG_ACCESS.uncheckedNewStringOrThrow(bytes, charset);
         } catch (CharacterCodingException _) {
             // use replacement characters for malformed input
             return new String(bytes, charset);

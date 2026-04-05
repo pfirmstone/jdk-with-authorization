@@ -27,6 +27,7 @@ package java.io;
 
 import java.security.AccessController;
 import java.security.PrivilegedAction;
+import java.lang.annotation.Native;
 import java.util.*;
 import java.nio.charset.Charset;
 import jdk.internal.access.JavaIOAccess;
@@ -552,7 +553,12 @@ public sealed class Console implements Flushable permits ProxyingConsole {
                 "Console class itself does not provide implementation");
     }
 
-    private static final boolean istty = istty();
+    @Native static final int TTY_STDIN_MASK = 0x00000001;
+    @Native static final int TTY_STDOUT_MASK = 0x00000002;
+    @Native static final int TTY_STDERR_MASK = 0x00000004;
+    // ttyStatus() returns bit patterns above, a bit is set if the corresponding file
+    // descriptor is a character device
+    private static final int ttyStatus = ttyStatus();
     private static final Charset STDIN_CHARSET =
         Charset.forName(GetPropertyAction.privilegedGetProperty("stdin.encoding"), UTF_8.INSTANCE);
     private static final Charset STDOUT_CHARSET =
@@ -563,6 +569,9 @@ public sealed class Console implements Flushable permits ProxyingConsole {
         SharedSecrets.setJavaIOAccess(new JavaIOAccess() {
             public Console console() {
                 return cons;
+            }
+            public boolean isStdinTty() {
+                return Console.isStdinTty();
             }
         });
     }
@@ -603,12 +612,21 @@ public sealed class Console implements Flushable permits ProxyingConsole {
         }
 
         // If not found, default to built-in Console
-        if (istty && c == null) {
+        if (isStdinTty() && isStdoutTty() && c == null) {
             c = new ProxyingConsole(new JdkConsoleImpl(STDIN_CHARSET, STDOUT_CHARSET));
         }
 
         return c;
     }
 
-    private static native boolean istty();
+    private static boolean isStdinTty() {
+        return (ttyStatus & TTY_STDIN_MASK) != 0;
+    }
+    private static boolean isStdoutTty() {
+        return (ttyStatus & TTY_STDOUT_MASK) != 0;
+    }
+    private static boolean isStderrTty() {
+        return (ttyStatus & TTY_STDERR_MASK) != 0;
+    }
+    private static native int ttyStatus();
 }

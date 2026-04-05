@@ -80,17 +80,22 @@ import jdk.internal.util.StaticProperty;
  * {@code user.dir}, and is typically the directory in which the Java
  * virtual machine was invoked.
  *
- * <p> Unless otherwise noted, {@linkplain java.nio.file##links symbolic links}
- * are automatically redirected to the <i>target</i> of the link, whether they
- * are provided by a pathname string or via a {@code File} object.
+ * <p> Many operating systems and file systems have support for
+ * {@linkplain java.nio.file##links symbolic links}.
+ * A symbolic link is a special file that serves as a reference to another file.
+ * Unless otherwise specified, symbolic links are transparent to applications
+ * and operations on files that are symbolic links are automatically redirected
+ * to the target of the link.  Methods that only operate on the abstract
+ * pathname do not access the file system and thus do not resolve symbolic
+ * links.
  *
  * <p> The <em>parent</em> of an abstract pathname may be obtained by invoking
  * the {@link #getParent} method of this class and consists of the pathname's
  * prefix and each name in the pathname's name sequence except for the last.
  * Each directory's absolute pathname is an ancestor of any {@code File}
  * object with an absolute abstract pathname which begins with the directory's
- * absolute pathname.  For example, the directory denoted by the abstract
- * pathname {@code "/usr"} is an ancestor of the directory denoted by the
+ * absolute pathname.  For example, the directory located by the abstract
+ * pathname {@code "/usr"} is an ancestor of the directory located by the
  * pathname {@code "/usr/local/bin"}.
  *
  * <p> The prefix concept is used to handle root directories on UNIX platforms,
@@ -113,8 +118,8 @@ import jdk.internal.util.StaticProperty;
  *
  * </ul>
  *
- * <p> Instances of this class may or may not denote an actual file-system
- * object such as a file or a directory.  If it does denote such an object
+ * <p> Instances of this class may or may not locate an actual file-system
+ * object such as a file or a directory.  If it does locate such an object
  * then that object resides in a <i>partition</i>.  A partition is an
  * operating system-specific portion of storage for a file system.  A single
  * storage device (e.g. a physical disk-drive, flash memory, CD-ROM) may
@@ -448,12 +453,12 @@ public class File
     /* -- Path-component accessors -- */
 
     /**
-     * Returns the name of the file or directory denoted by this abstract
+     * Returns the name component of this abstract
      * pathname.  This is just the last name in the pathname's name
      * sequence.  If the pathname's name sequence is empty, then the empty
      * string is returned.
      *
-     * @return  The name of the file or directory denoted by this abstract
+     * @return  The name component of this abstract
      *          pathname, or the empty string if this pathname's name sequence
      *          is empty
      */
@@ -598,7 +603,7 @@ public class File
      * symbolic links, and converting drive letters to a standard case (on
      * Microsoft Windows platforms).
      *
-     * <p> Every pathname that denotes an existing file or directory has a
+     * <p> Every pathname that locates an existing file or directory has a
      * unique canonical form.  Every pathname that denotes a nonexistent file
      * or directory also has a unique canonical form.  The canonical form of
      * the pathname of a nonexistent file or directory may be different from
@@ -607,7 +612,7 @@ public class File
      * file or directory may be different from the canonical form of the same
      * pathname after the file or directory is deleted.
      *
-     * @return  The canonical pathname string denoting the same file or
+     * @return  The canonical pathname string locating the same file or
      *          directory as this abstract pathname
      *
      * @throws  IOException
@@ -635,7 +640,7 @@ public class File
      * Returns the canonical form of this abstract pathname.  Equivalent to
      * <code>new&nbsp;File(this.{@link #getCanonicalPath})</code>.
      *
-     * @return  The canonical pathname string denoting the same file or
+     * @return  The canonical pathname string locating the same file or
      *          directory as this abstract pathname
      *
      * @throws  IOException
@@ -674,7 +679,7 @@ public class File
     /**
      * Converts this abstract pathname into a {@code file:} URL.  The
      * exact form of the URL is system-dependent.  If it can be determined that
-     * the file denoted by this abstract pathname is a directory, then the
+     * the file located by this abstract pathname is a directory, then the
      * resulting URL will end with a slash.
      *
      * @return  A URL object representing the equivalent file URL
@@ -707,7 +712,7 @@ public class File
      * Constructs a {@code file:} URI that represents this abstract pathname.
      *
      * <p> The exact form of the URI is system-dependent.  If it can be
-     * determined that the file denoted by this abstract pathname is a
+     * determined that the file located by this abstract pathname is a
      * directory, then the resulting URI will end with a slash.
      *
      * <p> For a given abstract pathname <i>f</i>, it is guaranteed that
@@ -760,13 +765,13 @@ public class File
     /* -- Attribute accessors -- */
 
     /**
-     * Tests whether the application can read the file denoted by this
+     * Tests whether the application can read the file located by this
      * abstract pathname. On some platforms it may be possible to start the
      * Java virtual machine with special privileges that allow it to read
      * files that are marked as unreadable. Consequently, this method may return
      * {@code true} even though the file does not have read permissions.
      *
-     * @return  {@code true} if and only if the file specified by this
+     * @return  {@code true} if and only if the file located by this
      *          abstract pathname exists <em>and</em> can be read by the
      *          application; {@code false} otherwise
      *
@@ -788,14 +793,14 @@ public class File
     }
 
     /**
-     * Tests whether the application can modify the file denoted by this
+     * Tests whether the application can modify the file located by this
      * abstract pathname. On some platforms it may be possible to start the
      * Java virtual machine with special privileges that allow it to modify
      * files that are marked read-only. Consequently, this method may return
      * {@code true} even though the file is marked read-only.
      *
      * @return  {@code true} if and only if the file system actually
-     *          contains a file denoted by this abstract pathname <em>and</em>
+     *          contains a file located by this abstract pathname <em>and</em>
      *          the application is allowed to write to the file;
      *          {@code false} otherwise.
      *
@@ -817,10 +822,10 @@ public class File
     }
 
     /**
-     * Tests whether the file or directory denoted by this abstract pathname
+     * Tests whether the file or directory located by this abstract pathname
      * exists.
      *
-     * @return  {@code true} if and only if the file or directory denoted
+     * @return  {@code true} if and only if the file or directory located
      *          by this abstract pathname exists; {@code false} otherwise
      *
      * @throws  SecurityException
@@ -841,7 +846,7 @@ public class File
     }
 
     /**
-     * Tests whether the file denoted by this abstract pathname is a
+     * Tests whether the file located by this abstract pathname is a
      * directory.
      *
      * <p> Where it is required to distinguish an I/O exception from the case
@@ -850,7 +855,7 @@ public class File
      * java.nio.file.Files#readAttributes(Path,Class,LinkOption[])
      * Files.readAttributes} method may be used.
      *
-     * @return {@code true} if and only if the file denoted by this
+     * @return {@code true} if and only if the file located by this
      *          abstract pathname exists <em>and</em> is a directory;
      *          {@code false} otherwise
      *
@@ -872,7 +877,7 @@ public class File
     }
 
     /**
-     * Tests whether the file denoted by this abstract pathname is a normal
+     * Tests whether the file located by this abstract pathname is a normal
      * file.  A file is <em>normal</em> if it is not a directory and, in
      * addition, satisfies other system-dependent criteria.  Any non-directory
      * file created by a Java application is guaranteed to be a normal file.
@@ -883,7 +888,7 @@ public class File
      * java.nio.file.Files#readAttributes(Path,Class,LinkOption[])
      * Files.readAttributes} method may be used.
      *
-     * @return  {@code true} if and only if the file denoted by this
+     * @return  {@code true} if and only if the file located by this
      *          abstract pathname exists <em>and</em> is a normal file;
      *          {@code false} otherwise
      *
@@ -905,7 +910,7 @@ public class File
     }
 
     /**
-     * Tests whether the file named by this abstract pathname is a hidden
+     * Tests whether the file located by this abstract pathname is a hidden
      * file.  The exact definition of <em>hidden</em> is system-dependent.  On
      * UNIX systems, a file is considered to be hidden if its name begins with
      * a period character ({@code '.'}).  On Microsoft Windows systems, a file
@@ -919,7 +924,7 @@ public class File
      * with a period character.  On Windows systems, a symbolic link is
      * considered hidden if its target is so marked in the filesystem.
      *
-     * @return  {@code true} if and only if the file denoted by this
+     * @return  {@code true} if and only if the file located by this
      *          abstract pathname is hidden according to the conventions of the
      *          underlying platform
      *
@@ -943,7 +948,7 @@ public class File
     }
 
     /**
-     * Returns the time that the file denoted by this abstract pathname was
+     * Returns the time that the file located by this abstract pathname was
      * last modified.
      *
      * @apiNote
@@ -987,8 +992,8 @@ public class File
     }
 
     /**
-     * Returns the length of the file denoted by this abstract pathname.
-     * The return value is unspecified if this pathname denotes a directory.
+     * Returns the length of the file located by this abstract pathname.
+     * The return value is unspecified if this pathname locates a directory.
      *
      * <p> Where it is required to distinguish an I/O exception from the case
      * that {@code 0L} is returned, or where several attributes of the same file
@@ -996,10 +1001,10 @@ public class File
      * java.nio.file.Files#readAttributes(Path,Class,LinkOption[])
      * Files.readAttributes} method may be used.
      *
-     * @return  The length, in bytes, of the file denoted by this abstract
+     * @return  The length, in bytes, of the file located by this abstract
      *          pathname, or {@code 0L} if the file does not exist.  Some
      *          operating systems may return {@code 0L} for pathnames
-     *          denoting system-dependent entities such as devices or pipes.
+     *          locating system-dependent entities such as devices or pipes.
      *
      * @throws  SecurityException
      *          If a security manager exists and its {@link
@@ -1035,7 +1040,7 @@ public class File
      *
      * @return  {@code true} if the named file does not exist and was
      *          successfully created; {@code false} if the named file
-     *          already exists
+     *          already exists, including if it is a symbolic link
      *
      * @throws  IOException
      *          If an I/O error occurred
@@ -1058,9 +1063,9 @@ public class File
     }
 
     /**
-     * Deletes the file or directory denoted by this abstract pathname.  If
-     * this pathname denotes a directory, then the directory must be empty in
-     * order to be deleted.  If this pathname denotes a symbolic link, then the
+     * Deletes the file or directory located by this abstract pathname.  If
+     * this pathname locates a directory, then the directory must be empty in
+     * order to be deleted.  If this pathname locates a symbolic link, then the
      * link itself, not its target, will be deleted.
      *
      * <p> Note that the {@link java.nio.file.Files} class defines the {@link
@@ -1089,9 +1094,9 @@ public class File
     }
 
     /**
-     * Requests that the file or directory denoted by this abstract
+     * Requests that the file or directory located by this abstract
      * pathname be deleted when the virtual machine terminates.
-     * If this pathname denotes a symbolic link, then the
+     * If this pathname locates a symbolic link, then the
      * link itself, not its target, will be deleted.
      * Files (or directories) are deleted in the reverse order that
      * they are registered. Invoking this method to delete a file or
@@ -1131,12 +1136,12 @@ public class File
 
     /**
      * Returns an array of strings naming the files and directories in the
-     * directory denoted by this abstract pathname.
+     * directory located by this abstract pathname.
      *
-     * <p> If this abstract pathname does not denote a directory, then this
+     * <p> If this abstract pathname does not locate a directory, then this
      * method returns {@code null}.  Otherwise an array of strings is
      * returned, one for each file or directory in the directory.  Names
-     * denoting the directory itself and the directory's parent directory are
+     * locating the directory itself and the directory's parent directory are
      * not included in the result.  Each string is a file name rather than a
      * complete path.
      *
@@ -1151,9 +1156,9 @@ public class File
      * may be more responsive when working with remote directories.
      *
      * @return  An array of strings naming the files and directories in the
-     *          directory denoted by this abstract pathname.  The array will be
+     *          directory located by this abstract pathname.  The array will be
      *          empty if the directory is empty.  Returns {@code null} if
-     *          this abstract pathname does not denote a directory, or if an
+     *          this abstract pathname does not locate a directory, or if an
      *          I/O error occurs.
      *
      * @throws  SecurityException
@@ -1167,13 +1172,13 @@ public class File
 
     /**
      * Returns an array of strings naming the files and directories in the
-     * directory denoted by this abstract pathname.  The strings are
+     * directory located by this abstract pathname.  The strings are
      * ensured to represent normalized paths.
      *
      * @return  An array of strings naming the files and directories in the
-     *          directory denoted by this abstract pathname.  The array will be
+     *          directory located by this abstract pathname.  The array will be
      *          empty if the directory is empty.  Returns {@code null} if
-     *          this abstract pathname does not denote a directory, or if an
+     *          this abstract pathname does not locate a directory, or if an
      *          I/O error occurs.
      *
      * @throws  SecurityException
@@ -1203,7 +1208,7 @@ public class File
 
     /**
      * Returns an array of strings naming the files and directories in the
-     * directory denoted by this abstract pathname that satisfy the specified
+     * directory located by this abstract pathname that satisfy the specified
      * filter.  The behavior of this method is the same as that of the
      * {@link #list()} method, except that the strings in the returned array
      * must satisfy the filter.  If the given {@code filter} is {@code null}
@@ -1211,16 +1216,16 @@ public class File
      * and only if the value {@code true} results when the {@link
      * FilenameFilter#accept FilenameFilter.accept(File,&nbsp;String)} method
      * of the filter is invoked on this abstract pathname and the name of a
-     * file or directory in the directory that it denotes.
+     * file or directory in the directory that it locates.
      *
      * @param  filter
      *         A filename filter
      *
      * @return  An array of strings naming the files and directories in the
-     *          directory denoted by this abstract pathname that were accepted
+     *          directory located by this abstract pathname that were accepted
      *          by the given {@code filter}.  The array will be empty if the
      *          directory is empty or if no names were accepted by the filter.
-     *          Returns {@code null} if this abstract pathname does not denote
+     *          Returns {@code null} if this abstract pathname does not locate
      *          a directory, or if an I/O error occurs.
      *
      * @throws  SecurityException
@@ -1245,13 +1250,13 @@ public class File
     }
 
     /**
-     * Returns an array of abstract pathnames denoting the files in the
-     * directory denoted by this abstract pathname.
+     * Returns an array of abstract pathnames locating the files in the
+     * directory located by this abstract pathname.
      *
-     * <p> If this abstract pathname does not denote a directory, then this
+     * <p> If this abstract pathname does not locate a directory, then this
      * method returns {@code null}.  Otherwise an array of {@code File} objects
      * is returned, one for each file or directory in the directory.  Pathnames
-     * denoting the directory itself and the directory's parent directory are
+     * locating the directory itself and the directory's parent directory are
      * not included in the result.  Each resulting abstract pathname is
      * constructed from this abstract pathname using the {@link #File(File,
      * String) File(File,&nbsp;String)} constructor.  Therefore if this
@@ -1269,10 +1274,10 @@ public class File
      * directory. This may use less resources when working with very large
      * directories.
      *
-     * @return  An array of abstract pathnames denoting the files and
-     *          directories in the directory denoted by this abstract pathname.
+     * @return  An array of abstract pathnames locating the files and
+     *          directories in the directory located by this abstract pathname.
      *          The array will be empty if the directory is empty.  Returns
-     *          {@code null} if this abstract pathname does not denote a
+     *          {@code null} if this abstract pathname does not locate a
      *          directory, or if an I/O error occurs.
      *
      * @throws  SecurityException
@@ -1294,8 +1299,8 @@ public class File
     }
 
     /**
-     * Returns an array of abstract pathnames denoting the files and
-     * directories in the directory denoted by this abstract pathname that
+     * Returns an array of abstract pathnames locating the files and
+     * directories in the directory located by this abstract pathname that
      * satisfy the specified filter.  The behavior of this method is the same
      * as that of the {@link #listFiles()} method, except that the pathnames in
      * the returned array must satisfy the filter.  If the given {@code filter}
@@ -1304,15 +1309,15 @@ public class File
      * the {@link FilenameFilter#accept
      * FilenameFilter.accept(File,&nbsp;String)} method of the filter is
      * invoked on this abstract pathname and the name of a file or directory in
-     * the directory that it denotes.
+     * the directory that it locates.
      *
      * @param  filter
      *         A filename filter
      *
-     * @return  An array of abstract pathnames denoting the files and
-     *          directories in the directory denoted by this abstract pathname.
+     * @return  An array of abstract pathnames locating the files and
+     *          directories in the directory located by this abstract pathname.
      *          The array will be empty if the directory is empty.  Returns
-     *          {@code null} if this abstract pathname does not denote a
+     *          {@code null} if this abstract pathname does not locate a
      *          directory, or if an I/O error occurs.
      *
      * @throws  SecurityException
@@ -1335,8 +1340,8 @@ public class File
     }
 
     /**
-     * Returns an array of abstract pathnames denoting the files and
-     * directories in the directory denoted by this abstract pathname that
+     * Returns an array of abstract pathnames locating the files and
+     * directories in the directory located by this abstract pathname that
      * satisfy the specified filter.  The behavior of this method is the same
      * as that of the {@link #listFiles()} method, except that the pathnames in
      * the returned array must satisfy the filter.  If the given {@code filter}
@@ -1348,10 +1353,10 @@ public class File
      * @param  filter
      *         A file filter
      *
-     * @return  An array of abstract pathnames denoting the files and
-     *          directories in the directory denoted by this abstract pathname.
+     * @return  An array of abstract pathnames locating the files and
+     *          directories in the directory located by this abstract pathname.
      *          The array will be empty if the directory is empty.  Returns
-     *          {@code null} if this abstract pathname does not denote a
+     *          {@code null} if this abstract pathname does not locate a
      *          directory, or if an I/O error occurs.
      *
      * @throws  SecurityException
@@ -1438,8 +1443,8 @@ public class File
     }
 
     /**
-     * Renames the file denoted by this abstract pathname.  If this pathname
-     * denotes a symbolic link, then the link itself, not its target, will be
+     * Renames the file located by this abstract pathname.  If this pathname
+     * locates a symbolic link, then the link itself, not its target, will be
      * renamed.
      *
      * <p> Many aspects of the behavior of this method are inherently
@@ -1485,7 +1490,7 @@ public class File
     }
 
     /**
-     * Sets the last-modified time of the file or directory named by this
+     * Sets the last-modified time of the file or directory located by this
      * abstract pathname.
      *
      * <p> All platforms support file-modification times to the nearest second,
@@ -1524,7 +1529,7 @@ public class File
     }
 
     /**
-     * Marks the file or directory named by this abstract pathname so that
+     * Marks the file or directory located by this abstract pathname so that
      * only read operations are allowed. After invoking this method the file
      * or directory will not change until it is either deleted or marked
      * to allow write access. On some platforms it may be possible to start the
@@ -1555,7 +1560,8 @@ public class File
     }
 
     /**
-     * Sets the owner's or everybody's write permission for this abstract
+     * Sets the owner's or everybody's write permission of the file or
+     * directory located by this abstract
      * pathname. On some platforms it may be possible to start the Java virtual
      * machine with special privileges that allow it to modify files that
      * disallow write operations.
@@ -1599,7 +1605,8 @@ public class File
     }
 
     /**
-     * A convenience method to set the owner's write permission for this abstract
+     * A convenience method to set the owner's write permission for the file
+     * or directory located by this abstract
      * pathname. On some platforms it may be possible to start the Java virtual
      * machine with special privileges that allow it to modify files that
      * disallow write operations.
@@ -1631,7 +1638,8 @@ public class File
     }
 
     /**
-     * Sets the owner's or everybody's read permission for this abstract
+     * Sets the owner's or everybody's read permission for the file or directory
+     * located by this abstract
      * pathname. On some platforms it may be possible to start the Java virtual
      * machine with special privileges that allow it to read files that are
      * marked as unreadable.
@@ -1681,7 +1689,8 @@ public class File
     }
 
     /**
-     * A convenience method to set the owner's read permission for this abstract
+     * A convenience method to set the owner's read permission for the file
+     * or directory located by this abstract
      * pathname. On some platforms it may be possible to start the Java virtual
      * machine with special privileges that allow it to read files that are
      * marked as unreadable.
@@ -1719,7 +1728,8 @@ public class File
     }
 
     /**
-     * Sets the owner's or everybody's execute permission for this abstract
+     * Sets the owner's or everybody's execute permission for the file or
+     * directory located by this abstract
      * pathname. On some platforms it may be possible to start the Java virtual
      * machine with special privileges that allow it to execute files that are
      * not marked executable.
@@ -1769,7 +1779,8 @@ public class File
     }
 
     /**
-     * A convenience method to set the owner's execute permission for this
+     * A convenience method to set the owner's execute permission for the file
+     * or directory located by this
      * abstract pathname. On some platforms it may be possible to start the Java
      * virtual machine with special privileges that allow it to execute files
      * that are not marked executable.
@@ -1807,7 +1818,7 @@ public class File
     }
 
     /**
-     * Tests whether the application can execute the file denoted by this
+     * Tests whether the application can execute the file located by this
      * abstract pathname. On some platforms it may be possible to start the
      * Java virtual machine with special privileges that allow it to execute
      * files that are not marked executable. Consequently, this method may return
@@ -2109,7 +2120,7 @@ public class File
      * returns successfully then it is guaranteed that:
      *
      * <ol>
-     * <li> The file denoted by the returned abstract pathname did not exist
+     * <li> The file located by the returned abstract pathname did not exist
      *      before this method was invoked, and
      * <li> Neither this method nor any of its variants will return the same
      *      abstract pathname again in the current invocation of the virtual
@@ -2152,7 +2163,7 @@ public class File
      * to have any effect upon the temporary directory used by this method.
      *
      * <p> If the {@code directory} argument is not {@code null} and its
-     * abstract pathname is valid and denotes an existing, writable directory,
+     * abstract pathname is valid and locates an existing, writable directory,
      * then the file will be created in that directory. Otherwise the file will
      * not be created and an {@code IOException} will be thrown.  Under no
      * circumstances will a directory be created at the location specified by
@@ -2169,7 +2180,7 @@ public class File
      *                    {@code null} if the default temporary-file
      *                    directory is to be used
      *
-     * @return  An abstract pathname denoting a newly-created empty file
+     * @return  An abstract pathname locating a newly-created empty file
      *
      * @throws  IllegalArgumentException
      *          If the {@code prefix} argument contains fewer than three
@@ -2244,7 +2255,7 @@ public class File
      *                    name; may be {@code null}, in which case the
      *                    suffix {@code ".tmp"} will be used
      *
-     * @return  An abstract pathname denoting a newly-created empty file
+     * @return  An abstract pathname locating a newly-created empty file
      *
      * @throws  IllegalArgumentException
      *          If the {@code prefix} argument contains fewer than three
@@ -2272,7 +2283,9 @@ public class File
      * Compares two abstract pathnames lexicographically.  The ordering
      * defined by this method depends upon the underlying system.  On UNIX
      * systems, alphabetic case is significant in comparing pathnames; on
-     * Microsoft Windows systems it is not.
+     * Microsoft Windows systems it is not.  This method only compares the
+     * abstract pathnames; it does not access the file system and the file is
+     * not required to exist.
      *
      * @param   pathname  The abstract pathname to be compared to this abstract
      *                    pathname
@@ -2296,11 +2309,9 @@ public class File
      * abstract pathname.  Whether or not two abstract
      * pathnames are equal depends upon the underlying operating system.
      * On UNIX systems, alphabetic case is significant in comparing pathnames;
-     * on Microsoft Windows systems it is not.
-     *
-     * @apiNote This method only tests whether the abstract pathnames are equal;
-     *          it does not access the file system and the file is not required
-     *          to exist.
+     * on Microsoft Windows systems it is not.  This method only tests whether
+     * the abstract pathnames are equal; it does not access the file system and
+     * the file is not required to exist.
      *
      * @param   obj   The object to be compared with this abstract pathname
      *
