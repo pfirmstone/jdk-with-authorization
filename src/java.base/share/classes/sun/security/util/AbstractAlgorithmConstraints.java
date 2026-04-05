@@ -57,7 +57,6 @@ public abstract class AbstractAlgorithmConstraints
             boolean allowSystemOverride) {
         String property = allowSystemOverride ?
                 SecurityProperties.privilegedGetOverridable(propertyName) :
-                @SuppressWarnings("removal")
                 AccessController.doPrivileged(
                 new PrivilegedAction<String>() {
                     @Override
