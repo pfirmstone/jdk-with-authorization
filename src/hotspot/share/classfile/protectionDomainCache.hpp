@@ -27,7 +27,7 @@
 
 #include "oops/oop.hpp"
 #include "oops/weakHandle.hpp"
-#include "runtime/atomic.hpp"
+#include "runtime/atomicAccess.hpp"
 
 // The ProtectionDomainCacheTable maps all java.security.ProtectionDomain objects that are
 // registered by DictionaryEntry::add_to_package_access_cache() to a unique WeakHandle.
@@ -67,8 +67,8 @@ class ProtectionDomainEntry :public CHeapObj<mtClass> {
   ProtectionDomainEntry(WeakHandle obj,
                         ProtectionDomainEntry* head) : _object(obj), _next(head) {}
 
-  ProtectionDomainEntry* next_acquire() { return Atomic::load_acquire(&_next); }
-  void release_set_next(ProtectionDomainEntry* entry) { Atomic::release_store(&_next, entry); }
+  ProtectionDomainEntry* next_acquire() { return AtomicAccess::load_acquire(&_next); }
+  void release_set_next(ProtectionDomainEntry* entry) { AtomicAccess::release_store(&_next, entry); }
   oop object_no_keepalive();
 };
 #endif // SHARE_CLASSFILE_PROTECTIONDOMAINCACHE_HPP

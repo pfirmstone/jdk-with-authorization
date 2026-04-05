@@ -120,8 +120,8 @@ class DictionaryEntry : public CHeapObj<mtClass> {
   InstanceKlass* instance_klass() const { return _instance_klass; }
   InstanceKlass** instance_klass_addr() { return &_instance_klass; }
 
-  ProtectionDomainEntry* package_access_cache_acquire() const            { return Atomic::load_acquire(&_package_access_cache); }
-  void release_set_package_access_cache(ProtectionDomainEntry* entry)    { Atomic::release_store(&_package_access_cache, entry); }
+  ProtectionDomainEntry* package_access_cache_acquire() const            { return AtomicAccess::load_acquire(&_package_access_cache); }
+  void release_set_package_access_cache(ProtectionDomainEntry* entry)    { AtomicAccess::release_store(&_package_access_cache, entry); }
 
   void print_count(outputStream *st);
   void verify();
