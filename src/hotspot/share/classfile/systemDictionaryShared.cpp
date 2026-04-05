@@ -541,7 +541,8 @@ bool SystemDictionaryShared::check_verification_constraint_exclusion(InstanceKla
 Klass* SystemDictionaryShared::find_verification_constraint_bottom_class(InstanceKlass* k, Symbol* constraint_class_name) {
   Thread* current = Thread::current();
   Handle loader(current, k->class_loader());
-  Klass* constraint_class = SystemDictionary::find_instance_or_array_klass(current, constraint_class_name, loader);
+  Handle protection_domain(current, k->protection_domain());
+  Klass* constraint_class = SystemDictionary::find_instance_or_array_klass(current, constraint_class_name, loader, protection_domain);
   if (constraint_class == nullptr) {
     return nullptr;
   }
