@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2000, 2022, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2000, 2025, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -307,7 +307,7 @@ public abstract class DatagramChannel
      *          If another thread interrupts the current thread
      *          while the connect operation is in progress, thereby
      *          closing the channel and setting the current thread's
-     *          interrupt status
+     *          interrupted status
      *
      * @throws  UnresolvedAddressException
      *          If the given remote address is not fully resolved
@@ -424,7 +424,7 @@ public abstract class DatagramChannel
      *          If another thread interrupts the current thread
      *          while the read operation is in progress, thereby
      *          closing the channel and setting the current thread's
-     *          interrupt status
+     *          interrupted status
      *
      * @throws  SecurityException
      *          If unbound, and a security manager has been installed and
@@ -493,7 +493,7 @@ public abstract class DatagramChannel
      *          If another thread interrupts the current thread
      *          while the read operation is in progress, thereby
      *          closing the channel and setting the current thread's
-     *          interrupt status
+     *          interrupted status
      *
      * @throws  UnresolvedAddressException
      *          If the given remote address is not fully resolved

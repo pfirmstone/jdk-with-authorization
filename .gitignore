@@ -29,3 +29,4 @@ configure.log
 **/core.[0-9]*
 *.rej
 *.orig
+test/benchmarks/**/target

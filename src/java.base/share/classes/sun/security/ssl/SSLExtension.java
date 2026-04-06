@@ -287,7 +287,7 @@ enum SSLExtension implements SSLStringizer {
             ProtocolVersion.PROTOCOLS_10_12,
             SessionTicketExtension.shNetworkProducer,
             SessionTicketExtension.shOnLoadConsumer,
-            null,
+            SessionTicketExtension.shOnLoadAbsence,
             null,
             null,
             SessionTicketExtension.steStringizer),

@@ -926,8 +926,9 @@ public final class String
                 return ba;
             }
 
-            int blen = (coder == LATIN1) ? ae.encodeFromLatin1(val, 0, len, ba)
-                    : ae.encodeFromUTF16(val, 0, len, ba);
+            int blen = coder == LATIN1
+                    ? ae.encodeFromLatin1(val, 0, len, ba, 0)
+                    : ae.encodeFromUTF16(val, 0, len, ba, 0);
             if (blen != -1) {
                 return safeTrim(ba, blen, true);
             }
