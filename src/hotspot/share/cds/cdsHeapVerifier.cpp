@@ -245,7 +245,7 @@ public:
 void CDSHeapVerifier::add_shared_secret_accessors() {
   TempNewSymbol klass_name = SymbolTable::new_symbol("jdk/internal/access/SharedSecrets");
   InstanceKlass* ik = SystemDictionary::find_instance_klass(Thread::current(), klass_name,
-                                                           Handle());
+                                                           Handle(), Handle());
   assert(ik != nullptr, "must have been loaded");
 
   SharedSecretsAccessorFinder finder(this, ik);
