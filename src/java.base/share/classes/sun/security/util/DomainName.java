@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2017, 2025, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -47,7 +47,6 @@ import java.util.zip.ZipInputStream;
 
 import static java.nio.charset.StandardCharsets.UTF_8;
 
-import jdk.internal.util.StaticProperty;
 import sun.security.ssl.SSLLogger;
 
 /**
@@ -195,7 +194,7 @@ class DomainName {
                 }
                 return getRules(tld, new ZipInputStream(pubSuffixStream));
             } catch (IOException e) {
-                if (SSLLogger.isOn && SSLLogger.isOn("ssl")) {
+                if (SSLLogger.isOn() && SSLLogger.isOn("ssl")) {
                     SSLLogger.fine(
                         "cannot parse public suffix data for " + tld +
                          ": " + e.getMessage());
@@ -221,7 +220,7 @@ class DomainName {
                 }
             );
             if (is == null) {
-                if (SSLLogger.isOn && SSLLogger.isOn("ssl") &&
+                if (SSLLogger.isOn() && SSLLogger.isOn("ssl") &&
                         SSLLogger.isOn("trustmanager")) {
                     SSLLogger.fine(
                         "lib/security/public_suffix_list.dat not found");
@@ -242,7 +241,7 @@ class DomainName {
                 }
             }
             if (!found) {
-                if (SSLLogger.isOn && SSLLogger.isOn("ssl")) {
+                if (SSLLogger.isOn() && SSLLogger.isOn("ssl")) {
                     SSLLogger.fine("Domain " + tld + " not found");
                 }
                 return null;

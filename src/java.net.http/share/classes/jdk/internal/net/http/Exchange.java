@@ -39,7 +39,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.Executor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -754,12 +753,10 @@ final class Exchange<T> {
                             if (s == null) {
                                 // s can be null if an exception occurred
                                 // asynchronously while sending the preface.
-                                Throwable t = c.getRecordedCause();
+                                final Http2TerminationCause tc = c.getTerminationCause();
                                 IOException ioe;
-                                if (t != null) {
-                                    if (!cached)
-                                        c.close();
-                                    ioe = new IOException("Can't get stream 1: " + t, t);
+                                if (tc != null) {
+                                    ioe = new IOException("Can't get stream 1", tc.getCloseCause());
                                 } else {
                                     ioe = new IOException("Can't get stream 1");
                                 }

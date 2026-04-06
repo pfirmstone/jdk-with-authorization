@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2011, 2023, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2011, 2025, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -109,13 +109,13 @@ class CopyMoveHelper {
         LinkOption[] linkOptions = (opts.followLinks) ? new LinkOption[0] :
             new LinkOption[] { LinkOption.NOFOLLOW_LINKS };
 
-        // retrieve source posix view, null if unsupported
-        final PosixFileAttributeView sourcePosixView =
-            Files.getFileAttributeView(source, PosixFileAttributeView.class);
+        // determine whether the source supports posix attributes
+        boolean sourceSupportsPosixAttributes = Files.getFileAttributeView
+            (source, PosixFileAttributeView.class) != null;
 
         // attributes of source file
         BasicFileAttributes sourceAttrs = null;
-        if (sourcePosixView != null) {
+        if (sourceSupportsPosixAttributes) {
             try {
                 sourceAttrs = Files.readAttributes(source,
                                                    PosixFileAttributes.class,
@@ -155,7 +155,7 @@ class CopyMoveHelper {
         // copy basic and, if supported, POSIX attributes to target
         if (opts.copyAttributes) {
             BasicFileAttributeView targetView = null;
-            if (sourcePosixView != null) {
+            if (sourceSupportsPosixAttributes) {
                 targetView = Files.getFileAttributeView(target,
                                                      PosixFileAttributeView.class);
             }

@@ -71,8 +71,9 @@ import static java.util.concurrent.TimeUnit.NANOSECONDS;
  * <p> A thread <i>terminates</i> if either its {@code run} method completes normally,
  * or if its {@code run} method completes abruptly and the appropriate {@linkplain
  * Thread.UncaughtExceptionHandler uncaught exception handler} completes normally or
- * abruptly. With no code left to run, the thread has completed execution. The
- * {@link #join() join} method can be used to wait for a thread to terminate.
+ * abruptly. With no code left to run, the thread has completed execution. The {@link
+ * #isAlive isAlive} method can be used to test if a started thread has terminated.
+ * The {@link #join() join} method can be used to wait for a thread to terminate.
  *
  * <p> Threads have a unique {@linkplain #threadId() identifier} and a {@linkplain
  * #getName() name}. The identifier is generated when a {@code Thread} is created
@@ -87,7 +88,7 @@ import static java.util.concurrent.TimeUnit.NANOSECONDS;
  * {@code Thread} supports a special inheritable thread local for the thread
  * {@linkplain #getContextClassLoader() context-class-loader}.
  *
- * <h2><a id="platform-threads">Platform threads</a></h2>
+ * <h2><a id="platform-threads">Platform Threads</a></h2>
  * <p> {@code Thread} supports the creation of <i>platform threads</i> that are
  * typically mapped 1:1 to kernel threads scheduled by the operating system.
  * Platform threads will usually have a large stack and other resources that are
@@ -107,7 +108,7 @@ import static java.util.concurrent.TimeUnit.NANOSECONDS;
  * #getPriority() thread priority} and are members of a {@linkplain ThreadGroup
  * thread group}.
  *
- * <h2><a id="virtual-threads">Virtual threads</a></h2>
+ * <h2><a id="virtual-threads">Virtual Threads</a></h2>
  * <p> {@code Thread} also supports the creation of <i>virtual threads</i>.
  * Virtual threads are typically <i>user-mode threads</i> scheduled by the Java
  * runtime rather than the operating system. Virtual threads will typically require
@@ -132,7 +133,7 @@ import static java.util.concurrent.TimeUnit.NANOSECONDS;
  * Virtual threads have a fixed {@linkplain #getPriority() thread priority}
  * that cannot be changed.
  *
- * <h2>Creating and starting threads</h2>
+ * <h2>Creating And Starting Threads</h2>
  *
  * <p> {@code Thread} defines public constructors for creating platform threads and
  * the {@link #start() start} method to schedule threads to execute. {@code Thread}
@@ -161,8 +162,16 @@ import static java.util.concurrent.TimeUnit.NANOSECONDS;
  *   ThreadFactory factory = Thread.ofVirtual().factory();
  * }
  *
- * <h2><a id="inheritance">Inheritance when creating threads</a></h2>
- * A {@code Thread} inherits its initial values of {@linkplain InheritableThreadLocal
+ * <h2><a id="inheritance">Inheritance When Creating Threads</a></h2>
+ * A {@code Thread} created with one of the public constructors inherits the daemon
+ * status and thread priority from the parent thread at the time that the child {@code
+ * Thread} is created. The {@linkplain ThreadGroup thread group} is also inherited when
+ * not provided to the constructor. When using a {@code Thread.Builder} to create a
+ * platform thread, the daemon status, thread priority, and thread group are inherited
+ * when not set on the builder. As with the constructors, inheriting from the parent
+ * thread is done when the child {@code Thread} is created.
+ *
+ * <p> A {@code Thread} inherits its initial values of {@linkplain InheritableThreadLocal
  * inheritable-thread-local} variables (including the context class loader) from
  * the parent thread values at the time that the child {@code Thread} is created.
  * The 5-param {@linkplain Thread#Thread(ThreadGroup, Runnable, String, long, boolean)
@@ -178,11 +187,61 @@ import static java.util.concurrent.TimeUnit.NANOSECONDS;
  * {@linkplain AccessControlContext caller context} to limit the {@linkplain Permission
  * permissions} of the new thread when it executes code that performs a {@linkplain
  * AccessController#doPrivileged(PrivilegedAction) privileged action}. The captured
- * caller context is the new thread's "Inherited {@link AccessControlContext}". Creating
- * a virtual thread does not capture the caller context; virtual threads have no
- * permissions when executing code that performs a privileged action.
+ * caller context is the new thread's "Inherited {@link AccessControlContext}". 
+ * <p>
+ * Creating a virtual thread does not capture the caller context when the System 
+ * SecurityManager is null; these virtual threads have no permissions when
+ * executing code that performs a privileged action.  When the System
+ * SecurityManager is not null, creating a virtual thread captures the 
+ * {@linkplain AccessControlContext caller context} to limit the {@linkplain Permission
+ * permissions} of the new thread when it executes code that performs a {@linkplain
+ * AccessController#doPrivileged(PrivilegedAction) privileged action}. The captured
+ * caller context is the new thread's "Inherited {@link AccessControlContext}". 
+ * <p>
+ * The first time a System SecurityManager is set, an {@linkplain AccessControlContext} 
+ * cache is established, containing a shared Set of immutable {@linkplain AccessControlContext}
+ * instances, hence a virtual thread pool containing millions of threads, may
+ * all share the same {@linkplain AccessControlContext caller context}.
+ * 
+ * <h2><a id="thread-interruption">Thread Interruption</a></h2>
+ * A {@code Thread} has an <em>interrupted status</em> which serves as a "request" for
+ * code executing in the thread to "stop or cancel its current activity". The interrupted
+ * status is set by invoking the target thread's {@link #interrupt()} method. Many methods
+ * that cause a thread to block or wait are <em>interruptible</em>, meaning they detect
+ * that the thread's interrupted status is set and cause execution to return early from
+ * the method, usually by throwing an exception.
  *
- * <p> Unless otherwise specified, passing a {@code null} argument to a constructor
+ * <p> If a thread executing {@link #sleep(long) Thread.sleep} or {@link Object#wait()
+ * Object.wait} is interrupted then it causes the method to throw {@link InterruptedException}.
+ * Methods that throw {@code InterruptedException} do so after first clearing the
+ * interrupted status. Code that catches {@code InterruptedException} should rethrow the
+ * exception, or restore the current thread's interrupted status, with
+ * {@link #currentThread() Thread.currentThread()}.{@link #interrupt()}, before
+ * continuing normally or handling it by throwing another type of exception. Code that
+ * throws another type of exception with the {@code InterruptedException} as {@linkplain
+ * Throwable#getCause() cause}, or the {@code InterruptedException} as a {@linkplain
+ * Throwable#addSuppressed(Throwable) suppressed exception}, should also restore the
+ * interrupted status before throwing the exception.
+ *
+ * <p> If a thread executing a blocking I/O operation on an {@link
+ * java.nio.channels.InterruptibleChannel} is interrupted then it causes the channel to be
+ * closed, and the blocking I/O operation to throw {@link java.nio.channels.ClosedByInterruptException}
+ * with the thread's interrupted status set. If a thread blocked in a {@linkplain
+ * java.nio.channels.Selector selection operation} is interrupted then it causes the
+ * selection operation to return early, with the thread's interrupted status set.
+ *
+ * <p> Code that doesn't invoke any interruptible methods can still respond to interrupt
+ * by polling the current thread's interrupted status with
+ * {@link Thread#currentThread() Thread.currentThread()}.{@link #isInterrupted()
+ * isInterrupted()}.
+ *
+ * <p> In addition to the {@link #interrupt()} and {@link #isInterrupted()} methods,
+ * {@code Thread} also defines the static {@link #interrupted() Thread.interrupted()}
+ * method to test the current thread's interrupted status and clear it. It should be rare
+ * to need to use this method.
+ *
+ * <h2>Null Handling</h2>
+ * Unless otherwise specified, passing a {@code null} argument to a constructor
  * or method in this class will cause a {@link NullPointerException} to be thrown.
  *
  * @implNote
@@ -201,8 +260,9 @@ import static java.util.concurrent.TimeUnit.NANOSECONDS;
  *     <th scope="row">
  *       {@systemProperty jdk.virtualThreadScheduler.parallelism}
  *     </th>
- *     <td> The number of platform threads available for scheduling virtual
- *       threads. It defaults to the number of available processors. </td>
+ *     <td> The scheduler's target parallelism. This is the number of platform threads
+ *       available for scheduling virtual threads. It defaults to the number of available
+ *       processors. </td>
  *   </tr>
  *   <tr>
  *     <th scope="row">
@@ -213,6 +273,8 @@ import static java.util.concurrent.TimeUnit.NANOSECONDS;
  *   </tr>
  *   </tbody>
  * </table>
+ * <p> The virtual thread scheduler can be monitored and managed with the
+ * {@code jdk.management.VirtualThreadSchedulerMXBean} management interface.
  *
  * @since   1.0
  */
@@ -1703,6 +1765,8 @@ public class Thread implements Runnable {
      *
      * @throws  SecurityException
      *          if the current thread cannot modify this thread
+     * @see ##thread-interruption Thread Interruption
+     * @see #isInterrupted()
      */
     public void interrupt() {
         if (this != Thread.currentThread()) {
@@ -1736,8 +1800,19 @@ public class Thread implements Runnable {
      * interrupted again, after the first call had cleared its interrupted
      * status and before the second call had examined it).
      *
+     * @apiNote It should be rare to use this method directly. It is intended
+     * for cases that detect {@linkplain ##thread-interruption thread interruption}
+     * and clear the interrupted status before throwing {@link InterruptedException}.
+     * It may also be useful for cases that implement an <em>uninterruptible</em>
+     * method that makes use of an <em>interruptible</em> method such as
+     * {@link LockSupport#park()}. The {@code interrupted()} method can be used
+     * to test if interrupted and clear the interrupted status to allow the code
+     * retry the <em>interruptible</em> method. The <em>uninterruptible</em> method
+     * should restore the interrupted status before it completes.
+     *
      * @return  {@code true} if the current thread has been interrupted;
      *          {@code false} otherwise.
+     * @see ##thread-interruption Thread Interruption
      * @see #isInterrupted()
      */
     public static boolean interrupted() {
@@ -1750,7 +1825,8 @@ public class Thread implements Runnable {
      *
      * @return  {@code true} if this thread has been interrupted;
      *          {@code false} otherwise.
-     * @see     #interrupted()
+     * @see ##thread-interruption Thread Interruption
+     * @see #interrupt()
      */
     public boolean isInterrupted() {
         return interrupted;

@@ -146,7 +146,7 @@ public final class StringSupport {
                                  final long fromOffset,
                                  final long toOffset) {
         final long length = toOffset - fromOffset;
-        segment.checkBounds(fromOffset, length);
+        segment.checkSliceBounds(fromOffset, length);
         if (length < Byte.BYTES) {
             // There can be no null terminator present
             segment.scope.checkValidState();
@@ -180,7 +180,7 @@ public final class StringSupport {
                                   final long fromOffset,
                                   final long toOffset) {
         final long length = toOffset - fromOffset;
-        segment.checkBounds(fromOffset, length);
+        segment.checkSliceBounds(fromOffset, length);
         if (length < Short.BYTES) {
             // There can be no null terminator present
             segment.scope.checkValidState();
@@ -216,7 +216,7 @@ public final class StringSupport {
                                 final long fromOffset,
                                 final long toOffset) {
         final long length = toOffset - fromOffset;
-        segment.checkBounds(fromOffset, length);
+        segment.checkSliceBounds(fromOffset, length);
         if (length < Integer.BYTES) {
             // There can be no null terminator present
             segment.scope.checkValidState();

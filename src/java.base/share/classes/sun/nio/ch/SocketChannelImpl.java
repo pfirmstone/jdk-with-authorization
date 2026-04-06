@@ -62,7 +62,6 @@ import static java.net.StandardProtocolFamily.UNIX;
 import jdk.internal.event.SocketReadEvent;
 import jdk.internal.event.SocketWriteEvent;
 import sun.net.ConnectionResetException;
-import sun.net.NetHooks;
 import sun.net.ext.ExtendedSocketOptions;
 import jdk.internal.util.Exceptions;
 
@@ -838,7 +837,6 @@ class SocketChannelImpl
         if (sm != null) {
             sm.checkListen(isa.getPort());
         }
-        NetHooks.beforeTcpBind(fd, isa.getAddress(), isa.getPort());
         Net.bind(family, fd, isa.getAddress(), isa.getPort());
         return Net.localAddress(fd);
     }
@@ -881,7 +879,6 @@ class SocketChannelImpl
 
             if (isNetSocket() && (localAddress == null)) {
                 InetSocketAddress isa = (InetSocketAddress) sa;
-                NetHooks.beforeTcpConnect(fd, isa.getAddress(), isa.getPort());
             }
             remoteAddress = sa;
 

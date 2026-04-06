@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2003, 2023, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2003, 2025, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -36,6 +36,8 @@ import java.lang.reflect.TypeVariable;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
+
+import jdk.internal.reflect.ReflectionFactory;
 import sun.reflect.annotation.AnnotationSupport;
 import sun.reflect.annotation.TypeAnnotationParser;
 import sun.reflect.annotation.AnnotationType;
@@ -127,13 +129,14 @@ public class TypeVariableImpl<D extends GenericDeclaration>
     }
 
     /**
-     * Returns the {@code GenericDeclaration} object representing the
+     * Returns a {@code GenericDeclaration} object representing the
      * generic declaration that declared this type variable.
      *
-     * @return the generic declaration that declared this type variable.
+     * @return a generic declaration that declared this type variable.
      *
      * @since 1.5
      */
+    @SuppressWarnings("unchecked")
     public D getGenericDeclaration() {
         if (genericDeclaration instanceof Class<?> c)
             ReflectUtil.checkPackageAccess(c);
@@ -142,7 +145,12 @@ public class TypeVariableImpl<D extends GenericDeclaration>
             ReflectUtil.conservativeCheckMemberAccess((Member)genericDeclaration);
         else
             throw new AssertionError("Unexpected kind of GenericDeclaration");
-        return genericDeclaration;
+        // If the `genericDeclaration` instance is mutable, we need to make a copy.
+        return switch (genericDeclaration) {
+            case Method method       -> (D) ReflectionFactory.getReflectionFactory().copyMethod(method);
+            case Constructor<?> ctor -> (D) ReflectionFactory.getReflectionFactory().copyConstructor(ctor);
+            default -> genericDeclaration;
+        };
     }
 
 

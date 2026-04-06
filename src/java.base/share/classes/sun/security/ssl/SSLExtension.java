@@ -845,7 +845,7 @@ enum SSLExtension implements SSLStringizer {
         String property = GetPropertyAction.privilegedGetProperty(propertyName);
         // this method is called from class initializer; logging here
         // will occasionally pin threads and deadlock if called from a virtual thread
-        if (SSLLogger.isOn && SSLLogger.isOn("ssl,sslctx")
+        if (SSLLogger.isOn() && SSLLogger.isOn("ssl,sslctx")
                 && !Thread.currentThread().isVirtual()) {
             SSLLogger.fine(
                     "System property " + propertyName + " is set to '" +

@@ -252,7 +252,7 @@ final class PredefinedDHParameterSpecs {
             Matcher spacesMatcher = spacesPattern.matcher(property);
             property = spacesMatcher.replaceAll("");
 
-            if (SSLLogger.isOn && SSLLogger.isOn("sslctx")) {
+            if (SSLLogger.isOn() && SSLLogger.isOn("sslctx")) {
                 SSLLogger.fine(
                         "The Security Property " +
                         PROPERTY_NAME + ": " + property);
@@ -268,7 +268,7 @@ final class PredefinedDHParameterSpecs {
                     String primeModulus = paramsFinder.group(1);
                     BigInteger p = new BigInteger(primeModulus, 16);
                     if (!p.isProbablePrime(PRIME_CERTAINTY)) {
-                        if (SSLLogger.isOn && SSLLogger.isOn("sslctx")) {
+                        if (SSLLogger.isOn() && SSLLogger.isOn("sslctx")) {
                             SSLLogger.fine(
                                 "Prime modulus p in Security Property, " +
                                 PROPERTY_NAME + ", is not a prime: " +
@@ -285,7 +285,7 @@ final class PredefinedDHParameterSpecs {
                     DHParameterSpec spec = new DHParameterSpec(p, g);
                     defaultParams.put(primeLen, spec);
                 }
-            } else if (SSLLogger.isOn && SSLLogger.isOn("sslctx")) {
+            } else if (SSLLogger.isOn() && SSLLogger.isOn("sslctx")) {
                 SSLLogger.fine("Invalid Security Property, " +
                         PROPERTY_NAME + ", definition");
             }

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2003, 2023, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2003, 2025, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -333,7 +333,7 @@ final class SSLEngineImpl extends SSLEngine implements SSLTransport {
             // application data may be discarded accordingly.  As could
             // be an issue for some applications.  This impact can be
             // mitigated by sending the last flight twice.
-            if (SSLLogger.isOn && SSLLogger.isOn("ssl,verbose")) {
+            if (SSLLogger.isOn() && SSLLogger.isOn("ssl,verbose")) {
                 SSLLogger.finest("retransmit the last flight messages");
             }
 
@@ -400,7 +400,7 @@ final class SSLEngineImpl extends SSLEngine implements SSLTransport {
         if ((conContext.handshakeContext == null) &&
                 !conContext.isOutboundClosed() &&
                 !conContext.isBroken) {
-            if (SSLLogger.isOn && SSLLogger.isOn("ssl")) {
+            if (SSLLogger.isOn() && SSLLogger.isOn("ssl")) {
                 SSLLogger.finest("trigger key update");
             }
             beginHandshake();
@@ -422,7 +422,7 @@ final class SSLEngineImpl extends SSLEngine implements SSLTransport {
             !conContext.isOutboundClosed() &&
             !conContext.isInboundClosed() &&
             !conContext.isBroken) {
-            if (SSLLogger.isOn && SSLLogger.isOn("ssl")) {
+            if (SSLLogger.isOn() && SSLLogger.isOn("ssl")) {
                 SSLLogger.finest("trigger NST");
             }
             conContext.conSession.updateNST = false;
@@ -615,7 +615,7 @@ final class SSLEngineImpl extends SSLEngine implements SSLTransport {
         } catch (SSLException ssle) {
             // Need to discard invalid records for DTLS protocols.
             if (sslContext.isDTLS()) {
-                if (SSLLogger.isOn && SSLLogger.isOn("ssl,verbose")) {
+                if (SSLLogger.isOn() && SSLLogger.isOn("ssl,verbose")) {
                     SSLLogger.finest("Discard invalid DTLS records", ssle);
                 }
 
@@ -783,7 +783,7 @@ final class SSLEngineImpl extends SSLEngine implements SSLTransport {
                 return;
             }
 
-            if (SSLLogger.isOn && SSLLogger.isOn("ssl")) {
+            if (SSLLogger.isOn() && SSLLogger.isOn("ssl")) {
                 SSLLogger.finest("Closing inbound of SSLEngine");
             }
 
@@ -822,7 +822,7 @@ final class SSLEngineImpl extends SSLEngine implements SSLTransport {
                 return;
             }
 
-            if (SSLLogger.isOn && SSLLogger.isOn("ssl")) {
+            if (SSLLogger.isOn() && SSLLogger.isOn("ssl")) {
                 SSLLogger.finest("Closing outbound of SSLEngine");
             }
 

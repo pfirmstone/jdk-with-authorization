@@ -55,7 +55,6 @@ import jdk.internal.access.JavaIOFileDescriptorAccess;
 import jdk.internal.access.SharedSecrets;
 import jdk.internal.ref.CleanerFactory;
 import sun.net.ConnectionResetException;
-import sun.net.NetHooks;
 import sun.net.PlatformSocketImpl;
 import sun.net.ResourceManager;
 import sun.net.ext.ExtendedSocketOptions;
@@ -291,6 +290,7 @@ public final class NioSocketImpl extends SocketImpl implements PlatformSocketImp
      */
     private int implRead(byte[] b, int off, int len, long remainingNanos) throws IOException {
         int n = 0;
+        SocketException ex = null;
         FileDescriptor fd = beginRead();
         try {
             if (connectionReset)
@@ -309,18 +309,24 @@ public final class NioSocketImpl extends SocketImpl implements PlatformSocketImp
                     n = tryRead(fd, b, off, len);
                 }
             }
-            return n;
         } catch (InterruptedIOException e) {
             throw e;
         } catch (ConnectionResetException e) {
             connectionReset = true;
             throw new SocketException("Connection reset");
         } catch (IOException ioe) {
-            // throw SocketException to maintain compatibility
-            throw asSocketException(ioe);
+            // translate to SocketException to maintain compatibility
+            ex = asSocketException(ioe);
         } finally {
             endRead(n > 0);
         }
+        if (n <= 0 && isInputClosed) {
+            return -1;
+        }
+        if (ex != null) {
+            throw ex;
+        }
+        return n;
     }
 
     /**
@@ -413,6 +419,7 @@ public final class NioSocketImpl extends SocketImpl implements PlatformSocketImp
      */
     private int implWrite(byte[] b, int off, int len) throws IOException {
         int n = 0;
+        SocketException ex = null;
         FileDescriptor fd = beginWrite();
         try {
             configureNonBlockingIfNeeded(fd, false);
@@ -421,15 +428,18 @@ public final class NioSocketImpl extends SocketImpl implements PlatformSocketImp
                 park(fd, Net.POLLOUT);
                 n = tryWrite(fd, b, off, len);
             }
-            return n;
         } catch (InterruptedIOException e) {
             throw e;
         } catch (IOException ioe) {
-            // throw SocketException to maintain compatibility
-            throw asSocketException(ioe);
+            // translate to SocketException to maintain compatibility
+            ex = asSocketException(ioe);
         } finally {
             endWrite(n > 0);
         }
+        if (ex != null) {
+            throw ex;
+        }
+        return n;
     }
 
     /**
@@ -503,11 +513,6 @@ public final class NioSocketImpl extends SocketImpl implements PlatformSocketImp
                 assert false;
             }
             this.state = ST_CONNECTING;
-
-            // invoke beforeTcpConnect hook if not already bound
-            if (localport == 0) {
-                NetHooks.beforeTcpConnect(fd, address, port);
-            }
 
             // save the remote address/port
             this.address = address;
@@ -640,7 +645,6 @@ public final class NioSocketImpl extends SocketImpl implements PlatformSocketImp
             ensureOpen();
             if (localport != 0)
                 throw new SocketException("Already bound");
-            NetHooks.beforeTcpBind(fd, host, port);
             Net.bind(fd, host, port);
             // set the address field to the given host address to
             // maintain long standing behavior. When binding to 0.0.0.0

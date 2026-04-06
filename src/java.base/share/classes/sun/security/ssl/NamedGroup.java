@@ -274,7 +274,7 @@ enum NamedGroup {
                     | NoSuchAlgorithmException exp) {
                 if (namedGroupSpec != NamedGroupSpec.NAMED_GROUP_XDH) {
                     mediator = false;
-                    if (SSLLogger.isOn && SSLLogger.isOn("ssl,handshake")) {
+                    if (SSLLogger.isOn() && SSLLogger.isOn("ssl,handshake")) {
                         SSLLogger.warning(
                             "No AlgorithmParameters for " + name, exp);
                     }
@@ -295,7 +295,7 @@ enum NamedGroup {
                         // AlgorithmParameters.getInstance(name);
                     } catch (NoSuchAlgorithmException nsae) {
                         mediator = false;
-                        if (SSLLogger.isOn && SSLLogger.isOn("ssl,handshake")) {
+                        if (SSLLogger.isOn() && SSLLogger.isOn("ssl,handshake")) {
                             SSLLogger.warning(
                                 "No AlgorithmParameters for " + name, nsae);
                         }
@@ -383,7 +383,7 @@ enum NamedGroup {
         for (String ss : namedGroups) {
             NamedGroup ng = NamedGroup.nameOf(ss);
             if (ng == null || !ng.isAvailable) {
-                if (SSLLogger.isOn &&
+                if (SSLLogger.isOn() &&
                         SSLLogger.isOn("ssl,handshake,verbose")) {
                     SSLLogger.finest(
                             "Ignore the named group (" + ss
@@ -813,7 +813,7 @@ enum NamedGroup {
                 }
 
                 if (groupList.isEmpty() &&
-                        SSLLogger.isOn && SSLLogger.isOn("ssl")) {
+                        SSLLogger.isOn() && SSLLogger.isOn("ssl")) {
                     SSLLogger.warning("No default named groups");
                 }
             }

@@ -55,7 +55,6 @@ import static java.net.StandardProtocolFamily.INET;
 import static java.net.StandardProtocolFamily.INET6;
 import static java.net.StandardProtocolFamily.UNIX;
 
-import sun.net.NetHooks;
 import sun.net.ext.ExtendedSocketOptions;
 
 /**
@@ -338,9 +337,7 @@ class ServerSocketChannelImpl
         }
         @SuppressWarnings("removal")
         SecurityManager sm = System.getSecurityManager();
-        if (sm != null)
-            sm.checkListen(isa.getPort());
-        NetHooks.beforeTcpBind(fd, isa.getAddress(), isa.getPort());
+        if (sm != null) sm.checkListen(isa.getPort());
         Net.bind(family, fd, isa.getAddress(), isa.getPort());
         Net.listen(fd, backlog < 1 ? 50 : backlog);
         return Net.localAddress(fd);

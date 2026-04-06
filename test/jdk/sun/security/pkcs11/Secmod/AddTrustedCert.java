@@ -32,7 +32,6 @@
  * @run main/othervm -Djava.security.manager=allow AddTrustedCert sm policy
  */
 
-import java.io.File;
 import java.io.FileInputStream;
 import java.io.InputStream;
 import java.security.KeyStore;
