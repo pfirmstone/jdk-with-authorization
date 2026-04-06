@@ -470,7 +470,7 @@ public final class Class<T> implements java.io.Serializable,
         validateClassNameLength(className);
         ClassLoader loader = (caller == null) ? ClassLoader.getSystemClassLoader()
                                               : ClassLoader.getClassLoader(caller);
-        return forName0(className, true, loader);
+        return forName0(className, true, loader, caller);
     }
 
     /**
@@ -551,12 +551,13 @@ public final class Class<T> implements java.io.Serializable,
         throws ClassNotFoundException
     {
         validateClassNameLength(name);
-        return forName0(name, initialize, loader);
+        return forName0(name, initialize, loader, null);
     }
 
     /** Called after security check for system loader access checks have been made. */
     private static native Class<?> forName0(String name, boolean initialize,
-                                            ClassLoader loader)
+                                            ClassLoader loader,
+                                            Class<?> caller)
         throws ClassNotFoundException;
 
 
