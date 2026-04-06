@@ -923,15 +923,21 @@ public final class PrintServiceLookupProvider extends PrintServiceLookup
                                 }
                                 return results;
                             }
+                        } catch (Exception e) {
+                            // Print exception for tracking printer command errors
+                            IPPPrintService.debug_println("Printer command error: " + e);
                         } finally {
                             f.delete();
                             // promptly close all streams.
                             if (bufferedReader != null) {
                                 bufferedReader.close();
                             }
-                            proc.getInputStream().close();
-                            proc.getErrorStream().close();
-                            proc.getOutputStream().close();
+                            proc.getInputStream()
+                                .close();
+                            proc.getErrorStream()
+                                .close();
+                            proc.getOutputStream()
+                                .close();
                         }
                         return null;
                     }

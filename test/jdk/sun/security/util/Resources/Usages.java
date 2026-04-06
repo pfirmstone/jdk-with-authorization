@@ -23,7 +23,7 @@
 
 /*
  * @test
- * @bug 8215937 8345940
+ * @bug 8215937 8345940 8354469
  * @modules java.base/sun.security.util
  *          java.base/sun.security.util.resources
  *          java.base/sun.security.tools.keytool.resources
@@ -139,8 +139,13 @@ public class Usages {
                             List.of(MGR_GETSTRING)),
                     new Pair("java.base/share/classes/sun/security/provider/PolicyParser.java",
                             List.of(LOC_GETNONLOC, NEW_LOC)),
+//<<<<<<< HEAD
                     new Pair("java.base/share/classes/sun/security/provider/PolicyFile.java",
                             List.of(MGR_GETSTRING, LOC_GETNONLOC, LOC_GETNONLOC_POLICY)),
+//=======
+                    new Pair("java.base/share/classes/sun/security/util/Password.java",
+                            List.of(MGR_GETSTRING)),
+//>>>>>>> 20c80b8c6e16c4d7c34737d44b93a1fc0335f40a
                     new Pair("java.base/share/classes/javax/security/auth/",
                             List.of(MGR_GETSTRING)))
     );
