@@ -26,8 +26,10 @@
 package sun.net.www.protocol.http.ntlm;
 
 import java.io.IOException;
+import java.net.InetAddress;
 import java.net.PasswordAuthentication;
 import java.net.URL;
+import java.net.UnknownHostException;
 import java.util.Locale;
 import java.util.Properties;
 import sun.net.NetProperties;
