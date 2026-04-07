@@ -4455,8 +4455,6 @@ public class JTable extends JComponent implements TableModelListener, Scrollable
             // The whole thing changed
             clearSelectionAndLeadAnchor();
 
-            rowModel = null;
-
             if (sortManager != null) {
                 try {
                     ignoreSortChange = true;

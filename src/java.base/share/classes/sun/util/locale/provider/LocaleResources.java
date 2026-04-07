@@ -289,16 +289,6 @@ public class LocaleResources {
     }
 
     public String getLocaleName(String key) {
-        // Get names for old ISO codes with new ISO code resources
-        if (StaticProperty.javaLocaleUseOldISOCodes().equalsIgnoreCase("true")) {
-            key = switch (key) {
-                case "iw" -> "he";
-                case "in" -> "id";
-                case "ji" -> "yi";
-                default -> key;
-            };
-        }
-
         Object localeName = null;
         String cacheKey = LOCALE_NAMES + key;
 

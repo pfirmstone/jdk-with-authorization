@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2002, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2002, 2025, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -704,6 +704,7 @@ class Metacity implements SynthConstants {
             return new ImageIcon(context.getComponent().createImage(producer)).getImage();
         }
 
+        @Override
         public int filterRGB(int x, int y, int rgb) {
             // Assume all rgb values are shades of gray
             double grayLevel = 2 * (rgb & 0xff) / 255.0;
@@ -740,12 +741,16 @@ class Metacity implements SynthConstants {
 
 
     protected class TitlePaneLayout implements LayoutManager {
+        @Override
         public void addLayoutComponent(String name, Component c) {}
+        @Override
         public void removeLayoutComponent(Component c) {}
+        @Override
         public Dimension preferredLayoutSize(Container c)  {
             return minimumLayoutSize(c);
         }
 
+        @Override
         public Dimension minimumLayoutSize(Container c) {
             JComponent titlePane = (JComponent)c;
             Container titlePaneParent = titlePane.getParent();
@@ -805,6 +810,7 @@ class Metacity implements SynthConstants {
             return new Dimension(width, height);
         }
 
+        @Override
         public void layoutContainer(Container c) {
             JComponent titlePane = (JComponent)c;
             Container titlePaneParent = titlePane.getParent();
@@ -1961,10 +1967,12 @@ class Metacity implements SynthConstants {
             return token;
         }
 
+        @Override
         public boolean hasMoreTokens() {
             return (token != null || super.hasMoreTokens());
         }
 
+        @Override
         public String nextToken() {
             if (token != null) {
                 String t = token;
@@ -2018,18 +2026,22 @@ class Metacity implements SynthConstants {
             this.archeight = arch;
         }
 
+        @Override
         public double getX() {
             return (double)x;
         }
 
+        @Override
         public double getY() {
             return (double)y;
         }
 
+        @Override
         public double getWidth() {
             return (double)width;
         }
 
+        @Override
         public double getHeight() {
             return (double)height;
         }
@@ -2042,10 +2054,12 @@ class Metacity implements SynthConstants {
             return (double)archeight;
         }
 
+        @Override
         public boolean isEmpty() {
             return false;  // Not called
         }
 
+        @Override
         public Rectangle2D getBounds2D() {
             return null;  // Not called
         }
@@ -2054,10 +2068,12 @@ class Metacity implements SynthConstants {
             return corners;
         }
 
+        @Override
         public void setFrame(double x, double y, double w, double h) {
             // Not called
         }
 
+        @Override
         public boolean contains(double x, double y) {
             return false;  // Not called
         }
@@ -2066,14 +2082,17 @@ class Metacity implements SynthConstants {
             return 0;  // Not called
         }
 
+        @Override
         public boolean intersects(double x, double y, double w, double h) {
             return false;  // Not called
         }
 
+        @Override
         public boolean contains(double x, double y, double w, double h) {
             return false;  // Not called
         }
 
+        @Override
         public PathIterator getPathIterator(AffineTransform at) {
             return new RoundishRectIterator(this, at);
         }
@@ -2166,18 +2185,22 @@ class Metacity implements SynthConstants {
                 }
             }
 
+            @Override
             public int getWindingRule() {
                 return WIND_NON_ZERO;
             }
 
+            @Override
             public boolean isDone() {
                 return index >= ctrlpts.length;
             }
 
+            @Override
             public void next() {
                 index++;
             }
 
+            @Override
             public int currentSegment(float[] coords) {
                 if (isDone()) {
                     throw new NoSuchElementException("roundrect iterator out of bounds");
@@ -2194,6 +2217,7 @@ class Metacity implements SynthConstants {
                 return types[index];
             }
 
+            @Override
             public int currentSegment(double[] coords) {
                 if (isDone()) {
                     throw new NoSuchElementException("roundrect iterator out of bounds");

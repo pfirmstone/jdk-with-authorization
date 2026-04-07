@@ -244,6 +244,19 @@ void trace_class_resolution(Klass* to_class) {
 
 // java.lang.System //////////////////////////////////////////////////////////////////////
 
+JVM_ENTRY(jboolean, JVM_AOTEndRecording(JNIEnv *env))
+#if INCLUDE_CDS
+  if (CDSConfig::is_dumping_preimage_static_archive()) {
+    if (!AOTMetaspace::preimage_static_archive_dumped()) {
+      AOTMetaspace::dump_static_archive(THREAD);
+      return JNI_TRUE;
+    }
+  }
+  return JNI_FALSE;
+#else
+  return JNI_FALSE;
+#endif // INCLUDE_CDS
+JVM_END
 
 JVM_LEAF(jlong, JVM_CurrentTimeMillis(JNIEnv *env, jclass ignored))
   return os::javaTimeMillis();
@@ -1341,8 +1354,6 @@ JVM_ENTRY(jobject, JVM_FindScopedValueBindings(JNIEnv *env, jclass cls))
   GrowableArray<Handle>* local_array = new GrowableArray<Handle>(12);
   JvmtiVMObjectAllocEventCollector oam;
 
-  static ScopedValueBindingsResolver resolver(THREAD);
-
   // Iterate through Java frames
   vframeStream vfst(thread);
   for(; !vfst.at_end(); vfst.next()) {
@@ -1355,7 +1366,7 @@ JVM_ENTRY(jobject, JVM_FindScopedValueBindings(JNIEnv *env, jclass cls))
     InstanceKlass* holder = method->method_holder();
     if (name == vmSymbols::runWith_method_name()) {
       if (holder == vmClasses::Thread_klass()
-          || holder == resolver.Carrier_klass) {
+          || holder == vmClasses::ScopedValue_Carrier_klass()) {
         loc = 1;
       }
     }
