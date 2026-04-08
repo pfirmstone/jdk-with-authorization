@@ -35,6 +35,7 @@ grant {
     permission au.zeus.jdk.authorization.guards.SerialObjectPermission "java.util.concurrent.LinkedBlockingQueue";
     permission au.zeus.jdk.authorization.guards.SerialObjectPermission "java.util.concurrent.LinkedBlockingDeque";
     permission au.zeus.jdk.authorization.guards.SerialObjectPermission "java.util.concurrent.CopyOnWriteArrayList";
+    permission au.zeus.jdk.authorization.guards.SerialObjectPermission "java.util.concurrent.CopyOnWriteArraySet";
     permission au.zeus.jdk.authorization.guards.SerialObjectPermission "java.util.concurrent.ConcurrentSkipListMap";
     permission au.zeus.jdk.authorization.guards.SerialObjectPermission "java.util.concurrent.ConcurrentLinkedQueue";
     permission au.zeus.jdk.authorization.guards.SerialObjectPermission "java.util.concurrent.ConcurrentLinkedDeque";

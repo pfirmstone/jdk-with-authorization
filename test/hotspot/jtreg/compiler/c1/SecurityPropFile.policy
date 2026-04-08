@@ -1,0 +1,6 @@
+grant {
+    permission au.zeus.jdk.authorization.guards.LoadClassPermission "ALLOW";
+    permission java.security.SecurityPermission "getProperty.policy.provider";
+    permission java.security.SecurityPermission "getProperty.policy.url.1";
+    permission java.security.SecurityPermission "getProperty.policy.url.2";
+};
