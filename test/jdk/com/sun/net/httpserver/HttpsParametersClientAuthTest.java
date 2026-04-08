@@ -86,6 +86,7 @@ public class HttpsParametersClientAuthTest {
         return t;
     };
 
+    private static final SSLContext serverSSLCtx = SimpleSSLContext.findSSLContext();
     /**
      * verifies default values of {@link HttpsParameters#setNeedClientAuth(boolean)}
      * and {@link HttpsParameters#setWantClientAuth(boolean)} methods
@@ -170,8 +171,6 @@ public class HttpsParametersClientAuthTest {
     public void testServerNeedClientAuth(final boolean presentClientCerts) throws Exception {
         // SSLContext which contains both the key and the trust material and will be used
         // by the server
-        final SSLContext serverSSLCtx = new SimpleSSLContext().get();
-        assertNotNull(serverSSLCtx, "could not create SSLContext");
         final HttpsConfigurator configurator = new HttpsConfigurator(serverSSLCtx) {
             @Override
             public void configure(final HttpsParameters params) {
@@ -278,8 +277,6 @@ public class HttpsParametersClientAuthTest {
     public void testServerWantClientAuth(final boolean presentClientCerts) throws Exception {
         // SSLContext which contains both the key and the trust material and will be used
         // by the server
-        final SSLContext serverSSLCtx = new SimpleSSLContext().get();
-        assertNotNull(serverSSLCtx, "could not create SSLContext");
         final HttpsConfigurator configurator = new HttpsConfigurator(serverSSLCtx) {
             @Override
             public void configure(final HttpsParameters params) {

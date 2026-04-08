@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2000, 2022, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2000, 2026, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -49,7 +49,6 @@ import javax.imageio.spi.ImageTranscoderSpi;
 import javax.imageio.spi.ServiceRegistry;
 import javax.imageio.stream.ImageInputStream;
 import javax.imageio.stream.ImageOutputStream;
-import sun.awt.AppContext;
 import sun.security.action.GetPropertyAction;
 
 /**
@@ -111,9 +110,7 @@ public final class ImageIO {
     // ImageInputStreams
 
     /**
-     * A class to hold information about caching.  Each
-     * {@code ThreadGroup} will have its own copy
-     * via the {@code AppContext} mechanism.
+     * A class to hold information about caching.
      */
     static class CacheInfo {
         boolean useCache = true;
@@ -147,17 +144,12 @@ public final class ImageIO {
         }
     }
 
+    private static final CacheInfo info = new CacheInfo();
+
     /**
-     * Returns the {@code CacheInfo} object associated with this
-     * {@code ThreadGroup}.
+     * Returns the {@code CacheInfo} object.
      */
     private static synchronized CacheInfo getCacheInfo() {
-        AppContext context = AppContext.getAppContext();
-        CacheInfo info = (CacheInfo)context.get(CacheInfo.class);
-        if (info == null) {
-            info = new CacheInfo();
-            context.put(CacheInfo.class, info);
-        }
         return info;
     }
 
