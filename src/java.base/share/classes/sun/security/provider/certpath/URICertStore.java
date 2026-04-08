@@ -234,7 +234,7 @@ class URICertStore extends CertStoreSpi {
             if (Builder.USE_AIA) {
                 CA_ISS_URI_FILTERS = new LinkedHashSet<>();
                 String aiaPropVal = Optional.ofNullable(
-                        SecurityProperties.getOverridableProperty(
+                        SecurityProperties.privilegedGetOverridable(
                                 "com.sun.security.allowedAIALocations")).
                         map(String::trim).orElse("");
                 if (aiaPropVal.equalsIgnoreCase("any")) {
