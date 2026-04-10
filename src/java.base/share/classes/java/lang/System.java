@@ -66,7 +66,6 @@ import java.util.PropertyPermission;
 import java.util.ResourceBundle;
 import java.util.Set;
 import java.util.concurrent.Executor;
-import java.util.concurrent.ScheduledExecutorService;
 import java.util.function.Supplier;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Stream;
@@ -102,6 +101,8 @@ import sun.nio.cs.UTF_8;
 import sun.security.util.SecurityConstants;
 import au.zeus.jdk.authorization.tool.SecurityPolicyWriter;
 import au.zeus.jdk.authorization.sm.CombinerSecurityManager;
+import java.security.PrivilegedExceptionAction;
+import java.security.PrivilegedActionException;
 
 /**
  * The {@code System} class contains several useful class fields
@@ -222,11 +223,13 @@ public final class System {
     // current security manager
     @SuppressWarnings("removal")
     private static volatile SecurityManager security;   // read by VM
-
+        
     // `sun.jnu.encoding` if it is not supported. Otherwise null.
     // It is initialized in `initPhase1()` before any charset providers
     // are initialized.
     private static String notSupportedJnuEncoding;
+    
+    private static final Object SM_LOCK = new Object();
 
     /**
      * Reassigns the "standard" input stream.
@@ -375,17 +378,98 @@ public final class System {
     /**
      * Sets the system-wide security manager.
      *
-     * If there is a security manager already installed, this method first
+     * <p>If there is a security manager already installed, this method first
      * calls the security manager's {@code checkPermission} method
      * with a {@code RuntimePermission("setSecurityManager")}
      * permission to ensure it's ok to replace the existing
-     * security manager.
-     * This may result in throwing a {@code SecurityException}.
+     * security manager. This may result in throwing a {@code SecurityException}.
      *
-     * <p> Otherwise, the argument is established as the current
-     * security manager. If the argument is {@code null} and no
-     * security manager has been established, then no action is taken and
-     * the method simply returns.
+     * <p><b>Security Requirements:</b>
+     * <ul>
+     *   <li>The {@code sm} parameter must never be {@code null}.
+     *     Attempts to set a {@code null} SecurityManager will immediately throw
+     *     {@code IllegalArgumentException}.</li>
+     *   <li>For trusted SecurityManager implementations (SecurityManager, CombinerSecurityManager):
+     *     Only null parameter validation is performed.</li>
+     *   <li>For custom SecurityManager implementations: The caller must be a direct Java caller,
+     *     not via reflection or other indirect invocation mechanisms. Reflection-based calls,
+     *     generated code, and proxy-based invocations will throw {@code SecurityException}.</li>
+     *   <li>If a SecurityManager is already installed, the existing SecurityManager
+     *     must grant the {@code RuntimePermission("setSecurityManager")} permission.</li>
+     * </ul>
+     *
+     * <p><b>Validation Strategy (Conditional):</b>
+     * This method implements a conditional validation strategy that balances security with usability:
+     *
+     * <p><b>For Trusted SecurityManager Classes (SecurityManager, CombinerSecurityManager):</b>
+     * <ul>
+     *   <li><b>Rationale:</b> These classes are part of the trusted codebase (java.base module)
+     *     and are loaded via the bootstrap classloader. Their permissions are controlled through
+     *     the policy file, which provides equivalent protection to stack inspection.</li>
+     *   <li><b>Validation:</b> Only null parameter validation is performed.</li>
+     *   <li><b>Effect:</b> Trusted implementations can be instantiated and installed without
+     *     incurring the overhead of stack inspection.</li>
+     * </ul>
+     *
+     * <p><b>For Custom SecurityManager Implementations:</b>
+     * <ul>
+     *   <li><b>Rationale:</b> Custom implementations may originate from the application classpath
+     *     and could be malicious. Strict validation is required to prevent bypass attacks.</li>
+     *   <li><b>Validation:</b> Full defense-in-depth validation is performed:
+     *     <ol>
+     *       <li><b>Layer 1 - Direct Caller Check:</b> Uses {@code @CallerSensitive} and
+     *         {@code Reflection.getCallerClass()} to verify that a caller class exists.</li>
+     *       <li><b>Layer 2 - Stack Inspection:</b> Employs {@code StackWalker} to inspect
+     *         the entire call stack (up to 10 frames) for reflection API calls, MethodHandles
+     *         invocations, LambdaMetafactory-generated code, proxy classes, and other
+     *         synthetic bytecode that indicates an indirect invocation.</li>
+     *       <li><b>Layer 3 - Protection Domain Validation:</b> Verifies that the caller's
+     *         protection domain is not null.</li>
+     *       <li><b>Layer 4 - Generated Code Detection:</b> Blocks classes with names
+     *         indicating they were dynamically generated, including:
+     *         <ul>
+     *           <li>Lambda expressions (containing {@code $$Lambda} or {@code $Lambda$})</li>
+     *           <li>Generated method accessors (from reflection API)</li>
+     *           <li>Generated constructor accessors</li>
+     *           <li>Other synthesized classes without package prefixes</li>
+     *         </ul>
+     *       </li>
+     *     </ol>
+     *   </li>
+     *   <li><b>Effect:</b> Custom implementations are protected against all known bypass attacks
+     *     while maintaining full compatibility with the authorization framework.</li>
+     * </ul>
+     *
+     * <p><b>Attacks Prevented:</b>
+     * <ul>
+     *   <li><b>Reflection API (Custom SM):</b> {@code Method.invoke()}, {@code Constructor.newInstance()}</li>
+     *   <li><b>MethodHandles API (Custom SM):</b> {@code MethodHandle.invoke()}, {@code MethodHandle.invokeExact()}</li>
+     *   <li><b>LambdaMetafactory (Custom SM):</b> Generated lambda expressions and functional interfaces</li>
+     *   <li><b>Dynamic Proxies (Custom SM):</b> {@code Proxy.newProxyInstance()} generated classes</li>
+     *   <li><b>Unsafe Reflection (Custom SM):</b> Direct calls to {@code sun.reflect.Reflection}</li>
+     *   <li><b>Generated Accessors (Custom SM):</b> {@code GeneratedMethodAccessor}, {@code GeneratedConstructorAccessor}</li>
+     *   <li><b>Null Parameter (All SM):</b> Prevention of security manager removal</li>
+     * </ul>
+     *
+     * <p><b>Initialization Side Effects (first call only):</b>
+     * On the first call to this method, the following system components are
+     * eagerly initialized to prevent bootstrap issues:
+     * <ul>
+     *   <li>AccessControlContext cache for performance optimization</li>
+     *   <li>Class resource loading infrastructure</li>
+     *   <li>Default file system provider</li>
+     * </ul>
+     * Subsequent calls do not trigger these initializations.
+     *
+     * <p><b>Performance Characteristics:</b>
+     * The stack inspection overhead for custom SecurityManagers is minimal because:
+     * <ul>
+     *   <li>Only the first 10 stack frames are examined</li>
+     *   <li>Frames belonging to this class are skipped</li>
+     *   <li>Validation fails immediately upon detecting suspicious activity</li>
+     *   <li>This method typically runs once at JVM startup during {@code initPhase3}</li>
+     *   <li>Trusted implementations skip inspection entirely</li>
+     * </ul>
      *
      * @implNote In the JDK implementation, if the Java virtual machine is
      * started with the system property {@code java.security.manager} not set or set to
@@ -394,83 +478,112 @@ public final class System {
      * <a href="SecurityManager.html#set-security-manager">section of the
      * {@code SecurityManager} class specification</a> for more details.
      * 
-     * <p> Deprecated since 17, removed or disabled since 24,
+     * <p>Deprecated since 17, removed or disabled since 24,
      * retained and maintained operational for Authorization.
      *
-     * @param  sm the security manager
+     * @param  sm the security manager to install (must not be null)
+     * @throws IllegalArgumentException
+     *         if {@code sm} is {@code null}
      * @throws SecurityException
-     *         if the security manager has already been set and its {@code
-     *         checkPermission} method doesn't allow it to be replaced
-     * @throws IllegalArgumentException when SecurityManager is already installed and sm is null.
+     *         if the caller is not a direct Java method for custom implementations
+     *         (e.g., reflection, MethodHandles, LambdaMetafactory, proxy, or other
+     *         synthetic code generation), or if suspicious code is detected in the
+     *         call stack, or if a security manager has already been set and its
+     *         {@code checkPermission} method doesn't allow it to be replaced
      * @see #getSecurityManager
      * @see SecurityManager#checkPermission
      * @see java.lang.RuntimePermission
+     * @see java.lang.StackWalker
      */ 
-     /* @deprecated This method is only useful in conjunction with
-     *       {@linkplain SecurityManager the Security Manager}, which is
-     *       deprecated and subject to removal in a future release.
-     *       Consequently, this method is also deprecated and subject to
-     *       removal. There is no replacement for the Security Manager or this
-     *       method.
-     */
-//    @Deprecated(since="17", forRemoval=true)
     @CallerSensitive
-    public static void setSecurityManager(@SuppressWarnings("removal") SecurityManager sm) {
-        if (security != null) {
-            if (sm == null) throw new IllegalArgumentException(
-            "A SecurityManager has been installed and cannot be set to null");
-        } else {
-            // enable the AccessControlContext cache
-            enableAccessControlContextCache();
-            // ensure image reader is initialized
-            Object.class.getResource("java/lang/ANY");
-            // ensure the default file system is initialized
-            DefaultFileSystemProvider.theFileSystem();
-        }
-        if (sm != null) {
-            try {
-                // pre-populates the SecurityManager.packageAccess cache
-                // to avoid recursive permission checking issues with custom
-                // SecurityManager implementations
-                sm.checkPackageAccess("java.lang");
-            } catch (Exception e) {
-                // no-op
+    public static void setSecurityManager(SecurityManager sm) {
+        if (sm == null) throw new IllegalArgumentException(
+            "SecurityManager cannot be set to null");
+       
+        if (!trustedSMClass(sm)){
+
+            // ========== LAYER 1: Basic caller check ==========
+            Class<?> directCaller = Reflection.getCallerClass();
+            if (directCaller == null) {
+                throw new SecurityException(
+                    "setSecurityManager: Direct caller cannot be null");
+            }
+
+            // ========== LAYER 2: Deep stack inspection ==========
+            validateCallerStackWithStackWalker();
+
+            // ========== LAYEAccessController.
+            ProtectionDomain pd = AccessController.doPrivileged(
+                    (PrivilegedAction<ProtectionDomain>) ()->{
+                        return directCaller.getProtectionDomain();
+                    });
+            if (pd == null) {
+                throw new SecurityException(
+                    "setSecurityManager: Caller has null ProtectionDomain");
+            }
+
+            // ========== LAYER 4: Synthetic/generated code detection ==========
+            String callerName = directCaller.getName();
+            if (isGeneratedClassName(callerName)) {
+                throw new SecurityException(
+                    "setSecurityManager: Generated classes cannot set SecurityManager: " + 
+                    callerName);
             }
         }
+
+        // Proceed with setup...
+        if (security == null) {
+            enableAccessControlContextCache();
+            Object.class.getResource("java/lang/ANY");
+            DefaultFileSystemProvider.theFileSystem();
+        }
+    
+        try {
+            // pre-populates the SecurityManager.packageAccess cache
+            // to avoid recursive permission checking issues with custom
+            // SecurityManager implementations
+            sm.checkPackageAccess("java.lang");
+        } catch (Exception e) {
+            // no-op
+        }      
+    
         setSecurityManager0(sm);
     }
 
+
     @SuppressWarnings("removal")
-    private static synchronized
+    private static
     void setSecurityManager0(final SecurityManager s) {
-        SecurityManager sm = getSecurityManager();
-        if (sm != null) {
-            // ask the currently installed security manager if we
-            // can replace it.
-            sm.checkPermission(new RuntimePermission("setSecurityManager"));
-        }
+        synchronized (SM_LOCK){
+            SecurityManager sm = getSecurityManager();
+            if (sm != null) {
+                // ask the currently installed security manager if we
+                // can replace it.
+                sm.checkPermission(new RuntimePermission("setSecurityManager"));
+            }
 
-        if ((s != null) && (s.getClass().getClassLoader() != null)) {
-            // New security manager class is not on bootstrap classpath.
-            // Force policy to get initialized before we install the new
-            // security manager, in order to prevent infinite loops when
-            // trying to initialize the policy (which usually involves
-            // accessing some security and/or system properties, which in turn
-            // calls the installed security manager's checkPermission method
-            // which will loop infinitely if there is a non-system class
-            // (in this case: the new security manager class) on the stack).
-            AccessController.doPrivileged(new PrivilegedAction<>() {
-                public Object run() {
-                    s.getClass().getProtectionDomain().implies
-                        (SecurityConstants.ALL_PERMISSION);
-                    return null;
-                }
-            });
-        }
+            if ((s != null) && (s.getClass().getClassLoader() != null)) {
+                // New security manager class is not on bootstrap classpath.
+                // Force policy to get initialized before we install the new
+                // security manager, in order to prevent infinite loops when
+                // trying to initialize the policy (which usually involves
+                // accessing some security and/or system properties, which in turn
+                // calls the installed security manager's checkPermission method
+                // which will loop infinitely if there is a non-system class
+                // (in this case: the new security manager class) on the stack).
+                AccessController.doPrivileged(new PrivilegedAction<>() {
+                    public Object run() {
+                        s.getClass().getProtectionDomain().implies
+                            (SecurityConstants.ALL_PERMISSION);
+                        return null;
+                    }
+                });
+            }
 
-        security = s;
+            security = s;
+        }
     }
-
+            
     /**
      * Gets the system-wide security manager.
      * 
@@ -482,15 +595,6 @@ public final class System {
      *          otherwise, {@code null} is returned.
      * @see     #setSecurityManager
      */ 
-     /* @deprecated This method is only useful in conjunction with
-     *       {@linkplain SecurityManager the Security Manager}, which is
-     *       deprecated and subject to removal in a future release.
-     *       Consequently, this method is also deprecated and subject to
-     *       removal. There is no replacement for the Security Manager or this
-     *       method.
-     */
-    @SuppressWarnings("removal")
-//    @Deprecated(since="17", forRemoval=true)
     public static SecurityManager getSecurityManager() {
         return security;
     }
@@ -2379,6 +2483,9 @@ public final class System {
                 case "polpAudit":
                     setSecurityManager(new SecurityPolicyWriter());
                     break;
+                case "legacy":
+                    setSecurityManager(new SecurityManager());
+                    break;
                 default:
                     try {
                         ClassLoader cl = ClassLoader.getBuiltinAppClassLoader();
@@ -2796,5 +2903,176 @@ public final class System {
                 return true;
             }
         });
+    }
+
+    /**
+     * Uses StackWalker to detect reflection-based calls and generated code.
+     * This provides superior detection compared to Reflection.getCallerClass() alone.
+     */
+    private static void validateCallerStackWithStackWalker() {
+        try {
+            
+            AccessController.doPrivileged(
+                    (PrivilegedExceptionAction<Object>) () ->{
+                StackWalker walker = StackWalker.getInstance(
+                    StackWalker.Option.RETAIN_CLASS_REFERENCE);
+
+                walker.walk(stream -> {
+                    stream
+                        .skip(2)  // Skip setSecurityManager and validateCallerStackWithStackWalker
+                        .limit(10) // Check first 10 frames for attacks
+                        .forEach(frame -> {
+                            Class<?> frameClass = frame.getDeclaringClass();
+                            String className = frameClass.getName();
+                            String methodName = frame.getMethodName();
+
+                            // ========== Check 1: Reflection API frames ==========
+                            if (isReflectionFrame(className, methodName)) {
+                                throw new SecurityException(
+                                    "setSecurityManager: Reflection API detected in call stack: " +
+                                    className + "." + methodName);
+                            }
+
+                            // ========== Check 2: MethodHandles frames ==========
+                            if (isMethodHandlesFrame(className, methodName)) {
+                                throw new SecurityException(
+                                    "setSecurityManager: MethodHandles API detected in call stack: " +
+                                    className + "." + methodName);
+                            }
+
+                            // ========== Check 3: Generated/synthetic classes ==========
+                            if (isGeneratedClassName(className)) {
+                                throw new SecurityException(
+                                    "setSecurityManager: Generated code detected in call stack: " +
+                                    className);
+                            }
+
+                            // ========== Check 4: Proxy classes ==========
+                            if (className.startsWith("$Proxy") || 
+                                className.startsWith("com.sun.proxy.$Proxy")) {
+                                throw new SecurityException(
+                                    "setSecurityManager: Proxy class detected in call stack: " +
+                                    className);
+                            }
+
+                            // ========== Check 5: Unsafe/internal APIs ==========
+                            if (isUnsafeReflectionFrame(className, methodName)) {
+                                throw new SecurityException(
+                                    "setSecurityManager: Unsafe reflection detected: " +
+                                    className + "." + methodName);
+                            }
+                        });
+
+                    return null;
+                });
+                return null;
+            });
+        } catch (PrivilegedActionException pae){
+            Exception cause = pae.getException();
+            if (cause instanceof SecurityException se) throw se;
+            throw new SecurityException(
+                "setSecurityManager: Stack validation failed: " + cause.getMessage(), cause);
+        } catch (SecurityException se) {
+            throw se;  // Re-throw our security exceptions
+        } catch (Exception e) {
+            // If StackWalker fails for any reason, fail securely
+            throw new SecurityException(
+                "setSecurityManager: Stack validation failed: " + e.getMessage(), e);
+        }
+        
+    }
+
+    /**
+     * Detects reflection API frames in the call stack.
+     */
+    private static boolean isReflectionFrame(String className, String methodName) {
+        if (className.startsWith("sun.reflect.")) {
+            return true;
+        }
+        if (className.startsWith("java.lang.reflect.")) {
+            return true;
+        }
+        // Method.invoke, Constructor.newInstance, etc.
+        if ((className.equals("java.lang.reflect.Method") && methodName.equals("invoke")) ||
+            (className.equals("java.lang.reflect.Constructor") && methodName.equals("newInstance")) ||
+            (className.equals("java.lang.reflect.Field") && (methodName.equals("get") || methodName.equals("set")))) {
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * Detects MethodHandles/invoke API frames.
+     */
+    private static boolean isMethodHandlesFrame(String className, String methodName) {
+        if (className.startsWith("java.lang.invoke.")) {
+            return true;
+        }
+        // LambdaMetafactory, MethodHandle.invoke, etc.
+        if (className.contains("LambdaMetafactory") || 
+            (className.equals("java.lang.invoke.MethodHandle") && 
+             (methodName.equals("invoke") || methodName.equals("invokeExact")))) {
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * Detects generated class names that indicate unsafe code paths.
+     */
+    private static boolean isGeneratedClassName(String className) {
+        // Lambda expressions
+        if (className.contains("$$Lambda$") || className.contains("$Lambda$")) {
+            return true;
+        }
+
+        // Generated method accessors
+        if (className.contains("GeneratedMethodAccessor") ||
+            className.contains("GeneratedConstructorAccessor") ||
+            className.contains("GeneratedSerializationConstructor")) {
+            return true;
+        }
+
+        // LambdaMetafactory generated classes
+        if (className.contains("$") && !className.contains(".")) {
+            // Anonymous/inner classes have $ but DO have package
+            // Pure generated code often has no package prefix
+            return true;
+        }
+
+        return false;
+    }
+
+    /**
+     * Detects unsafe reflection techniques.
+     */
+    private static boolean isUnsafeReflectionFrame(String className, String methodName) {
+        // jdk.internal.reflect.Reflection
+        if (className.equals("jdk.internal.reflect.Reflection")) {
+            return methodName.equals("registerMethodsToFilter") || 
+                   methodName.equals("registerFieldsToFilter");
+        }
+
+        // setAccessible calls
+        if (className.equals("java.lang.reflect.AccessibleObject") && 
+            methodName.equals("setAccessible")) {
+            return true;
+        }
+
+        // Unsafe operations
+        if (className.equals("jdk.internal.misc.Unsafe")) {
+            return true;
+        }
+
+        return false;
+    }
+    
+    /**
+     * Detects trusted SM class
+     */
+    private static boolean trustedSMClass(SecurityManager sm){
+        if (SecurityManager.class.equals(sm.getClass())) return true;
+        if (CombinerSecurityManager.class.equals(sm.getClass())) return true;
+        return false;
     }
 }

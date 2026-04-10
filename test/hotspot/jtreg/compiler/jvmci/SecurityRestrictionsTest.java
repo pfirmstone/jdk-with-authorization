@@ -148,7 +148,8 @@ public class SecurityRestrictionsTest {
         };
 
         public void run() {
-            System.setSecurityManager(getSecurityManager());
+            SecurityManager sm = getSecurityManager();
+            if (sm != null) System.setSecurityManager(sm);
             Consumer<Throwable> exceptionCheck = e -> {
                 if (e == null) {
                     if (getExpectedException() != null) {
