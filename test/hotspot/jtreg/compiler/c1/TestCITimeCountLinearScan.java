@@ -23,13 +23,8 @@
 
 /*
  * @test
- * @bug 4303068
  * @bug 8374518
- * @summary be allowed to specify the security properties file
- *      as a -D system property
- *
  * @summary Sanity check the flag -XX:+CITime and -XX:+CountLinearScan
- * @run main/othervm/policy=SecurityPropFile.policy -Djava.security.properties=${test.src}/SecurityPropFile.file -Djava.security.debug=properties SecurityPropFile
  * @run main/othervm -Xbatch -XX:+IgnoreUnrecognizedVMOptions -XX:+CITime -XX:+CountLinearScan ${test.main.class}
  */
 
