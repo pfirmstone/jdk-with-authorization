@@ -193,7 +193,15 @@ void FinalImageRecipes::load_all_classes(TRAPS) {
         SystemDictionaryShared::add_unregistered_class(THREAD, ik);
         SystemDictionaryShared::copy_unregistered_class_size_and_crc32(ik);
       } else if (!ik->is_hidden()) {
-        Klass* actual = SystemDictionary::resolve_or_fail(ik->name(), class_loader, Handle(THREAD, ik->protection_domain()), true, CHECK);
+        Handle protection_domain_handle;
+        if (ik->java_mirror() != nullptr) {
+          protection_domain_handle = Handle(THREAD, ik->protection_domain());
+        } else {
+          protection_domain_handle = Handle(THREAD, nullptr);  // or handle appropriately
+        }
+
+        Klass* actual = SystemDictionary::resolve_or_fail(ik->name(), class_loader, 
+                    protection_domain_handle, true, CHECK);
         if (actual != ik) {
           ResourceMark rm(THREAD);
           log_error(aot)("Unable to resolve class from CDS archive: %s", ik->external_name());
