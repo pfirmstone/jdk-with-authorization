@@ -23,6 +23,7 @@
 
 package jdk.jfr.startupargs;
 
+import java.io.File;
 import java.io.IOException;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
@@ -48,6 +49,9 @@ public class TestDumpOnExit {
 
     public static void main(String[] args) throws Exception {
         Path dumpPath = Paths.get(".", "dumped.jfr");
+        
+        String TEST_SRC = System.getProperty("test.src");
+        String FILE_SEP = File.separator;
 
         // Test without security manager and a file name relative to current directory
         testDumponExit(() -> dumpPath,
@@ -61,19 +65,21 @@ public class TestDumpOnExit {
                 "-XX:StartFlightRecording:dumponexit=true,disk=false",
                 "jdk.jfr.startupargs.TestDumpOnExit$TestMain"
         );
-
+       
         // Test with security manager and a file name relative to current directory
         testDumponExit(() -> dumpPath,
                 "-Xlog:jfr=trace",
                 "-XX:StartFlightRecording:filename=./dumped.jfr,dumponexit=true,settings=profile",
-                "-Djava.security.manager",
+                "-Djava.security.manager=default",
+                "-Djava.security.policy="+ TEST_SRC + FILE_SEP + "TestDumpOnExit.policy",
                 "jdk.jfr.startupargs.TestDumpOnExit$TestMain"
         );
         // Test with security manager but without a name
         testDumponExit(() -> findJFRFileInCurrentDirectory(),
                 "-Xlog:jfr=trace",
                 "-XX:StartFlightRecording:dumponexit=true,settings=profile",
-                "-Djava.security.manager",
+                "-Djava.security.manager=default",
+                "-Djava.security.policy="+ TEST_SRC + FILE_SEP + "TestDumpOnExit.policy",
                 "jdk.jfr.startupargs.TestDumpOnExit$TestMain"
         );
     }
@@ -106,6 +112,7 @@ public class TestDumpOnExit {
     private static class TestMain {
         public static void main(String[] args) throws Exception {
             System.out.println("Hello from test main");
+            System.exit(0);
         }
     }
 

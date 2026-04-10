@@ -1,0 +1,9 @@
+grant CodeBase "jrt:/jdk.jfr/jdk.jfr.internal.SecuritySupport" {
+    permission jdk.jfr.FlightRecorderPermission "accessFlightRecorder";
+    permission java.lang.RuntimePermission "accessClassInPackage.jdk.internal.event";
+    permission java.lang.RuntimePermission "getClassLoader";
+};
+
+grant {
+    permission au.zeus.jdk.authorization.guards.LoadClassPermission "ALLOW";
+};
