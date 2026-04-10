@@ -36,6 +36,7 @@ public final class HiddenWait {
             return true;
         } catch (InterruptedException e) {
             // Ok, ignore
+            Thread.currentThread().interrupt();
             return false;
         }
     }

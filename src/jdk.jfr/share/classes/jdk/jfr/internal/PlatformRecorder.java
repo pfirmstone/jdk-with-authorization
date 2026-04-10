@@ -570,6 +570,7 @@ public final class PlatformRecorder {
                 JVM.CHUNK_ROTATION_MONITOR.wait(duration < 10 ? 10 : duration);
             }
         } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
             // Ignore
         }
     }
