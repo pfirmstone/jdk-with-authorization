@@ -29,8 +29,8 @@
  *          as specified in javadoc and that no special
  *          logging permission is required for instantiating them.
  * @modules java.logging/java.util.logging:open
- * @run main/othervm/policy=HandlersConfigTest.policy -Djava.security.manager=allow HandlersConfigTest default
- * @run main/othervm/policy=HandlersConfigTest.policy -Djava.security.manager=allow HandlersConfigTest configured
+ * @run main/othervm/policy=HandlersConfigTest.policy -Djava.security.debug=access:failure -Djava.security.manager=allow HandlersConfigTest default
+ * @run main/othervm/policy=HandlersConfigTest.policy -Djava.security.debug=access:failure -Djava.security.manager=allow HandlersConfigTest configured
  */
 
 import java.io.IOException;
@@ -71,7 +71,7 @@ public abstract class HandlersConfigTest implements Runnable {
     static final String CONFIG_FILE_PROPERTY = "java.util.logging.config.file";
     final Field memoryHandlerTarget, memoryHandlerSize, streamHandlerOutput;
     final ServerSocket serverSocket;
-
+    
     HandlersConfigTest() {
         // establish access to private fields
         try {
@@ -101,12 +101,7 @@ public abstract class HandlersConfigTest implements Runnable {
         }
 
         // activate security
-        System.setSecurityManager(new SecurityManager() {
-            @Override
-            public void checkConnect(String host, int port) {
-                // allow socket connections
-            }
-        });
+        System.setSecurityManager(new SecurityManager());
 
         // initialize logging system
         LogManager.getLogManager();

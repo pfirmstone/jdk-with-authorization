@@ -2,3 +2,7 @@ grant codebase "jrt:/java.logging/java.util.logging.LogManager" {
     permission java.lang.RuntimePermission "accessClassInPackage.sun.util.locale.provider";
     permission java.lang.RuntimePermission "loggerFinder";
 };
+
+grant {
+    permission java.net.SocketPermission "*", "connect,resolve";
+};
