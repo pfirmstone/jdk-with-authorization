@@ -1083,7 +1083,12 @@ public final class AccessController {
                                 callerCodeSource != null?
                                 callerCodeSource.getCertificates() : null);
                     } catch (MalformedURLException | URISyntaxException e){
-                        //TODO: Debug output
+                        // ✅ SECURITY: Return null CodeSource on exception.
+                        // A null CodeSource cannot match any policy grants,
+                        // preventing privilege escalation if URI validation fails.
+                        // This fail-secure approach ensures that malformed URIs
+                        // cannot be exploited to bypass policy enforcement.
+                        return null;
                     }
                 }
                 // For non module code.
