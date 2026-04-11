@@ -62,11 +62,11 @@ public class Reflection {
         set.add("classLoader");
         set.add("classData");
         set.add("modifiers");
-        set.add("primitive");
+        set.add("protectionDomain");
         fieldFilterMap = Map.of(
             Reflection.class, ALL_MEMBERS,
             AccessibleObject.class, ALL_MEMBERS,
-            Class.class, Set.of("classLoader", "classData", "modifiers", "protectionDomain"),
+            Class.class, set,
             ClassLoader.class, ALL_MEMBERS,
             Constructor.class, ALL_MEMBERS,
             Field.class, ALL_MEMBERS,
