@@ -552,7 +552,7 @@ Klass* SystemDictionaryShared::find_verification_constraint_bottom_class(Instanc
   Thread* current = Thread::current();
   Handle loader(current, k->class_loader());
   Handle protection_domain(current, k->protection_domain());
-  Klass* constraint_class = SystemDictionary::find_instance_or_array_klass(current, constraint_class_name, loader, protection_domain);
+  Klass* constraint_class = SystemDictionary::find_instance_or_array_klass(current, constraint_class_name, loader);
   if (constraint_class == nullptr) {
     return nullptr;
   }

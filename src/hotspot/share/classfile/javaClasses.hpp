@@ -1493,7 +1493,6 @@ class java_security_AccessControlContext: AllStatic {
   friend class JavaClasses;
 };
 
-
 // Interface to java.lang.ClassLoader objects
 
 #define CLASSLOADER_INJECTED_FIELDS(macro)                            \

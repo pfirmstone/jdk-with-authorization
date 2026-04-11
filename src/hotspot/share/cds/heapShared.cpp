@@ -2448,7 +2448,7 @@ void HeapShared::remap_dumped_metadata(oop src_obj, address archived_object) {
 
 bool HeapShared::is_archived_boot_layer_available(JavaThread* current) {
   TempNewSymbol klass_name = SymbolTable::new_symbol(ARCHIVED_BOOT_LAYER_CLASS);
-  InstanceKlass* k = SystemDictionary::find_instance_klass(current, klass_name, Handle(), Handle());
+  InstanceKlass* k = SystemDictionary::find_instance_klass(current, klass_name, Handle());
   if (k == nullptr) {
     return false;
   } else {

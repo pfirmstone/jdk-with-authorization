@@ -37,7 +37,6 @@
 #include "classfile/loaderConstraints.hpp"
 #include "classfile/packageEntry.hpp"
 #include "classfile/placeholders.hpp"
-#include "classfile/protectionDomainCache.hpp"
 #include "classfile/resolutionErrors.hpp"
 #include "classfile/stringTable.hpp"
 #include "classfile/symbolTable.hpp"
@@ -587,12 +586,8 @@ InstanceKlass* SystemDictionary::resolve_instance_class_or_null(Symbol* name,
   ClassLoaderData* loader_data = register_loader(class_loader);
   Dictionary* dictionary = loader_data->dictionary();
 
-  // Do lookup to see if class already exists and the protection domain
-  // has the right access.
-  // This call uses find which checks protection domain already matches
-  // All subsequent calls use find_class, and set loaded_class so that
-  // before we return a result, we call out to java to check for valid protection domain.
-  InstanceKlass* probe = dictionary->find(THREAD, name, protection_domain);
+  // Do lookup to see if class already exists.
+  InstanceKlass* probe = dictionary->find_class(THREAD, name);
   if (probe != nullptr) return probe;
 
   // Non-bootstrap class loaders will call out to class loader and
@@ -724,9 +719,20 @@ InstanceKlass* SystemDictionary::resolve_instance_class_or_null(Symbol* name,
   DEBUG_ONLY(verify_dictionary_entry(name, loaded_class));
 
   if (protection_domain() != nullptr) {
-    // A SecurityManager (if installed) may prevent this protection_domain from accessing loaded_class
-    // by throwing a SecurityException.
-    dictionary->check_package_access(loaded_class, class_loader, protection_domain, CHECK_NULL);
+    // Per JEP 403: Only check package access for unnamed modules or non-modular code
+    // Named modules use the module system for encapsulation, not package access
+    bool should_check_package_access = true;
+    ModuleEntry* mod_entry = loaded_class->module();
+    if (mod_entry != nullptr && mod_entry->is_named()) {
+      // Named module - encapsulation is handled by the module system
+      should_check_package_access = false;
+    }
+
+    if (should_check_package_access) {
+      // A SecurityManager (if installed) may prevent this protection_domain from accessing loaded_class
+      // by throwing a SecurityException.
+      dictionary->check_package_access(loaded_class, class_loader, protection_domain, CHECK_NULL);
+    }
   }
 
   return loaded_class;
@@ -746,8 +752,7 @@ InstanceKlass* SystemDictionary::resolve_instance_class_or_null(Symbol* name,
 
 InstanceKlass* SystemDictionary::find_instance_klass(Thread* current,
                                                      Symbol* class_name,
-                                                     Handle class_loader,
-                                                     Handle protection_domain) {
+                                                     Handle class_loader) {
 
   ClassLoaderData* loader_data = ClassLoaderData::class_loader_data_or_null(class_loader());
   if (loader_data == nullptr) {
@@ -757,15 +762,14 @@ InstanceKlass* SystemDictionary::find_instance_klass(Thread* current,
   }
 
   Dictionary* dictionary = loader_data->dictionary();
-  return dictionary->find(current, class_name, protection_domain);
+  return dictionary->find_class(current, class_name);
 }
 
 // Look for a loaded instance or array klass by name.  Do not do any loading.
 // return null in case of error.
 Klass* SystemDictionary::find_instance_or_array_klass(Thread* current,
                                                       Symbol* class_name,
-                                                      Handle class_loader,
-                                                      Handle protection_domain) {
+                                                      Handle class_loader) {
   Klass* k = nullptr;
   assert(class_name != nullptr, "class name must be non nullptr");
 
@@ -779,13 +783,13 @@ Klass* SystemDictionary::find_instance_or_array_klass(Thread* current,
     if (t != T_OBJECT) {
       k = Universe::typeArrayKlass(t);
     } else {
-      k = SystemDictionary::find_instance_klass(current, ss.as_symbol(), class_loader, protection_domain);
+      k = SystemDictionary::find_instance_klass(current, ss.as_symbol(), class_loader);
     }
     if (k != nullptr) {
       k = k->array_klass_or_null(ndims);
     }
   } else {
-    k = find_instance_klass(current, class_name, class_loader, protection_domain);
+    k = find_instance_klass(current, class_name, class_loader);
   }
   return k;
 }
@@ -895,6 +899,22 @@ InstanceKlass* SystemDictionary::resolve_class_from_stream(
   // find_or_define_instance_class may return a different InstanceKlass,
   // in which case the old k would be deallocated
   if (is_parallelCapable(class_loader)) {
+    // Check package access FIRST
+    // Per JEP 403: Only check package access for unnamed modules or non-modular code
+    // Named modules use the module system for encapsulation, not package access
+    bool should_check_package_access = (cl_info.protection_domain() != nullptr);
+    if (should_check_package_access) {
+      ModuleEntry* mod_entry = k->module();
+      if (mod_entry != nullptr && mod_entry->is_named()) {
+        // Named module - encapsulation is handled by the module system
+        should_check_package_access = false;
+      }
+    }
+
+    if (should_check_package_access) {
+      loader_data->dictionary()->check_package_access(k, class_loader,
+        cl_info.protection_domain(), CHECK_NULL);
+    }
     k = find_or_define_instance_class(h_name, class_loader, k, CHECK_NULL);
   } else {
     define_instance_class(k, class_loader, THREAD);
@@ -1030,9 +1050,8 @@ bool SystemDictionary::is_shared_class_visible_impl(Symbol* class_name,
 }
 
 bool SystemDictionary::check_shared_class_super_type(InstanceKlass* klass, InstanceKlass* super_type,
-                                                     Handle class_loader,  Handle protection_domain,
-                                                     bool is_superclass, TRAPS) {
-  assert(super_type->in_aot_cache(), "must be");
+                                                     Handle class_loader, Handle protection_domain, bool is_superclass, TRAPS) {
+  assert(super_type->is_shared(), "must be");
 
   // Quick check if the super type has been already loaded.
   // + Don't do it for unregistered classes -- they can be unloaded so
@@ -1041,7 +1060,7 @@ bool SystemDictionary::check_shared_class_super_type(InstanceKlass* klass, Insta
   if (!super_type->defined_by_other_loaders() && super_type->class_loader_data() != nullptr) {
     // Check if the superclass is loaded by the current class_loader
     Symbol* name = super_type->name();
-    InstanceKlass* check = find_instance_klass(THREAD, name, class_loader, protection_domain);
+    InstanceKlass* check = find_instance_klass(THREAD, name, class_loader);
     if (check == super_type) {
       return true;
     }
@@ -1058,8 +1077,7 @@ bool SystemDictionary::check_shared_class_super_type(InstanceKlass* klass, Insta
   }
 }
 
-bool SystemDictionary::check_shared_class_super_types(InstanceKlass* ik, Handle class_loader,
-                                                      Handle protection_domain, TRAPS) {
+bool SystemDictionary::check_shared_class_super_types(InstanceKlass* ik, Handle class_loader, Handle protection_domain, TRAPS) {
   // Check the superclass and interfaces. They must be the same
   // as in dump time, because the layout of <ik> depends on
   // the specific layout of ik->super() and ik->local_interfaces().
@@ -1068,7 +1086,7 @@ bool SystemDictionary::check_shared_class_super_types(InstanceKlass* ik, Handle 
   // load <ik> from the shared archive.
 
   if (ik->super() != nullptr) {
-    bool check_super = check_shared_class_super_type(ik, ik->super(),
+    bool check_super = check_shared_class_super_type(ik, InstanceKlass::cast(ik->super()),
                                                      class_loader, protection_domain, true,
                                                      CHECK_false);
     if (!check_super) {
@@ -1597,17 +1615,6 @@ bool SystemDictionary::do_unloading(GCTimer* gc_timer) {
   if (unloading_occurred) {
     SymbolTable::trigger_cleanup();
 
-    if (java_lang_System::allow_security_manager()) {
-      // Oops referenced by the protection domain cache table may get unreachable independently
-      // of the class loader (eg. cached protection domain oops). So we need to
-      // explicitly unlink them here.
-      // All protection domain oops are linked to the caller class, so if nothing
-      // unloads, this is not needed.
-      ProtectionDomainCacheTable::trigger_cleanup();
-    } else {
-      assert(ProtectionDomainCacheTable::number_of_entries() == 0, "should be empty");
-    }
-
     ConditionalMutexLocker ml(ClassInitError_lock, is_concurrent);
     InstanceKlass::clean_initialization_error_table();
   }
@@ -1645,7 +1652,6 @@ void SystemDictionary::initialize(TRAPS) {
   ResolutionErrorTable::initialize();
   LoaderConstraintTable::initialize();
   PlaceholderTable::initialize();
-  ProtectionDomainCacheTable::initialize();
 #if INCLUDE_CDS
   SystemDictionaryShared::initialize();
   if (CDSConfig::is_dumping_archive()) {
@@ -1765,10 +1771,7 @@ Klass* SystemDictionary::find_constrained_instance_or_array_klass(
                     Thread* current, Symbol* class_name, Handle class_loader) {
 
   // First see if it has been loaded directly.
-  // Force the protection domain to be null.  (This removes protection checks.)
-  Handle no_protection_domain;
-  Klass* klass = find_instance_or_array_klass(current, class_name, class_loader,
-                                              no_protection_domain);
+  Klass* klass = find_instance_or_array_klass(current, class_name, class_loader);
   if (klass != nullptr)
     return klass;
 
@@ -2231,9 +2234,9 @@ Handle SystemDictionary::find_java_mirror_for_type(Symbol* signature,
                                                    Handle protection_domain,
                                                    SignatureStream::FailureMode failure_mode,
                                                    TRAPS) {
-  assert(accessing_klass == nullptr || (class_loader.is_null() && protection_domain.is_null()),
-         "one or the other, or perhaps neither");
 
+  assert(accessing_klass == nullptr || (class_loader.is_null() && protection_domain.is_null()),
+    "one or the other, or perhaps neither");
   // What we have here must be a valid field descriptor,
   // and all valid field descriptors are supported.
   // Produce the same java.lang.Class that reflection reports.
@@ -2503,9 +2506,6 @@ void SystemDictionary::print_on(outputStream *st) {
   // loader constraints - print under SD_lock
   LoaderConstraintTable::print_on(st);
   st->cr();
-
-  ProtectionDomainCacheTable::print_on(st);
-  st->cr();
 }
 
 void SystemDictionary::print() { print_on(tty); }
@@ -2519,9 +2519,6 @@ void SystemDictionary::verify() {
 
   // Verify constraint table
   LoaderConstraintTable::verify();
-
-  // Verify protection domain table
-  ProtectionDomainCacheTable::verify();
 }
 
 void SystemDictionary::dump(outputStream *st, bool verbose) {
@@ -2532,7 +2529,6 @@ void SystemDictionary::dump(outputStream *st, bool verbose) {
     CDS_ONLY(SystemDictionaryShared::print_table_statistics(st));
     ClassLoaderDataGraph::print_table_statistics(st);
     LoaderConstraintTable::print_table_statistics(st);
-    ProtectionDomainCacheTable::print_table_statistics(st);
   }
 }
 

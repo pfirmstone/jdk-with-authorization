@@ -196,6 +196,10 @@ public:
 // In this command line, the diagnostic command receives five parameters, two
 // options named option1 and option2, and three arguments. argumentA's position
 // is 0, argumentB's position is 1 and argumentC's position is 2.
+
+// Forward declaration
+class GenDCmdArgument;
+
 class DCmdParser {
 private:
   GenDCmdArgument* _options;

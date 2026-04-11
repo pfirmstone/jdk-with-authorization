@@ -797,8 +797,7 @@ InstanceKlass* ClassListParser::lookup_class_by_id(int id) {
 
 InstanceKlass* ClassListParser::find_builtin_class_helper(JavaThread* current, Symbol* class_name_symbol, oop class_loader_oop) {
   Handle class_loader(current, class_loader_oop);
-  Handle protection_domain;
-  return SystemDictionary::find_instance_klass(current, class_name_symbol, class_loader, protection_domain);
+  return SystemDictionary::find_instance_klass(current, class_name_symbol, class_loader);
 }
 
 InstanceKlass* ClassListParser::find_builtin_class(JavaThread* current, const char* class_name) {

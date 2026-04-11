@@ -121,7 +121,7 @@ void BootstrapInfo::resolve_bss_name_and_type(TRAPS) {
   if (type->char_at(0) == '(') {
     _type_arg = SystemDictionary::find_method_handle_type(type, caller(), CHECK);
   } else {
-    _type_arg = SystemDictionary::find_java_mirror_for_type(type, caller(), SignatureStream::NCDFError, CHECK);
+    _type_arg = SystemDictionary::find_java_mirror_for_type(type, caller(), Handle(), Handle(), SignatureStream::NCDFError, CHECK);
   }
 }
 

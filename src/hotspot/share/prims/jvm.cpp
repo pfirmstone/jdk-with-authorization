@@ -1121,8 +1121,7 @@ JVM_ENTRY(jclass, JVM_FindLoadedClass(JNIEnv *env, jobject loader, jstring name)
   //   us to pass the null as the initiating class loader.
   Handle h_loader(THREAD, JNIHandles::resolve(loader));
   Klass* k = SystemDictionary::find_instance_or_array_klass(THREAD, klass_name,
-                                                            h_loader,
-                                                            Handle());
+                                                            h_loader);
 #if INCLUDE_CDS
   if (k == nullptr) {
     // If the class is not already loaded, try to see if it's in the shared
