@@ -950,12 +950,10 @@ public class TestResolvedJavaType extends TypeUniverse {
      */
     private static boolean isHiddenFromReflection(ResolvedJavaField f) {
         if (f.getDeclaringClass().equals(metaAccess.lookupJavaType(Class.class))) {
-            String name = f.getName();
-            return name.equals("classLoader") ||
-                   name.equals("classData") ||
-                   name.equals("modifiers") ||
-                   name.equals("protectionDomain") ||
-                   name.equals("primitive");
+            return f.getName().equals("classLoader") ||
+                   f.getName().equals("classData") ||
+                   f.getName().equals("modifiers") ||
+                   f.getName().equals("protectionDomain");
         }
         if (f.getDeclaringClass().equals(metaAccess.lookupJavaType(Lookup.class))) {
             return f.getName().equals("allowedModes") || f.getName().equals("lookupClass");

@@ -66,7 +66,7 @@ public class Reflection {
         fieldFilterMap = Map.of(
             Reflection.class, ALL_MEMBERS,
             AccessibleObject.class, ALL_MEMBERS,
-            Class.class, set,
+            Class.class, Set.of("classLoader", "classData", "modifiers", "protectionDomain"),
             ClassLoader.class, ALL_MEMBERS,
             Constructor.class, ALL_MEMBERS,
             Field.class, ALL_MEMBERS,

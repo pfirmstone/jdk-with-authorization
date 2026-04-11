@@ -254,13 +254,14 @@ public final class Class<T> implements java.io.Serializable,
      * This constructor is not used and prevents the default constructor being
      * generated.
      */
-    private Class(ClassLoader loader, Class<?> arrayComponentType, char mods, boolean isPrim, char flags) {
+    private Class(ClassLoader loader, Class<?> arrayComponentType, int mods, ProtectionDomain pd, boolean isPrim, char flags) {
         // Initialize final field for classLoader.  The initialization value of non-null
         // prevents future JIT optimizations from assuming this final field is null.
         // The following assignments are done directly by the VM without calling this constructor.
         classLoader = loader;
         componentType = arrayComponentType;
         modifiers = mods;
+        protectionDomain = pd;
         primitive = isPrim;
         classFileAccessFlags = flags;
     }
@@ -1137,7 +1138,7 @@ public final class Class<T> implements java.io.Serializable,
 
     private transient Object classData; // Set by VM
     private transient Object[] signers; // Read by VM, mutable
-    private final transient char modifiers;  // Set by the VM
+    private final transient int modifiers;  // Set by the VM
     private final transient char classFileAccessFlags;  // Set by the VM
     private final transient boolean primitive;  // Set by the VM if the Class is a primitive type.
 
@@ -3235,7 +3236,9 @@ public final class Class<T> implements java.io.Serializable,
         return true;
     }
 
-    /**
+    private transient final ProtectionDomain protectionDomain;
+    
+        /**
      * Returns the {@code ProtectionDomain} of this class.  If there is a
      * security manager installed, this method first calls the security
      * manager's {@code checkPermission} method with a
@@ -3272,18 +3275,12 @@ public final class Class<T> implements java.io.Serializable,
 
     // package-private
     ProtectionDomain protectionDomain() {
-        ProtectionDomain pd = getProtectionDomain0();
-        if (pd == null) {
+        if (protectionDomain == null) {
             return Holder.allPermDomain;
         } else {
-            return pd;
+            return protectionDomain;
         }
     }
-
-    /**
-     * Returns the ProtectionDomain of this class.
-     */
-    private native ProtectionDomain getProtectionDomain0();
 
     /*
      * Returns the Class object for the named primitive type. Type parameter T
