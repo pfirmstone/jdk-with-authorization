@@ -100,7 +100,7 @@ private static boolean trustedSMClass(SecurityManager sm){
 
 ### Core Components
 
-
+```
 ┌─────────────────────────────────────────────────────────┐
 │           Authorization System Architecture             │
 ├─────────────────────────────────────────────────────────┤
@@ -136,7 +136,7 @@ private static boolean trustedSMClass(SecurityManager sm){
 │  └─ Percent-Encoding Normalization                      │
 │                                                         │
 └─────────────────────────────────────────────────────────┘
-
+```
 
 ---
 
