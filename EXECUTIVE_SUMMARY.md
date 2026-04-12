@@ -1,22 +1,54 @@
 
-# JDK with Authorization - Executive Summary
+# Dirty Chai - Executive Summary
 
 ## What This Project Does (In Plain English)
 
 **The Problem:**
-Modern Java applications have no way to prevent malicious code from accessing sensitive resources (files, network, databases, etc.). The original security feature that could do this (SecurityManager) was removed from Java 17+ because it was complex and poorly maintained. This leaves Java vulnerable to sophisticated attacks that exploit third-party code or plugins.
+
+Java once had the solution: In Java 1.2, Sun Microsystems' security team—Li Gong, Gary Ellison, and Mary Dageforde—rearchitected Java's SecurityManager specifically for enterprise servers, not just applets. With input from IBM, this system enforced the **principle of least privilege** (documented by Li Gong in *Inside Java 2 Platform Security*, ISBN 0201787911), preventing malicious or compromised code from accessing unauthorized resources (files, network, databases, serialization gadgets, etc.).
+
+However, SecurityManager was **deprecated in Java 17** and removed—not because the security model was flawed, but due to three operational challenges:
+
+1. **Maintenance burden:** The original implementation accumulated technical debt over decades as the JVM evolved
+2. **Performance concerns:** Authorization checks added overhead that was difficult to optimize without modern tooling
+3. **Tooling gap:** No automated way to generate least-privilege policies, forcing manual, error-prone configuration
+
+Additionally, the "trusted" Java platform grew too large and monolithic to audit or minimize, making it a larger attack surface. Without SecurityManager, modern Java has no built-in defense against:
+- **Deserialization gadget chain attacks** (attackers exploit Java object deserialization to execute arbitrary code with full application privileges)
+- **Untrusted code loading** (plugins, scripts, or dynamically loaded classes run completely unconstrained)
+- **Third-party library exploits** (Log4j, JNDI, Spring vulnerabilities expose all application data and resources)
 
 **The Solution:**
-This project restores and modernizes Java's authorization system—essentially creating a "permission system" that acts like a security checkpoint for code. Think of it like:
+Dirty Chai restores and modernizes Java's authorization system—essentially creating a "permission system" that acts like a security checkpoint for code. Think of it like:
 - **Firewalls for code:** Control exactly what each piece of code can access
 - **Least privilege enforcement:** Code only gets the minimum permissions it needs
 - **Audit trail:** Track and verify what third-party code is trying to do before deployment
+
+## Why This Time Is Different
+
+This project directly solves the problems that led to SecurityManager's deprecation:
+
+| Challenge | What Changed |
+|-----------|--------------|
+| **Maintenance burden** | Modern implementation, native to current JVM, community-maintained |
+| **Performance overhead** | <1% cost through optimized authorization checks |
+| **Tooling gap** | **PolicyWriter tool** automates least-privilege policy generation—the missing piece from Java 1.2 |
+| **Platform bloat** | Java's **modular JVM** (Project Jigsaw) now allows a minimal "trusted" runtime, reducing the attack surface dramatically |
+
+In short: Dirty Chai restores a proven enterprise security architecture with 25 years of real-world validation, and adds the operational tooling that was always missing.
+
+**Real Attacks Now Prevented:**
+
+- 🛡️ **Deserialization gadgets:** Restrict what classes can be deserialized, blocking gadget chain exploits even when attackers find new gadgets
+- 🛡️ **Untrusted code:** Plugins or dynamically loaded code run in a confined sandbox with only the permissions they need
+- 🛡️ **Supply chain attacks:** Third-party library compromise is contained to its granted permissions
+- 🛡️ **Zero-day exploits:** Even unknown vulnerabilities can't reach unauthorized resources
 
 ## Key Business Benefits
 
 ### 1. **Enterprise Security** 🔒
 - **Compliance:** Meets regulatory requirements (HIPAA, FedRAMP, DoD, PCI-DSS)
-- **Risk reduction:** Prevents widespread attack classes (Log4j-style vulnerabilities, JNDI attacks, etc.)
+- **Risk reduction:** Prevents widespread attack classes (Log4j-style vulnerabilities, JNDI attacks, deserialization gadget chains, untrusted code loading, etc.)
 - **Confidence:** Prove to auditors that third-party code can't access unauthorized resources
 
 ### 2. **Third-Party Code Confidence** ✅
@@ -165,7 +197,7 @@ It allows organizations to:
 > "Current security costs: $XXX for breach response. New approach costs $XX/year but reduces breach probability from 15% to 2%. Net savings: $1-8M annually."
 
 ### **For CTO/Technical:**
-> "Enterprise-grade authorization framework. 8-layer defense-in-depth, <1% performance overhead, proven at scale. Prevents JNDI, Log4j, and code injection attacks."
+> "Enterprise-grade authorization framework based on Li Gong's Java 1.2 architecture—proven enterprise security being restored with modern tooling. Prevents JNDI, Log4j, deserialization gadget chain attacks, and untrusted code loading with <1% overhead. Leverages Java's modular JVM (Project Jigsaw) to minimize the trusted platform and reduce the attack surface. PolicyWriter tool automates least-privilege policy generation, solving the tooling gap that led to the original deprecation."
 
 ### **For Investors:**
 > "Addressing $50B+ cybersecurity market gap. Java used by 90% of enterprises but lacks fine-grained access control. First-mover advantage in Java authorization space."

@@ -3,6 +3,7 @@
 
 **Date:** April 8, 2026 (Updated April 9, 2026 - Conditional Check Implementation)  
 **Project:** Dirty Chai  
+
 **Repository:** https://github.com/pfirmstone/DirtyChai  
 **Scope:** `AccessController`, `System.setSecurityManager()`, `System.getSecurityManager()`, `ConcurrentPolicyFile`, Authorization Framework
 
