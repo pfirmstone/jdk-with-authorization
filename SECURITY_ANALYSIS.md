@@ -165,7 +165,7 @@ private static boolean trustedSMClass(SecurityManager sm){
 
 ### Conditional Logic
 
-
+```
 setSecurityManager(SecurityManager sm) called
     │
     ├─ NULL CHECK ✓ (always performed)
@@ -183,7 +183,7 @@ setSecurityManager(SecurityManager sm) called
               ├─ Layer 2: StackWalker inspection
               ├─ Layer 3: ProtectionDomain validation
               └─ Layer 4: Generated code detection
-
+```
 
 ### Trusted Class Detection
 
@@ -400,7 +400,7 @@ Security Guarantee:
 
 ### Updated Layer Model
 
-
+```
 For CUSTOM SecurityManager (Untrusted):
 ┌─────────────────────────────────────────────────────┐
 │ Layer 1: Caller Identity Validation                 │
@@ -451,7 +451,7 @@ Shared across both:
 │ Returns unprivileged state on validation failure    │
 │ Status: ✅ EXCELLENT - Explicit fail-secure         │
 └─────────────────────────────────────────────────────┘
-
+```
 
 ---
 
