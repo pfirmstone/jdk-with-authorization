@@ -114,8 +114,8 @@ Like steeping tea (chai), security flows through multiple layers:
 Add to your JVM launch flags:
 
 ```bash
-java -Djava.security.manager=au.zeus.jdk.authorization.sm.CombinerSecurityManager \
-     -Djava.security.policy=/path/to/app.policy \
+java -Djava.security.manager=default \
+     -Djava.security.policy==/path/to/app.policy \
      com.example.Main
 ```
 
