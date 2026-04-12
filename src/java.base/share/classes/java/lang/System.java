@@ -471,6 +471,72 @@ public final class System {
      *   <li>Trusted implementations skip inspection entirely</li>
      * </ul>
      *
+     * <p><b>SecurityManager Initialization via {@code java.security.manager} System Property:</b>
+     * During JVM startup, the {@code initPhase3()} method reads the
+     * {@code java.security.manager} system property and calls
+     * {@code setSecurityManager()} automatically. The recognized values are:
+     * <ul>
+     *   <li>{@code ""} or {@code "default"} — installs {@code CombinerSecurityManager},
+     *     the recommended high-performance SecurityManager for production deployments.</li>
+     *   <li>{@code "legacy"} — installs the standard {@code SecurityManager}.</li>
+     *   <li>{@code "allow"} — no SecurityManager is installed; permission checks are skipped.</li>
+     *   <li>{@code "polpAudit"} — installs {@code SecurityPolicyWriter}, an auditing
+     *     SecurityManager that automatically discovers and records all permissions
+     *     requested at runtime, then writes a minimal security policy file on JVM
+     *     shutdown. See below for full details.</li>
+     *   <li>A fully-qualified class name — loads and installs a custom
+     *     {@code SecurityManager} subclass from the application classpath.</li>
+     * </ul>
+     *
+     * <p><b>The {@code polpAudit} Option (Principle-of-Least-Privilege Audit):</b>
+     * When {@code java.security.manager=polpAudit} is set, the JVM automatically
+     * calls {@code setSecurityManager(new SecurityPolicyWriter())} during
+     * {@code initPhase3()}. {@code SecurityPolicyWriter} extends
+     * {@code CombinerSecurityManager} and intercepts every permission request made
+     * during the JVM session. On JVM shutdown it writes all observed permissions —
+     * organized by {@code ProtectionDomain}, code source, signers, and principals —
+     * to a policy file in standard {@code grant} statement format. Absolute file
+     * paths are automatically replaced with portable property placeholders
+     * (e.g., {@code ${java.home}}) to keep the generated policy portable across
+     * environments.
+     *
+     * <p>The recommended workflow for using {@code polpAudit} is:
+     * <ol>
+     *   <li><b>Audit</b> — Run the application in a deployment staging environment
+     *     with {@code polpAudit} enabled. Exercise all code paths to ensure complete
+     *     permission coverage.</li>
+     *   <li><b>Generate</b> — Inspect the policy file written to the path specified
+     *     by {@code java.security.policy}. The file contains only the minimum
+     *     permissions actually needed.</li>
+     *   <li><b>Validate</b> — Audit the generated policy for overly broad grants
+     *     (e.g., {@code SocketPermission} for dynamic ports or {@code FilePermission}
+     *     for temporary directories). Repeat the audit step as necessary, each time
+     *     noting where the policy was last updated, to identify permissions that
+     *     require a wider scope.</li>
+     *   <li><b>Deploy</b> — Switch to the production SecurityManager using
+     *     {@code -Djava.security.manager=default} and supply the reviewed policy
+     *     with {@code -Djava.security.policy==path/security.policy}.</li>
+     * </ol>
+     *
+     * <p><b>Configuration properties for {@code polpAudit}:</b>
+     * <ul>
+     *   <li>{@code polpAudit.path.properties} — path to a {@code .properties} file
+     *     whose key/value pairs are loaded as system properties before auditing begins.
+     *     Use this to supply path-variable substitutions that make the generated
+     *     policy portable.</li>
+     *   <li>{@code java.security.policy} — the file path where the generated policy
+     *     will be written on JVM shutdown.</li>
+     *   <li>{@code javax.net.ssl.trustStore} — TLS trust store path (required if the
+     *     application uses SSL/TLS).</li>
+     *   <li>{@code javax.net.ssl.trustStoreType} — trust store type (e.g.,
+     *     {@code JKS} or {@code PKCS12}).</li>
+     *   <li>{@code javax.net.ssl.trustStorePassword} — trust store password.</li>
+     * </ul>
+     *
+     * <p>For a complete description of the four-phase deployment pattern and
+     * example command-line options see the project
+     * <a href="https://github.com/pfirmstone/DirtyChai/blob/trunk/README.md">README</a>.
+     *
      * @implNote In the JDK implementation, if the Java virtual machine is
      * started with the system property {@code java.security.manager} not set or set to
      * the special token "{@code disallow}" then the {@code setSecurityManager}
