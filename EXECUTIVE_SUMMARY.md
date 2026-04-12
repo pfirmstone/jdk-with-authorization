@@ -18,9 +18,9 @@ Additionally, the "trusted" Java platform grew too large and monolithic to audit
 - **Third-party library exploits** (Log4j, JNDI, Spring vulnerabilities expose all application data and resources)
 
 **The Solution:**
-Dirty Chai restores and modernizes Java's authorization system—essentially creating a "permission system" that acts like a security checkpoint for code. Think of it like:
+Dirty Chai restores and modernizes Java's authorization system—essentially creating a "permission system" that acts like a security checkpoint for principals and code. Think of it like:
 - **Firewalls for code:** Control exactly what each piece of code can access
-- **Least privilege enforcement:** Code only gets the minimum permissions it needs
+- **Least privilege enforcement:** Code and principals are only granted minimum permissions required.
 - **Audit trail:** Track and verify what third-party code is trying to do before deployment
 
 ## Why This Time Is Different
@@ -39,7 +39,7 @@ In short: Dirty Chai restores a proven enterprise security architecture with 25 
 **Real Attacks Now Prevented:**
 
 - 🛡️ **Deserialization gadgets:** Restrict what classes can be deserialized, blocking gadget chain exploits even when attackers find new gadgets
-- 🛡️ **Untrusted code:** Plugins or dynamically loaded code run in a confined sandbox with only the permissions they need
+- 🛡️ **Untrusted code:** Plugins or dynamically loaded trusted code run in a confined sandbox with only the permissions they need, untrusted code is prevented from loading.
 - 🛡️ **Supply chain attacks:** Third-party library compromise is contained to its granted permissions
 - 🛡️ **Zero-day exploits:** Even unknown vulnerabilities can't reach unauthorized resources
 
