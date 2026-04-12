@@ -1,5 +1,5 @@
 
-# Stack Validation Trade-off Analysis
+# System::setSecurityManager Stack Validation Trade-off Analysis
 
 **Date:** April 9, 2026  
 **Issue:** `validateCallerStackWithStackWalker()` - Defense-in-Depth vs. Practical Usability  
