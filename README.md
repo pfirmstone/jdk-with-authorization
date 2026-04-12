@@ -229,6 +229,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for contribution guidelines. Issues are t
 | Follow and review upstream OpenJDK changes | Ongoing |
 | Maintain Authorization and Authentication APIs | Ongoing |
 | Research improvements to Authorization and Authentication APIs | Ongoing |
+| Remove native ProtectionDomainCache | ✔ Done |
 
 > **Non-goal**: Sandboxing untrusted code. Dirty Chai focuses on user authorization — ensuring users have access only when using approved, policy-controlled code — and provides tooling to audit and limit the privileges requested by third-party code prior to deployment. Developers needing untrusted code sandboxing should consider Graal process isolation.
 
