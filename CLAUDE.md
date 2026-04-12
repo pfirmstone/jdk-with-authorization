@@ -22,12 +22,12 @@
 
 | File | Action | Why |
 |------|--------|-----|
-| `System.java` | ⚠️ PR + Review required | CRITICAL: SecurityManager installation |
-| `AccessController.java` | ⚠️ PR + Review required | CRITICAL: Privilege execution |
-| `CombinerSecurityManager.java` | ✅ Modify with care | HIGH: Uses trusted whitelist |
-| `ConcurrentPolicyFile.java` | ✅ Modify with care | HIGH: Policy enforcement |
-| `Uri.java` | ✅ Modify with care | HIGH: RFC 3986 validation |
-| `*Permission.java` (guards/) | ✅ Safe to extend | New permissions follow template |
+| `System.java` | ❌ Do not modify | CRITICAL: SecurityManager installation |
+| `AccessController.java` | ❌ Do not modify | CRITICAL: Privilege execution |
+| `CombinerSecurityManager.java` | ❌ Do not modify | HIGH: Uses trusted whitelist |
+| `ConcurrentPolicyFile.java` | ❌ Do not modify | HIGH: Policy enforcement |
+| `Uri.java` | ❌ Do not modify | HIGH: RFC 3986 validation |
+| `*Permission.java` (guards/) | ❌ Do not modify | New permissions follow template |
 | `CLAUDE.md` | ✅ Safe to update | Documentation only |
 | `.editorconfig` | ❌ Do not modify | Format standard — do not change |
 
@@ -101,7 +101,7 @@ An AI agent **MUST stop and ask a human** when:
 ### Operating Mode for This Repository
 
 - **Default mode:** Conservative. When in doubt, ask.
-- **PR auto-creation:** Only for documentation, tests, and new Permission classes following the template.
+- **PR auto-creation:** Only for documentation.
 - **Scope discipline:** Make the smallest change that fully satisfies the request. Do not "improve" adjacent code unless asked.
 - **Security-first:** If a change improves performance but weakens security, reject it and explain why.
 

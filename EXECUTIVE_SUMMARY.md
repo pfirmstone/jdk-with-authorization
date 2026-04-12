@@ -5,7 +5,7 @@
 
 **The Problem:**
 
-Java once had the solution: In Java 1.2, Sun Microsystems' security team—Li Gong, Gary Ellison, and Mary Dageforde—rearchitected Java's SecurityManager specifically for enterprise servers, not just applets. With input from IBM, this system enforced the **principle of least privilege** (documented by Li Gong in *Inside Java 2 Platform Security*, ISBN 0201787911), preventing malicious or compromised code from accessing unauthorized resources (files, network, databases, serialization gadgets, etc.).
+Java once had the solution: In Java 1.2, Sun Microsystems' security team—Li Gong, Gary Ellison, and Mary Dageforde—rearchitected Java's SecurityManager specifically for enterprise servers, not just applets. With input from IBM, this system could enforce the **principle of least privilege** (documented by Li Gong in *Inside Java 2 Platform Security*, ISBN 0201787911), preventing malicious or compromised code from accessing unauthorized resources (files, network, databases, etc.).
 
 However, SecurityManager was **deprecated in Java 17** and removed—not because the security model was flawed, but due to three operational challenges:
 
@@ -14,14 +14,13 @@ However, SecurityManager was **deprecated in Java 17** and removed—not because
 3. **Tooling gap:** No automated way to generate least-privilege policies, forcing manual, error-prone configuration
 
 Additionally, the "trusted" Java platform grew too large and monolithic to audit or minimize, making it a larger attack surface. Without SecurityManager, modern Java has no built-in defense against:
-- **Deserialization gadget chain attacks** (attackers exploit Java object deserialization to execute arbitrary code with full application privileges)
 - **Untrusted code loading** (plugins, scripts, or dynamically loaded classes run completely unconstrained)
 - **Third-party library exploits** (Log4j, JNDI, Spring vulnerabilities expose all application data and resources)
 
 **The Solution:**
-Dirty Chai restores and modernizes Java's authorization system—essentially creating a "permission system" that acts like a security checkpoint for code. Think of it like:
+Dirty Chai restores and modernizes Java's authorization system—essentially creating a "permission system" that acts like a security checkpoint for principals and code. Think of it like:
 - **Firewalls for code:** Control exactly what each piece of code can access
-- **Least privilege enforcement:** Code only gets the minimum permissions it needs
+- **Least privilege enforcement:** Code and principals are only granted minimum permissions required.
 - **Audit trail:** Track and verify what third-party code is trying to do before deployment
 
 ## Why This Time Is Different
@@ -40,7 +39,7 @@ In short: Dirty Chai restores a proven enterprise security architecture with 25 
 **Real Attacks Now Prevented:**
 
 - 🛡️ **Deserialization gadgets:** Restrict what classes can be deserialized, blocking gadget chain exploits even when attackers find new gadgets
-- 🛡️ **Untrusted code:** Plugins or dynamically loaded code run in a confined sandbox with only the permissions they need
+- 🛡️ **Untrusted code:** Plugins or dynamically loaded trusted code run in a confined sandbox with only the permissions they need, untrusted code is prevented from loading.
 - 🛡️ **Supply chain attacks:** Third-party library compromise is contained to its granted permissions
 - 🛡️ **Zero-day exploits:** Even unknown vulnerabilities can't reach unauthorized resources
 
