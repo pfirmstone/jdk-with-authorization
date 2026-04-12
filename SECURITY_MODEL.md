@@ -37,11 +37,11 @@
 
 ## Executive Summary
 
-> **In plain English:** While the standard JDK SecurityManager can enforce policy-based access control, it does not validate an authenticated user (`Subject`) context before code is loaded. Dirty Chai provides the infrastructure for optional principal-authenticated class loading—administrators can configure policy grants to require a verified Subject context (blocking unauthenticated code at the class-loading gate), or allow unauthenticated code by granting permissions without principal requirements. The policy file determines how strictly authentication is enforced.
+> **In plain English:** While the standard JDK SecurityManager can enforce policy-based access control, it does not prevent loading of untrusted code. Dirty Chai provides the infrastructure for optional principal-authenticated and code signer verified class loading, to ensure only trusted code is loaded by the VM. The policy file determines how strictly authentication is enforced.
 
 **Dirty Chai** is a comprehensive authorization framework for OpenJDK that implements a **multi-layered security architecture** enforcing the **Principle of Least Privilege (PoLP)** through:
 
-- **Optional Principal-Authenticated Code Loading:** Infrastructure enabling policy-configured Subject context requirements; policy grants with principals enforce authentication, grants without principals allow unauthenticated code
+- **Optional Principal-Authenticated Signed Code Loading:** Infrastructure enabling policy-configured Subject context and CodeSigner requirements;
 - **Transitive Dependency Lockdown:** Each dependency independently validated; no trust transfer
 - **Platform Module Authorization:** Even standard OpenJDK modules require explicit policy grants
 - **Virtual Thread Integration:** ScopedValue preserves security context; AccessControlContext inherited immutably; PrivilegedActions fully supported
@@ -71,7 +71,7 @@
 
 ### What is Dirty Chai?
 
-**Dirty Chai** enhances OpenJDK with rigorous code validation and principal-authenticated class loading, ensuring that every piece of code (whether "clean" from trusted sources or "dirty" from untrusted origins) undergoes comprehensive security validation.
+**Dirty Chai** enhances OpenJDK with rigorous code validation and principal-authenticated CodeSigner class loading, ensuring that every piece of code (whether "clean" from trusted sources or "dirty" from untrusted origins) undergoes comprehensive security validation.
 
 ### Design Philosophy
 
