@@ -2,9 +2,9 @@
 
 ## Overview
 
-This document provides guidance for AI assistants (Claude) working on the JDK with Authorization project. It documents the project structure, security model, coding standards, and best practices.
+This document provides guidance for AI assistants (Claude) working on the Dirty Chai project. It documents the project structure, security model, coding standards, and best practices.
 
-**Project:** JDK with Authorization  
+**Project:** Dirty Chai  
 **Repository:** https://github.com/pfirmstone/jdk-with-authorization  
 **Upstream:** https://github.com/openjdk/jdk  
 **Branch:** trunk
