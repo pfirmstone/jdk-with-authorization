@@ -1,13 +1,214 @@
 # Claude Development Guide
 
+---
+
+## 🤖 AI Quick Reference Card
+
+> **Read this first.** This card summarizes everything an AI agent needs to operate correctly on this project. Full details are in the sections below.
+
+### Top Constraints (Highest Priority First)
+
+| Priority | Constraint | Violation Consequence |
+|----------|-----------|----------------------|
+| P1 | Never add a class to `trustedSMClass()` without explicit human approval | Security bypass — privilege escalation |
+| P2 | Never weaken or remove an existing security validation layer | Regression in threat model |
+| P3 | Never swallow a security-relevant exception without documentation | Silent security failure |
+| P4 | Always use `equals()` not `instanceof` for trusted class checks | Subclass bypass attack |
+| P5 | Never commit changes to `System.java` or `AccessController.java` without a PR review | Critical file — requires human sign-off |
+| P6 | Always apply fail-secure defaults (deny on error, null on validation failure) | Privilege escalation on error |
+| P7 | Always add `@CallerSensitive` to new privileged APIs | Missing annotation disables caller validation |
+
+### Files: Modify vs. Avoid
+
+| File | Action | Why |
+|------|--------|-----|
+| `System.java` | ⚠️ PR + Review required | CRITICAL: SecurityManager installation |
+| `AccessController.java` | ⚠️ PR + Review required | CRITICAL: Privilege execution |
+| `CombinerSecurityManager.java` | ✅ Modify with care | HIGH: Uses trusted whitelist |
+| `ConcurrentPolicyFile.java` | ✅ Modify with care | HIGH: Policy enforcement |
+| `Uri.java` | ✅ Modify with care | HIGH: RFC 3986 validation |
+| `*Permission.java` (guards/) | ✅ Safe to extend | New permissions follow template |
+| `CLAUDE.md` | ✅ Safe to update | Documentation only |
+| `.editorconfig` | ❌ Do not modify | Format standard — do not change |
+
+### When to Act vs. Ask
+
+| Situation | Action |
+|-----------|--------|
+| User says "improve this file" | Ask: "Quality, security, performance, or AI-agent usability?" |
+| User says "fix this bug" | Ask: "Should I create a PR, or just provide analysis?" |
+| Change is doc-only | Create PR automatically |
+| Change touches `System.java` / `AccessController.java` | Always ask before creating PR |
+| Adding a trusted class | **Stop. Ask for explicit approval first.** |
+| Removing a validation layer | **Stop. Ask for explicit approval first.** |
+| Ambiguous security impact | Ask: "This could affect [X]. Shall I proceed?" |
+
+### Quick Decision: Which Validation Path?
+
+```
+SM being installed?
+├─ YES → trustedSMClass(sm)?
+│        ├─ TRUE (SecurityManager or CombinerSecurityManager)
+│        │   → Null check only. No stack inspection.
+│        └─ FALSE (custom implementation)
+│            → Layer 1 (CallerSensitive) + Layer 2 (StackWalker)
+│            + Layer 3 (ProtectionDomain) + Layer 4 (Generated code check)
+└─ NO → Standard permission check via SecurityManager.checkPermission()
+```
+
+---
+
 ## Overview
 
 This document provides guidance for AI assistants (Claude) working on the Dirty Chai project. It documents the project structure, security model, coding standards, and best practices.
 
 **Project:** Dirty Chai  
-**Repository:** https://github.com/pfirmstone/jdk-with-authorization  
+
+**Repository:** https://github.com/pfirmstone/DirtyChai  
 **Upstream:** https://github.com/openjdk/jdk  
 **Branch:** trunk
+
+---
+
+## AI Agent Operating Parameters
+
+This section defines explicit constraints, decision thresholds, and escalation rules for AI agents working on this project.
+
+### Decision Thresholds
+
+| Change Type | Threshold | Required Action |
+|-------------|-----------|-----------------|
+| Documentation only | Low risk | Proceed and create PR |
+| New `*Permission` class | Medium risk | Follow template; create PR |
+| Modifying existing permission logic | Medium-High risk | Describe change; ask before PR |
+| Modifying `CombinerSecurityManager` | High risk | Summarize security impact; ask before PR |
+| Modifying `ConcurrentPolicyFile` | High risk | Summarize security impact; ask before PR |
+| Modifying `System.java` | Critical | **Always ask. Never auto-create PR.** |
+| Modifying `AccessController.java` | Critical | **Always ask. Never auto-create PR.** |
+| Adding class to `trustedSMClass()` | Critical | **Requires explicit human approval.** |
+
+### Escalation Rules
+
+An AI agent **MUST stop and ask a human** when:
+
+1. The change removes or weakens a validation layer in the security model
+2. A new class would be whitelisted in `trustedSMClass()`
+3. An existing exception handler is being removed or changed to swallow an exception
+4. The intent of the user's request is ambiguous and could affect security
+5. A change would impact the behavior of `doPrivileged()` semantics
+6. Tests would need to be disabled or removed to make something compile/pass
+
+### Operating Mode for This Repository
+
+- **Default mode:** Conservative. When in doubt, ask.
+- **PR auto-creation:** Only for documentation, tests, and new Permission classes following the template.
+- **Scope discipline:** Make the smallest change that fully satisfies the request. Do not "improve" adjacent code unless asked.
+- **Security-first:** If a change improves performance but weakens security, reject it and explain why.
+
+---
+
+## Hard Constraints
+
+These are absolute rules. There are no exceptions unless the user explicitly overrides them with a clear security rationale.
+
+### HC-1: No Untrusted Class in Whitelist
+
+```
+NEVER add a class to trustedSMClass() unless:
+  (a) The class is in the java.base module
+  (b) The class is loaded by the bootstrap classloader
+  (c) A human reviewer has explicitly approved the addition
+```
+
+**Why:** The `trustedSMClass()` whitelist is the primary guard against installing a malicious SecurityManager. A compromised whitelist collapses the entire security model.
+
+### HC-2: No Silent Security Failures
+
+```
+NEVER catch a security-relevant exception and continue execution without:
+  (a) Logging the event, AND
+  (b) Returning null or failing safely, AND
+  (c) Documenting WHY in a comment
+```
+
+**Why:** Silent failures allow privilege escalation. The fail-secure invariant requires that validation failures result in unprivileged state.
+
+### HC-3: equals() Not instanceof()
+
+```
+NEVER use instanceof for trusted class checks.
+ALWAYS use Class.equals() for exact type matching.
+```
+
+**Why:** `instanceof` allows subclasses to pass the check. A malicious class could extend a trusted class to bypass the whitelist.
+
+### HC-4: @CallerSensitive on All Privileged APIs
+
+```
+EVERY new method that involves privilege decisions MUST have @CallerSensitive.
+```
+
+**Why:** Without `@CallerSensitive`, `Reflection.getCallerClass()` returns the wrong frame, defeating caller validation entirely.
+
+### HC-5: Null CodeSource = Unprivileged
+
+```
+NEVER grant permissions to a ProtectionDomain with null CodeSource.
+NEVER modify policy matching to treat null CodeSource as equivalent to a valid source.
+```
+
+**Why:** This invariant guarantees that dynamically generated code (which has no CodeSource) cannot gain privileges.
+
+### HC-6: No Reflection in Security-Critical Paths
+
+```
+NEVER use java.lang.reflect.* to invoke security-critical methods in production code.
+```
+
+**Why:** Reflection is a known attack vector. StackWalker explicitly blocks frames from `java.lang.reflect` in the validation path.
+
+### HC-7: RFC 3986 URI Validation Is Non-Negotiable
+
+```
+ALL CodeSource URLs MUST be validated through RFC 3986 URI parsing.
+NEVER construct a CodeSource URL that bypasses Uri.java validation.
+```
+
+**Why:** Invalid URIs could allow path traversal attacks that match unintended policy grants.
+
+---
+
+## Pre-Implementation Checklist
+
+Before writing any code, an AI agent MUST verify the following:
+
+### Step 1: Understand the Request
+
+- [ ] What is the user actually asking for? (See [Request Interpretation Guide](#request-interpretation-guide))
+- [ ] Does this involve security-critical files? (See [Files: Modify vs. Avoid](#files-modify-vs-avoid))
+- [ ] Does this require human approval before proceeding? (See [Decision Thresholds](#decision-thresholds))
+
+### Step 2: Understand the Current State
+
+- [ ] Have I read the relevant source files? (Don't assume — read them)
+- [ ] Do I understand which validation layers are currently active?
+- [ ] Have I checked `SECURITY_ANALYSIS.md` for threat model context?
+- [ ] Have I identified all callers of the code I'm about to change?
+
+### Step 3: Verify My Planned Change
+
+- [ ] Does my change preserve all Hard Constraints (HC-1 through HC-7)?
+- [ ] Does my change follow the conditional validation strategy?
+- [ ] Does my change maintain the fail-secure invariants?
+- [ ] If removing exception handling: Is the removal documented and safe?
+
+### Step 4: Before Submitting a PR
+
+- [ ] Does new code follow `.editorconfig` formatting (2-space indent for hotspot)?
+- [ ] Does new security-critical code have `@CallerSensitive`?
+- [ ] Does new code have JavaDoc explaining the security model?
+- [ ] Are tests added or updated to cover the changed behavior?
+- [ ] Is `SECURITY_ANALYSIS.md` updated if invariants changed?
 
 ---
 
@@ -405,6 +606,74 @@ try {
 
 ---
 
+## Pattern Recognition Reference
+
+This section provides a structured reference for recognizing and applying the common code patterns in this project. Use these rules to identify which pattern applies before writing code.
+
+### Validation Rules Engine
+
+```
+Rule V-1: SecurityManager Installation
+  TRIGGER:  Any code that calls or modifies setSecurityManager()
+  CHECK:    Is sm an instance of SecurityManager or CombinerSecurityManager (exact class)?
+  IF YES:   Apply TRUSTED path — null check only
+  IF NO:    Apply CUSTOM path — all 4 layers
+  PATTERN:  See "Conditional Validation Pattern" in Common Patterns
+
+Rule V-2: Privileged Action Execution
+  TRIGGER:  Any code using doPrivileged() or doPrivilegedWithCombiner()
+  CHECK:    Does the call have a valid AccessControlContext?
+  IF YES:   Proceed with context-limited execution
+  IF NO:    Call getStackAccessControlContext() to build context
+  PATTERN:  See "Caller Sensitive Method Pattern" in Common Patterns
+
+Rule V-3: Permission Implication
+  TRIGGER:  Implementing or modifying implies() in a Permission class
+  CHECK:    Is p the same type as this? (instanceof check is OK here)
+  IF NO:    Return false immediately
+  IF YES:   Check scope/name/actions — more general implies more specific
+  PATTERN:  See "Permission Checking Pattern" in Common Patterns
+
+Rule V-4: CodeSource Construction
+  TRIGGER:  Any code building a CodeSource from a URL string
+  CHECK:    Is the URL validated through new URI(str).toURL()?
+  IF NO:    Add URI validation before constructing CodeSource
+  ON ERROR: Return null (fail-secure), never throw to caller
+  PATTERN:  See "Fail-Secure Resource Pattern" in Common Patterns
+
+Rule V-5: Exception Handling in Security Code
+  TRIGGER:  Any catch block inside a security-critical method
+  CHECK:    Does this catch silently continue execution?
+  IF YES:   Add fail-secure return (null or throw SecurityException)
+  IF NO:    Ensure the catch is documented with security rationale
+  PATTERN:  See "Exception Handling" in Coding Standards
+```
+
+### Pattern Identification Table
+
+| Code Pattern Seen | Likely Intent | Template to Follow |
+|-------------------|---------------|--------------------|
+| `trustedSMClass(sm)` | Conditional SM validation | Conditional Validation Pattern |
+| `Reflection.getCallerClass()` | Caller identity check | Caller Sensitive Method Pattern |
+| `StackWalker.walk(...)` | Stack inspection for generated code | See System.java implementation |
+| `pd.getCodeSource() == null` | Fail-secure CodeSource check | Fail-Secure Resource Pattern |
+| `new URI(str).toURL()` | RFC 3986 URL validation | Exception Pattern in Coding Standards |
+| `p instanceof YourPermission` | Permission type guard | Permission Checking Pattern |
+| `@CallerSensitive` | Privileged API marker | Caller Sensitive Method Pattern |
+| `doPrivileged(action, context)` | Context-limited privilege | Privileged Action Execution (V-2) |
+
+### Recognizing Attack Vectors
+
+| Stack Frame Contains | What It Means | Action |
+|---------------------|---------------|--------|
+| `java.lang.reflect.Method.invoke` | Reflection attack | Throw SecurityException |
+| `$$Lambda$` or `$Proxy` | Generated code injection | Throw SecurityException |
+| `sun.reflect.GeneratedMethodAccessor` | Synthetic accessor | Throw SecurityException |
+| `null` ProtectionDomain | Bootstrap or synthetic class | Treat as unprivileged |
+| `null` CodeSource | Dynamically generated class | Treat as unprivileged |
+
+---
+
 ## Common Tasks
 
 ### Working with the Conditional Strategy
@@ -673,6 +942,214 @@ public boolean implies(Permission p) {
 
 ---
 
+## Code Search Hints
+
+Use these search queries to locate relevant code quickly. All paths are relative to the repository root.
+
+### Finding Security-Critical Entry Points
+
+| What to Find | Search Query | File Location |
+|--------------|-------------|---------------|
+| SM installation logic | `trustedSMClass` | `src/java.base/share/classes/java/lang/System.java` |
+| Caller validation | `getCallerClass` | `System.java`, `AccessController.java` |
+| Stack inspection | `StackWalker` | `System.java` |
+| Policy grant matching | `getPermissions` | `ConcurrentPolicyFile.java` |
+| Permission check entry | `checkPermission` | `SecurityManager.java` |
+| URI validation | `new URI(` | `ConcurrentPolicyFile.java`, `Uri.java` |
+| Privilege escalation point | `doPrivileged` | `AccessController.java` |
+| Generated code detection | `Lambda\$\|Proxy\$` | `System.java` StackWalker filter |
+
+### Common ripgrep Commands
+
+```bash
+# Find all @CallerSensitive methods
+rg "@CallerSensitive" src/java.base/share/classes/
+
+# Find all trustedSMClass references
+rg "trustedSMClass" src/java.base/share/classes/java/lang/
+
+# Find all doPrivileged call sites
+rg "doPrivileged" src/java.base/share/classes/
+
+# Find all Permission subclasses in the project
+rg "extends Permission" src/java.base/share/classes/au/
+
+# Find all CodeSource constructions
+rg "new CodeSource" src/java.base/share/classes/
+
+# Find all StackWalker usages
+rg "StackWalker" src/java.base/share/classes/
+
+# Find all RFC 3986 URI constructions
+rg "new URI\(" src/java.base/share/classes/au/
+
+# Find all null CodeSource checks
+rg "getCodeSource\(\)" src/java.base/share/classes/
+```
+
+### Key Class Locations
+
+```
+System.java:           src/java.base/share/classes/java/lang/System.java
+SecurityManager.java:  src/java.base/share/classes/java/lang/SecurityManager.java
+AccessController.java: src/java.base/share/classes/java/security/AccessController.java
+CombinerSM.java:       src/java.base/share/classes/au/zeus/jdk/authorization/sm/CombinerSecurityManager.java
+ConcurrentPolicyFile:  src/java.base/share/classes/au/zeus/jdk/authorization/policy/ConcurrentPolicyFile.java
+Uri.java:              src/java.base/share/classes/au/zeus/jdk/net/Uri.java
+Guards (permissions):  src/java.base/share/classes/au/zeus/jdk/authorization/guards/
+```
+
+### Navigating the Test Suite
+
+```bash
+# Find security tests
+find test/ -name "*.java" | xargs grep -l "SecurityManager\|AccessController" 2>/dev/null
+
+# Find CombinerSecurityManager tests
+rg "CombinerSecurityManager" test/
+
+# Find tests for trustedSMClass behavior
+rg "setSecurityManager\|trustedSMClass" test/
+```
+
+---
+
+## Failure Modes and Prevention
+
+This section documents mistakes AI agents commonly make on this project, why they are problems, and how to verify they were not made.
+
+### FM-1: Weakening Trusted Class Check with `instanceof`
+
+**Mistake:** Using `instanceof` instead of `equals()` for trusted class validation.
+
+```java
+// WRONG — subclass bypass possible
+if (sm instanceof SecurityManager) return true;
+
+// CORRECT — exact type match required
+if (SecurityManager.class.equals(sm.getClass())) return true;
+```
+
+**Why it's a problem:** A custom class `class EvilSM extends SecurityManager` would pass the `instanceof` check but not the `equals()` check. This allows bypassing the full validation path.
+
+**Verification:** After any change to `trustedSMClass()`, confirm all checks use `.equals()` and none use `instanceof`.
+
+---
+
+### FM-2: Forgetting `@CallerSensitive` on New Privileged Method
+
+**Mistake:** Adding a new security-critical method without `@CallerSensitive`.
+
+```java
+// WRONG — missing annotation
+public static void setSecurityManager(SecurityManager sm) { ... }
+
+// CORRECT
+@CallerSensitive
+public static void setSecurityManager(SecurityManager sm) { ... }
+```
+
+**Why it's a problem:** Without `@CallerSensitive`, `Reflection.getCallerClass()` returns the JDK infrastructure frame instead of the actual caller, making all caller validation meaningless.
+
+**Verification:** Run `rg "@CallerSensitive" -A1` to confirm every privileged method has the annotation on the line before it.
+
+---
+
+### FM-3: Swallowing Security Exceptions
+
+**Mistake:** Catching an exception and continuing execution as if validation passed.
+
+```java
+// WRONG — continues after validation failure
+try {
+  validate(caller);
+} catch (SecurityException e) {
+  // ignore
+}
+doPrivilegedThing(); // executes even when validation failed
+
+// CORRECT — fail-secure
+try {
+  validate(caller);
+} catch (SecurityException e) {
+  return null; // or re-throw
+}
+doPrivilegedThing();
+```
+
+**Why it's a problem:** Any exception that escapes validation could be the result of an attack. Silently continuing grants privilege to an untrusted caller.
+
+**Verification:** Search all catch blocks in modified files for empty or log-only handlers near security checks.
+
+---
+
+### FM-4: Constructing CodeSource Without URI Validation
+
+**Mistake:** Building a `CodeSource` URL from a string without going through `URI` parsing.
+
+```java
+// WRONG — no RFC 3986 validation
+URL url = new URL(someString);
+return new CodeSource(url, certs);
+
+// CORRECT — validated URI
+try {
+  URL url = new URI(someString).toURL();
+  return new CodeSource(url, certs);
+} catch (MalformedURLException | URISyntaxException e) {
+  return null; // fail-secure
+}
+```
+
+**Why it's a problem:** Unvalidated URLs can contain path traversal sequences that cause a policy grant to match unintended code.
+
+**Verification:** Run `rg "new CodeSource" src/` and confirm every construction uses a `URI`-validated URL or comes from a trusted source.
+
+---
+
+### FM-5: Adding Validation Only at One Call Site
+
+**Mistake:** Adding a security check to one caller of a method but not all callers.
+
+**Why it's a problem:** Attackers exploit the unguarded path. Security checks must be at the method boundary, not just one call site.
+
+**Verification:** Use `rg "methodName"` to find all call sites of any security-relevant method you modify. Check that the method itself enforces the constraint, not just individual callers.
+
+---
+
+### FM-6: Over-Scoping Changes
+
+**Mistake:** Refactoring adjacent code while implementing a security fix, introducing unintended behavior changes.
+
+**Why it's a problem:** In security-critical code, any change to behavior — even "cleanup" — could introduce subtle vulnerabilities. The change surface should be minimal.
+
+**Verification:** Review git diff before committing. Every changed line should be directly related to the stated goal.
+
+---
+
+### FM-7: Missing Test for the Blocked Case
+
+**Mistake:** Adding a test that verifies the allowed case but not the denied case.
+
+```java
+// INCOMPLETE — only tests the success path
+@Test
+public void testTrustedSmInstalls() { ... }
+
+// COMPLETE — also tests the blocked path
+@Test
+public void testCustomSmViaReflectionBlocked() {
+  Method m = System.class.getMethod("setSecurityManager", SecurityManager.class);
+  assertThrows(SecurityException.class, () -> m.invoke(null, new CustomSM()));
+}
+```
+
+**Why it's a problem:** Security tests must verify that attacks are blocked, not just that legitimate use works.
+
+**Verification:** For every security feature, confirm there is at least one test that verifies rejection of an invalid input.
+
+---
+
 ## Debugging & Troubleshooting
 
 ### Enable Security Debugging
@@ -780,6 +1257,97 @@ Result: SecurityException - Reflection detected
 
 ---
 
+## PR Creation Boundaries
+
+This section defines when an AI agent should create a PR automatically vs. when it must ask for approval first.
+
+### Automatic PR Creation Allowed
+
+An AI agent may create a PR without asking when ALL of the following are true:
+
+- [ ] The change is documentation only (`.md` files, JavaDoc comments), OR
+- [ ] The change adds a new `*Permission` class following the existing template exactly, OR
+- [ ] The change adds or modifies tests without touching production security code
+- [ ] The change does not touch `System.java`, `AccessController.java`, or `trustedSMClass()`
+- [ ] The change does not add any class to the trusted whitelist
+- [ ] The change does not remove or weaken any validation layer
+
+### Must Ask Before Creating PR
+
+An AI agent MUST ask the user for approval before creating a PR when ANY of the following are true:
+
+| Condition | Why |
+|-----------|-----|
+| Modifying `System.java` | Critical file — security regression risk |
+| Modifying `AccessController.java` | Critical file — privilege execution |
+| Adding to `trustedSMClass()` | Hard Constraint HC-1 — explicit approval required |
+| Removing a catch block in security code | Potential security exception swallowing |
+| Changing exception handling behavior | Could violate fail-secure invariant |
+| Refactoring security-critical logic | Behavior change risk even if "equivalent" |
+| User request is ambiguous about scope | Better to clarify than over-commit |
+
+### PR Description Requirements
+
+Every PR created by an AI agent must include:
+
+1. **What changed**: Specific files and methods modified
+2. **Why it's safe**: Which Hard Constraints were verified (HC-1 through HC-7)
+3. **Security impact**: None / Low / Medium / High — with explanation
+4. **Test coverage**: Which new or existing tests cover the change
+5. **Checklist**: Pre-Implementation Checklist items confirmed
+
+---
+
+## Request Interpretation Guide
+
+This section helps AI agents interpret common user requests correctly, avoiding over- or under-scoping.
+
+### Common Requests and Their Intended Scope
+
+| User Says | Likely Means | What NOT to Do |
+|-----------|-------------|----------------|
+| "Improve this file" | Clarify: quality? security? AI-usability? | Do not infer and restructure without asking |
+| "Fix this bug" | Clarify: PR or just analysis? | Do not auto-create PR without asking |
+| "Add a permission for X" | Follow the permission template | Do not modify policy loading logic |
+| "Make this more secure" | Clarify which threat they're addressing | Do not add layers that break existing behavior |
+| "Clean up this code" | Minor formatting / readability only | Do not change method signatures or exception handling |
+| "Update the docs" | Docs changes only | Do not change source code |
+| "Refactor this" | **Always ask first in security-critical files** | Never assume "equivalent" refactoring is safe |
+| "Add a test for X" | Test files only | Do not modify production code to make tests pass |
+
+### Clarifying Questions to Ask
+
+When in doubt, ask one or more of these:
+
+1. "Should I create a PR, or would you prefer I provide an analysis first?"
+2. "This touches `[critical file]`. Do you want me to proceed with a PR, or review the change first?"
+3. "When you say 'improve', do you mean: (a) security, (b) performance, (c) readability, or (d) AI-agent usability?"
+4. "This change would affect `trustedSMClass()`. It requires explicit approval — shall I proceed?"
+5. "I found [N] related places that have the same pattern. Should I fix all of them, or just the one you mentioned?"
+
+### Request Scope Boundaries
+
+**Documentation requests** (scope: `.md` files only)
+- Do not change Java source code
+- Do not change policy files
+- Do not change tests
+
+**Bug fix requests** (scope: narrowest possible change)
+- Fix the specific defect described
+- Do not refactor surrounding code
+- Do not add new features while fixing the bug
+
+**Feature requests** (scope: new code, not existing)
+- Add new `*Permission` class, new test, or new documentation
+- Do not modify existing security logic to accommodate the feature
+
+**Security hardening requests** (scope: always clarify)
+- Understand the specific threat being addressed
+- Confirm which validation layer is being strengthened
+- Verify no existing behavior is broken
+
+---
+
 ## References & Resources
 
 ### Project Documentation
@@ -832,15 +1400,13 @@ Modifying setSecurityManager()?
 
 | Version | Date | Changes |
 |---------|------|---------|
+| 1.3 | 2026-04-12 | Added AI agent sections: Quick Reference Card, Operating Parameters, Hard Constraints, Pre-Implementation Checklist, Pattern Recognition Reference, Code Search Hints, Failure Modes and Prevention, PR Creation Boundaries, Request Interpretation Guide |
 | 1.2 | 2026-04-10 | Fixed Authorization Framework Architecture diagram - moved setSecurityManager() to System.java, checkPermission() to SecurityManager.java |
 | 1.1 | 2026-04-09 | Added conditional validation strategy documentation |
 | 1.0 | 2026-04-09 | Initial Claude development guide |
 
 ---
 
-**Last Updated:** April 10, 2026  
+**Last Updated:** April 12, 2026  
 **Maintained By:** Project Security Team  
 **Status:** Active
-
-
-The document has been cleaned up with proper formatting, fixed hierarchy, and updated version history to reflect the correction.
