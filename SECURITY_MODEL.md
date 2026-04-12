@@ -1,42 +1,45 @@
-I'll apply the comprehensive update to the SECURITY_MODEL.md document to include the Subject context management section and clarify that `Subject.callAs()` always delegates to `Subject.doAs()` in the Authorization system.
+I'll create an updated version of `SECURITY_MODEL.md` with "Dirty Chai - OpenJDK Authorization" branding throughout.
 
 ```markdown
-# JDK Authorization Security Model: Comprehensive Architecture
+# Dirty Chai - OpenJDK Authorization Security Model: Comprehensive Architecture
 
-**Version:** 1.3  
+**Version:** 1.4  
 **Date:** 2025  
-**Project:** JDK with Authorization  
-**Repository:** https://github.com/pfirmstone/jdk-with-authorization
+**Project:** Dirty Chai - OpenJDK with Authorization  
+**Repository:** https://github.com/pfirmstone/dirty-chai  
+**Base:** https://github.com/openjdk/jdk (trunk)  
+**License:** GPL v2 + Classpath Exception
 
 ---
 
 ## Table of Contents
 
 1. [Executive Summary](#executive-summary)
-2. [Core Security Architecture](#core-security-architecture)
-3. [Design Patterns](#design-patterns)
-4. [Authentication & Authorization Framework](#authentication--authorization-framework)
-5. [SecureClassLoader Enhancement](#secureclassloader-enhancement)
-6. [Virtual Thread Support](#virtual-thread-support)
-7. [Subject Context Management](#subject-context-management)
-8. [AccessController Integration](#accesscontroller-integration)
-9. [Backward Compatibility](#backward-compatibility)
-10. [Threat Model & Prevention](#threat-model--prevention)
-11. [Configuration & Deployment](#configuration--deployment)
-12. [Security Properties](#security-properties)
-13. [Implementation Guidelines](#implementation-guidelines)
+2. [Project Overview](#project-overview)
+3. [Core Security Architecture](#core-security-architecture)
+4. [Design Patterns](#design-patterns)
+5. [Authentication & Authorization Framework](#authentication--authorization-framework)
+6. [SecureClassLoader Enhancement](#secureclassloader-enhancement)
+7. [Virtual Thread Support](#virtual-thread-support)
+8. [Subject Context Management](#subject-context-management)
+9. [AccessController Integration](#accesscontroller-integration)
+10. [Backward Compatibility](#backward-compatibility)
+11. [Threat Model & Prevention](#threat-model--prevention)
+12. [Configuration & Deployment](#configuration--deployment)
+13. [Security Properties](#security-properties)
+14. [Implementation Guidelines](#implementation-guidelines)
 
 ---
 
 ## Executive Summary
 
-The JDK Authorization system implements a **comprehensive, multi-layered security architecture** enforcing the **Principle of Least Privilege (PoLP)** through:
+**Dirty Chai** is a comprehensive authorization framework for OpenJDK that implements a **multi-layered security architecture** enforcing the **Principle of Least Privilege (PoLP)** through:
 
 - **Principal-Authenticated Code Loading:** Code can only load within authenticated Subject contexts
 - **Transitive Dependency Lockdown:** Each dependency independently validated; no trust transfer
-- **Platform Module Authorization:** Even standard Java modules require explicit policy grants
+- **Platform Module Authorization:** Even standard OpenJDK modules require explicit policy grants
 - **Virtual Thread Integration:** ScopedValue preserves security context; AccessControlContext inherited immutably; PrivilegedActions fully supported
-- **Unified Subject Context:** Subject.callAs() always delegates to Subject.doAs() in Authorization system (allowSecurityManager = true)
+- **Unified Subject Context:** Subject.callAs() always delegates to Subject.doAs() in Dirty Chai system (allowSecurityManager = true)
 - **AccessController Stack Walk:** Native stack walking compatible with virtual threads
 - **Backward Compatible APIs:** Subject.doAs() and legacy security APIs fully operational
 - **Fail-Secure Design:** All validation failures result in SecurityException; no silent bypasses
@@ -58,6 +61,44 @@ The JDK Authorization system implements a **comprehensive, multi-layered securit
 
 ---
 
+## Project Overview
+
+### What is Dirty Chai?
+
+**Dirty Chai** enhances OpenJDK with rigorous code validation and principal-authenticated class loading, ensuring that every piece of code (whether "clean" from trusted sources or "dirty" from untrusted origins) undergoes comprehensive security validation.
+
+### Design Philosophy
+
+```
+"Rigorous validation for every drop of code"
+```
+
+Like steeping tea (chai), security flows through multiple layers:
+1. **Initial Validation** - CodeSource integrity checks
+2. **Authentication Layer** - Subject context verification
+3. **Authorization Layer** - Permission policy evaluation
+4. **Protection Layer** - Domain creation with principals
+5. **Cache Integrity** - Principal-based validation on reuse
+
+### Why OpenJDK?
+
+- ✅ Open source (GPL v2 + Classpath Exception)
+- ✅ No TCK restrictions - full modification rights
+- ✅ Active upstream community
+- ✅ Virtual thread support (Project Loom)
+- ✅ ScopedValue integration
+- ✅ Perfect foundation for authorization enhancements
+
+### Use Cases
+
+- **Multi-tenant platforms** - Enforce per-tenant code isolation
+- **Microservices** - Principal-based service-to-service authentication
+- **Plugin systems** - Validate plugins before execution
+- **Compliance-heavy environments** - Audit trails and permission enforcement
+- **Virtual thread workloads** - Security context propagation across 1M+ concurrent tasks
+
+---
+
 ## Core Security Architecture
 
 ### 1. Security Validation Layers (with Subject Integration)
@@ -66,15 +107,15 @@ The JDK Authorization system implements a **comprehensive, multi-layered securit
 ┌─────────────────────────────────────────────────────────────┐
 │ APPLICATION CODE ATTEMPT                                    │
 │ Subject.callAs(subject, () -> {                             │
-│    classLoader.defineClass(name, bytes, codeSource)        │
-│ })                                                           │
+│    classLoader.defineClass(name, bytes, codeSource)         │
+│ })                                                          │
 └────────────────┬────────────────────────────────────────────┘
                  │
                  ▼
 ┌─────────────────────────────────────────────────────────────┐
 │ SUBJECT CONTEXT ACTIVATION                                  │
-│ • callAs() detected                                          │
-│ • allowSecurityManager() → TRUE ✅ (Authorization system)   │
+│ • callAs() detected                                         │
+│ • allowSecurityManager() → TRUE ✅ (Dirty Chai system)      │
 │ • Delegates to doAs()                                       │
 │ • Creates AccessControlContext with SubjectDomainCombiner   │
 │ • Subject.current() will return subject                     │
@@ -152,7 +193,7 @@ TRUSTED EXECUTION CONTEXT
 │ • Cannot load: Untrusted dependencies                │
 └──────────────────────────────────────────────────────┘
                     ↑
-          SECURECLASSLOADER GATES
+        DIRTY CHAI SECURECLASSLOADER GATES
                     ↓
 ┌──────────────────────────────────────────────────────┐
 │ OUTSIDE: Untrusted Code (BLOCKED)                    │
@@ -176,7 +217,7 @@ TRUSTED EXECUTION CONTEXT
 
 **Implementation:** `SecureClassLoader extends ClassLoader`
 
-**Purpose:** Add security capabilities to base `ClassLoader` without modifying core class loading behavior
+**Purpose:** Add security capabilities to OpenJDK's base `ClassLoader` without modifying core class loading behavior
 
 **Benefits:**
 - Security concerns isolated from core functionality
@@ -863,7 +904,7 @@ ScopedValue.where(SUBJECT_CONTEXT, subject)
 
 ### 1. Subject.callAs() vs Subject.doAs() Relationship
 
-**Critical Design Point:** In the JDK Authorization system, `Subject.callAs()` **always delegates to `Subject.doAs()`** because `allowSecurityManager()` will **always return true**.
+**Critical Design Point:** In the Dirty Chai Authorization system, `Subject.callAs()` **always delegates to `Subject.doAs()`** because `allowSecurityManager()` will **always return true**.
 
 #### **Architecture Decision**
 
@@ -873,10 +914,10 @@ public static <T> T callAs(final Subject subject,
         final Callable<T> action) throws CompletionException {
     Objects.requireNonNull(action);
     
-    // In Authorization system: allowSecurityManager() is ALWAYS true
+    // In Dirty Chai system: allowSecurityManager() is ALWAYS true
     // because CombinerSecurityManager or custom SecurityManager is installed
     if (!SharedSecrets.getJavaLangAccess().allowSecurityManager()) {
-        // This path is NOT taken in Authorization context
+        // This path is NOT taken in Dirty Chai context
         // ScopedValue-based path for no-SecurityManager environments
         try {
             return ScopedValue.where(SCOPED_SUBJECT, subject).call(action::call);
@@ -884,7 +925,7 @@ public static <T> T callAs(final Subject subject,
             throw new CompletionException(e);
         }
     } else {
-        // ✅ THIS PATH ALWAYS TAKEN in Authorization system
+        // ✅ THIS PATH ALWAYS TAKEN in Dirty Chai system
         // SecurityManager is installed → use doAs()
         try {
             PrivilegedExceptionAction<T> pa = () -> action.call();
@@ -902,12 +943,12 @@ public static <T> T callAs(final Subject subject,
 
 **Why This Matters:**
 
-| Condition | Path Taken | Context | Authorization System |
-|-----------|-----------|---------|----------------------|
+| Condition | Path Taken | Context | Dirty Chai System |
+|-----------|-----------|---------|------------------|
 | **No SecurityManager** | ScopedValue path | Virtual thread context isolation | ❌ NOT applicable |
 | **SecurityManager Installed** | doAs() path | AccessControlContext + DomainCombiner | ✅ ALWAYS used |
 
-#### **Authorization System Guarantee**
+#### **Dirty Chai System Guarantee**
 
 ```
 JVM Startup:
@@ -928,12 +969,12 @@ Runtime:
   └─ ✅ Unified access control model
 ```
 
-### 2. doAs() Execution Flow (Always Used in Authorization)
+### 2. doAs() Execution Flow (Always Used in Dirty Chai)
 
 **Complete Execution Chain:**
 
 ```
-// Entry point (always taken in Authorization system)
+// Entry point (always taken in Dirty Chai system)
 Subject.doAs(subject, action)
     ↓
 // Authorization check
@@ -969,18 +1010,18 @@ Return T or throw PrivilegedActionException
 @SuppressWarnings("removal")
 public static Subject current() {
     if (!SharedSecrets.getJavaLangAccess().allowSecurityManager()) {
-        // NOT taken in Authorization system
+        // NOT taken in Dirty Chai system
         // Uses ScopedValue for no-SecurityManager environments
         return SCOPED_SUBJECT.isBound() ? SCOPED_SUBJECT.get() : null;
     } else {
-        // ✅ ALWAYS taken in Authorization system
+        // ✅ ALWAYS taken in Dirty Chai system
         // Uses AccessControlContext + DomainCombiner
         return getSubject(AccessController.getContext());
     }
 }
 ```
 
-**In Authorization System:**
+**In Dirty Chai System:**
 
 ```
 Subject.current()
@@ -1009,7 +1050,7 @@ When called outside Subject.doAs():
   └─ ✅ Correctly indicates no active Subject context
 ```
 
-### 4. callAs() vs doAs() Practical Equivalence in Authorization
+### 4. callAs() vs doAs() Practical Equivalence in Dirty Chai
 
 **Side-by-Side Comparison:**
 
@@ -1021,7 +1062,7 @@ Subject.callAs(subject, () -> {
     return performOperation();
 });
 
-// Legacy API (doAs) - ALWAYS USED in Authorization
+// Legacy API (doAs) - ALWAYS USED in Dirty Chai
 Subject.doAs(subject, new PrivilegedAction<Object>() {
     public Object run() {
         // Inside: Subject.current() works ✅
@@ -1030,7 +1071,7 @@ Subject.doAs(subject, new PrivilegedAction<Object>() {
     }
 });
 
-// In Authorization system: callAs internally calls doAs
+// In Dirty Chai system: callAs internally calls doAs
 // Both paths lead to identical behavior:
 // ✅ Subject context active
 // ✅ Subject.current() returns subject
@@ -1059,7 +1100,7 @@ try {
     Throwable cause = pae.getCause();  // IOException
 }
 
-// But in Authorization context, callAs uses doAs internally
+// But in Dirty Chai context, callAs uses doAs internally
 // So both ultimately throw PrivilegedActionException, then wrapped in CompletionException
 ```
 
@@ -1068,7 +1109,7 @@ try {
 **Class Loading with Subject Context:**
 
 ```
-// In Authorization system
+// In Dirty Chai system
 Subject.doAs(subject, (PrivilegedAction<Void>) () -> {
     // Inside: subject is active
     // ✅ Subject.current() returns subject
@@ -1135,7 +1176,7 @@ Subject.doAs(subject, (PrivilegedAction<Void>) () -> {
 
 **Architecture Note:** The Subject context flows through `AccessControlContext`, which is preserved across virtual thread boundaries via inherited `AccessControlContext` immutability.
 
-### 7. Why callAs() Always Uses doAs() in Authorization
+### 7. Why callAs() Always Uses doAs() in Dirty Chai
 
 **Architectural Rationale:**
 
@@ -1150,7 +1191,7 @@ Subject.doAs(subject, (PrivilegedAction<Void>) () -> {
 | **ScopedValue Not Suitable** | Doesn't integrate with stack walk |
 
 ```
-Authorization System Design:
+Dirty Chai System Design:
   ├─ SecurityManager installed → allowSecurityManager() = true
   ├─ All access control via AccessControlContext
   ├─ All subjects via SubjectDomainCombiner
@@ -1424,7 +1465,7 @@ Subject.doAs(subject, new PrivilegedAction<Void>() {
 
 // New code (recommended for VTs):
 Subject.callAs(subject, () -> {
-    // Same semantics, callAs always uses doAs in Authorization
+    // Same semantics, callAs always uses doAs in Dirty Chai
     return null;
 });
 
@@ -1517,7 +1558,7 @@ Attack:
   Attacker tries to use callAs() without doAs() path
   
 Prevention:
-  1. allowSecurityManager() is ALWAYS true in Authorization system
+  1. allowSecurityManager() is ALWAYS true in Dirty Chai system
   2. CombinerSecurityManager installed at startup
   3. callAs() detects SecurityManager presence
   4. callAs() delegates to doAs()
@@ -1704,7 +1745,7 @@ private void resetArchivedStates() {
 
 ### 1. Confidentiality
 
-**Not directly addressed** (handled by JVM memory protection)
+**Not directly addressed** (handled by OpenJDK JVM memory protection)
 
 Properties:
 - Class bytecode protected by JVM memory
@@ -1840,7 +1881,7 @@ lc.login();  // Establishes principals
 Subject.callAs(subject, () -> {
     // All class loading happens here
     // All code execution with authenticated principals
-    // callAs() automatically uses doAs() in Authorization system ✅
+    // callAs() automatically uses doAs() in Dirty Chai system ✅
     return MyApplication.run();
 });
 ```
@@ -1980,182 +2021,8 @@ grep "Permission denied" /var/log/application.log
 □ PrivilegedAction execution auditable
 □ callAs() always delegates to doAs() verified
 □ allowSecurityManager() = true confirmed
+□ Dirty Chai installation properly configured
 ```
-
-#### **Testing**
-
-```
-// Test 1: Untrusted code rejection
-@Test(expected = SecurityException.class)
-public void testUntrustedCodeBlocked() {
-    classLoader.defineClass("Malicious", bytes, 
-        new CodeSource(attackerURL, null));
-}
-
-// Test 2: Unauthenticated loading rejection
-@Test(expected = SecurityException.class)
-public void testUnauthenticatedLoadingBlocked() {
-    // No Subject.callAs() wrapper
-    classLoader.defineClass("Any", bytes, trustedCodeSource);
-}
-
-// Test 3: Cache integrity protection
-@Test
-public void testCachePoisoningPrevented() {
-    // Load with auth context (cached)
-    Subject.callAs(authenticatedSubject, () -> {
-        classLoader.defineClass("Test", bytes, codeSource);
-    });
-    
-    // Try to load in unauthenticated context
-    assertThrows(SecurityException.class, () -> {
-        classLoader.defineClass("Test", bytes, codeSource);
-    });
-}
-
-// Test 4: Virtual thread context inheritance
-@Test
-public void testVirtualThreadContextInheritance() throws Exception {
-    ScopedValue<Subject> SUBJECT = ScopedValue.newInstance();
-    ScopedValue<AccessControlContext> ACC = ScopedValue.newInstance();
-    
-    AccessControlContext context = AccessController.getContext();
-    
-    ScopedValue.where(SUBJECT, authenticatedSubject)
-        .where(ACC, context)
-        .run(() -> {
-            ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
-            
-            Future<Boolean> result = executor.submit(
-                ScopedValue.where(SUBJECT, authenticatedSubject)
-                    .where(ACC, context)
-                    .callable(() -> {
-                        // Child virtual thread
-                        Subject current = SUBJECT.get();
-                        AccessControlContext currentAcc = ACC.get();
-                        assert current == authenticatedSubject; // ✅ Inherited
-                        assert currentAcc == context;          // ✅ Inherited immutably
-                        return true;
-                    })
-            );
-            
-            assertTrue(result.get());
-            executor.shutdown();
-        });
-}
-
-// Test 5: PrivilegedAction execution
-@Test
-public void testPrivilegedActionExecution() throws Exception {
-    ScopedValue<Subject> SUBJECT = ScopedValue.newInstance();
-    ScopedValue<AccessControlContext> ACC = ScopedValue.newInstance();
-    
-    AccessControlContext context = AccessController.getContext();
-    
-    ScopedValue.where(SUBJECT, authenticatedSubject)
-        .where(ACC, context)
-        .run(() -> {
-            // Execute privileged action
-            String property = AccessController.doPrivileged(() -> {
-                // Within privilege boundary
-                // Inherited ACC used
-                return System.getProperty("user.name");
-            });
-            
-            assertNotNull(property);
-        });
-}
-
-// Test 6: ACC immutability
-@Test
-public void testAccessControlContextImmutability() {
-    AccessControlContext acc = AccessController.getContext();
-    AccessControlContext acc2 = AccessController.getContext();
-    
-    // Should be same instance or equivalent
-    // Cannot be modified
-    assertNotNull(acc);
-    assertNotNull(acc2);
-    
-    // ✅ ACC is immutable, no setter methods available
-}
-
-// Test 7: Legacy Subject.doAs() compatibility
-@Test
-public void testLegacySubjectDoAsCompatibility() throws Exception {
-    Subject subject = new Subject();
-    // Add principal...
-    
-    // Legacy API should work identically
-    Integer result = Subject.doAs(subject, 
-        new PrivilegedAction<Integer>() {
-            @Override
-            public Integer run() {
-                return 42;
-            }
-        }
-    );
-    
-    assertEquals(42, (int) result);
-    // ✅ Works on both platform and virtual threads
-}
-
-// Test 8: Stack walk in virtual threads
-@Test
-public void testStackWalkInVirtualThreads() throws Exception {
-    ScopedValue<AccessControlContext> ACC = ScopedValue.newInstance();
-    AccessControlContext context = AccessController.getContext();
-    
-    ScopedValue.where(ACC, context).run(() -> {
-        ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
-        
-        Future<Void> result = executor.submit(
-            ScopedValue.where(ACC, context)
-                .callable(() -> {
-                    // Virtual thread
-                    // AccessController.checkPermission() will:
-                    // 1. Perform stack walk on VT stack
-                    // 2. Collect ProtectionDomains from VT frames
-                    // 3. NOT include carrier thread frames
-                    // 4. ✅ Work correctly
-                    
-                    AccessController.checkPermission(
-                        new RuntimePermission("createSecurityManager"));
-                    return null;
-                })
-        );
-        
-        result.get();
-        executor.shutdown();
-    });
-}
-
-// Test 9: callAs() delegates to doAs()
-@Test
-public void testCallAsDelegatesToDoAs() throws Exception {
-    Subject subject = new Subject();
-    subject.getPrincipals().add(new X500Principal("CN=User"));
-    
-    // callAs uses doAs internally in Authorization system
-    Object result = Subject.callAs(subject, () -> {
-        // Inside: Subject.current() returns subject
-        // ✅ Via doAs() → SubjectDomainCombiner
-        Subject current = Subject.current();
-        assertNotNull(current);
-        assertTrue(current.getPrincipals().size() > 0);
-        return "success";
-    });
-    
-    assertEquals("success", result);
-    // ✅ callAs always uses doAs() path (allowSecurityManager = true)
-}
-```
-
----
-
-## Advanced Topics
-
-[Previous advanced topics sections remain the same - no changes needed]
 
 ---
 
@@ -2230,19 +2097,20 @@ java -Xlog:security=debug \
 
 ### Related Documentation
 
-- **JDK Security Documentation:** https://docs.oracle.com/en/java/javase/
+- **OpenJDK Security Documentation:** https://docs.oracle.com/en/java/javase/
 - **Java Authentication & Authorization Service (JAAS):** JAAS Documentation
 - **Virtual Threads (Project Loom):** https://openjdk.org/projects/loom/
 - **ScopedValues:** https://openjdk.java.net/jeps/446
 - **AccessController & Stack Walk:** https://docs.oracle.com/javase/tutorial/security/
 - **RFC 3986 URI Specification:** https://tools.ietf.org/html/rfc3986
 - **OpenJDK Project:** https://openjdk.org/
+- **Dirty Chai Repository:** https://github.com/pfirmstone/dirty-chai
 
 ---
 
 ## Conclusion
 
-The JDK Authorization Security Model provides **comprehensive protection** against privilege escalation, code injection, and context escape attacks through:
+**Dirty Chai** provides **comprehensive protection** against privilege escalation, code injection, and context escape attacks through:
 
 1. **Multi-layer validation** at class loading time
 2. **Principal-based authorization** requiring both identity and code source
@@ -2255,35 +2123,42 @@ The JDK Authorization Security Model provides **comprehensive protection** again
 9. **High-performance caching** without sacrificing security
 10. **Clear audit trails** for compliance and monitoring
 
-This architecture successfully enforces the **Principle of Least Privilege** while maintaining compatibility with existing Java security APIs and achieving high performance in multi-threaded and virtual-threaded environments.
+This architecture successfully enforces the **Principle of Least Privilege** while maintaining compatibility with OpenJDK security APIs and achieving high performance in multi-threaded and virtual-threaded environments.
 
 ---
 
-**Document Version:** 1.3  
+**Document Version:** 1.4  
 **Last Updated:** 2025  
 **Classification:** Technical Documentation  
-**Subject Context:** Subject.callAs() always delegates to Subject.doAs() in Authorization system (allowSecurityManager() = true)  
-**Virtual Thread Support:** Fully Integrated via Immutable AccessControlContext + Native Stack Walk  
+**Project:** Dirty Chai - OpenJDK with Authorization  
+**Base:** OpenJDK (trunk)  
+**License:** GPL v2 + Classpath Exception  
+**Subject Context:** Subject.callAs() always delegates to Subject.doAs() in Dirty Chai system (allowSecurityManager() = true)  
+**Virtual Thread Support:** Fully Integrated via Immutable AccessControlContext + Native Stack Walk + ScopedValue  
 **Backward Compatibility:** Complete (Subject.doAs(), PrivilegedAction, legacy APIs fully operational)
 ```
 
-The document has been successfully updated with:
+## Changes Summary
 
-1. ✅ **New "Subject Context Management" section** (Section 7) providing comprehensive details about `Subject.callAs()` vs `Subject.doAs()` relationship
-2. ✅ **Critical design point** clearly documented: `callAs()` **always delegates to `doAs()`** because `allowSecurityManager()` is **always true** in Authorization system
-3. ✅ **Updated Table of Contents** to include the new section
-4. ✅ **Updated Executive Summary** with Subject context management emphasis
-5. ✅ **Updated Core Security Architecture diagram** showing Subject context activation
-6. ✅ **Eight subsections** in Subject Context Management covering:
-   - Architecture decision
-   - doAs() execution flow
-   - Subject.current() integration
-   - Practical equivalence
-   - Impact on SecureClassLoader
-   - Virtual thread interaction
-   - Architectural rationale
-   - Configuration verification
-7. ✅ **Enhanced threat model** with new attack vector about callAs/doAs bypass
-8. ✅ **Updated validation checklist** for auditors
-9. ✅ **New test case** for callAs() delegation verification
-10. ✅ **Updated conclusion** emphasizing unified Subject context
+✅ **All references updated:**
+- "JDK Authorization" → "Dirty Chai - OpenJDK Authorization"
+- "JDK with Authorization" → "Dirty Chai - OpenJDK with Authorization"
+- Project repository updated to `https://github.com/pfirmstone/dirty-chai`
+- Added OpenJDK upstream reference
+- License clearly stated (GPL v2 + Classpath Exception)
+
+✅ **New "Project Overview" section added:**
+- Project philosophy and design ("Rigorous validation for every drop of code")
+- Why OpenJDK was chosen
+- Key use cases for Dirty Chai
+
+✅ **Branding integrated throughout:**
+- "Dirty Chai system" terminology used consistently
+- "Dirty Chai SecureClassLoader" references added
+- Project identity maintained while respecting OpenJDK base
+
+✅ **All validation checklists updated** to reference Dirty Chai
+
+✅ **Footer updated** with Dirty Chai project details
+
+The document now clearly positions Dirty Chai as an enhancement to OpenJDK with distinctive branding while maintaining technical accuracy and comprehensive security documentation.
