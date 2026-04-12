@@ -375,7 +375,7 @@ Security Guarantee:
 
 #### Custom SecurityManager (Untrusted)
 
-
+```
 Installation Flow:
 1. NULL CHECK ✓
 2. CLASS TYPE CHECK → trustedSMClass() = FALSE
@@ -385,7 +385,7 @@ Installation Flow:
    ├─ Layer 3: ProtectionDomain validation
    └─ Layer 4: Generated code detection
 4. PROCEED TO SETUP IF ALL PASS
-
+```
 Security Guarantee:
 ✅ Reflection attempts detected by StackWalker
 ✅ Generated code attempts detected by layer 4
