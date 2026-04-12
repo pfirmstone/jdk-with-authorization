@@ -33,7 +33,7 @@ DirtyChai addresses critical Java security vulnerabilities by implementing fine-
 - ✅ `System.setSecurityManager()` enforces authorization before any code execution
 
 **Implementation:**
-
+```
 // Before (Vulnerable):
 URLClassLoader ucl = new URLClassLoader(urls);  // All URLs allowed
 ObjectInputStream ois = new ObjectInputStream(stream);  // All classes allowed
@@ -48,7 +48,7 @@ grant {
     permission au.zeus.jdk.authorization.guards.SerialObjectPermission 
         "org.apache.logging.log4j.core.util.KeyValuePair";
 };
-
+```
 
 ### 2. **Gadget Chain Attacks via Deserialization**
 
@@ -74,7 +74,7 @@ grant {
 - ✅ Gadget chain libraries cannot be loaded unless explicitly whitelisted
 
 **Example Policy:**
-
+```
 // Only whitelist required serializable classes
 grant {
     permission au.zeus.jdk.authorization.guards.SerialObjectPermission 
@@ -84,7 +84,7 @@ grant {
 };
 
 // This blocks ALL gadget chains by default
-
+```
 ### 3. **URL Injection & Path Traversal Attacks**
 
 **Vulnerability Class:** Code Source Spoofing, Privilege Escalation  
@@ -101,7 +101,7 @@ grant {
 - ✅ URL validation prevents `CodeSource` spoofing
 
 **Example:**
-
+```
 // Before (Vulnerable):
 URL url = new URL("jrt:/java.base/../../../secrets");  // Allowed!
 CodeSource cs = new CodeSource(url, null);
@@ -114,7 +114,7 @@ try {
 } catch (URISyntaxException e) {
     // Fail-secure: returns null CodeSource → unprivileged
 }
-
+```
 ### 4. **Privilege Escalation via SecurityManager Removal**
 
 **Vulnerability Class:** Authorization Bypass  
@@ -131,7 +131,7 @@ try {
 - ✅ Combined with StackWalker to detect reflection-based attacks
 
 **Code:**
-
+```
 @CallerSensitive
 public static void setSecurityManager(SecurityManager sm) {
     if (sm == null) {
@@ -141,7 +141,7 @@ public static void setSecurityManager(SecurityManager sm) {
     validateCallerStackWithStackWalker();
     // ...
 }
-
+```
 ### 5. **Reflection-Based Privilege Escalation**
 
 **Vulnerability Class:** Caller Spoofing, Authorization Bypass  
@@ -181,20 +181,20 @@ Result: SecurityException - Reflection detected
 - ✅ Blocks dynamic code from bypassing caller validation
 
 **Detection:**
-
+```
 if (className.contains("$$Lambda$") ||
     className.contains("$Proxy") ||
     className.contains("GeneratedMethodAccessor")) {
     throw new SecurityException("Generated code detected");
 }
 
-
+```
 ### 7. **Null CodeSource Privilege Escalation**
 
 **Vulnerability Class:** Domain Spoofing, Authorization Bypass
 
 **Attack Vector:**
-
+```
 // Create synthetic ProtectionDomain with null CodeSource
 ProtectionDomain malicious = new ProtectionDomain(
     null,  // null CodeSource
@@ -203,7 +203,7 @@ ProtectionDomain malicious = new ProtectionDomain(
     principals
 );
 // Without validation, this could match policy grants
-
+```
 
 **Mitigation:**
 - ✅ Policy enforcement: Null CodeSource CANNOT match any grants
@@ -211,13 +211,13 @@ ProtectionDomain malicious = new ProtectionDomain(
 - ✅ Architectural guarantee: `cs == null → unprivileged`
 
 **Code:**
-
+```
 // In ConcurrentPolicyFile
 if (cs == null || cs.getLocation() == null) {
     // Cannot match policy grants
     // Domain is guaranteed unprivileged
 }
-
+```
 
 ### 8. **DomainCombiner Injection Attacks**
 
@@ -259,13 +259,13 @@ ucl.loadClass("com.attacker.Payload");  // Loads from untrusted URL
 - ✅ Administrative control via policy files
 
 **Policy Example:**
-
+```
 grant CodeBase "jrt:/java.base/*" {
     // Only allow loading from trusted registries
     permission au.zeus.jdk.authorization.guards.LoadClassPermission 
         "https://trusted-maven-repo.example.com/*";
 };
-
+```
 
 ### 10. **Transitive Dependency Loading**
 
@@ -299,13 +299,13 @@ grant CodeBase "jrt:/java.base/*" {
 **Vulnerability Class:** Remote Code Execution via XML Parsing
 
 **Attack Vector:**
-
+```
 <?xml version="1.0"?>
 <!DOCTYPE foo [
   <!ENTITY xxe SYSTEM "file:///etc/passwd">
 ]>
 <root>&xxe;</root>
-
+```
 
 **Mitigation:**
 - ✅ XML parsing libraries moved from trusted code to user code
@@ -335,9 +335,9 @@ grant CodeBase "jrt:/java.base/*" {
 **Vulnerability Class:** Code Execution, Runtime Bytecode Modification
 
 **Attack Vector:**
-
+```
 java -javaagent:attacker.jar  // Agent runs with full JVM access
-
+```
 
 **Mitigation:**
 - ✅ `RuntimePermission("createClassLoader")` gates agent loading
@@ -349,14 +349,14 @@ java -javaagent:attacker.jar  // Agent runs with full JVM access
 **Vulnerability Class:** Security Bypass via Unhandled Exceptions
 
 **Attack Vector:**
-
+```
 // Vulnerable code silently continues on exception
 try {
     validateCodeSource(url);
 } catch (Exception e) {
     // Silently ignore - proceeds unsecurely
 }
-
+```
 
 **Mitigation:**
 - ✅ Fail-secure design: exceptions → null CodeSource
@@ -388,13 +388,13 @@ try {
 **Vulnerability Class:** Privilege Escalation via Thread Pool Exploitation
 
 **Attack Vector:**
-
+```
 // Child thread inherits parent's context (with privileges)
 Executor executor = Executors.newFixedThreadPool(10);
 executor.submit(() -> {
     // Malicious code runs with parent's privileges
 });
-
+```
 
 **Mitigation:**
 - ✅ `PrivilegedThreadFactory` captures context at submission time
