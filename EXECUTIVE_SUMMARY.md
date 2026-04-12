@@ -14,7 +14,6 @@ However, SecurityManager was **deprecated in Java 17** and removed—not because
 3. **Tooling gap:** No automated way to generate least-privilege policies, forcing manual, error-prone configuration
 
 Additionally, the "trusted" Java platform grew too large and monolithic to audit or minimize, making it a larger attack surface. Without SecurityManager, modern Java has no built-in defense against:
-- **Deserialization gadget chain attacks** (attackers exploit Java object deserialization to execute arbitrary code with full application privileges)
 - **Untrusted code loading** (plugins, scripts, or dynamically loaded classes run completely unconstrained)
 - **Third-party library exploits** (Log4j, JNDI, Spring vulnerabilities expose all application data and resources)
 
