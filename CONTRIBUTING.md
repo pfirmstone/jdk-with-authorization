@@ -2,6 +2,9 @@
 
 Please see the [OpenJDK Developers' Guide](https://openjdk.org/guide/).
 
+There may be legal ramifications of using AI Generated code and generated documents, at this time, we're trialling using AI to generate markdown text documents in the root directory to help describe changes.  You can use AI agents to assist in understanding how the JVM works, assistance identifying bugs and adding markdown text documents that aren't part of the final product, and are either stored in the root of the project or a directory named AI.
+
+https://openjdk.org/legal/ai
 
 This is the description of what the code block changes:
 Apply project preference: Adding comprehensive documentation about the conditional validation strategy for SecurityManager installation, including rationale, implementation details, and developer guidance for working with trusted vs. custom SecurityManager implementations.
