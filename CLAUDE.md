@@ -1,13 +1,3 @@
-# Contributing to the JDK
-
-Please see the [OpenJDK Developers' Guide](https://openjdk.org/guide/).
-
-
-This is the description of what the code block changes:
-Apply project preference: Adding comprehensive documentation about the conditional validation strategy for SecurityManager installation, including rationale, implementation details, and developer guidance for working with trusted vs. custom SecurityManager implementations.
-
-This is the code block that represents the suggested code change:
-
 # Claude Development Guide
 
 ## Overview
@@ -39,6 +29,7 @@ This document provides guidance for AI assistants (Claude) working on the JDK wi
 ### Critical Security Constraints
 
 **MUST FOLLOW:**
+
 1. ✅ All code follows `.editorconfig` formatting rules (2-space indent for hotspot)
 2. ✅ Security validation occurs at ALL entry points
 3. ✅ Fail-secure design (defaults to deny on validation failure)
@@ -95,34 +86,60 @@ src/
 │ Application Code                            │
 └─────────────────┬───────────────────────────┘
                   │
-        ┌─────────▼──────────┐
-        │ SecurityManager    │
-        │ (CombinerSM or     │
-        │  Custom)           │
-        └─────────┬──────────┘
+        ┌─────────▼──────────────────┐
+        │ System.java                │
+        │ ├─ setSecurityManager()    │
+        │ └─ getSecurityManager()    │
+        └─────────┬──────────────────┘
                   │
-        ┌─────────▼──────────────────────┐
-        │ AccessController               │
-        │ ├─ setSecurityManager()        │
-        │ ├─ doPrivileged()              │
-        │ └─ checkPermission()           │
-        └─────────┬──────────────────────┘
+        ┌─────────▼──────────────────────────┐
+        │ SecurityManager                    │
+        │ (CombinerSM or Custom)             │
+        │ ├─ checkPermission()               │
+        │ ├─ checkRead()                     │
+        │ ├─ checkWrite()                    │
+        │ └─ checkCreateClassLoader()        │
+        └─────────┬──────────────────────────┘
                   │
-        ┌─────────▼──────────────────────┐
-        │ ConcurrentPolicyFile           │
-        │ ├─ Grant Matching              │
-        │ ├─ Permission Intersection     │
-        │ └─ Policy Evaluation           │
-        └─────────┬──────────────────────┘
+        ┌─────────▼──────────────────────────┐
+        │ AccessController                   │
+        │ ├─ doPrivileged()                  │
+        │ ├─ doPrivilegedWithCombiner()      │
+        │ └─ getContext()                    │
+        └─────────┬──────────────────────────┘
                   │
-        ┌─────────▼──────────────────────┐
-        │ Permission Classes             │
-        │ ├─ LoadClassPermission         │
-        │ ├─ NativeAccessPermission      │
-        │ ├─ SerialObjectPermission      │
-        │ └─ Standard Permissions        │
-        └────────────────────────────────┘
+        ┌─────────▼──────────────────────────┐
+        │ ConcurrentPolicyFile               │
+        │ ├─ Grant Matching                  │
+        │ ├─ Permission Intersection         │
+        │ └─ Policy Evaluation               │
+        └─────────┬──────────────────────────┘
+                  │
+        ┌─────────▼──────────────────────────┐
+        │ Permission Classes                 │
+        │ ├─ LoadClassPermission             │
+        │ ├─ NativeAccessPermission          │
+        │ ├─ SerialObjectPermission          │
+        │ └─ Standard Permissions            │
+        └────────────────────────────────────┘
 
+
+**Call Flow:**
+
+1. **Application Code** → Performs security-sensitive operation
+2. **System.setSecurityManager()** → Installs SecurityManager with conditional validation
+3. **SecurityManager.checkPermission()** → Checks if operation is allowed
+4. **AccessController.doPrivileged()** → Executes with elevated privileges, or for methods with permission arguments, with reduced privileges.
+5. **ConcurrentPolicyFile** → Evaluates policy grants for the calling domain
+6. **Permission Classes** → Determine if specific permission is granted
+
+**API Location Reference:**
+
+- **`java.lang.System`**: `setSecurityManager()`, `getSecurityManager()`
+- **`java.lang.SecurityManager`**: `checkPermission()`, `checkRead()`, `checkWrite()`, `checkCreateClassLoader()`
+- **`java.security.AccessController`**: `doPrivileged()`, `doPrivilegedWithCombiner()`, `getContext()`
+- **`au.zeus.jdk.authorization.policy.ConcurrentPolicyFile`**: Policy enforcement logic
+- **`au.zeus.jdk.authorization.guards.*Permission`**: Custom permission implementations
 
 ---
 
@@ -174,12 +191,12 @@ The system implements **conditional validation** for SecurityManager installatio
 
 ### Implementation Details
 
-java
-private static boolean trustedSMClass(SecurityManager sm){
-    // Exact class matching (prevents subclass bypass)
-    if (SecurityManager.class.equals(sm.getClass())) return true;
-    if (CombinerSecurityManager.class.equals(sm.getClass())) return true;
-    return false;
+
+private static boolean trustedSMClass(SecurityManager sm) {
+  // Exact class matching (prevents subclass bypass)
+  if (SecurityManager.class.equals(sm.getClass())) return true;
+  if (CombinerSecurityManager.class.equals(sm.getClass())) return true;
+  return false;
 }
 
 
@@ -220,30 +237,34 @@ private static boolean trustedSMClass(SecurityManager sm){
 
 **Invariant 1: No Privilege Without Valid CodeSource**
 
+
 If ProtectionDomain.getCodeSource() == null:
-  Then domain CANNOT match any policy grants
-  And domain is GUARANTEED unprivileged
+Then domain CANNOT match any policy grants
+And domain is GUARANTEED unprivileged
 
 
 **Invariant 2: Fail-Secure on Validation Failure**
 
+
 If URI validation throws exception:
-  Then return null CodeSource
-  Then domain is unprivileged
+Then return null CodeSource
+Then domain is unprivileged
 
 
 **Invariant 3: Synthetic Code Detection**
 
+
 If reflection/generated code detected in stack:
-  Then throw SecurityException immediately
-  Then operation BLOCKED
+Then throw SecurityException immediately
+Then operation BLOCKED
 
 
 **Invariant 4: Permission Contract Enforcement**
 
+
 Permission A.implies(Permission B):
-  Returns true IFF A grants B
-  Attacker cannot make TrojanPermission.implies(FilePermission) return true
+Returns true IFF A grants B
+Attacker cannot make TrojanPermission.implies(FilePermission) return true
 
 
 ---
@@ -262,7 +283,8 @@ Permission A.implies(Permission B):
 ### Security Requirements
 
 **Every Security-Critical Method:**
-1. Must have `@CallerSensitive` annotation
+
+1. Must have `@CallerSensitive` annotation (if applicable)
 2. Must verify caller via `Reflection.getCallerClass()` or native check
 3. For custom SecurityManager validation: Must use StackWalker
 4. Must have comprehensive JavaDoc explaining security model
@@ -270,14 +292,14 @@ Permission A.implies(Permission B):
 
 **Example (Conditional Strategy):**
 
-java
+
 /**
  * Sets the system-wide security manager.
  *
  * <p><b>Validation Strategy (Conditional):</b>
  * For trusted implementations (SecurityManager, CombinerSecurityManager):
  * Only null parameter validation is performed.
- * 
+ *
  * For custom implementations: Full defense-in-depth validation:
  * <ol>
  *   <li>Direct Caller Check (@CallerSensitive)</li>
@@ -288,19 +310,19 @@ java
  */
 @CallerSensitive
 public static void setSecurityManager(SecurityManager sm) {
-    if (sm == null) throw new IllegalArgumentException("sm cannot be null");
-    
-    if (!trustedSMClass(sm)) {
-        // Full validation for custom implementations
-        Class<?> caller = Reflection.getCallerClass();
-        if (caller == null) {
-            throw new SecurityException("No direct caller");
-        }
-        validateCallerStackWithStackWalker();
-        // ... rest of validation
+  if (sm == null) throw new IllegalArgumentException("sm cannot be null");
+
+  if (!trustedSMClass(sm)) {
+    // Full validation for custom implementations
+    Class<?> caller = Reflection.getCallerClass();
+    if (caller == null) {
+      throw new SecurityException("No direct caller");
     }
-    
-    // Proceed with setup
+    validateCallerStackWithStackWalker();
+    // ... rest of validation
+  }
+
+  // Proceed with setup
 }
 
 
@@ -320,21 +342,22 @@ public static void setSecurityManager(SecurityManager sm) {
 
 **Exception Pattern (RFC 3986 URI Validation):**
 
-java
+
 try {
-    URL url = new URI(sb.toString()).toURL();
-    return new CodeSource(url, certificates);
+  URL url = new URI(sb.toString()).toURL();
+  return new CodeSource(url, certificates);
 } catch (MalformedURLException | URISyntaxException e) {
-    // SECURITY: Return null CodeSource on exception.
-    // Null CodeSource cannot match any policy grants,
-    // preventing privilege escalation if URI validation fails.
-    return null;
+  // SECURITY: Return null CodeSource on exception.
+  // Null CodeSource cannot match any policy grants,
+  // preventing privilege escalation if URI validation fails.
+  return null;
 }
 
 
 ### JavaDoc Requirements
 
 **Security-Critical Methods Need:**
+
 1. `@CallerSensitive` annotation (if applicable)
 2. Description of security requirements
 3. List of security checks performed
@@ -344,25 +367,25 @@ try {
 
 **Example (Conditional Strategy Documentation):**
 
-java
+
 /**
  * Sets the system-wide security manager.
  *
  * <p><b>Validation Strategy (Conditional):</b>
- * This method implements a conditional validation strategy that balances 
+ * This method implements a conditional validation strategy that balances
  * security with usability:
- * 
+ *
  * <h3>For Trusted SecurityManager Classes (SecurityManager, CombinerSecurityManager):</h3>
  * <ul>
- *   <li><b>Rationale:</b> These classes are part of the trusted codebase 
- *     (java.base module). Their permissions are controlled through the policy file, 
+ *   <li><b>Rationale:</b> These classes are part of the trusted codebase
+ *     (java.base module). Their permissions are controlled through the policy file,
  *     which provides equivalent protection to stack inspection.</li>
  *   <li><b>Validation:</b> Only null parameter validation is performed.</li>
  * </ul>
- * 
+ *
  * <h3>For Custom SecurityManager Implementations:</h3>
  * <ul>
- *   <li><b>Rationale:</b> Custom implementations may originate from the application 
+ *   <li><b>Rationale:</b> Custom implementations may originate from the application
  *     classpath and could be malicious. Strict validation is required.</li>
  *   <li><b>Validation:</b> Full defense-in-depth validation is performed:
  *     <ol>
@@ -373,7 +396,7 @@ java
  *     </ol>
  *   </li>
  * </ul>
- * 
+ *
  * @param sm the security manager to install (must not be null)
  * @throws IllegalArgumentException if sm is null
  * @throws SecurityException if caller is untrusted (custom SM only)
@@ -392,33 +415,35 @@ java
 
 **Decision Tree:**
 
+
 Is this method for installing SecurityManager?
 ├─ YES: Use conditional validation
 │       ├─ Check class type: trustedSMClass()
 │       ├─ For trusted: minimal validation
 │       └─ For custom: full defense-in-depth
-│
 └─ NO: Is it for privileged operations?
-       ├─ YES: Use StackWalker always
-       └─ NO: Use standard permission checks
+        ├─ YES: Use AccessController::getStackAccessControlContext() always
+        └─ NO: Use standard permission checks
 
 
 #### When to Add a Trusted Class
 
 **Guidelines:**
+
 1. Class must be from java.base module only
 2. Class must be loaded by bootstrap classloader
 3. Class must be security-critical
 4. Must document in comments why it's trusted
 
 **Example Addition:**
-java
-private static boolean trustedSMClass(SecurityManager sm){
-    if (SecurityManager.class.equals(sm.getClass())) return true;
-    if (CombinerSecurityManager.class.equals(sm.getClass())) return true;
-    // NEW: Only add after thorough security review!
-    // if (NewTrustedSM.class.equals(sm.getClass())) return true;
-    return false;
+
+
+private static boolean trustedSMClass(SecurityManager sm) {
+  if (SecurityManager.class.equals(sm.getClass())) return true;
+  if (CombinerSecurityManager.class.equals(sm.getClass())) return true;
+  // NEW: Only add after thorough security review!
+  // if (NewTrustedSM.class.equals(sm.getClass())) return true;
+  return false;
 }
 
 
@@ -426,74 +451,84 @@ private static boolean trustedSMClass(SecurityManager sm){
 
 **Template:**
 
-java
+
 package au.zeus.jdk.authorization.guards;
 
 import java.security.Permission;
 
 /**
  * Permission for [CAPABILITY].
- * 
+ *
  * <p><b>Security Impact:</b>
  * Allows code to [DESCRIBE IMPACT]
  */
 public class YourPermission extends Permission {
-    
-    private static final long serialVersionUID = 1L;
-    
-    /**
-     * Creates permission with target name and actions.
-     * 
-     * @param name target name (e.g., "[RESOURCE]")
-     * @param actions permitted actions (e.g., "read,write")
-     */
-    public YourPermission(String name, String actions) {
-        super(name);
-        // Validate and store actions
+
+  private static final long serialVersionUID = 1L;
+
+  /**
+   * Creates permission with target name and actions.
+   *
+   * @param name target name (e.g., "[RESOURCE]")
+   * @param actions permitted actions (e.g., "read,write")
+   */
+  public YourPermission(String name, String actions) {
+    super(name);
+    // Validate and store actions
+  }
+
+  /**
+   * Checks if this permission implies another.
+   *
+   * <p>Permission A implies B if A grants at least the
+   * permissions that B requires.
+   *
+   * @param p permission to check
+   * @return true if this implies p
+   */
+  @Override
+  public boolean implies(Permission p) {
+    if (!(p instanceof YourPermission)) {
+      return false;
     }
-    
-    /**
-     * Checks if this permission implies another.
-     * 
-     * <p>Permission A implies B if A grants at least the
-     * permissions that B requires.
-     * 
-     * @param p permission to check
-     * @return true if this implies p
-     */
-    @Override
-    public boolean implies(Permission p) {
-        if (!(p instanceof YourPermission)) {
-            return false;
-        }
-        // Implement implication logic
-        return checkImplies((YourPermission) p);
-    }
-    
-    /**
-     * Returns string representation for policy files.
-     * 
-     * Format: permission au.zeus.jdk.authorization.guards.YourPermission "name" "actions";
-     */
-    @Override
-    public String toString() {
-        return String.format("YourPermission(\"%s\",\"%s\")", 
-            getName(), getActions());
-    }
-    
-    // ... other required methods
+    // Implement implication logic
+    return checkImplies((YourPermission) p);
+  }
+
+  /**
+   * Returns string representation for policy files.
+   *
+   * Format: permission au.zeus.jdk.authorization.guards.YourPermission "name" "actions";
+   */
+  @Override
+  public String toString() {
+    return String.format("YourPermission(\"%s\",\"%s\")",
+      getName(), getActions());
+  }
+
+  // ... other required methods
 }
+
+
+**Policy File Entry:**
+
+
+grant CodeBase "jrt:/java.base/*" {
+  permission au.zeus.jdk.authorization.guards.YourPermission "[TARGET]" "[ACTIONS]";
+};
 
 
 ### Modifying Security-Critical Code
 
 **Before:**
+
 1. Review `SECURITY_ANALYSIS.md` - understand current threat model
 2. Review conditional validation strategy if modifying setSecurityManager
 3. Identify all affected layers (Caller, Stack, CodeSource, Policy)
 4. Review existing defenses
 
 **During:**
+
 1. Add security comments explaining WHY (not just WHAT)
 2. Document conditional logic if applicable
 3. Include threat model in commit message
@@ -501,6 +536,7 @@ public class YourPermission extends Permission {
 5. Update JavaDoc with security requirements
 
 **After:**
+
 1. Run full test suite (including JUnit with CombinerSecurityManager)
 2. Update `SECURITY_ANALYSIS.md` if invariants change
 3. Document any new restrictions or trusted classes
@@ -509,50 +545,50 @@ public class YourPermission extends Permission {
 
 **Security Test Pattern (Conditional Check):**
 
-java
+
 @Test
 public void testSetSecurityManagerAcceptsTrustedClasses() {
-    // Trusted implementations should work without restriction
-    assertDoesNotThrow(() -> {
-        System.setSecurityManager(new CombinerSecurityManager());
-    });
+  // Trusted implementations should work without restriction
+  assertDoesNotThrow(() -> {
+    System.setSecurityManager(new CombinerSecurityManager());
+  });
 }
 
 @Test
 public void testSetSecurityManagerRejectsReflectionCustom() {
-    // Custom SM via reflection should be blocked
-    Method m = System.class.getMethod("setSecurityManager", SecurityManager.class);
-    
-    assertThrows(SecurityException.class, () -> {
-        m.invoke(null, new CustomSecurityManager());
-    });
+  // Custom SM via reflection should be blocked
+  Method m = System.class.getMethod("setSecurityManager", SecurityManager.class);
+
+  assertThrows(SecurityException.class, () -> {
+    m.invoke(null, new CustomSecurityManager());
+  });
 }
 
 @Test
 public void testSetSecurityManagerRejectsGeneratedCodeCustom() {
-    // Custom SM via Lambda should be blocked
-    PrivilegedAction<?> malicious = () -> {
-        System.setSecurityManager(new CustomSecurityManager());
-        return null;
-    };
-    
-    assertThrows(SecurityException.class, () -> {
-        AccessController.doPrivileged(malicious);
-    });
+  // Custom SM via Lambda should be blocked
+  PrivilegedAction<?> malicious = () -> {
+    System.setSecurityManager(new CustomSecurityManager());
+    return null;
+  };
+
+  assertThrows(SecurityException.class, () -> {
+    AccessController.doPrivileged(malicious);
+  });
 }
 
 @Test
 public void testNullCodeSourceUnprivileged() {
-    // Verify null CodeSource prevents privilege grants
-    ProtectionDomain nullPD = new ProtectionDomain(
-        null,  // null CodeSource
-        new Permissions(),
-        null,
-        null
-    );
-    
-    PermissionCollection perms = policy.getPermissions(nullPD);
-    assertFalse(perms.implies(new AllPermission()));
+  // Verify null CodeSource prevents privilege grants
+  ProtectionDomain nullPD = new ProtectionDomain(
+    null,  // null CodeSource
+    new Permissions(),
+    null,
+    null
+  );
+
+  PermissionCollection perms = policy.getPermissions(nullPD);
+  assertFalse(perms.implies(new AllPermission()));
 }
 
 
@@ -562,76 +598,76 @@ public void testNullCodeSourceUnprivileged() {
 
 ### Conditional Validation Pattern
 
-java
+
 private static boolean trustedSMClass(SecurityManager sm) {
-    // Use exact class matching (prevents subclass bypass)
-    if (SecurityManager.class.equals(sm.getClass())) return true;
-    if (CombinerSecurityManager.class.equals(sm.getClass())) return true;
-    return false;
+  // Use exact class matching (prevents subclass bypass)
+  if (SecurityManager.class.equals(sm.getClass())) return true;
+  if (CombinerSecurityManager.class.equals(sm.getClass())) return true;
+  return false;
 }
 
 if (!trustedSMClass(sm)) {
-    // Strict validation for custom implementations
-    validateCallerStackWithStackWalker();
-    // ... other checks
+  // Strict validation for custom implementations
+  validateCallerStackWithStackWalker();
+  // ... other checks
 }
 
 
 ### Caller Sensitive Method Pattern
 
-java
+
 @CallerSensitive
 public static <T> T secureOperation(T param) {
-    // Step 1: Get direct caller
-    Class<?> caller = Reflection.getCallerClass();
-    if (caller == null) {
-        throw new SecurityException("No direct caller");
-    }
-    
-    // Step 2: For custom implementations, inspect call stack
-    if (!trustedClass(caller)) {
-        validateCallerStackWithStackWalker();
-    }
-    
-    // Step 3: Validate CodeSource
-    ProtectionDomain pd = caller.getProtectionDomain();
-    if (pd != null && pd.getCodeSource() == null) {
-        throw new SecurityException("Invalid code source");
-    }
-    
-    // Step 4: Perform operation
-    return executeSecurely(caller, param);
+  // Step 1: Get direct caller
+  Class<?> caller = Reflection.getCallerClass();
+  if (caller == null) {
+    throw new SecurityException("No direct caller");
+  }
+
+  // Step 2: For custom implementations, inspect call stack
+  if (!trustedClass(caller)) {
+    validateCallerStackWithStackWalker();
+  }
+
+  // Step 3: Validate CodeSource
+  ProtectionDomain pd = caller.getProtectionDomain();
+  if (pd != null && pd.getCodeSource() == null) {
+    throw new SecurityException("Invalid code source");
+  }
+
+  // Step 4: Perform operation
+  return executeSecurely(caller, param);
 }
 
 
 ### Fail-Secure Resource Pattern
 
-java
+
 private static Resource getResource(Class<?> clazz) {
-    try {
-        // Attempt to validate and construct resource
-        return constructValidatedResource(clazz);
-    } catch (ValidationException e) {
-        // SECURITY: Return null/empty resource on failure
-        // This guarantees unprivileged state
-        return null;
-    }
+  try {
+    // Attempt to validate and construct resource
+    return constructValidatedResource(clazz);
+  } catch (ValidationException e) {
+    // SECURITY: Return null/empty resource on failure
+    // This guarantees unprivileged state
+    return null;
+  }
 }
 
 
 ### Permission Checking Pattern
 
-java
+
 @Override
 public boolean implies(Permission p) {
-    if (!(p instanceof ThisPermission)) {
-        return false;  // Cannot imply different type
-    }
-    
-    ThisPermission other = (ThisPermission) p;
-    
-    // Permission A implies B if A's scope includes B's scope
-    return this.isMoreGeneralThan(other);
+  if (!(p instanceof ThisPermission)) {
+    return false;  // Cannot imply different type
+  }
+
+  ThisPermission other = (ThisPermission) p;
+
+  // Permission A implies B if A's scope includes B's scope
+  return this.isMoreGeneralThan(other);
 }
 
 
@@ -668,22 +704,45 @@ java -Djava.security.debug=access,domain,provider -jar app.jar
 - Fix: Update policy file with required permission
 - Verification: Review `java.security.debug=access` output
 
+### Stack Walk Inspection
+
+**Understanding Stack Frames:**
+
+
+Frame 0: java.lang.System.setSecurityManager()        <- This method
+Frame 1: com.example.MyApp.setupSecurity()            <- Direct caller ✓
+Frame 2: com.example.MyApp.main()                     <- Ancestor
+
+Result: DirectCaller = com.example.MyApp
+
+
+**Blocked Stack (Reflection):**
+
+
+Frame 0: java.lang.System.setSecurityManager()
+Frame 1: java.lang.reflect.Method.invoke()            <- BLOCKED
+Frame 2: com.attacker.Exploit.go()
+Frame 3: ...
+
+Result: SecurityException - Reflection detected
+
+
 ### Conditional Check Decision
 
 **When debugging setSecurityManager validation:**
 
 1. **Check trusted class first:**
-   java
+
    if (trustedSMClass(sm)) {
-       // Only null parameter check performed
-       // If error, it's not from stack inspection
+     // Only null parameter check performed
+     // If error, it's not from stack inspection
    }
-   
+
 
 2. **Identify error type:**
-   - Direct error: "Direct caller cannot be null"
-   - Stack error: "Reflection detected" or "Generated code detected"
-   - Domain error: "Null ProtectionDomain"
+- Direct error: "Direct caller cannot be null"
+- Stack error: "Reflection detected" or "Generated code detected"
+- Domain error: "Null ProtectionDomain"
 
 3. **Correlate with error message** to identify which layer failed
 
@@ -724,17 +783,20 @@ java -Djava.security.debug=access,domain,provider -jar app.jar
 ## References & Resources
 
 ### Project Documentation
+
 - [SECURITY_ANALYSIS.md](./SECURITY_ANALYSIS.md) - Comprehensive security analysis
-- [VULNERABILITIES_ADDRESSED.md](./VULNERABILITIES_ADDRESSED.md) - Vulnerability catalog
+- [STACK_VALIDATION_ANALYSIS.md](./STACK_VALIDATION_ANALYSIS.md) - Trade-off analysis
 - [.editorconfig](./.editorconfig) - Code formatting standards
 - [CONTRIBUTING.md](./CONTRIBUTING.md) - Contribution guidelines
 
 ### External Standards
+
 - [RFC 3986 - URI Generic Syntax](https://tools.ietf.org/html/rfc3986)
 - [OpenJDK Security Architecture](https://openjdk.org/guide/)
 - [Java Security Tutorial](https://docs.oracle.com/javase/tutorial/security/)
 
 ### Related Projects
+
 - [OpenJDK JDK](https://github.com/openjdk/jdk) - Upstream repository
 - [River Project](https://river.apache.org/) - Authorization framework basis
 
@@ -744,7 +806,7 @@ java -Djava.security.debug=access,domain,provider -jar app.jar
 
 ### For AI Assistants Working on This Project
 
-1. **Conditional Strategy Questions?** → Review this section first
+1. **Conditional Strategy Questions?** → Review the "Conditional Validation Strategy" section
 2. **Security Questions?** → Check `SECURITY_ANALYSIS.md`
 3. **Code Format?** → Check `.editorconfig` requirements
 4. **API Design?** → Look at existing `*Permission` classes
@@ -758,10 +820,8 @@ Modifying setSecurityManager()?
 ├─ YES: Consider conditional validation
 │       ├─ Trusted class? Skip some checks
 │       └─ Custom class? Full defense-in-depth
-│
 ├─ Adding new trusted class?
 │       └─ Update trustedSMClass() + document why
-│
 └─ Adding validation layer?
         └─ Document in JavaDoc + SECURITY_ANALYSIS.md
 
@@ -772,11 +832,15 @@ Modifying setSecurityManager()?
 
 | Version | Date | Changes |
 |---------|------|---------|
+| 1.2 | 2026-04-10 | Fixed Authorization Framework Architecture diagram - moved setSecurityManager() to System.java, checkPermission() to SecurityManager.java |
 | 1.1 | 2026-04-09 | Added conditional validation strategy documentation |
 | 1.0 | 2026-04-09 | Initial Claude development guide |
 
 ---
 
-**Last Updated:** April 9, 2026  
+**Last Updated:** April 10, 2026  
 **Maintained By:** Project Security Team  
 **Status:** Active
+
+
+The document has been cleaned up with proper formatting, fixed hierarchy, and updated version history to reflect the correction.
