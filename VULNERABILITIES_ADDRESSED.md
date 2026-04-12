@@ -1,8 +1,8 @@
-# Vulnerabilities Addressed by JDK-with-Authorization
+# Vulnerabilities Addressed by DirtyChai
 
 ## Executive Summary
 
-JDK-with-Authorization addresses critical Java security vulnerabilities by implementing fine-grained authorization controls, preventing untrusted code loading, and blocking gadget attack chains. This document catalogs the specific vulnerability classes and attack vectors mitigated by this implementation.
+DirtyChai addresses critical Java security vulnerabilities by implementing fine-grained authorization controls, preventing untrusted code loading, and blocking gadget attack chains. This document catalogs the specific vulnerability classes and attack vectors mitigated by this implementation.
 
 
 ## Critical Vulnerabilities Addressed
@@ -452,7 +452,7 @@ executor.submit(() -> {
 
 ## Attack Surface Reduction
 
-### Before JDK-with-Authorization
+### Before DirtyChai
 
 ```
 ┌──────────────────────────────┐
@@ -467,7 +467,7 @@ executor.submit(() -> {
 ```
 Result: High attack surface, vulnerability exploitation easy
 
-### After JDK-with-Authorization
+### After DirtyChai
 ```
 ┌────────────────────────────────────┐
 │ Principle of Least Privilege       │
@@ -544,7 +544,7 @@ java -Djava.security.manager=default \
 
 ## Summary
 
-JDK-with-Authorization addresses **18+ distinct vulnerability classes** through:
+DirtyChai addresses **18+ distinct vulnerability classes** through:
 
 1. ✅ **Fine-grained authorization** (LoadClassPermission, URLPermission, SerialObjectPermission)
 2. ✅ **Caller validation** (StackWalker, @CallerSensitive)
