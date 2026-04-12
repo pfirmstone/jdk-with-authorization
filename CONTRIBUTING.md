@@ -1,7 +1,10 @@
-# Contributing to the JDK
+# Contributing to Dirty Chai
 
 Please see the [OpenJDK Developers' Guide](https://openjdk.org/guide/).
 
+There may be legal ramifications of using AI Generated code and generated documents, at this time, we're trialling using AI to generate markdown text documents in the root directory to help describe changes.  You can use AI agents to assist in understanding how the JVM works, assistance identifying bugs and adding markdown text documents that aren't part of the final product, and are either stored in the root of the project or a directory named AI.
+
+https://openjdk.org/legal/ai
 
 This is the description of what the code block changes:
 Apply project preference: Adding comprehensive documentation about the conditional validation strategy for SecurityManager installation, including rationale, implementation details, and developer guidance for working with trusted vs. custom SecurityManager implementations.
@@ -54,7 +57,7 @@ This document provides guidance for AI assistants (Claude) working on the JDK wi
 
 ### Module Organization
 
-
+```
 src/
 ├── java.base/
 │   ├── share/classes/
@@ -86,11 +89,11 @@ src/
 └── hotspot/
     └── share/runtime/
         └── java.cpp                     # VM-level security integration
-
+```
 
 ### Authorization Framework Architecture
 
-
+```
 ┌─────────────────────────────────────────────┐
 │ Application Code                            │
 └─────────────────┬───────────────────────────┘
@@ -122,7 +125,7 @@ src/
         │ ├─ SerialObjectPermission      │
         │ └─ Standard Permissions        │
         └────────────────────────────────┘
-
+```
 
 ---
 
@@ -173,7 +176,7 @@ The system implements **conditional validation** for SecurityManager installatio
 - Synthetic domain creation blocked
 
 ### Implementation Details
-
+```
 java
 private static boolean trustedSMClass(SecurityManager sm){
     // Exact class matching (prevents subclass bypass)
@@ -181,7 +184,7 @@ private static boolean trustedSMClass(SecurityManager sm){
     if (CombinerSecurityManager.class.equals(sm.getClass())) return true;
     return false;
 }
-
+```
 
 **Key Security Properties:**
 - Uses `equals()` not `instanceof` (prevents subclass bypass)
@@ -269,7 +272,7 @@ Permission A.implies(Permission B):
 5. Must throw `SecurityException` on violation (NOT `IllegalArgumentException`)
 
 **Example (Conditional Strategy):**
-
+```
 java
 /**
  * Sets the system-wide security manager.
@@ -302,7 +305,7 @@ public static void setSecurityManager(SecurityManager sm) {
     
     // Proceed with setup
 }
-
+```
 
 ### Exception Handling
 
@@ -319,7 +322,7 @@ public static void setSecurityManager(SecurityManager sm) {
 - ❌ Use generic `Exception` handling for security checks
 
 **Exception Pattern (RFC 3986 URI Validation):**
-
+```
 java
 try {
     URL url = new URI(sb.toString()).toURL();
@@ -330,7 +333,7 @@ try {
     // preventing privilege escalation if URI validation fails.
     return null;
 }
-
+```
 
 ### JavaDoc Requirements
 
@@ -343,7 +346,7 @@ try {
 6. Exception conditions documented
 
 **Example (Conditional Strategy Documentation):**
-
+```
 java
 /**
  * Sets the system-wide security manager.
@@ -378,7 +381,7 @@ java
  * @throws IllegalArgumentException if sm is null
  * @throws SecurityException if caller is untrusted (custom SM only)
  */
-
+```
 
 ---
 
@@ -391,7 +394,7 @@ java
 **Situation:** You're adding a new security-critical method
 
 **Decision Tree:**
-
+```
 Is this method for installing SecurityManager?
 ├─ YES: Use conditional validation
 │       ├─ Check class type: trustedSMClass()
@@ -401,7 +404,7 @@ Is this method for installing SecurityManager?
 └─ NO: Is it for privileged operations?
        ├─ YES: Use StackWalker always
        └─ NO: Use standard permission checks
-
+```
 
 #### When to Add a Trusted Class
 
@@ -412,6 +415,7 @@ Is this method for installing SecurityManager?
 4. Must document in comments why it's trusted
 
 **Example Addition:**
+```
 java
 private static boolean trustedSMClass(SecurityManager sm){
     if (SecurityManager.class.equals(sm.getClass())) return true;
@@ -420,12 +424,12 @@ private static boolean trustedSMClass(SecurityManager sm){
     // if (NewTrustedSM.class.equals(sm.getClass())) return true;
     return false;
 }
-
+```
 
 ### Adding a New Permission Class
 
 **Template:**
-
+```
 java
 package au.zeus.jdk.authorization.guards;
 
@@ -483,7 +487,7 @@ public class YourPermission extends Permission {
     
     // ... other required methods
 }
-
+```
 
 ### Modifying Security-Critical Code
 
@@ -508,7 +512,7 @@ public class YourPermission extends Permission {
 ### Adding Tests
 
 **Security Test Pattern (Conditional Check):**
-
+```
 java
 @Test
 public void testSetSecurityManagerAcceptsTrustedClasses() {
@@ -554,14 +558,14 @@ public void testNullCodeSourceUnprivileged() {
     PermissionCollection perms = policy.getPermissions(nullPD);
     assertFalse(perms.implies(new AllPermission()));
 }
-
+```
 
 ---
 
 ## Common Patterns & Idioms
 
 ### Conditional Validation Pattern
-
+```
 java
 private static boolean trustedSMClass(SecurityManager sm) {
     // Use exact class matching (prevents subclass bypass)
@@ -575,10 +579,10 @@ if (!trustedSMClass(sm)) {
     validateCallerStackWithStackWalker();
     // ... other checks
 }
-
+```
 
 ### Caller Sensitive Method Pattern
-
+```
 java
 @CallerSensitive
 public static <T> T secureOperation(T param) {
@@ -602,10 +606,10 @@ public static <T> T secureOperation(T param) {
     // Step 4: Perform operation
     return executeSecurely(caller, param);
 }
-
+```
 
 ### Fail-Secure Resource Pattern
-
+```
 java
 private static Resource getResource(Class<?> clazz) {
     try {
@@ -617,10 +621,10 @@ private static Resource getResource(Class<?> clazz) {
         return null;
     }
 }
-
+```
 
 ### Permission Checking Pattern
-
+```
 java
 @Override
 public boolean implies(Permission p) {
@@ -633,7 +637,7 @@ public boolean implies(Permission p) {
     // Permission A implies B if A's scope includes B's scope
     return this.isMoreGeneralThan(other);
 }
-
+```
 
 ---
 
@@ -673,19 +677,20 @@ java -Djava.security.debug=access,domain,provider -jar app.jar
 **When debugging setSecurityManager validation:**
 
 1. **Check trusted class first:**
+ ```
    java
    if (trustedSMClass(sm)) {
        // Only null parameter check performed
        // If error, it's not from stack inspection
    }
-   
+ ```
 
-2. **Identify error type:**
+3. **Identify error type:**
    - Direct error: "Direct caller cannot be null"
    - Stack error: "Reflection detected" or "Generated code detected"
    - Domain error: "Null ProtectionDomain"
 
-3. **Correlate with error message** to identify which layer failed
+4. **Correlate with error message** to identify which layer failed
 
 ---
 
@@ -753,7 +758,7 @@ java -Djava.security.debug=access,domain,provider -jar app.jar
 
 ### Decision Tree for SecurityManager Changes
 
-
+```
 Modifying setSecurityManager()?
 ├─ YES: Consider conditional validation
 │       ├─ Trusted class? Skip some checks
@@ -764,7 +769,7 @@ Modifying setSecurityManager()?
 │
 └─ Adding validation layer?
         └─ Document in JavaDoc + SECURITY_ANALYSIS.md
-
+```
 
 ---
 

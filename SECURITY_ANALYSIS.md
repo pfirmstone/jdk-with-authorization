@@ -2,8 +2,9 @@
 # Java Authorization System - Security Analysis Report
 
 **Date:** April 8, 2026 (Updated April 9, 2026 - Conditional Check Implementation)  
-**Project:** JDK with Authorization  
-**Repository:** https://github.com/pfirmstone/jdk-with-authorization  
+**Project:** Dirty Chai  
+
+**Repository:** https://github.com/pfirmstone/DirtyChai  
 **Scope:** `AccessController`, `System.setSecurityManager()`, `System.getSecurityManager()`, `ConcurrentPolicyFile`, Authorization Framework
 
 ---
