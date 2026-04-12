@@ -473,7 +473,7 @@ Shared across both:
 
 ## Defense Matrix: Attack vs. Defense
 
-
+```
 ┌──────────────────────────────┬────────┬───────────┬──────────────────┐
 │ Attack Vector                │ Type   │ Detection │ Status           │
 ├──────────────────────────────┼────────┼───────────┼──────────────────┤
@@ -490,7 +490,7 @@ Shared across both:
 │ Exception Swallowing         │ Bypass │ FailSec   │ ✅ BLOCKED       │
 │ Permission Spoofing          │ Inject │ Contract  │ ✅ BLOCKED       │
 └──────────────────────────────┴────────┴───────────┴──────────────────┘
-
+```
 
 ---
 
