@@ -5,7 +5,7 @@
 
 **The Problem:**
 
-Java once had the solution: In Java 1.2, Sun Microsystems' security team—Li Gong, Gary Ellison, and Mary Dageforde—rearchitected Java's SecurityManager specifically for enterprise servers, not just applets. With input from IBM, this system enforced the **principle of least privilege** (documented by Li Gong in *Inside Java 2 Platform Security*, ISBN 0201787911), preventing malicious or compromised code from accessing unauthorized resources (files, network, databases, serialization gadgets, etc.).
+Java once had the solution: In Java 1.2, Sun Microsystems' security team—Li Gong, Gary Ellison, and Mary Dageforde—rearchitected Java's SecurityManager specifically for enterprise servers, not just applets. With input from IBM, this system could enforce the **principle of least privilege** (documented by Li Gong in *Inside Java 2 Platform Security*, ISBN 0201787911), preventing malicious or compromised code from accessing unauthorized resources (files, network, databases, etc.).
 
 However, SecurityManager was **deprecated in Java 17** and removed—not because the security model was flawed, but due to three operational challenges:
 
