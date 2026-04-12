@@ -36,7 +36,7 @@
 
 ## Executive Summary
 
-> **In plain English:** Without Dirty Chai, any code loaded into the JVM can potentially access resources it shouldn't—there's no mandatory check that a user is authenticated before code runs. Dirty Chai solves this by requiring *every* piece of code to run inside an authenticated context, blocking privilege escalation at the class-loading gate.
+> **In plain English:** While the standard JDK SecurityManager can enforce policy-based access control, it does not require an authenticated user (`Subject`) context before code is loaded. Dirty Chai strengthens this by making Subject context *mandatory* at class-load time—code that arrives without a verified identity is blocked before it ever enters the JVM, preventing privilege escalation at the class-loading gate.
 
 **Dirty Chai** is a comprehensive authorization framework for OpenJDK that implements a **multi-layered security architecture** enforcing the **Principle of Least Privilege (PoLP)** through:
 
@@ -160,7 +160,7 @@ Subject.callAs(subject, () -> {
 | Mistake | Symptom | Fix |
 |---------|---------|-----|
 | Missing `LoadClassPermission` in policy | `SecurityException: Permission denied` on every class load | Add `LoadClassPermission "ALLOW"` to the grant block |
-| Loading classes outside `Subject.callAs()` | `SecurityException: Code loading requires authenticated Subject` | Wrap all class loading in `Subject.callAs()` |
+| Loading classes outside `Subject.callAs()` | `SecurityException: Code loading requires authenticated Subject` | Wrap the application *entry point* in `Subject.callAs()`—class loading is automatic from there |
 | Using a frozen (read-only) Subject | `SecurityException: Subject must remain mutable` | Don't call `Subject.setReadOnly()` before class loading completes |
 | Policy file not found | `SecurityException: Unable to locate policy` | Pass `-Djava.security.policy=` with an absolute path |
 | Reflection bypasses security | `SecurityException: Reflection detected in stack` | Use direct method calls or `AccessController.doPrivileged()` |
@@ -2203,7 +2203,7 @@ grep "Permission denied" /var/log/application.log
 ### Scalability Notes
 
 - The `pdcache` (`ConcurrentHashMap`) scales linearly with unique `(CodeSource, Principal)` combinations.
-- For applications with > 10,000 unique combinations, monitor heap usage — each entry is O(256 bytes).
+- For applications with > 10,000 unique combinations, monitor heap usage — each entry is approximately a few hundred bytes (varies with CodeSource URL length, certificate chain size, and Principal set size).
 - Virtual thread security context propagation adds zero per-thread allocation (ScopedValue uses carrier-local storage).
 - Avoid calling `Subject.setReadOnly()` before class loading is complete; it forces re-validation on every check.
 
@@ -2241,7 +2241,7 @@ Result result = Subject.callAs(subject, () -> {
 ```
 
 **Returns:** the value returned by the `Callable`.  
-**Throws:** `SecurityException` if no `SecurityManager` is installed and `callAs()` falls back to a non-authenticated path (Dirty Chai always has a `SecurityManager`, so this never occurs).
+**Note:** The base JDK `Subject.callAs()` may bypass the `doAs()` path when no `SecurityManager` is present. In Dirty Chai, `CombinerSecurityManager` is always installed, so `callAs()` invariably delegates to `doAs()` and full authentication enforcement applies.
 
 ### `SecureClassLoader.defineClass()` — Dirty Chai Behaviour
 
@@ -2298,7 +2298,7 @@ public class MyClassLoader extends SecureClassLoader {
 
 ### 2. Debug Logging
 
-```bash
+```
 # Enable all security logging
 -Xlog:security=trace
 
@@ -2320,7 +2320,7 @@ public class MyClassLoader extends SecureClassLoader {
 # Enable AccessController tracing
 -Djava.security.access.debug=all
 
-# Combine in command:
+# Combine all flags in a single launch command:
 java -Xlog:security=debug \
      -Djava.security.auth.debug=all \
      -Xlog:jdk.virtual_threads=debug \
