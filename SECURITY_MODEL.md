@@ -36,11 +36,11 @@
 
 ## Executive Summary
 
-> **In plain English:** While the standard JDK SecurityManager can enforce policy-based access control, it does not require an authenticated user (`Subject`) context before code is loaded. Dirty Chai strengthens this by making Subject context *mandatory* at class-load time—code that arrives without a verified identity is blocked before it ever enters the JVM, preventing privilege escalation at the class-loading gate.
+> **In plain English:** While the standard JDK SecurityManager can enforce policy-based access control, it does not validate an authenticated user (`Subject`) context before code is loaded. Dirty Chai provides the infrastructure for optional principal-authenticated class loading—administrators can configure policy grants to require a verified Subject context (blocking unauthenticated code at the class-loading gate), or allow unauthenticated code by granting permissions without principal requirements. The policy file determines how strictly authentication is enforced.
 
 **Dirty Chai** is a comprehensive authorization framework for OpenJDK that implements a **multi-layered security architecture** enforcing the **Principle of Least Privilege (PoLP)** through:
 
-- **Principal-Authenticated Code Loading:** Code can only load within authenticated Subject contexts
+- **Optional Principal-Authenticated Code Loading:** Infrastructure enabling policy-configured Subject context requirements; policy grants with principals enforce authentication, grants without principals allow unauthenticated code
 - **Transitive Dependency Lockdown:** Each dependency independently validated; no trust transfer
 - **Platform Module Authorization:** Even standard OpenJDK modules require explicit policy grants
 - **Virtual Thread Integration:** ScopedValue preserves security context; AccessControlContext inherited immutably; PrivilegedActions fully supported
@@ -56,7 +56,7 @@
 |----------|----------------|-----------|----------------|
 | **Fail-Secure** | Exceptions on ALL validation failures | Untrusted code cannot enter JVM | No silent permission grants on error |
 | **Principle of Least Privilege** | Independent permission evaluation per dependency | No privilege escalation through chains | Limits blast radius of a compromised component |
-| **Authentication Required** | Subject context mandatory for all loads | No unauthenticated code execution | Eliminates anonymous execution paths |
+| **Authentication** | Policy-configured Subject validation (grants with principals enforce; grants without principals allow unauthenticated) | Administrator-controlled through policy grants | Enables flexible enforcement from optional to mandatory per codebase |
 | **Principal-Based Authorization** | Policy grants require (Principal, CodeSource) match | Code alone insufficient; users alone insufficient | Prevents stolen JARs from gaining access |
 | **No Trust Transfer** | Each dependency re-validated independently | Transitive dependencies cannot escalate privileges | Evil transitive dependency cannot piggyback on trusted lib |
 | **Virtual Thread Compatible** | ScopedValue + AccessControlContext + StackWalk | Security context maintained across mounts/unmounts | 1M+ concurrent threads remain fully governed |
@@ -138,7 +138,7 @@ LoginContext lc = new LoginContext("MyApp", new SimpleCallbackHandler(username, 
 lc.login();
 Subject subject = lc.getSubject();
 
-// Run application inside authenticated context (Dirty Chai enforces this)
+// Run application inside authenticated context (policy requires this when grants specify principals)
 Subject.callAs(subject, () -> {
     // All class loading and privileged operations happen here
     return MyApplication.run();
@@ -150,7 +150,7 @@ Subject.callAs(subject, () -> {
 | Scenario | Without Dirty Chai | With Dirty Chai |
 |----------|--------------------|-----------------|
 | Untrusted JAR loads | Loads silently | `SecurityException` thrown |
-| Anonymous code execution | Allowed | Blocked—Subject required |
+| Anonymous code execution | Allowed | Blocked when policy grants require principals (policy-driven) |
 | Transitive dependency privilege | Inherits caller's trust | Re-validated independently |
 | Virtual thread context | No propagation guarantee | `ScopedValue` ensures consistent context |
 | Policy violation | May silently succeed | `SecurityException` always |
