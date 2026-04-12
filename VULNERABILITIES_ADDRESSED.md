@@ -159,12 +159,12 @@ m.invoke(null, maliciousSecurityManager);  // Tries to hide caller
 - ✅ Blocks `java.lang.invoke.MethodHandle` frames
 
 **Detection:**
-
+```
 Frame Analysis:
 ├─ java.lang.reflect.Method.invoke()      ← BLOCKED
 ├─ com.attacker.Exploit.go()
 └─ ...
-
+```
 Result: SecurityException - Reflection detected
 
 ### 6. **Generated Code Bypass (Lambda, Proxy, Accessors)**
@@ -454,7 +454,7 @@ executor.submit(() -> {
 
 ### Before JDK-with-Authorization
 
-
+```
 ┌──────────────────────────────┐
 │ Default Policy               │
 ├──────────────────────────────┤
@@ -464,11 +464,11 @@ executor.submit(() -> {
 │ No serialization control     │  ← Any class deserializable
 │ No reflection protection     │  ← Caller can be spoofed
 └──────────────────────────────┘
-
+```
 Result: High attack surface, vulnerability exploitation easy
 
 ### After JDK-with-Authorization
-
+```
 ┌────────────────────────────────────┐
 │ Principle of Least Privilege       │
 ├────────────────────────────────────┤
@@ -483,7 +483,7 @@ Result: High attack surface, vulnerability exploitation easy
 │   // ... (all other perms denied)  │
 │ }                                  │
 └────────────────────────────────────┘
-
+```
 Result: Low attack surface, exploitation significantly harder
 
 
@@ -491,7 +491,7 @@ Result: Low attack surface, exploitation significantly harder
 
 ### Example: Log4j CVE-2021-44228
 
-
+```
 Layer 1: LoadClassPermission
   └─ Prevents loading code from untrusted LDAP servers
        └─ Layer 2: URLPermission
@@ -500,7 +500,7 @@ Layer 1: LoadClassPermission
                       └─ Prevents gadget chain deserialization
                            └─ Layer 4: @CallerSensitive
                                 └─ Validates caller identity
-
+```
 
 **Single mitigation:** Moderate risk reduction  
 **Multiple mitigations:** Attack becomes practically impossible  
