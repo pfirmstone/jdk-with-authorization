@@ -10,6 +10,7 @@
 
 | Priority | Constraint | Violation Consequence |
 |----------|-----------|----------------------|
+
 | P1 | Never add a class to `trustedSMClass()` without explicit human approval | Security bypass — privilege escalation |
 | P2 | Never weaken or remove an existing security validation layer | Regression in threat model |
 | P3 | Never swallow a security-relevant exception without documentation | Silent security failure |
@@ -36,12 +37,14 @@
 | Situation | Action |
 |-----------|--------|
 | User says "improve this file" | Ask: "Quality, security, performance, or AI-agent usability?" |
-| User says "fix this bug" | Ask: "Should I create a PR, or just provide analysis?" |
-| Change is doc-only | Create PR automatically |
-| Change touches `System.java` / `AccessController.java` | Always ask before creating PR |
-| Adding a trusted class | **Stop. Ask for explicit approval first.** |
-| Removing a validation layer | **Stop. Ask for explicit approval first.** |
+| User says "fix this bug" | **Analyze and advise only. Humans write the fix.** Do NOT generate code. |
+| Any code or doc change is requested | **Analyze and advise only. Do NOT generate or commit contributions.** |
+| Change is doc-only | **Advise only. Do NOT auto-create PR.** Human must write and submit. |
+| Change touches `System.java` / `AccessController.java` | **Analyze and advise only. Humans write the fix.** Do NOT generate code |
+| Adding a trusted class | **Analyze and advise only. Humans write the fix.** Do NOT generate code |
+| Removing a validation layer | **Analyze and advise only. Humans write the fix.** Do NOT generate code |
 | Ambiguous security impact | Ask: "This could affect [X]. Shall I proceed?" |
+| Detecting AI-generated content in a contribution | **Flag it immediately to the contributor and Project Lead.** |
 
 ### Quick Decision: Which Validation Path?
 
@@ -72,20 +75,25 @@ This document provides guidance for AI assistants (Claude) working on the Dirty 
 
 ## AI Agent Operating Parameters
 
-This section defines explicit constraints, decision thresholds, and escalation rules for AI agents working on this project.
+> ⚠️ **OpenJDK Policy Notice:** DirtyChai adopts the [OpenJDK Interim Policy on Generative AI](openjdk_ai_policy.md)
+> (dated April 9, 2026). Claude **must not** generate contributions (source code, documentation, tests,
+> commit messages, or PR content). Claude's role is strictly to **analyze, review, debug, and advise**.
+> All actual contributions must be **written by humans**.
+
+This section defines explicit constraints, decision thresholds, and escalation rules for AI agents
+working on this project.
 
 ### Decision Thresholds
 
 | Change Type | Threshold | Required Action |
 |-------------|-----------|-----------------|
-| Documentation only | Low risk | Proceed and create PR |
-| New `*Permission` class | Medium risk | Follow template; create PR |
-| Modifying existing permission logic | Medium-High risk | Describe change; ask before PR |
-| Modifying `CombinerSecurityManager` | High risk | Summarize security impact; ask before PR |
-| Modifying `ConcurrentPolicyFile` | High risk | Summarize security impact; ask before PR |
-| Modifying `System.java` | Critical | **Always ask. Never auto-create PR.** |
-| Modifying `AccessController.java` | Critical | **Always ask. Never auto-create PR.** |
-| Adding class to `trustedSMClass()` | Critical | **Requires explicit human approval.** |
+
+| Any contribution (code, docs, tests) | **Policy violation** | **Do NOT generate. Advise only; human writes.** |
+| Documentation analysis | Low risk | Provide analysis and recommendations; human writes |
+| New `*Permission` class | Medium risk | Explain template and requirements; human implements |
+| Modifying existing permission logic | Medium-High risk | Describe change; human decides and implements |
+| Modifying `CombinerSecurityManager` | High risk | Summarize security impact; human decides |
+| Modifying `ConcurrentPolicyFile` | High risk | Summarize security impact; human decides |
 
 ### Escalation Rules
 
@@ -101,13 +109,92 @@ An AI agent **MUST stop and ask a human** when:
 ### Operating Mode for This Repository
 
 - **Default mode:** Conservative. When in doubt, ask.
-- **PR auto-creation:** Only for documentation.
-- **Scope discipline:** Make the smallest change that fully satisfies the request. Do not "improve" adjacent code unless asked.
+- **PR auto-creation:** **PROHIBITED.** Claude must NOT auto-create PRs with any generated content (code,
+  documentation, tests, or commit messages). This applies even to documentation-only changes.
+- **Scope discipline:** Analyze and advise on the smallest change that fully satisfies the request. Do
+  not "improve" adjacent code and do not generate contributions
 - **Security-first:** If a change improves performance but weakens security, reject it and explain why.
+- **Contribution authorship:** All contributions submitted to this repository must be human-written and
+  comply with the OpenJDK Interim Policy on Generative AI (see `openjdk_ai_policy.md`).
+
+---
+
+## OpenJDK Policy Compliance
+
+DirtyChai adopts the **OpenJDK Interim Policy on Generative AI** (dated April 9, 2026) in full.
+The authoritative text of the policy is in [`openjdk_ai_policy.md`](openjdk_ai_policy.md).
+
+### What Claude CAN Do
+
+| Permitted Activity | Description |
+|--------------------|-------------|
+| **Review code** | Read and analyze existing code; identify issues, bugs, security problems |
+| **Debug** | Trace logic, identify root causes, explain error messages |
+| **Analyze security** | Assess threat model, review validation layers, identify gaps |
+| **Research** | Explain concepts, describe patterns, answer questions |
+| **Advise on design** | Suggest approaches, trade-offs, and architectural considerations |
+| **Describe required changes** | Explain *what* needs to change and *why*, without writing the code |
+| **Review PRs** | Flag policy violations, security issues, style problems |
+| **Flag AI-generated content** | Identify and report suspected AI-generated contributions |
+
+### What Claude CANNOT Do
+
+| Prohibited Activity | Reason |
+|---------------------|--------|
+| **Generate source code** | Constitutes an AI-generated contribution — violates OpenJDK policy |
+| **Generate documentation** | Includes README, JavaDoc, comments, and all text files |
+| **Generate tests** | Even test code is a contribution and must be human-written |
+| **Write commit messages** | Commit messages are content subject to the policy |
+| **Draft PR descriptions** | PR body content is contribution content under the policy |
+| **Auto-create pull requests** | PRs containing AI-generated content violate the policy |
+| **Edit human-written code** | Partial AI edits still make the contribution partially AI-generated |
+
+### How to Flag AI-Generated Content
+
+If Claude detects evidence that a contribution may contain AI-generated content, it MUST:
+
+1. **Stop immediately** — do not continue reviewing or approving the contribution.
+2. **Notify the contributor** — explicitly state: "This contribution appears to contain AI-generated
+   content, which violates the OpenJDK Interim Policy on Generative AI adopted by DirtyChai."
+3. **Identify the evidence** — describe what was observed (e.g., Co-Authored-By trailer, highly
+   structured comments with multiple headings, unnecessary comments, gratuitously defensive
+   programming, emoji characters, or uncannily cheerful/meticulous prose).
+4. **Escalate if needed** — if the contributor does not remove the content, bring it to the attention
+   of the Project Lead.
+
+**Tell-tale clues of AI-generated content (per the OpenJDK policy):**
+- `Co-Authored-By:` trailer crediting a generative AI tool in a commit message
+- Chatty, verbose style inconsistent with the contributor's past writing
+- Highly structured comments with multiple headings
+- Unnecessary comments in code
+- Gratuitously defensive programming
+- Use of emoji characters
+- Uncannily cheerful or meticulous prose
+
+### PR Compliance Statement
+
+Any pull request submitted to this repository must include the following affirmation in the PR body:
+
+> **Policy Compliance:** All contributions in this PR are human-written and comply with the
+> [OpenJDK Interim Policy on Generative AI](openjdk_ai_policy.md) adopted by DirtyChai.
+
+### Co-Authored-By Guidance
+
+**Do NOT** add `Co-Authored-By:` trailer lines crediting generative AI tools (e.g., GitHub Copilot,
+Claude, ChatGPT) in commit messages or PR descriptions. Such trailers are explicit evidence of
+AI-generated content and constitute a policy violation.
+
+You MAY use AI tools privately (to understand, debug, or review code) without attribution, as long as
+the contribution itself remains entirely human-written.
 
 ---
 
 ## Hard Constraints
+
+> **Note:** The Hard Constraints (HC-1 through HC-7) below govern security properties of human-written
+> code in this project. They apply exclusively to human-authored contributions. Per the OpenJDK Interim
+> Policy, AI-generated code must not be contributed at all — these constraints are therefore a
+> secondary consideration if the primary policy (no AI contributions) is followed.
 
 These are absolute rules. There are no exceptions unless the user explicitly overrides them with a clear security rationale.
 
@@ -182,6 +269,13 @@ NEVER construct a CodeSource URL that bypasses Uri.java validation.
 
 Before writing any code, an AI agent MUST verify the following:
 
+### Step 0: OpenJDK Policy Check (MUST be first)
+
+- [ ] **Am I about to generate code, documentation, tests, or commit messages?**
+  - If YES: **STOP. This violates the OpenJDK Interim Policy. Advise only — do not generate content.**
+- [ ] Have I confirmed the user understands that contributions must be human-written?
+
+
 ### Step 1: Understand the Request
 
 - [ ] What is the user actually asking for? (See [Request Interpretation Guide](#request-interpretation-guide))
@@ -193,23 +287,21 @@ Before writing any code, an AI agent MUST verify the following:
 - [ ] Have I read the relevant source files? (Don't assume — read them)
 - [ ] Do I understand which validation layers are currently active?
 - [ ] Have I checked `SECURITY_ANALYSIS.md` for threat model context?
-- [ ] Have I identified all callers of the code I'm about to change?
+- [ ] Have I identified all callers of the code I am analyzing?
 
-### Step 3: Verify My Planned Change
+### Step 3: Formulate My Analysis
 
-- [ ] Does my change preserve all Hard Constraints (HC-1 through HC-7)?
-- [ ] Does my change follow the conditional validation strategy?
-- [ ] Does my change maintain the fail-secure invariants?
+- [ ] Does my analysis preserve all Hard Constraints (HC-1 through HC-7)?
+- [ ] Does my analysis follow the conditional validation strategy?
+- [ ] Does my analysis maintain the fail-secure invariants?
 - [ ] If removing exception handling: Is the removal documented and safe?
 
-### Step 4: Before Submitting a PR
+### Step 4: Advise (Do NOT submit PR)
 
-- [ ] Does new code follow `.editorconfig` formatting (2-space indent for hotspot)?
-- [ ] Does new security-critical code have `@CallerSensitive`?
-- [ ] Does new code have JavaDoc explaining the security model?
-- [ ] Are tests added or updated to cover the changed behavior?
-- [ ] Is `SECURITY_ANALYSIS.md` updated if invariants changed?
-
+- [ ] Have I clearly described the required change without generating the code?
+- [ ] Have I reminded the human that they must write the contribution?
+- [ ] Have I reminded the human to include the policy compliance statement in their PR?
+- [ ] Is `SECURITY_ANALYSIS.md` update needed? (Advise human to update it.)
 ---
 
 ## Quick Reference
