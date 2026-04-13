@@ -32,7 +32,8 @@
 19. [API Reference](#api-reference)
 20. [Troubleshooting](#troubleshooting)
 21. [References](#references)
-22. [Conclusion](#conclusion)
+22. [API Stability Contract & Multi-Release JAR Strategy](#api-stability-contract--multi-release-jar-strategy)
+23. [Conclusion](#conclusion)
 
 ---
 
@@ -48,7 +49,7 @@
 - **Virtual Thread Integration:** AccessControlContext inherited immutably; PrivilegedActions fully supported
 - **Unified Subject Context:** Subject.callAs() always delegates to Subject.doAs() in Dirty Chai system (allowSecurityManager = true)
 - **AccessController Stack Walk:** Native stack walking compatible with virtual threads
-- **Backward Compatible APIs:** Subject.doAs() and legacy security APIs fully operational
+- **Essential Authorization APIs:** `Subject.doAs()`, `Subject.doAsPrivileged()`, and `AccessControlContext` retained and fully operational as first-class APIs; not deprecated in Dirty Chai
 - **Fail-Secure Design:** All validation failures result in SecurityException; no silent bypasses
 - **Non-Blocking Performance:** Lock-free caching with concurrent validation
 
@@ -63,7 +64,7 @@
 | **No Trust Transfer** | Each dependency re-validated independently | Transitive dependencies cannot escalate privileges | Evil transitive dependency cannot piggyback on trusted lib |
 | **Virtual Thread Compatible** | AccessControlContext + StackWalk | Security context maintained across mounts/unmounts | 1M+ concurrent threads remain fully governed |
 | **Subject Management** | callAs() always delegates to doAs() via SecurityManager | Unified access control model | Single predictable code path; no bypass routes |
-| **Backward Compatible** | Subject.doAs() fully operational; legacy APIs supported | Existing code works without modification | Zero migration cost for existing applications |
+| **Essential Authorization APIs** | `Subject.doAs()`, `Subject.doAsPrivileged()`, and `AccessControlContext` retained as first-class APIs; not deprecated | Existing code works without modification; `doAsPrivileged(s, a, null)` unique explicit-context capability preserved | No vanilla OpenJDK replacement exists for `doAsPrivileged` null-context use case |
 | **Non-Blocking Performance** | ConcurrentHashMap with lock-free reads | High-concurrency throughput maintained | Security does not become the bottleneck |
 
 ---
@@ -2116,16 +2117,16 @@ The primary security boundary concern across threads and pools is **Subject cont
 
 ### 1. Subject.doAs() Full Compatibility
 
-**Model:** Legacy `Subject.doAs()` fully operational with virtual threads
+**Model:** `Subject.doAs()` fully operational with virtual threads; retained and maintained as a first-class API in Dirty Chai
 
 ```
-// Legacy code (pre-virtual threads)
+// Subject.doAs() — fully operational in Dirty Chai (not deprecated)
 Subject subject = new Subject();
 LoginContext lc = new LoginContext("MyApp");
 lc.login();  // Populate subject
 
-// Using deprecated but fully supported Subject.doAs()
-Integer result = Subject.doAs(subject, 
+// Subject.doAs() — fully operational in Dirty Chai (not deprecated)
+Integer result = Subject.doAs(subject,
     new PrivilegedAction<Integer>() {
         @Override
         public Integer run() {
@@ -2148,16 +2149,32 @@ Integer result = Subject.doAs(subject,
 - ✅ Virtual threads detect and handle correctly
 - ✅ Identical semantics guaranteed
 
-### 2. Subject.doAsPrivileged() Compatibility
+### 2. Subject.doAsPrivileged() — Essential API for Explicit Context Control
 
-**Model:** Legacy `Subject.doAsPrivileged()` with explicit context
+**Why Essential:** `Subject.doAsPrivileged()` is the only Subject API that accepts an **explicit `AccessControlContext`**, enabling caller-independent privilege boundaries. Upstream itself acknowledged: *"There is no replacement for the Security Manager or this method."* It is retained, fully operational, and not deprecated in Dirty Chai.
+
+**The unique capability — null-context isolation:**
 
 ```
-// Legacy code with explicit context
+// doAsPrivileged with null ACC:
+//   null → AccessControlContext built from empty ProtectionDomain[]
+//   The caller's stack domains cannot widen the Subject's privilege.
+//   This clean-context isolation has no equivalent in callAs() or doAs().
+Subject.doAsPrivileged(subject, action, null);
+
+// doAsPrivileged with explicit ACC:
+//   Passes a captured context as the privilege boundary.
+//   Stack walk uses acc, not the current thread's ACC.
+AccessControlContext context = AccessController.getContext();
+Subject.doAsPrivileged(subject, action, context);
+```
+
+```
+// Concrete example with explicit context
 Subject subject = authenticateUser();
 AccessControlContext context = AccessController.getContext();
 
-// Using deprecated but fully supported Subject.doAsPrivileged()
+// doAsPrivileged() — essential API, fully operational in Dirty Chai
 Integer result = Subject.doAsPrivileged(subject,
     new PrivilegedAction<Integer>() {
         @Override
@@ -2176,11 +2193,13 @@ Integer result = Subject.doAsPrivileged(subject,
 // ✅ Result returned correctly
 ```
 
-**Backward Compatibility Details:**
-- ✅ No code changes required
-- ✅ Explicit context properly applied
-- ✅ Privilege boundaries respected
-- ✅ Virtual threads handle transparent to code
+**Why doAsPrivileged is Irreplaceable:**
+- ✅ **Unique capability:** Accepts an explicit `AccessControlContext` — no other Subject API does
+- ✅ **Null-context isolation:** `doAsPrivileged(subject, action, null)` constructs a context from an empty `ProtectionDomain[]`, isolating the action from the caller's stack; the caller's domains cannot widen the Subject's privilege — `callAs()` and `doAs()` have no equivalent
+- ✅ **No vanilla replacement:** Upstream's own deprecation note states "There is no replacement for the Security Manager or this method"
+- ✅ **First-class API in Dirty Chai:** Retained and maintained operational; deprecation annotations are commented out in `Subject.java`
+- ✅ **Virtual thread compatible:** Explicit context properly applied across mounts/unmounts
+- ✅ **Privilege boundaries respected:** Stack walk correctly uses provided ACC as the boundary
 
 ### 3. ThreadLocal Subject Access Patterns
 
@@ -2214,7 +2233,7 @@ Subject.doAs(subject, new PrivilegedAction<Void>() {
     }
 });
 
-// New code (recommended for VTs):
+// Alternative API using Callable signature (callAs always delegates to doAs in Dirty Chai):
 Subject.callAs(subject, () -> {
     // Same semantics, callAs always uses doAs in Dirty Chai
     return null;
@@ -2254,7 +2273,7 @@ if (sm != null) {
 **Pattern:** Reflection within privileged actions
 
 ```
-// Legacy pattern with reflection
+// Using Subject.doAs() with reflection (older PrivilegedAction style)
 Subject.doAs(subject, new PrivilegedAction<Object>() {
     @Override
     public Object run() {
@@ -2701,15 +2720,15 @@ Subject.callAs(subject, () -> {
 });
 ```
 
-#### **Authentication Setup (Legacy - Still Fully Supported)**
+#### **Authentication Setup (PrivilegedAction / doAs variant)**
 
 ```
-// Legacy approach (still works everywhere)
+// Subject.doAs() — fully operational in Dirty Chai (not deprecated)
 Subject subject = new Subject();
 LoginContext lc = new LoginContext("MyApp");
 lc.login();
 
-// Using deprecated but fully supported Subject.doAs()
+// Subject.doAs() with PrivilegedAction — works identically on platform and virtual threads
 Subject.doAs(subject, new PrivilegedAction<Void>() {
     @Override
     public Void run() {
@@ -2883,8 +2902,9 @@ grep "Permission denied" /var/log/application.log
 
 | Method | Class | When to Use | Signature |
 |--------|-------|-------------|-----------|
-| `callAs()` | `javax.security.auth.Subject` | Modern replacement for `doAs()`; use in all new code | `static <T> T callAs(Subject subject, Callable<T> action)` |
-| `doAs()` | `javax.security.auth.Subject` | Legacy pattern; fully supported | `static <T> T doAs(Subject subject, PrivilegedAction<T> action)` |
+| `callAs()` | `javax.security.auth.Subject` | Subject context execution with `Callable`/`CompletionException` signature; delegates to `doAs()` in Dirty Chai — not a replacement for `doAs()`, all three Subject APIs are first-class | `static <T> T callAs(Subject subject, Callable<T> action)` |
+| `doAs()` | `javax.security.auth.Subject` | Fully operational first-class API; preferred when `PrivilegedAction`/`PrivilegedExceptionAction` signatures are needed | `static <T> T doAs(Subject subject, PrivilegedAction<T> action)` |
+| `doAsPrivileged()` | `javax.security.auth.Subject` | Essential when an explicit `AccessControlContext` is required; `null` acc gives clean caller-independent isolation — **no callAs/doAs equivalent** | `static <T> T doAsPrivileged(Subject subject, PrivilegedAction<T> action, AccessControlContext acc)` |
 | `defineClass()` | `java.security.SecureClassLoader` | Override to customise class loading; Dirty Chai validation runs here | `protected Class<?> defineClass(String name, byte[] b, int off, int len, CodeSource cs)` |
 | `getPermissions()` | `java.security.SecureClassLoader` | Override to provide custom `PermissionCollection` per `CodeSource` | `protected PermissionCollection getPermissions(CodeSource cs)` |
 | `doPrivileged()` | `java.security.AccessController` | Elevate to a specific, limited context | `static <T> T doPrivileged(PrivilegedAction<T> action, AccessControlContext context)` |
@@ -3056,6 +3076,166 @@ java -Xlog:security=debug \
 
 ---
 
+## API Stability Contract & Multi-Release JAR Strategy
+
+### 1. Dirty Chai API Stability Commitment
+
+Dirty Chai commits to retaining the following APIs as **permanently operational first-class APIs**, regardless of what upstream OpenJDK does:
+
+| API | Dirty Chai Status | Upstream Status (as of JDK 24) | Notes |
+|-----|-------------------|-------------------------------|-------|
+| `javax.security.auth.Subject.doAs()` | ✅ Permanent | Disabled by default (JEP 486) | Deprecation annotations commented out in `Subject.java` |
+| `javax.security.auth.Subject.doAsPrivileged()` | ✅ Permanent | Disabled by default (JEP 486) | Only API accepting explicit `AccessControlContext`; upstream acknowledged no replacement exists |
+| `javax.security.auth.Subject.callAs()` | ✅ Permanent | Present; delegates to `doAs()` in Dirty Chai | Always takes the `doAs()` path when SecurityManager is installed |
+| `java.security.AccessController` | ✅ Permanent | Disabled by default (JEP 486) | Central to the privilege execution model |
+| `java.security.AccessControlContext` | ✅ Permanent | Disabled by default (JEP 486) | Essential for Subject propagation via SubjectDomainCombiner |
+| `java.lang.SecurityManager` | ✅ Permanent | Permanently disabled (JEP 486) | Dirty Chai overrides JEP 486 behaviour in `java.base` |
+| `au.zeus.jdk.authorization.sm.CombinerSecurityManager` | ✅ Permanent | N/A (Dirty Chai only) | The recommended SecurityManager implementation |
+| `au.zeus.jdk.authorization.policy.ConcurrentPolicyFile` | ✅ Permanent | N/A (Dirty Chai only) | Policy enforcement engine |
+
+### 2. Upstream Removal Timeline
+
+| Milestone | JDK Version | JEP / CSR | Effect |
+|-----------|-------------|-----------|--------|
+| Deprecated for removal | JDK 17 | JEP 411 | `@Deprecated(forRemoval=true)` annotations added |
+| Permanently disabled | JDK 24 | JEP 486 | `System.setSecurityManager()` throws `UnsupportedOperationException` on vanilla JDK; APIs still present as class files |
+| **Removal** | JDK 26–28 (est.) | No finalised JEP as of April 2026 | Class files removed; code using these APIs fails to **compile** against vanilla `javac` |
+
+> **Dirty Chai patches `java.base` to reverse the JEP 486 disablement.** On a Dirty Chai JVM all listed APIs are fully functional regardless of the upstream JDK version being tracked.
+
+### 3. The Portability Problem
+
+When upstream removes these APIs, application code that uses `Subject.doAs*`, `AccessControlContext`, or `AccessController` will encounter two distinct problems:
+
+| Problem | When It Occurs | Scope |
+|---------|----------------|-------|
+| **Compile-time failure** | Developer's build machine uses vanilla JDK N toolchain (after removal) | Affects developers building Dirty Chai applications on vanilla JDK toolchains |
+| **Runtime failure** | Application runs on a vanilla JDK N JVM (after removal) | Not a concern for Dirty Chai users — the runtime is always a Dirty Chai JVM |
+
+**Key clarification:** Dirty Chai users always run on a Dirty Chai JVM. Runtime portability to vanilla OpenJDK is therefore not a goal. The problem to solve is **compile-time portability** — allowing application source code to be compiled using vanilla JDK toolchains (`javac`, Maven, Gradle with vanilla JDK) while targeting Dirty Chai as the runtime.
+
+### 4. Multi-Release JAR Strategy for a Compat Shim
+
+A **Multi-Release JAR (MRJAR)**, introduced in JEP 238 (JDK 9), allows a single JAR to contain version-specific class implementations under `META-INF/versions/N/`. The JVM selects the highest-versioned implementation it supports.
+
+The strategy is to publish a **separate `au.zeus.jdk.compat` artifact** (not part of the Dirty Chai JDK fork itself) that exposes the Dirty Chai authorization APIs as a library dependency.
+
+#### MRJAR Layout
+
+```
+au.zeus.jdk.compat.jar
+├── META-INF/
+│   └── MANIFEST.MF               (Multi-Release: true)
+├── au/zeus/jdk/compat/
+│   ├── SubjectCompat.java         (base tier — compiled against Dirty Chai JDK)
+│   └── AccessControllerCompat.java
+└── META-INF/versions/
+    └── N/                          (N = JDK version that removes the APIs)
+        └── au/zeus/jdk/compat/
+            ├── SubjectCompat.java  (version-N tier — compiled against vanilla JDK N)
+            └── AccessControllerCompat.java
+```
+
+#### Base Tier (compiled against Dirty Chai)
+
+The base tier delegates directly to the built-in JDK APIs:
+
+```java
+// au/zeus/jdk/compat/SubjectCompat.java (base tier)
+public final class SubjectCompat {
+    public static <T> T doAs(Subject subject, PrivilegedAction<T> action) {
+        return Subject.doAs(subject, action);
+    }
+    public static <T> T doAsPrivileged(Subject subject,
+                                       PrivilegedAction<T> action,
+                                       AccessControlContext acc) {
+        return Subject.doAsPrivileged(subject, action, acc);
+    }
+}
+```
+
+#### Version-N Tier (compiled against vanilla JDK N after removal)
+
+The upper tier provides best-effort emulation for the compile-time stub. Application code compiled against the compat artifact will continue to compile on vanilla toolchains; at runtime on Dirty Chai the base tier is selected, so full semantics apply.
+
+```java
+// META-INF/versions/N/au/zeus/jdk/compat/SubjectCompat.java (version-N tier)
+public final class SubjectCompat {
+    public static <T> T doAs(Subject subject, Callable<T> action) {
+        // On vanilla JDK N: delegates to callAs(), which uses ScopedValue path
+        // ⚠ Semantics differ from Dirty Chai (no AccessControlContext/SubjectDomainCombiner)
+        try {
+            return Subject.callAs(subject, action);
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+    }
+    public static <T> T doAsPrivileged(Subject subject,
+                                       Callable<T> action,
+                                       Object acc) {
+        // ⚠ Explicit-context semantics cannot be replicated on vanilla JDK N.
+        // Best-effort: ignore acc and delegate to callAs().
+        // Applications must not rely on the acc argument on non-Dirty-Chai JVMs.
+        return doAs(subject, action);
+    }
+}
+```
+
+### 5. The Hard Case: doAsPrivileged with null ACC
+
+`doAsPrivileged(subject, action, null)` constructs a fresh `AccessControlContext` backed by an empty `ProtectionDomain[]`. This gives the action a **clean, caller-independent privilege context** where only the Subject's own policy grants apply. No caller domain can widen or narrow this context.
+
+This semantics **cannot be replicated** on a vanilla JDK N JVM after API removal, because:
+- `AccessControlContext` no longer exists as a class
+- `Subject.callAs()` uses `ScopedValue`, which carries no privilege boundary concept
+- There is no standard way to "start with zero caller context"
+
+**Recommended approach for application code using null-ACC:**
+
+1. On Dirty Chai JVM: use `Subject.doAsPrivileged(subject, action, null)` directly — full clean-context semantics apply.
+2. If compile-time portability is needed: guard the call with a runtime check or abstract it behind an interface, with a Dirty Chai-specific implementation loaded via `ServiceLoader` or factory pattern.
+3. Document clearly that the null-ACC isolation guarantee only holds on Dirty Chai.
+
+### 6. Build Toolchain Guidance for Downstream Application Developers
+
+#### Compiling against a Dirty Chai JDK (recommended)
+
+The simplest approach: set the Dirty Chai JDK as the compile-time and runtime JDK. No MRJAR needed. All APIs are present and fully operational.
+
+```xml
+<!-- Maven: point JAVA_HOME at the Dirty Chai JDK installation -->
+<properties>
+    <maven.compiler.source>21</maven.compiler.source>
+    <maven.compiler.target>21</maven.compiler.target>
+</properties>
+```
+
+#### Using the compat shim with a vanilla JDK toolchain
+
+When a vanilla JDK toolchain is mandated (CI, shared build infrastructure, etc.), add the `au.zeus.jdk.compat` artifact as a `provided`/`compileOnly` dependency. At runtime the Dirty Chai JVM's base tier is used; the version-N tier is only active on vanilla JDK N.
+
+```xml
+<!-- Maven -->
+<dependency>
+    <groupId>au.zeus.jdk</groupId>
+    <artifactId>dirty-chai-compat</artifactId>
+    <version>${dirty-chai.version}</version>
+    <scope>provided</scope>
+</dependency>
+```
+
+#### MANIFEST.MF entry for MRJARs
+
+Any JAR that uses version-specific class directories must declare:
+
+```
+Multi-Release: true
+```
+
+This is set automatically by Maven's `maven-jar-plugin` (3.x+) when the `multiRelease` flag is enabled, and by Gradle's `compileJava` with `options.release` per source set.
+
+---
+
 ## Conclusion
 
 **Dirty Chai** provides **comprehensive protection** against privilege escalation, code injection, and context escape attacks through:
@@ -3066,7 +3246,7 @@ java -Xlog:security=debug \
 4. **Fail-secure design** with no silent failures
 5. **Virtual thread integration** via immutable ACC (SubjectDomainCombiner) + native stack walk
 6. **Unified Subject context** via Subject.callAs() → Subject.doAs() delegation (allowSecurityManager = true)
-7. **Full backward compatibility** with Subject.doAs() and legacy APIs
+7. **Essential Authorization APIs** (`Subject.doAs()`, `Subject.doAsPrivileged()`, `AccessControlContext`) retained and fully operational; not deprecated in Dirty Chai
 8. **PrivilegedAction support** with inherited and explicit contexts
 9. **High-performance caching** without sacrificing security
 10. **Clear audit trails** for compliance and monitoring
@@ -3075,12 +3255,13 @@ This architecture successfully enforces the **Principle of Least Privilege** whi
 
 ---
 
-**Document Version:** 1.4  
-**Last Updated:** 2025  
-**Classification:** Technical Documentation  
-**Project:** Dirty Chai - OpenJDK with Authorization  
-**Base:** OpenJDK (trunk)  
-**License:** GPL v2 + Classpath Exception  
-**Subject Context:** Subject.callAs() always delegates to Subject.doAs() in Dirty Chai system (allowSecurityManager() = true)  
-**Virtual Thread Support:** Fully Integrated via Immutable AccessControlContext + SubjectDomainCombiner + Native Stack Walk  
-**Backward Compatibility:** Complete (Subject.doAs(), PrivilegedAction, legacy APIs fully operational)
+**Document Version:** 1.5
+**Last Updated:** April 2026
+**Classification:** Technical Documentation
+**Project:** Dirty Chai - OpenJDK with Authorization
+**Base:** OpenJDK (trunk)
+**License:** GPL v2 + Classpath Exception
+**Subject Context:** Subject.callAs() always delegates to Subject.doAs() in Dirty Chai system (allowSecurityManager() = true)
+**Virtual Thread Support:** Fully Integrated via Immutable AccessControlContext + SubjectDomainCombiner + Native Stack Walk
+**Essential Authorization APIs:** `Subject.doAs()`, `Subject.doAsPrivileged()`, and `AccessControlContext` retained and fully operational; not deprecated in Dirty Chai
+
