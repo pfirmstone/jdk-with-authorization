@@ -30,6 +30,7 @@ import java.util.Collections;
 import java.util.Set;
 import java.util.TreeSet;
 import au.zeus.jdk.authorization.policy.PermissionGrantBuilderImp.NullPermissionGrant;
+import java.net.SocketPermission;
 
 /**
  * <code>PermissionGrant</code> implementations are expected to be immutable, non blocking,
@@ -129,6 +130,7 @@ public abstract class PermissionGrant {
                 perm[i].getActions(); 
                 perms.add(perm[i]);
                 if (perm[i] instanceof AllPermission) privileged = true;
+                if (perm[i] instanceof SocketPermission sp) sp.init();
             }
 	    this.perms = Collections.unmodifiableSet(perms);
             this.privileged = privileged;

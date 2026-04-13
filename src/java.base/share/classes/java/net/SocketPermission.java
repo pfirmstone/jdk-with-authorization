@@ -287,6 +287,18 @@ public final class SocketPermission extends Permission
        this(getHost(host), mask, null);
         // name initialized to getHost(host); NPE detected in getHost()
     }
+    
+    /**
+     * Initialize DNS lookup and store result.
+     */
+    public void init(){
+        try {
+            getCanonName();
+            isUntrusted();
+        } catch (UnknownHostException e){
+            //Swallow.
+        }
+    }
 
     private void setDeny() {
         defaultDeny = true;
