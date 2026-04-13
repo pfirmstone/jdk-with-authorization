@@ -22,16 +22,17 @@
 9. [Virtual Thread Support](#virtual-thread-support)
 10. [Subject Context Management](#subject-context-management)
 11. [AccessController Integration](#accesscontroller-integration)
-12. [Backward Compatibility](#backward-compatibility)
-13. [Threat Model & Prevention](#threat-model--prevention)
-14. [Configuration & Deployment](#configuration--deployment)
-15. [Security Properties](#security-properties)
-16. [Implementation Guidelines](#implementation-guidelines)
-17. [Performance & Scalability](#performance--scalability)
-18. [API Reference](#api-reference)
-19. [Troubleshooting](#troubleshooting)
-20. [References](#references)
-21. [Conclusion](#conclusion)
+12. [AccessControlContext Boundaries](#accesscontrolcontext-boundaries)
+13. [Backward Compatibility](#backward-compatibility)
+14. [Threat Model & Prevention](#threat-model--prevention)
+15. [Configuration & Deployment](#configuration--deployment)
+16. [Security Properties](#security-properties)
+17. [Implementation Guidelines](#implementation-guidelines)
+18. [Performance & Scalability](#performance--scalability)
+19. [API Reference](#api-reference)
+20. [Troubleshooting](#troubleshooting)
+21. [References](#references)
+22. [Conclusion](#conclusion)
 
 ---
 
@@ -1835,6 +1836,279 @@ Integer result = AccessController.doPrivileged(
 
 ---
 
+## AccessControlContext Boundaries
+
+This section analyses the points at which an `AccessControlContext` (ACC) is captured, stored, and later applied across thread, thread-pool, and executor boundaries in the DirtyChai trunk.  Understanding these boundaries is essential for reasoning about which caller's permissions are actually enforced when a task executes in a pool or a new thread.
+
+### Overview: The `checkPermission` Algorithm
+
+`AccessController.checkPermission()` walks the call stack from the most-recent frame toward the oldest.  After exhausting all stack frames it falls through to check the **inherited** ACC that was stored on the thread at creation time:
+
+```
+for each frame on the stack (most recent → oldest) {
+    if (frame's domain lacks the permission)
+        throw AccessControlException;
+
+    if (frame is doPrivileged with no context)
+        return;  // granted — stop here
+
+    if (frame is doPrivileged with context) {
+        context.checkPermission(perm);   // intersect with context
+        return;                          // stop here
+    }
+}
+
+// After exhausting all stack frames:
+thread.inheritedAccessControlContext.checkPermission(perm);
+```
+
+The inherited ACC is the **final safety net**, checked only after the full call stack has been exhausted.  Because a task submitted from low-privilege code runs with that low-privilege code on the call stack, those frames are inspected first and will constrain permission grants normally.  The inherited ACC therefore does not override the submitter's stack-based constraints.
+
+The primary context that *is* lost across an executor boundary is the submitter's **Subject** — specifically the principals and the permissions granted to those principals by the policy.  A `Subject` bound via `Subject.callAs()` or `Subject.doAs()` exists only as a `doPrivileged` frame on the submitting thread's stack; it is absent from the worker thread's stack unless explicitly re-established there.
+
+---
+
+### 1. Thread Creation Boundary
+
+**Files:** `Thread.java`, `ThreadBuilders.java`
+
+When any new thread is created — platform or virtual — the ACC of the *creating thread* at the moment `Thread.Builder.ofPlatform()` / `ofVirtual()` is called is captured and stored as the new thread's `inheritedAccessControlContext`.
+
+```
+Thread.Builder.ofPlatform()  ←── ACC captured HERE (at builder construction)
+        │
+        ├─ start(task1)   → thread inherits builder-time ACC
+        ├─ start(task2)   → same ACC
+        └─ factory()      → every thread from this factory inherits same ACC
+```
+
+Key implementation details:
+
+- `ThreadBuilders.BaseBuilder` stores `AccessController.getContext()` into `inheritedSecurityContext` **at builder construction time**, not at thread-start time.
+- All threads and `ThreadFactory` instances produced from the same builder share this one captured context.
+- At thread construction, the field is passed to `Thread(…, AccessControlContext acc)` and stored as `Thread.inheritedAccessControlContext`.
+- Both platform and virtual threads follow the same path; `VirtualThread(…, AccessControlContext context)` passes the context directly to the `Thread(name, characteristics, bound, inheritedContext)` base constructor.
+
+**Note:** The inherited ACC is consulted only after the call stack is exhausted.  Low-privilege code that submits a task to the pool is present on the call stack during task execution; its domain constraints therefore apply normally through the standard stack-walk algorithm.  What is **not** automatically present in the worker thread is the submitter's **Subject** context — principals and the policy grants tied to those principals are lost unless the task re-establishes them explicitly.
+
+---
+
+### 2. Thread Pool Boundary (`ThreadPoolExecutor`)
+
+**File:** `ThreadPoolExecutor.java`, `Executors.java`
+
+`ThreadPoolExecutor` has no explicit ACC capture or propagation machinery of its own.  Worker-thread ACC is set entirely by the `ThreadFactory` supplied at pool construction time.
+
+#### Default factory (`Executors.defaultThreadFactory()`)
+
+Delegates to `Thread.ofPlatform().factory()`.  The builder — and therefore the ACC snapshot — is captured when `defaultThreadFactory()` is called, i.e., at pool-construction time.
+
+#### `Executors.privilegedThreadFactory()`
+
+Explicitly snapshots `AccessController.getContext()` and the `contextClassLoader` at *factory-creation time*, and wraps each worker's `Runnable` in `doPrivileged(…, acc)`:
+
+```java
+// PrivilegedThreadFactory (Executors.java)
+PrivilegedThreadFactory() {
+    this.acc = AccessController.getContext();   // captured at factory construction
+    this.ccl = Thread.currentThread().getContextClassLoader();
+}
+
+public Thread newThread(Runnable r) {
+    return super.newThread(() ->
+        AccessController.doPrivileged((PrivilegedAction<Void>) () -> {
+            Thread.currentThread().setContextClassLoader(ccl);
+            r.run();
+            return null;
+        }, acc)                                // replayed at task execution time
+    );
+}
+```
+
+Tasks wrapped with `Executors.privilegedCallable()` or `Executors.privilegedRunnable()` use the same pattern: they snapshot the submitter's ACC at *submission time* and replay it via `doPrivileged` at *execution time*:
+
+```java
+// PrivilegedCallable (Executors.java)
+PrivilegedCallable(Callable<T> task) {
+    this.acc = AccessController.getContext();  // caller's ACC at submission
+}
+public T call() throws Exception {
+    return AccessController.doPrivileged(
+            (PrivilegedExceptionAction<T>) () -> task.call(), acc);
+}
+```
+
+**Key gap:** For tasks submitted without a privilege wrapper, the submitter's code-based permission checks still apply because the submitter is present on the call stack.  What is **not** automatically carried into the worker thread is the submitter's **Subject** context.  If the submitter executed under `Subject.callAs()` or `Subject.doAs()`, that `SubjectDomainCombiner`-backed `doPrivileged` frame exists only on the submitting thread's stack.  The worker thread has no such frame, so `Subject.current()` returns `null` and policy grants conditioned on Subject principals are unavailable.
+
+| Mechanism | When ACC is captured | Effect at execution |
+|---|---|---|
+| `defaultThreadFactory()` | Pool construction time | Worker inherited ACC is builder-creator's; submitter code constraints apply via stack walk; submitter Subject absent |
+| `privilegedThreadFactory()` | Factory construction time | Factory-creator's code ACC replayed via `doPrivileged`; submitter Subject absent |
+| `privilegedCallable(task)` | Task submission time | Submitter's code ACC replayed via `doPrivileged`; submitter Subject absent unless explicitly included |
+| Plain `submit(task)` | Never | Submitter code constraints apply via stack walk; worker inherited ACC is fallback after stack exhausted; submitter Subject absent |
+
+---
+
+### 3. ForkJoinPool / Common Pool Boundary
+
+**Files:** `ForkJoinPool.java`, `ForkJoinWorkerThread.java`
+
+Three distinct strategies control the ACC of ForkJoin worker threads.
+
+#### `DefaultForkJoinWorkerThreadFactory`
+
+When a `SecurityManager` is installed, workers are created via `doPrivileged` with a statically-built, minimal ACC:
+
+```
+regularACC  (non-common pool):
+  → RuntimePermission("getClassLoader")
+  → RuntimePermission("setContextClassLoader")
+  → RuntimePermission("enableContextClassLoaderOverride")
+
+commonACC  (common pool):
+  → above plus RuntimePermission("modifyThread")
+  → RuntimePermission("modifyThreadGroup")
+```
+
+These static ACCs are constructed once (lazy, effectively pinned) and shared by all workers.  The submitter's code-permission stack walk is unaffected (the submitter is on the call stack), but submitter **Subject** context is not propagated; this is intentional for the common pool so that work-stealing tasks cannot assume an authenticated identity.
+
+#### `CallerContextForkJoinWorkerThreadFactory` (DirtyChai extension)
+
+```java
+public CallerContextForkJoinWorkerThreadFactory() {
+    this.context = AccessController.getContext();   // captured at factory construction
+}
+
+public ForkJoinWorkerThread newThread(ForkJoinPool pool) {
+    return AccessController.doPrivileged(
+        () -> new ForkJoinWorkerThread(null, pool, true, true),
+        context                                     // replayed at worker creation
+    );
+}
+```
+
+Used via `new ForkJoinPool(boolean useContext)` (DirtyChai extension):
+
+```java
+new ForkJoinPool(true)   // → CallerContextForkJoinWorkerThreadFactory
+new ForkJoinPool(false)  // → DefaultForkJoinWorkerThreadFactory
+```
+
+This allows the pool-creator's privilege level to flow to all workers, enabling `fork()`/`join()` patterns to operate correctly under a `SecurityManager`.
+
+#### `InnocuousForkJoinWorkerThread`
+
+The strongest sandboxing boundary in the pool hierarchy:
+
+```
+innocuousACC → ProtectionDomain(null, null)   // zero permissions
+```
+
+Workers carry no permissions.  ThreadLocals are cleared after each task.  Used for the common pool's innocuous threads.
+
+```
+ForkJoinPool Boundary Summary:
+
+new ForkJoinPool(true)
+  Workers inherit: pool-creator's ACC (via CallerContextFactory)
+  Subject context: pool-creator's Subject (if any); submitter Subject lost unless task re-establishes it
+
+new ForkJoinPool(false) / new ForkJoinPool(int parallelism)
+  Workers inherit: minimal static ACC (regularACC)
+  Subject context: not present; submitter's code constraints still apply via stack walk
+
+ForkJoinPool.commonPool()
+  Workers:         InnocuousForkJoinWorkerThread (if SecurityManager present)
+  ACC:             innocuousACC (null CodeSource, null permissions)
+  Subject context: not present; maximum isolation
+```
+
+---
+
+### 4. Virtual Thread / `StructuredTaskScope` Boundary
+
+**Files:** `VirtualThread.java`, `StructuredTaskScopeImpl.java`, `ThreadBuilders.java`
+
+Virtual threads capture their inherited ACC at builder-call time in exactly the same way as platform threads.  `VirtualThread` receives the context as an explicit constructor parameter and stores it via the base `Thread` constructor.
+
+`StructuredTaskScopeImpl.fork()` creates threads through its configured `ThreadFactory`.  The scope itself holds no ACC; ACC inheritance is entirely delegated to the factory.
+
+```java
+// StructuredTaskScopeImpl.fork() — simplified
+Thread thread = threadFactory.newThread(subtask);   // factory determines ACC
+flock.start(thread);
+```
+
+If the default `Thread.ofVirtual().factory()` is used, the builder captures the ACC at `ofVirtual()` time (i.e., when the scope or its factory is created), and all forked threads share that snapshot.
+
+**`Subject.callAs()` / `Subject.doAs()` propagation across forks:**
+
+A Subject-bound ACC (wrapping a `SubjectDomainCombiner`) lives only on the calling thread's stack.  It is **not** automatically propagated across a thread or executor boundary.  A new thread created *inside* the `callAs()` call frame will capture that context as its inherited ACC; a pre-existing thread pool will not.
+
+```
+callAs(subject, () -> {
+    // Subject is bound here via SubjectDomainCombiner in ACC
+    
+    // Thread created HERE → inherits Subject-bound ACC ✅
+    Thread.ofVirtual().start(task);
+    
+    // Pre-existing pool → does NOT inherit Subject-bound ACC ❌
+    existingPool.submit(task);   // must use Subject.callAs() inside task
+});
+```
+
+---
+
+### 5. `Subject.doAs()` / `Subject.callAs()` Boundary
+
+**File:** `Subject.java`
+
+`Subject.doAs()` creates a new ACC wrapping a `SubjectDomainCombiner` and pushes it via `doPrivileged`:
+
+```java
+// Subject.doAs() — simplified
+final AccessControlContext currentAcc = AccessController.getContext();
+return AccessController.doPrivileged(action, createContext(subject, currentAcc));
+```
+
+This ACC is active only for the duration of the `doPrivileged` call on the *current* thread.  It does not propagate automatically to threads created *before* the `callAs()` boundary.
+
+`Subject.current()` (the modern API) retrieves the Subject from the current thread's ACC via its `DomainCombiner`.  In a worker thread that has no Subject in its inherited ACC and no `doAs` on its stack, `Subject.current()` returns `null`.
+
+---
+
+### 6. `AccessController.getContext()` — Snapshot Semantics
+
+`AccessController.getContext()` merges two sources:
+
+```
+getContext() = getStackAccessControlContext()   // stack frames
+             + getInheritedAccessControlContext()  // thread.inheritedAccessControlContext
+             optimized/intersected
+```
+
+This means a snapshot taken inside a `doPrivileged` block already carries the restricted context.  A snapshot taken on a worker thread whose inherited ACC is minimal (e.g., innocuous common-pool worker) will itself be minimal, regardless of what the submitter's stack looks like.
+
+---
+
+### 7. Boundary Risk Summary
+
+The primary security boundary concern across threads and pools is **Subject context loss**, not code-permission loss.  Because the submitting code is present on the call stack during task execution, its domain-based permission constraints are applied normally by the stack-walk algorithm.  What is absent from the worker thread is any `Subject` bound by the submitter via `Subject.callAs()` / `Subject.doAs()` — those `SubjectDomainCombiner`-backed `doPrivileged` frames exist only on the submitting thread's stack.
+
+| Boundary | Inherited ACC on worker | Subject context in worker | What action is needed |
+|---|---|---|---|
+| `Thread.Builder.ofPlatform/ofVirtual()` | Builder-creator's ACC, captured at builder construction | Not present unless thread is created inside a `callAs()` call | Create thread inside `callAs()` block to inherit Subject |
+| `ThreadPoolExecutor` (default factory) | Pool-constructor's ACC | Not present | Submit task inside `Subject.callAs()`/`doAs()`, or use `privilegedCallable` wrapping Subject re-establishment |
+| `ThreadPoolExecutor` (privilegedThreadFactory) | Factory-creator's ACC, replayed per task via `doPrivileged` | Not present (factory captures code ACC only, not Subject) | Wrap task body in `Subject.callAs()` inside the worker |
+| `Executors.privilegedCallable/privilegedRunnable` | Submitter's code ACC, replayed per task | Not present | Combine with `Subject.callAs()` if Subject context is needed |
+| `ForkJoinPool(true)` (CallerContextFactory) | Pool-creator's ACC on all workers | Not present unless pool created inside `callAs()` | Create pool inside `callAs()` block |
+| `ForkJoinPool(false)` / `new ForkJoinPool(n)` | Minimal static ACC (regularACC) | Not present | Re-establish Subject inside each task |
+| `ForkJoinPool.commonPool()` (InnocuousWorker) | Zero permissions (null CodeSource) | Not present | Maximum isolation; must use explicit `doPrivileged` and `Subject.callAs()` per task |
+| `StructuredTaskScope` (default factory) | Scope-open-time ACC (builder captured at `ofVirtual()`) | Inherited if scope is opened inside a `callAs()` call | Open scope inside `callAs()` to propagate Subject to forked threads |
+| `Subject.callAs()` inside pool task | Stack-scoped only for that task | Present for that task's stack only | Must be called inside every task that requires the Subject |
+
+---
+
 ## Backward Compatibility
 
 ### 1. Subject.doAs() Full Compatibility
@@ -2757,11 +3031,18 @@ java -Xlog:security=debug \
 | File | Purpose |
 |------|---------|
 | `java.lang.System` | SecurityManager installation with conditional validation |
-| `java.security.SecureClassLoader` | Class loading with principal-based authorization |
-| `java.security.AccessController` | Privileged action execution with caller validation; stack walk compatible with VTs |
+| `java.lang.Thread` | Thread creation; `inheritedAccessControlContext` captured at builder/constructor time |
+| `java.lang.VirtualThread` | Virtual thread; inherits ACC via `Thread(name, characteristics, bound, inheritedContext)` |
+| `jdk.internal.misc.ThreadBuilders` | `BaseBuilder` captures ACC at `ofPlatform()`/`ofVirtual()` call; shared by all threads from the same builder |
+| `java.security.AccessController` | Privileged action execution; `checkPermission` algorithm; `getContext()` / `getInheritedAccessControlContext()` |
 | `java.security.AccessControlContext` | Security context snapshot; immutable inheritance in VTs |
 | `java.lang.ScopedValue` | Virtual thread-compatible context propagation |
-| `javax.security.auth.Subject` | Principal container; Subject.doAs() and Subject.callAs() support |
+| `javax.security.auth.Subject` | Principal container; `doAs()` pushes Subject-bound ACC via `doPrivileged`; stack-scoped only |
+| `java.util.concurrent.Executors` | `privilegedThreadFactory()`, `privilegedCallable()`, `privilegedRunnable()` — snapshot and replay submitter ACC |
+| `java.util.concurrent.ThreadPoolExecutor` | No built-in ACC machinery; relies on `ThreadFactory` for worker inherited ACC |
+| `java.util.concurrent.ForkJoinPool` | `CallerContextForkJoinWorkerThreadFactory` (DirtyChai); `DefaultForkJoinWorkerThreadFactory` (minimal ACC); common pool (innocuous ACC) |
+| `java.util.concurrent.ForkJoinWorkerThread` | `InnocuousForkJoinWorkerThread` — zero-permission sandboxed workers |
+| `java.util.concurrent.StructuredTaskScopeImpl` | `fork()` delegates ACC inheritance entirely to configured `ThreadFactory` |
 | `java.lang.VirtualThread` | Virtual thread implementation with ScopedValue + ACC support |
 | `au.zeus.jdk.authorization.sm.CombinerSecurityManager` | Permission checking with caching |
 | `au.zeus.jdk.authorization.policy.ConcurrentPolicyFile` | Policy-based permission enforcement |
