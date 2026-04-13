@@ -1,7 +1,7 @@
 # Dirty Chai - OpenJDK Authorization Security Model: Comprehensive Architecture
 
-**Version:** 1.4  
-**Date:** 2025  
+**Version:** 1.5  
+**Date:** 2026 (Updated April 13, 2026 — Issue #85)  
 **Project:** Dirty Chai - OpenJDK with Authorization  
 **Repository:** https://github.com/pfirmstone/dirty-chai  
 **Base:** https://github.com/openjdk/jdk (trunk)  
@@ -1978,7 +1978,9 @@ Subject.doAs(subject, new PrivilegedAction<Object>() {
 
 | Attack | Vector | Prevention |
 |--------|--------|-----------|
-| **Reflection-based SM bypass** | `Method.invoke()` on setSecurityManager | Layer 2: Stack inspection detects reflection |
+| **Reflection-based SM bypass** | `Method.invoke()` on setSecurityManager | Layer 2: Stack inspection detects reflection (limit 50 frames) |
+| **Deep-stack reflection bypass** | 10+ wrapper frames hide `Method.invoke` | `limit(50)` makes exhaustion impractical for startup calls |
+| **Generated-code SM bypass** | Lambda/Proxy wraps `setSecurityManager()` | Layers 2 & 4 detect generated frames; `isMethodHandlesFrame()` whitelist-based |
 | **Untrusted code loading** | Unsigned JAR from attacker.com | Layer 3: LoadClassPermission denied |
 | **Privilege escalation via deps** | Trusted code loads evil transitive dep | Layer 4: Each dep independently validated |
 | **Cache poisoning** | Unauthenticated context reuses cached domain | Layer 5: Cache validates principals on hit |
@@ -1988,6 +1990,9 @@ Subject.doAs(subject, new PrivilegedAction<Object>() {
 | **Service loader bypass** | ServiceLoader.load() restricted module | Layer 3: Module not in policy → denied |
 | **Read-only subject escape** | Load while subject sealed | Layer 2: isReadOnly() check throws exception |
 | **DNS-based cache confusion** | Same IP, different DNS names | CodeSourceKey: String comparison, no DNS |
+| **DNS DoS during permission check** | Slow/hanging DNS delays `SocketPermission.implies()` | `SocketPermission.init()` pre-fetches DNS at policy construction |
+| **All-invalid-URI wildcard grant** | Typo/injected URI turns grant into wildcard CodeSource | `URIGrant` throws `SecurityException` on `URISyntaxException`; no silent omission |
+| **Stale policy on refresh failure** | Exception swallowed in `ConcurrentPolicyFile.refresh()` | `refresh()` now throws `SecurityException`; no silent continue |
 | **Virtual thread context escape** | Child VT steals parent's ScopedValue | ScopedValue design: inherited, not stolen |
 | **Cross-virtual thread pollution** | One VT accesses another VT's context | ScopedValue isolation: separate instances |
 | **ACC tampering in VT** | Modify inherited AccessControlContext | ACC immutability: cannot be modified post-inheritance |

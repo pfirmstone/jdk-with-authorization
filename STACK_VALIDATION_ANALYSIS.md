@@ -3,7 +3,27 @@
 
 **Date:** April 9, 2026  
 **Issue:** `validateCallerStackWithStackWalker()` - Defense-in-Depth vs. Practical Usability  
-**Status:** Under Review
+**Status:** RESOLVED — April 13, 2026 (Issue #85)
+
+---
+
+## Resolution Summary (April 13, 2026)
+
+The trade-off analysis in this document was used to guide the implementation. All recommended
+changes have been made by pfirmstone and committed to trunk as part of
+[Issue #85 — Address security issues in new code](https://github.com/pfirmstone/DirtyChai/issues/85).
+
+**Decisions implemented:**
+
+| Item | Decision | Implementation |
+|------|----------|----------------|
+| Conditional generated-code check | ✅ Option 3 adopted | `trustedSMClass()` guards all 4 validation layers |
+| Trusted class whitelist | Explicit 3-class whitelist | `CombinerSecurityManager`, `SecurityManager`, `PolicyOnlySecurityManager` (exact `equals()`) |
+| `SecurityPolicyWriter` | Excluded from whitelist | Grants `AllPermission`; staging only; 4-layer validation intentionally retained |
+| Module-equality check | Rejected (too broad) | An intermediate commit used module equality; reverted to explicit class list |
+| StackWalker frame limit | Raised | `limit(10)` → `limit(50)` to eliminate deep-stack bypass window |
+| `isMethodHandlesFrame()` | Narrowed | Switch-based whitelist excludes linkage-time-only classes (`StringConcatFactory`, `BootstrapMethodInvoker`, `MethodHandles`, `MethodType`, etc.) |
+| `isUnsafeReflectionFrame()` | Extended | `sun.misc.Unsafe` added alongside `jdk.internal.misc.Unsafe` |
 
 ---
 

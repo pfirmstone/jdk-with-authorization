@@ -1,7 +1,7 @@
 
 # Authorization System - Security Analysis Report
 
-**Date:** April 8, 2026 (Updated April 9, 2026 - Conditional Check Implementation)  
+**Date:** April 8, 2026 (Updated April 13, 2026 — Issue #85 All Findings Resolved)  
 **Project:** Dirty Chai  
 
 **Repository:** https://github.com/pfirmstone/DirtyChai  
@@ -26,7 +26,55 @@ The system demonstrates sophisticated security engineering with:
 
 ---
 
-## Latest Changes - April 9, 2026
+## Latest Changes — April 13, 2026 (Issue #85 — All Findings Resolved)
+
+A code review raised eleven findings (F-1–F-11) against the new `java.base` security code.
+All were addressed by pfirmstone in nine commits on April 13, 2026.
+
+| ID   | Severity | Description | Fix Committed |
+|------|----------|-------------|---------------|
+| F-1  | High | `limit(10)` in `validateCallerStackWithStackWalker()` allowed a deep-stack bypass | Raised to `limit(50)` |
+| F-2  | High | `Uri.implies(null)` threw NPE; propagated as `RuntimeException` past `SecurityException` catch blocks | Null guard restored in `Uri.implies()` |
+| F-3  | High | All-invalid-URI grant silently became a wildcard CodeSource grant | `URIGrant` constructor now throws `SecurityException` on any `URISyntaxException` |
+| F-4  | Medium | `SecurityPolicyWriter` and `PolicyOnlySecurityManager` (bootstrap-loaded, `java.base`) ran through the full 4-layer custom-SM validation unnecessarily | Added `PolicyOnlySecurityManager` to `trustedSMClass()` whitelist; rationale for excluding `SecurityPolicyWriter` documented |
+| F-5  | Medium | `ConcurrentPolicyFile.refresh()` silently swallowed errors and leaked paths to `System.err` | Now throws `SecurityException("Unable to refresh policy.", ex)` |
+| F-6  | Medium | `CombinerSecurityManager` latch had a 180-second DoS window | Timeout reduced to 10 seconds |
+| F-7  | Medium | Worker `ExecutionException` wrapped as `RuntimeException`, escaping `SecurityException` catch blocks; logger level mismatch | Log level corrected (`Level.DEBUG` check and call now match); `RuntimeException` re-throw preserved with correct wrapping |
+| F-8  | Low | Truncated `LAYEAccessController.` comment in `System.java` | Corrected to `LAYER 3: AccessController.` |
+| F-9  | Low | `Level.ERROR` tested but `Level.DEBUG` used — exception silently dropped in production | Fixed: `isLoggable(Level.DEBUG)` now guards `log(Level.DEBUG, ...)` |
+| F-10 | Low | Overly broad `java.lang.invoke.*` filter could block legitimate JDK-internal linkage-time frames | Replaced with switch-based whitelist; linkage-time-only classes (`StringConcatFactory`, `LambdaMetafactory`, `MethodHandles`, `MethodType`, etc.) are now excluded |
+| F-11 | Low | `sun.misc.Unsafe` not detected in `isUnsafeReflectionFrame()` | Added `sun.misc.Unsafe` check alongside `jdk.internal.misc.Unsafe` |
+
+### Additional Fix — SocketPermission DNS Pre-fetch (DoS Prevention)
+
+During the same review a denial-of-service risk was identified: hostname lookups in
+`SocketPermission.implies()` would occur at access-check time (after the SecurityManager is
+active), opening a window for DNS-based DoS attacks.
+
+**Fix:** A new `SocketPermission.init()` method eagerly resolves the canonical hostname and
+the untrusted-host flag during policy construction.  `PermissionGrant` now calls `sp.init()`
+for every `SocketPermission` added to a grant.
+
+The `init()` catch block swallows `UnknownHostException` because `init()` sets `invalid = true`
+before the exception propagates; any subsequent `implies()` call on the permission will return
+`false`, so swallowing is fail-secure:
+
+```java
+} catch (UnknownHostException e){
+    //Swallow, invalid will be set to true, failing securely.
+}
+```
+
+### Additional Fix — SecurityException Message No Longer Leaks Class Name
+
+The `SecurityException` thrown for a generated-class caller previously included the caller's
+class name in the message (`"Generated classes cannot set SecurityManager: " + callerName`).
+The class name has been removed to prevent information disclosure to an attacker probing the
+validation.
+
+---
+
+## Latest Changes — April 9, 2026
 
 ### Conditional Stack Validation Implementation
 
@@ -108,7 +156,8 @@ private static boolean trustedSMClass(SecurityManager sm){
 │                                                         │
 │  System.setSecurityManager()                            │
 │  ├─ Conditional Validation (NEW)                        │
-│  │  ├─ Trusted Classes: SecurityManager, CombinerSM     │
+│  │  ├─ Trusted Classes: SecurityManager, CombinerSM,    │
+│  │  │  │  PolicyOnlySecurityManager                     │
 │  │  │  └─ Minimal validation (null parameter only)      │
 │  │  └─ Untrusted Classes: Custom implementations        │
 │  │     ├─ Layer 1: Direct Caller Check                  │
@@ -176,12 +225,13 @@ setSecurityManager(SecurityManager sm) called
         │
         ├─ IF trustedSMClass(sm) = TRUE
         │  └─ Skip validation layers (bypass is impossible)
-        │     └─ CombinerSecurityManager or SecurityManager.class
+        │     └─ CombinerSecurityManager, SecurityManager.class,
+        │        or PolicyOnlySecurityManager
         │
         └─ IF trustedSMClass(sm) = FALSE
            └─ Perform ALL validation layers
               ├─ Layer 1: Direct caller check
-              ├─ Layer 2: StackWalker inspection
+              ├─ Layer 2: StackWalker inspection (limit 50)
               ├─ Layer 3: ProtectionDomain validation
               └─ Layer 4: Generated code detection
 ```
@@ -190,21 +240,21 @@ setSecurityManager(SecurityManager sm) called
 
 
 private static boolean trustedSMClass(SecurityManager sm){
-    // Direct class comparison (no inheritance)
-    if (SecurityManager.class.equals(sm.getClass())) return true;
-    
-    // CombinerSecurityManager is framework default
-    if (CombinerSecurityManager.class.equals(sm.getClass())) return true;
-    
-    // All other classes require strict validation
-    return false;
+    Class smClass = sm.getClass();
+    if (CombinerSecurityManager.class.equals(smClass)) return true;
+    if (SecurityManager.class.equals(smClass)) return true;
+    // PolicyOnlySecurityManager is bootstrap-loaded (java.base), trusted.
+    // SecurityPolicyWriter is intentionally excluded: it grants AllPermission
+    // and is for staging only; the 4-layer validation prevents runtime installation.
+    return (PolicyOnlySecurityManager.class.equals(smClass));
 }
 
 
 **Key Security Property:**
 - Uses exact class matching (not `instanceof`)
 - Cannot be bypassed by subclassing
-- Explicit whitelist (default-deny approach)
+- Explicit 3-class whitelist (default-deny approach): `CombinerSecurityManager`, `SecurityManager`, `PolicyOnlySecurityManager`
+- `SecurityPolicyWriter` deliberately excluded (grants `AllPermission`; staging only)
 
 ---
 
@@ -345,12 +395,14 @@ All previous security mechanisms remain in place:
 |---|---|---|---|---|
 | **Reflection-based setSecurityManager()** | ⚠️ Vulnerable | ✅ **BLOCKED** | StackWalker + conditional check (custom SM only) | Trusted SM bypasses check but is validated by policy |
 | **setSecurityManager(null)** | ⚠️ Vulnerable | ✅ **BLOCKED** | Explicit null check | Always performed, no conditional skip |
-| **Generated code bypass** | ⚠️ Vulnerable | ✅ **BLOCKED** | Stack inspection + conditional check (custom SM only) | Trusted SM policy-validated instead |
+| **Generated code bypass** | ⚠️ Vulnerable | ✅ **BLOCKED** | Stack inspection + conditional check (custom SM only); frame limit 50 | Trusted SM policy-validated instead |
 | **Synthetic ProtectionDomain** | ⚠️ Vulnerable | ✅ **BLOCKED** | getSecurityManager() validation (NEW) | Additional layer in unprivileged path |
 | **URL path traversal** | ⚠️ Vulnerable | ✅ **BLOCKED** | RFC 3986 validation | Unchanged from original |
-| **Exception swallowing** | ⚠️ Vulnerable | ✅ **BLOCKED** | Fail-secure null return | Unchanged from original |
+| **Exception swallowing (policy/URI)** | ⚠️ Vulnerable | ✅ **BLOCKED** | `ConcurrentPolicyFile.refresh()` and `URIGrant` now throw `SecurityException`; `SocketPermission.init()` sets `invalid=true` fail-secure | Fixed in Issue #85 |
 | **Null CodeSource privilege** | ⚠️ Vulnerable | ✅ **BLOCKED** | Policy enforcement | Unchanged from original |
 | **DomainCombiner injection** | ⚠️ Vulnerable | ✅ **BLOCKED** | Permission gating | Unchanged from original |
+| **DNS DoS during permission check** | ⚠️ Vulnerable | ✅ **BLOCKED** | `SocketPermission.init()` pre-fetches DNS at policy construction time | Fixed in Issue #85 |
+| **`Uri.implies(null)` NPE** | ⚠️ Vulnerable | ✅ **BLOCKED** | Null guard restored in `Uri.implies()` | Fixed in Issue #85 |
 
 ---
 
@@ -503,12 +555,13 @@ Shared across both:
 
 1. **Exact Class Matching**
 
-   if (SecurityManager.class.equals(sm.getClass())) return true;
-   if (CombinerSecurityManager.class.equals(sm.getClass())) return true;
+   if (CombinerSecurityManager.class.equals(smClass)) return true;
+   if (SecurityManager.class.equals(smClass)) return true;
+   return (PolicyOnlySecurityManager.class.equals(smClass));
 
 - Uses `equals()` not `instanceof` (prevents subclass bypass)
-   - Explicit whitelist (default-deny)
-   - Easy to audit
+   - Explicit 3-class whitelist (default-deny)
+   - Easy to audit; `SecurityPolicyWriter` exclusion documented inline
 
 2. **Clear Security Intent**
 
@@ -680,6 +733,8 @@ The conditional validation implementation is **production-ready**. Recommended a
 
 | Version | Date | Author | Changes |
 |---------|------|--------|---------|
+| 1.4 | 2026-04-13 | pfirmstone (Issue #85) | Resolved all 11 findings; `trustedSMClass()` updated to 3-class whitelist; `isMethodHandlesFrame()` switch whitelist; `isUnsafeReflectionFrame()` + `sun.misc.Unsafe`; frame limit 50; `ConcurrentPolicyFile`/`URIGrant` fail-secure; `CombinerSM` fixes; `Uri.implies()` null guard; `SocketPermission.init()` DNS prefetch |
+| 1.3 | 2026-04-13 | Code Review (Issue #85) | Documented 11 open issues (F-1–F-11) found in new code; updated risk assessment |
 | 1.2 | 2026-04-09 | Security Review | Conditional stack validation implementation analysis |
 | 1.1 | 2026-04-09 | Security Review | Added ProtectionDomain validation in getSecurityManager() + Layer 4 |
 | 1.0 | 2026-04-08 | Security Analysis | Initial comprehensive analysis |
@@ -691,6 +746,7 @@ The conditional validation implementation is **production-ready**. Recommended a
 - [OpenJDK Security Guide](https://openjdk.org/guide/)
 - [RFC 3986 - URI Generic Syntax](https://tools.ietf.org/html/rfc3986)
 - [Java Security Architecture](https://docs.oracle.com/javase/tutorial/security/)
+- [Issue #85 — Address security issues in new code](https://github.com/pfirmstone/DirtyChai/issues/85)
 - Internal Authorization Framework Documentation
 - CLAUDE.md - Developer Security Guidelines
 - STACK_VALIDATION_ANALYSIS.md - Trade-off Analysis
