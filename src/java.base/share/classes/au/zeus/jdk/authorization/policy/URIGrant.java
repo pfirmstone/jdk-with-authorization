@@ -64,7 +64,7 @@ class URIGrant extends CertificateGrant {
                 // Uri resolves this issue - fixed 31st Mar 2013
                 uris.add(uri[i] != null ? Uri.parseAndCreate(uri[i]) : null);
             } catch (URISyntaxException ex) {
-                ex.printStackTrace(System.err);
+                throw new SecurityException("Failed to parse URI: " + uri[i], ex);
             }
         }
         location = Collections.unmodifiableSet(uris);

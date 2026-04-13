@@ -489,7 +489,7 @@ public class ConcurrentPolicyFile extends Policy implements ScalableNestedPolicy
         try {
             grantArray = readPoliciesNoCheckGuard(parser, policies == null ? null : policies.clone());
         } catch (Exception ex) {
-            System.err.println(ex);
+            throw new SecurityException("Unable to refresh policy.", ex);
         }
     }
     

@@ -420,7 +420,7 @@ public final class System {
      *       <li><b>Layer 1 - Direct Caller Check:</b> Uses {@code @CallerSensitive} and
      *         {@code Reflection.getCallerClass()} to verify that a caller class exists.</li>
      *       <li><b>Layer 2 - Stack Inspection:</b> Employs {@code StackWalker} to inspect
-     *         the entire call stack (up to 10 frames) for reflection API calls, MethodHandles
+     *         the entire call stack (up to 50 frames) for reflection API calls, MethodHandles
      *         invocations, LambdaMetafactory-generated code, proxy classes, and other
      *         synthetic bytecode that indicates an indirect invocation.</li>
      *       <li><b>Layer 3 - Protection Domain Validation:</b> Verifies that the caller's
@@ -512,7 +512,7 @@ public final class System {
             // ========== LAYER 2: Deep stack inspection ==========
             validateCallerStackWithStackWalker();
 
-            // ========== LAYEAccessController.
+            // ========== LAYER 3: AccessController.
             ProtectionDomain pd = AccessController.doPrivileged(
                     (PrivilegedAction<ProtectionDomain>) ()->{
                         return directCaller.getProtectionDomain();
@@ -526,8 +526,7 @@ public final class System {
             String callerName = directCaller.getName();
             if (isGeneratedClassName(callerName)) {
                 throw new SecurityException(
-                    "setSecurityManager: Generated classes cannot set SecurityManager: " + 
-                    callerName);
+                    "setSecurityManager: Generated classes cannot set SecurityManager");
             }
         }
 
@@ -544,7 +543,8 @@ public final class System {
             // SecurityManager implementations
             sm.checkPackageAccess("java.lang");
         } catch (Exception e) {
-            // no-op
+            // no-op will never happen.
+            throw new Error("Something went horribly wrong.", e);
         }      
     
         setSecurityManager0(sm);
@@ -2920,7 +2920,7 @@ public final class System {
                 walker.walk(stream -> {
                     stream
                         .skip(2)  // Skip setSecurityManager and validateCallerStackWithStackWalker
-                        .limit(10) // Check first 10 frames for attacks
+                        .limit(50) // Check first 50 frames for attacks
                         .forEach(frame -> {
                             Class<?> frameClass = frame.getDeclaringClass();
                             String className = frameClass.getName();
@@ -3063,16 +3063,14 @@ public final class System {
         if (className.equals("jdk.internal.misc.Unsafe")) {
             return true;
         }
-
-        return false;
+        
+        return className.equals("sun.misc.Unsafe");
     }
     
     /**
      * Detects trusted SM class
      */
     private static boolean trustedSMClass(SecurityManager sm){
-        if (SecurityManager.class.equals(sm.getClass())) return true;
-        if (CombinerSecurityManager.class.equals(sm.getClass())) return true;
-        return false;
+        return System.class.getModule().equals(sm.getClass().getModule());
     }
 }
