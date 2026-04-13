@@ -952,14 +952,14 @@ The following table summarises how security guarantees differ between platform a
 | Guarantee | Platform Thread | Virtual Thread (Dirty Chai) |
 |-----------|----------------|------------------------------|
 | Subject context propagation | `ThreadLocal` — not inherited by child threads | `ScopedValue` — automatically inherited within scope |
-| AccessControlContext inheritance | Mutable, thread-local | Immutable, inherited via `ScopedValue` |
+| AccessControlContext inheritance | Inherited via `Thread.inheritedAccessControlContext` field, captured at `new Thread()` | Inherited via `Thread.inheritedAccessControlContext` field, captured at `Thread.ofVirtual()` builder creation |
 | PrivilegedAction support | Full | Full (identical semantics) |
 | Stack walk for permission checks | OS-level stack | JVM-level stack (carrier frames excluded) |
 | Carrier thread domains included? | N/A | No — only virtual thread frames counted |
 | Subject modification during execution | Allowed (until `setReadOnly()`) | Allowed within scope; scope exit restores prior state |
 | Concurrency | Kernel threads (limited) | Up to millions of virtual threads |
 
-> **Key difference from platform threads:** ScopedValue replaces ThreadLocal for context propagation, ensuring security context is never accidentally absent or accidentally shared.
+> **Key difference from platform threads:** For `Subject` context propagation, `ScopedValue` replaces `ThreadLocal`, ensuring the subject is never accidentally absent or accidentally shared. The `AccessControlContext` uses its own dedicated mechanism — the `Thread.inheritedAccessControlContext` field — for both platform and virtual threads; the difference is **when** the context is captured (at `Thread.ofVirtual()` builder creation for virtual threads vs. at `new Thread()` construction for platform threads).
 
 ---
 
@@ -971,20 +971,24 @@ The following table summarises how security guarantees differ between platform a
 AccessControlContext Inheritance Hierarchy:
 
 Platform Thread Model (Traditional):
-  AccessControlContext (thread-local, mutable during execution)
+  AccessControlContext (stored in Thread.inheritedAccessControlContext field)
+    └─ Captured by AccessController.getContext() at new Thread() construction
     └─ ProtectionDomains
     └─ DomainCombiner
     └─ Privileged Context
 
 Virtual Thread Model (Enhanced):
-  AccessControlContext (inherited immutably via ScopedValue)
-    └─ ProtectionDomains (copied at inheritance point)
+  AccessControlContext (stored in Thread.inheritedAccessControlContext field)
+    └─ Captured by AccessController.getContext() at Thread.ofVirtual() builder creation
+    └─ All threads from the same builder share the same captured context
+    └─ ProtectionDomains (snapshot at capture point)
     └─ DomainCombiner (same instance)
     └─ Privileged Context (immutable snapshot)
     
   ✅ Immutable inheritance prevents tampering
   ✅ Child VTs cannot modify parent's context
   ✅ Full stack walk capability maintained
+  ✅ Read natively via JVM_GetInheritedAccessControlContext (not via ScopedValue)
 ```
 
 ### 2. PrivilegedAction & PrivilegedExceptionAction Support
@@ -993,38 +997,36 @@ Virtual Thread Model (Enhanced):
 
 ```
 // Example: Privileged action in virtual thread
-private static final ScopedValue<AccessControlContext> ACC = 
-    ScopedValue.newInstance();
+// No ScopedValue wrapping needed — the AccessControlContext is automatically
+// inherited via Thread.inheritedAccessControlContext, captured at builder creation.
 
 public void executePrivilegedInVirtualThread() throws Exception {
-    AccessControlContext context = AccessController.getContext();
-    
+    // The builder captures AccessController.getContext() here, at builder creation time.
+    // All threads produced by this builder inherit that context automatically.
     try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
-        executor.submit(
-            ScopedValue.where(ACC, context).runner(() -> {
-                // Virtual thread executes with inherited context
-                
-                // Standard PrivilegedAction
-                String property = AccessController.doPrivileged(
-                    new PrivilegedAction<String>() {
-                        @Override
-                        public String run() {
-                            // Executes with permission checks
-                            return System.getProperty("user.name");
-                        }
+        executor.submit(() -> {
+            // Virtual thread executes with inherited context
+
+            // Standard PrivilegedAction
+            String property = AccessController.doPrivileged(
+                new PrivilegedAction<String>() {
+                    @Override
+                    public String run() {
+                        // Executes with permission checks
+                        return System.getProperty("user.name");
                     }
-                );
-                
-                // PrivilegedExceptionAction
-                Integer port = AccessController.doPrivileged(
-                    (PrivilegedExceptionAction<Integer>) () -> {
-                        // Can throw checked exceptions
-                        return Integer.parseInt(
-                            System.getProperty("server.port"));
-                    }
-                );
-            })
-        );
+                }
+            );
+
+            // PrivilegedExceptionAction
+            Integer port = AccessController.doPrivileged(
+                (PrivilegedExceptionAction<Integer>) () -> {
+                    // Can throw checked exceptions
+                    return Integer.parseInt(
+                        System.getProperty("server.port"));
+                }
+            );
+        });
     }
 }
 ```
@@ -1070,33 +1072,41 @@ Virtual Thread executing:
 
 ### 4. ScopedValue-Based Context Propagation
 
-**Architecture:** Security context propagates via ScopedValue
+**Architecture:** `Subject` security context propagates via `ScopedValue`; `AccessControlContext` propagates via its own dedicated JVM mechanism
 
 ```
-ScopedValue Propagation:
+Context Propagation Mechanisms:
 
 Platform Thread Model (Traditional):
-  ThreadLocal<AccessControlContext> → NOT inherited by child threads
   ThreadLocal<Subject> → NOT inherited by child threads
+  AccessControlContext  → Stored in Thread.inheritedAccessControlContext field,
+                          captured at new Thread() construction
   
 Virtual Thread Model (Enhanced):
-  ScopedValue<AccessControlContext> → Inherited automatically ✅
-  ScopedValue<Subject> → Inherited automatically ✅
+  ScopedValue<Subject> → Inherited automatically ✅  (user-land context)
+  AccessControlContext  → Stored in Thread.inheritedAccessControlContext field,
+                          captured at Thread.ofVirtual() builder creation ✅
   
-  private static final ScopedValue<AccessControlContext> ACC = 
-      ScopedValue.newInstance();
-  
-  // Automatic inheritance:
-  ScopedValue.where(ACC, context).run(() -> {
-      // Child VT inherits context
-      AccessControlContext current = ACC.get();  // ✅ Same as parent
+  // Subject propagation example (ScopedValue is used here):
+  Subject.callAs(subject, () -> {
+      Thread.ofVirtual().start(() -> {
+          // Child VT inherits subject via ScopedValue ✅
+          Subject current = Subject.current();
+      });
+  });
+
+  // AccessControlContext propagation (no ScopedValue needed — automatic):
+  // The builder captures getContext() once; all threads it creates share it.
+  Thread.ofVirtual().start(() -> {
+      // Child VT already has inherited ACC via Thread.inheritedAccessControlContext ✅
+      AccessControlContext current = AccessController.getContext();
   });
 ```
 
 **Advantages:**
-- ✅ Explicit scoping (clear intent)
-- ✅ Automatic inheritance by child tasks
-- ✅ No memory leaks from ThreadLocal cleanup
+- ✅ `Subject` propagation via `ScopedValue` — explicit scoping, clear intent
+- ✅ `AccessControlContext` propagated automatically via builder — no manual wiring needed
+- ✅ No memory leaks from `ThreadLocal` cleanup
 - ✅ Works seamlessly with structured concurrency
 
 ### 5. Virtual Thread Lifecycle Integration
@@ -1110,12 +1120,14 @@ Virtual Thread Creation:
 └────────────┬────────────────────────────┘
              │
              ├─→ Create child task: VirtualThread.Builder
-             │   └─ Inherits ACC and Subject
+             │   └─ ACC captured in builder (Thread.inheritedAccessControlContext)
+             │   └─ Subject propagated via ScopedValue
              │
              ▼
 ┌─────────────────────────────────────────┐
 │ Child VirtualThread (NEW)               │
-│ AccessControlContext: inherited ✅      │
+│ AccessControlContext: inherited via     │
+│   Thread.inheritedAccessControlContext ✅│
 │ Subject: inherited via ScopedValue ✅   │
 │ Can load classes with inherited auth    │
 └────────────┬────────────────────────────┘
@@ -1126,7 +1138,7 @@ Virtual Thread Creation:
 ┌─────────────────────────────────────────┐
 │ SecureClassLoader.getProtectionDomain()│
 │ Subject.current() from ScopedValue ✅   │
-│ ACC from ScopedValue ✅                 │
+│ ACC from Thread.inheritedAccessControlContext ✅ │
 │ ✅ Principals found (inherited)         │
 │ ✅ Context available for permission check│
 │ ✅ Class loads successfully             │
@@ -1171,7 +1183,7 @@ Transition: VirtualThread unmounts (park)
     AccessController.getContext() called
            ↓
     ✅ Still returns correct context
-       (ScopedValue + ACC survive unmount/mount)
+       (Subject via ScopedValue; ACC via Thread.inheritedAccessControlContext)
 ```
 
 ### 7. Structured Concurrency Integration
@@ -1181,6 +1193,12 @@ Transition: VirtualThread unmounts (park)
 ```
 private static final ScopedValue<Subject> SUBJECT = 
     ScopedValue.newInstance();
+// Note: ACC propagation below is an explicit user-land pattern for passing a
+// specific context into tasks submitted to a shared executor. The JVM already
+// propagates the inherited AccessControlContext via Thread.inheritedAccessControlContext
+// (captured at Thread.ofVirtual() builder creation) without any ScopedValue.
+// This explicit binding is only needed when you want child tasks to use a
+// *different* ACC than the one already captured by the builder.
 private static final ScopedValue<AccessControlContext> ACC = 
     ScopedValue.newInstance();
 
@@ -1228,7 +1246,7 @@ void executeWithContext(Subject subject, AccessControlContext acc) throws Except
 | **Creation cost** | ~1MB per thread | ~100 bytes | Enables many concurrent contexts |
 | **Context switch** | OS kernel scheduler | JVM scheduler | Security context preserved |
 | **Subject storage** | ThreadLocal (isolated) | ScopedValue (inherited) | ✅ Better context propagation |
-| **ACC storage** | ThreadLocal (isolated) | ScopedValue (inherited) | ✅ Immutable inheritance |
+| **ACC storage** | `Thread.inheritedAccessControlContext` field, captured at `new Thread()` | `Thread.inheritedAccessControlContext` field, captured at `Thread.ofVirtual()` builder creation | ✅ Immutable; shared by all threads from the same builder |
 | **Stack walk** | OS-level stack | JVM-level stack | ✅ Works correctly |
 | **Cache effects** | L1/L2 impact | Minimal | ✅ Better performance |
 | **GC pressure** | Long-lived memory | Short-lived, GC-friendly | ✅ Reduced GC pause |
@@ -1256,6 +1274,11 @@ void executeWithContext(Subject subject, AccessControlContext acc) throws Except
 public class VirtualThreadApp {
     private static final ScopedValue<Subject> SUBJECT_CONTEXT = 
         ScopedValue.newInstance();
+    // Note: wrapping ACC in a ScopedValue is an optional user-land pattern. The JVM
+    // already stores the inherited AccessControlContext in Thread.inheritedAccessControlContext,
+    // captured automatically when Thread.ofVirtual() builder is created. AccessController.getContext()
+    // will use that inherited ACC without any ScopedValue binding. The explicit ScopedValue below
+    // is only useful when you need to pass a *specific, different* ACC into tasks.
     private static final ScopedValue<AccessControlContext> ACC_CONTEXT = 
         ScopedValue.newInstance();
     
@@ -1720,10 +1743,16 @@ Stack Walk Result:
 
 ```
 // PrivilegedAction in virtual thread
+// The ACC is already inherited via Thread.inheritedAccessControlContext — no
+// ScopedValue wrapping is needed for the JVM mechanism. The ScopedValue pattern
+// below is only necessary if the executor was not created from a builder that
+// captured the desired context, and you need to pass a specific ACC explicitly.
 AccessControlContext context = AccessController.getContext();
 
 ScopedValue.where(ACC_CONTEXT, context).runner(() -> {
-    // Virtual thread executes with inherited ACC
+    // Virtual thread executes with inherited ACC (via explicit ScopedValue here,
+    // or automatically via Thread.inheritedAccessControlContext if the builder was
+    // created in the right context)
     
     // Option 1: No explicit context (uses inherited)
     Integer port = AccessController.doPrivileged(() -> {
@@ -2416,6 +2445,11 @@ Subject.doAs(subject, new PrivilegedAction<Void>() {
 // Modern pattern for virtual threads
 private static final ScopedValue<Subject> SUBJECT_CONTEXT = 
     ScopedValue.newInstance();
+// Note: The JVM propagates AccessControlContext automatically via
+// Thread.inheritedAccessControlContext (captured at Thread.ofVirtual() builder creation).
+// The ScopedValue<AccessControlContext> below is an optional explicit pattern,
+// useful only when you need tasks to operate under a *specific* ACC that differs
+// from the one already captured by the executor's builder.
 private static final ScopedValue<AccessControlContext> ACC_CONTEXT = 
     ScopedValue.newInstance();
 
@@ -2656,7 +2690,7 @@ public class MyClassLoader extends SecureClassLoader {
 | "Certificate chain invalid" | Untrusted or expired certificate | Verify certificate and re-sign if needed |
 | "Virtual thread ScopedValue not bound" | Accessed outside ScopedValue.where() scope | Ensure call within run()/call() context |
 | "Virtual thread context not inherited" | Not wrapped with ScopedValue.where() | Use ScopedValue.where().runner() or .callable() |
-| "PrivilegedAction not working" | ACC not inherited properly | Use ScopedValue to inherit ACC |
+| "PrivilegedAction not working" | ACC not inherited properly | Check that `Thread.ofVirtual()` builder is created in the correct security context; `AccessController.getContext()` uses `Thread.inheritedAccessControlContext` automatically — no `ScopedValue` needed |
 | "Stack walk returns wrong domains" | Carrier thread domains included | Verify virtual thread stack walk only |
 | "callAs not using doAs" | SecurityManager not installed | Verify -Djava.security.manager=... specified |
 
