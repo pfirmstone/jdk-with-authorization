@@ -900,6 +900,9 @@ public class Thread implements Runnable {
      * method will be invoked first to select the thread group. If the security
      * manager {@code getThreadGroup} method returns {@code null} then the thread
      * group of the constructing thread is used.
+     * <p>
+     * The Builder captures the parent Thread inherited AccessControlContext from this method,
+     * all Thread's originating from the Builder inherit the same AccessControlContext.
      *
      * @apiNote The following are examples using the builder:
      * {@snippet :
@@ -924,6 +927,9 @@ public class Thread implements Runnable {
     /**
      * Returns a builder for creating a virtual {@code Thread} or {@code ThreadFactory}
      * that creates virtual threads.
+     * <p>
+     * The Builder captures the parent Thread inherited AccessControlContext from this method,
+     * all Thread's originating from the Builder inherit the same AccessControlContext.
      *
      * @apiNote The following are examples using the builder:
      * {@snippet :
