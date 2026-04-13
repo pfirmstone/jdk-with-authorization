@@ -11,3 +11,17 @@
 *.css	diff=css
 * text=auto
 * text eol=lf
+*.png binary
+*.jpg binary
+*.gif binary
+*.ico binary
+*.jar binary
+*.class binary
+*.zip binary
+*.gz binary
+*.so binary
+*.dll binary
+*.dylib binary
+*.b2c binary
+*.c2b binary
+*irreversible binary

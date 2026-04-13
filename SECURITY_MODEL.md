@@ -32,7 +32,8 @@
 19. [API Reference](#api-reference)
 20. [Troubleshooting](#troubleshooting)
 21. [References](#references)
-22. [Conclusion](#conclusion)
+22. [API Stability Contract & Multi-Release JAR Strategy](#api-stability-contract--multi-release-jar-strategy)
+23. [Conclusion](#conclusion)
 
 ---
 
@@ -48,7 +49,7 @@
 - **Virtual Thread Integration:** AccessControlContext inherited immutably; PrivilegedActions fully supported
 - **Unified Subject Context:** Subject.callAs() always delegates to Subject.doAs() in Dirty Chai system (allowSecurityManager = true)
 - **AccessController Stack Walk:** Native stack walking compatible with virtual threads
-- **Backward Compatible APIs:** Subject.doAs() and legacy security APIs fully operational
+- **Essential Authorization APIs:** `Subject.doAs()`, `Subject.doAsPrivileged()`, and `AccessControlContext` retained and fully operational as first-class APIs; not deprecated in Dirty Chai
 - **Fail-Secure Design:** All validation failures result in SecurityException; no silent bypasses
 - **Non-Blocking Performance:** Lock-free caching with concurrent validation
 
@@ -63,7 +64,7 @@
 | **No Trust Transfer** | Each dependency re-validated independently | Transitive dependencies cannot escalate privileges | Evil transitive dependency cannot piggyback on trusted lib |
 | **Virtual Thread Compatible** | AccessControlContext + StackWalk | Security context maintained across mounts/unmounts | 1M+ concurrent threads remain fully governed |
 | **Subject Management** | callAs() always delegates to doAs() via SecurityManager | Unified access control model | Single predictable code path; no bypass routes |
-| **Backward Compatible** | Subject.doAs() fully operational; legacy APIs supported | Existing code works without modification | Zero migration cost for existing applications |
+| **Essential Authorization APIs** | `Subject.doAs()`, `Subject.doAsPrivileged()`, and `AccessControlContext` retained as first-class APIs; not deprecated | Existing code works without modification; `doAsPrivileged(s, a, null)` unique explicit-context capability preserved | No vanilla OpenJDK replacement exists for `doAsPrivileged` null-context use case |
 | **Non-Blocking Performance** | ConcurrentHashMap with lock-free reads | High-concurrency throughput maintained | Security does not become the bottleneck |
 
 ---
@@ -952,15 +953,15 @@ The following table summarises how security guarantees differ between platform a
 
 | Guarantee | Platform Thread | Virtual Thread (Dirty Chai) |
 |-----------|----------------|------------------------------|
-| Subject context propagation | `ThreadLocal` — not inherited by child threads | `ScopedValue` — automatically inherited within scope |
+| Subject context propagation | Not inherited by child threads (ThreadLocal-based; each thread must call `Subject.doAs()` independently) | Inherited via `Thread.inheritedAccessControlContext` field (SubjectDomainCombiner); `Subject.callAs()` always delegates to `Subject.doAs()` |
 | AccessControlContext inheritance | Inherited via `Thread.inheritedAccessControlContext` field, captured at `new Thread()` | Inherited via `Thread.inheritedAccessControlContext` field, captured at `Thread.ofVirtual()` builder creation |
 | PrivilegedAction support | Full | Full (identical semantics) |
 | Stack walk for permission checks | OS-level stack | JVM-level stack (carrier frames excluded) |
 | Carrier thread domains included? | N/A | No — only virtual thread frames counted |
-| Subject modification during execution | Allowed (until `setReadOnly()`) | Allowed within scope; scope exit restores prior state |
+| Subject modification during execution | Allowed (until `setReadOnly()`) | Allowed (until `setReadOnly()`); identical semantics — no scope-exit restoration because Subject propagates via ACC, not ScopedValue |
 | Concurrency | Kernel threads (limited) | Up to millions of virtual threads |
 
-> **Key difference from platform threads:** For `Subject` context propagation, `ScopedValue` replaces `ThreadLocal`, ensuring the subject is never accidentally absent or accidentally shared. The `AccessControlContext` uses its own dedicated mechanism — the `Thread.inheritedAccessControlContext` field — for both platform and virtual threads; the difference is **when** the context is captured (at `Thread.ofVirtual()` builder creation for virtual threads vs. at `new Thread()` construction for platform threads).
+> **Key difference from platform threads:** For `Subject` context propagation in Dirty Chai (`allowSecurityManager = true`), `Subject.callAs()` always delegates to `Subject.doAs()`, which installs a `SubjectDomainCombiner` into the `AccessControlContext`. The Subject therefore travels with the `AccessControlContext` via the `Thread.inheritedAccessControlContext` field — the same mechanism used on platform threads, with the only difference being **when** the context is captured (at `Thread.ofVirtual()` builder creation for virtual threads vs. at `new Thread()` construction for platform threads). The `ScopedValue`-based Subject path in `callAs()` is only active when `allowSecurityManager() == false` (plain JDK with no SecurityManager installed) and is **never taken in Dirty Chai**.
 
 ---
 
@@ -1079,24 +1080,26 @@ Virtual Thread executing:
 Context Propagation Mechanisms:
 
 Platform Thread Model (Traditional):
-  ThreadLocal<Subject> → NOT inherited by child threads
+  Subject.doAs(subject, action) → creates AccessControlContext with SubjectDomainCombiner
   AccessControlContext  → Stored in Thread.inheritedAccessControlContext field,
                           captured at new Thread() construction
   
-Virtual Thread Model (Enhanced):
-  ScopedValue<Subject> → Inherited automatically ✅  (user-land context)
+Virtual Thread Model (Dirty Chai — allowSecurityManager = true):
+  Subject.callAs(subject, action) → ALWAYS delegates to Subject.doAs() in Dirty Chai
+  → creates AccessControlContext with SubjectDomainCombiner (identical to platform thread path)
   AccessControlContext  → Stored in Thread.inheritedAccessControlContext field,
                           captured at Thread.ofVirtual() builder creation ✅
   
-  // Subject propagation example (ScopedValue is used here):
+  // Subject propagation example (callAs() → doAs() → ACC with SubjectDomainCombiner):
   Subject.callAs(subject, () -> {
       Thread.ofVirtual().start(() -> {
-          // Child VT inherits subject via ScopedValue ✅
+          // Child VT inherits subject via ACC (SubjectDomainCombiner) ✅
+          // Subject.current() calls getSubject(AccessController.getContext())
           Subject current = Subject.current();
       });
   });
 
-  // AccessControlContext propagation (no ScopedValue needed — automatic):
+  // AccessControlContext propagation (automatic — Thread.inheritedAccessControlContext):
   // The builder captures getContext() once; all threads it creates share it.
   Thread.ofVirtual().start(() -> {
       // Child VT already has inherited ACC via Thread.inheritedAccessControlContext ✅
@@ -1104,8 +1107,12 @@ Virtual Thread Model (Enhanced):
   });
 ```
 
+> **Note:** The `ScopedValue`-based Subject path inside `Subject.callAs()` is only active when
+> `allowSecurityManager() == false` (plain JDK without a SecurityManager). In Dirty Chai that
+> condition is never true, so `ScopedValue` plays **no role** in Subject propagation here.
+
 **Advantages:**
-- ✅ `Subject` propagation via `ScopedValue` — explicit scoping, clear intent
+- ✅ `Subject` propagation via `AccessControlContext` (SubjectDomainCombiner) — consistent with platform-thread model
 - ✅ `AccessControlContext` propagated automatically via builder — no manual wiring needed
 - ✅ No memory leaks from `ThreadLocal` cleanup
 - ✅ Works seamlessly with structured concurrency
@@ -1117,19 +1124,22 @@ Virtual Thread Creation:
 ┌─────────────────────────────────────────┐
 │ Parent VirtualThread (authenticated)    │
 │ AccessControlContext: inherited         │
-│ Subject: inherited via ScopedValue      │
+│ Subject: inherited via ACC              │
+│   (SubjectDomainCombiner in ACC)        │
 └────────────┬────────────────────────────┘
              │
              ├─→ Create child task: VirtualThread.Builder
              │   └─ ACC captured in builder (Thread.inheritedAccessControlContext)
-             │   └─ Subject propagated via ScopedValue
+             │   └─ Subject travels with ACC (SubjectDomainCombiner)
              │
              ▼
 ┌─────────────────────────────────────────┐
 │ Child VirtualThread (NEW)               │
 │ AccessControlContext: inherited via     │
 │   Thread.inheritedAccessControlContext ✅│
-│ Subject: inherited via ScopedValue ✅   │
+│ Subject: inherited via ACC ✅           │
+│   (getSubject(AccessController.        │
+│    getContext()) returns it)            │
 │ Can load classes with inherited auth    │
 └────────────┬────────────────────────────┘
              │
@@ -1138,7 +1148,9 @@ Virtual Thread Creation:
              ▼
 ┌─────────────────────────────────────────┐
 │ SecureClassLoader.getProtectionDomain()│
-│ Subject.current() from ScopedValue ✅   │
+│ Subject.current() via                  │
+│   getSubject(AccessController.         │
+│   getContext()) ✅                      │
 │ ACC from Thread.inheritedAccessControlContext ✅ │
 │ ✅ Principals found (inherited)         │
 │ ✅ Context available for permission check│
@@ -1166,7 +1178,7 @@ Sequence 1: VirtualThread mounted on Carrier
     AccessController.getContext()
            │
     ✅ Returns correct context
-       (From ScopedValue, not thread state)
+       (From AccessControlContext stored in Thread.inheritedAccessControlContext)
 
 Transition: VirtualThread unmounts (park)
 ┌──────────────────┐
@@ -1175,8 +1187,7 @@ Transition: VirtualThread unmounts (park)
 └──────────────────┘
            ↓
     VirtualThread still has
-    ScopedValue context in scope
-    AccessControlContext in scope
+    AccessControlContext in Thread.inheritedAccessControlContext
            ↓
     Later: VirtualThread resumes on different carrier
            ↓
@@ -1184,7 +1195,8 @@ Transition: VirtualThread unmounts (park)
     AccessController.getContext() called
            ↓
     ✅ Still returns correct context
-       (Subject via ScopedValue; ACC via Thread.inheritedAccessControlContext)
+       (Subject via AccessControlContext/SubjectDomainCombiner;
+        ACC via Thread.inheritedAccessControlContext)
 ```
 
 ### 7. Structured Concurrency Integration
@@ -1192,42 +1204,34 @@ Transition: VirtualThread unmounts (park)
 **Pattern:** Use `StructuredTaskScope` for concurrent tasks
 
 ```
-private static final ScopedValue<Subject> SUBJECT = 
-    ScopedValue.newInstance();
-// Note: ACC propagation below is an explicit user-land pattern for passing a
-// specific context into tasks submitted to a shared executor. The JVM already
-// propagates the inherited AccessControlContext via Thread.inheritedAccessControlContext
-// (captured at Thread.ofVirtual() builder creation) without any ScopedValue.
-// This explicit binding is only needed when you want child tasks to use a
-// *different* ACC than the one already captured by the builder.
-private static final ScopedValue<AccessControlContext> ACC = 
-    ScopedValue.newInstance();
+// In Dirty Chai (allowSecurityManager = true):
+// Subject.callAs() delegates to Subject.doAs(), which installs a
+// SubjectDomainCombiner into the AccessControlContext.
+// The ACC (carrying the Subject) is then inherited by child virtual threads
+// via Thread.inheritedAccessControlContext — no manual ScopedValue<Subject> needed.
 
 // Example: Execute multiple authenticated tasks concurrently
-void executeWithContext(Subject subject, AccessControlContext acc) throws Exception {
-    ScopedValue.where(SUBJECT, subject)
-        .where(ACC, acc)
-        .run(() -> {
-            try (var scope = new StructuredTaskScope.ShutdownOnFailure()) {
-                var future1 = scope.fork(() -> {
-                    // Child task 1
-                    Subject current = SUBJECT.get();  // Inherited ✅
-                    AccessControlContext ctx = ACC.get(); // Inherited ✅
-                    return loadAndProcessClasses();
-                });
-                
-                var future2 = scope.fork(() -> {
-                    // Child task 2
-                    Subject current = SUBJECT.get();  // Inherited ✅
-                    AccessControlContext ctx = ACC.get(); // Inherited ✅
-                    return accessResources();
-                });
-                
-                scope.joinUntil(Instant.now().plusSeconds(10));
-                
-                // Process results...
-            }
-        });
+void executeWithContext(Subject subject) throws Exception {
+    Subject.callAs(subject, () -> {
+        try (var scope = new StructuredTaskScope.ShutdownOnFailure()) {
+            var future1 = scope.fork(() -> {
+                // Child task 1 — Subject inherited via ACC ✅
+                Subject current = Subject.current(); // getSubject(AccessController.getContext())
+                return loadAndProcessClasses();
+            });
+            
+            var future2 = scope.fork(() -> {
+                // Child task 2 — Subject inherited via ACC ✅
+                Subject current = Subject.current();
+                return accessResources();
+            });
+            
+            scope.joinUntil(Instant.now().plusSeconds(10));
+            
+            // Process results...
+            return null;
+        }
+    });
 }
 ```
 
@@ -1246,7 +1250,7 @@ void executeWithContext(Subject subject, AccessControlContext acc) throws Except
 |--------|------------------|-----------------|-----------------|
 | **Creation cost** | ~1MB per thread | ~100 bytes | Enables many concurrent contexts |
 | **Context switch** | OS kernel scheduler | JVM scheduler | Security context preserved |
-| **Subject storage** | ThreadLocal (isolated) | ScopedValue (inherited) | ✅ Better context propagation |
+| **Subject storage** | Stored in `AccessControlContext` (SubjectDomainCombiner), set up by `Subject.doAs()`; not automatically inherited by new threads | Stored in `AccessControlContext` (SubjectDomainCombiner), set up by `Subject.callAs()` → `Subject.doAs()`; inherited via `Thread.inheritedAccessControlContext` | ✅ Subject inherits with ACC |
 | **ACC storage** | `Thread.inheritedAccessControlContext` field, captured at `new Thread()` | `Thread.inheritedAccessControlContext` field, captured at `Thread.ofVirtual()` builder creation | ✅ Immutable; shared by all threads from the same builder |
 | **Stack walk** | OS-level stack | JVM-level stack | ✅ Works correctly |
 | **Cache effects** | L1/L2 impact | Minimal | ✅ Better performance |
@@ -1255,12 +1259,12 @@ void executeWithContext(Subject subject, AccessControlContext acc) throws Except
 **Security Scalability:**
 - **Before (Platform Threads):**
   - 1000 concurrent users = 1000 * 1MB = ~1GB memory
-  - Each needs ThreadLocal Subject/ACC storage
+  - Each thread must establish its own Subject context via `Subject.doAs()` — not automatically inherited
   - OS context switch overhead for each
   
 - **After (Virtual Threads):**
   - 1,000,000 concurrent virtual tasks = ~100MB memory
-  - ScopedValue-based context efficient
+  - AccessControlContext-based Subject context efficient and inherited automatically
   - Minimal scheduler overhead per context
   - AccessControlContext inherited, not copied per-thread
 
@@ -1271,53 +1275,46 @@ void executeWithContext(Subject subject, AccessControlContext acc) throws Except
 // -Djava.security.manager=au.zeus.jdk.authorization.sm.CombinerSecurityManager
 // -Djava.security.policy=/etc/java.policy
 
-// Application code
+// Application code — In Dirty Chai (allowSecurityManager = true):
+// Subject.callAs() delegates to Subject.doAs(), which creates an
+// AccessControlContext carrying the Subject via SubjectDomainCombiner.
+// Child virtual threads inherit that ACC via Thread.inheritedAccessControlContext.
+// No manual ScopedValue<Subject> is needed or correct here.
 public class VirtualThreadApp {
-    private static final ScopedValue<Subject> SUBJECT_CONTEXT = 
-        ScopedValue.newInstance();
-    // Note: wrapping ACC in a ScopedValue is an optional user-land pattern. The JVM
-    // already stores the inherited AccessControlContext in Thread.inheritedAccessControlContext,
-    // captured automatically when Thread.ofVirtual() builder is created. AccessController.getContext()
-    // will use that inherited ACC without any ScopedValue binding. The explicit ScopedValue below
-    // is only useful when you need to pass a *specific, different* ACC into tasks.
-    private static final ScopedValue<AccessControlContext> ACC_CONTEXT = 
-        ScopedValue.newInstance();
     
     public static void main(String[] args) throws Exception {
         // Authenticate user
         Subject subject = authenticateUser(args[0]);
-        AccessControlContext acc = AccessController.getContext();
         
-        // Create thread pool of virtual threads
-        try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
-            
-            // Submit 1 million tasks with authenticated context
-            for (int i = 0; i < 1_000_000; i++) {
-                executor.submit(
-                    ScopedValue.where(SUBJECT_CONTEXT, subject)
-                        .where(ACC_CONTEXT, acc)
-                        .runner(() -> {
-                            // Each task inherits authenticated subject and ACC
-                            Subject current = SUBJECT_CONTEXT.get();
-                            AccessControlContext currentAcc = ACC_CONTEXT.get();
-                            assert current == subject; // ✅ Inherited
-                            assert currentAcc == acc;  // ✅ Inherited immutably
-                            
-                            // Load classes with authentication
-                            ClassLoader cl = new SecureClassLoader();
-                            Class<?> appClass = cl.loadClass("com.app.Task");
-                            
-                            // Execute with security context
-                            appClass.getMethod("run").invoke(null);
-                        })
-                );
+        // Establish authenticated context — callAs() → doAs() → ACC with SubjectDomainCombiner
+        Subject.callAs(subject, () -> {
+            // Create thread pool of virtual threads inside the authenticated scope
+            // so each builder captures the ACC containing the Subject
+            try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
+                
+                // Submit 1 million tasks with authenticated context
+                for (int i = 0; i < 1_000_000; i++) {
+                    executor.submit(() -> {
+                        // Each task inherits authenticated Subject via inherited ACC ✅
+                        Subject current = Subject.current(); // reads from ACC via getSubject()
+                        assert current == subject; // ✅ Inherited
+                        
+                        // Load classes with authentication
+                        ClassLoader cl = new SecureClassLoader();
+                        Class<?> appClass = cl.loadClass("com.app.Task");
+                        
+                        // Execute with security context
+                        appClass.getMethod("run").invoke(null);
+                    });
+                }
+                
+                executor.shutdown();
+                if (!executor.awaitTermination(5, TimeUnit.MINUTES)) {
+                    executor.shutdownNow();
+                }
             }
-            
-            executor.shutdown();
-            if (!executor.awaitTermination(5, TimeUnit.MINUTES)) {
-                executor.shutdownNow();
-            }
-        }
+            return null;
+        });
     }
     
     private static Subject authenticateUser(String username) throws Exception {
@@ -1335,29 +1332,36 @@ public class VirtualThreadApp {
 
 ```
 // Virtual thread task with error handling
-ScopedValue.where(SUBJECT_CONTEXT, subject)
-    .where(ACC_CONTEXT, acc)
-    .runner(() -> {
-        try {
-            ClassLoader cl = new SecureClassLoader();
-            Class<?> appClass = cl.loadClass("com.app.Task");
-            appClass.getMethod("run").invoke(null);
-        } catch (SecurityException e) {
-            // Security context available even in exception handler
-            Subject current = SUBJECT_CONTEXT.get();  // ✅ Still available
-            AccessControlContext currentAcc = ACC_CONTEXT.get(); // ✅ Still available
-            
-            // Log with authentication context
-            logger.error("Task failed with authenticated user: " + 
-                        current.getPrincipals(), e);
-            
-            // Can initiate remediation with known principal
-            notifySecurityAdmin(current.getPrincipals(), e);
-        } catch (Exception e) {
-            // Standard exception handling
-            throw new RuntimeException(e);
+// Subject context is carried in the inherited AccessControlContext ✅
+Subject.callAs(subject, () -> {
+    try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
+        executor.submit(() -> {
+            try {
+                ClassLoader cl = new SecureClassLoader();
+                Class<?> appClass = cl.loadClass("com.app.Task");
+                appClass.getMethod("run").invoke(null);
+            } catch (SecurityException e) {
+                // Security context available even in exception handler
+                Subject current = Subject.current();  // ✅ Still available via ACC
+                
+                // Log with authentication context
+                logger.error("Task failed with authenticated user: " + 
+                            current.getPrincipals(), e);
+                
+                // Can initiate remediation with known principal
+                notifySecurityAdmin(current.getPrincipals(), e);
+            } catch (Exception e) {
+                // Standard exception handling
+                throw new RuntimeException(e);
+            }
+        });
+        executor.shutdown();
+        if (!executor.awaitTermination(5, TimeUnit.MINUTES)) {
+            executor.shutdownNow();
         }
-    }).run();
+    }
+    return null;
+});
 ```
 
 **Benefits:**
@@ -2113,16 +2117,16 @@ The primary security boundary concern across threads and pools is **Subject cont
 
 ### 1. Subject.doAs() Full Compatibility
 
-**Model:** Legacy `Subject.doAs()` fully operational with virtual threads
+**Model:** `Subject.doAs()` fully operational with virtual threads; retained and maintained as a first-class API in Dirty Chai
 
 ```
-// Legacy code (pre-virtual threads)
+// Subject.doAs() — fully operational in Dirty Chai (not deprecated)
 Subject subject = new Subject();
 LoginContext lc = new LoginContext("MyApp");
 lc.login();  // Populate subject
 
-// Using deprecated but fully supported Subject.doAs()
-Integer result = Subject.doAs(subject, 
+// Subject.doAs() — fully operational in Dirty Chai (not deprecated)
+Integer result = Subject.doAs(subject,
     new PrivilegedAction<Integer>() {
         @Override
         public Integer run() {
@@ -2145,16 +2149,32 @@ Integer result = Subject.doAs(subject,
 - ✅ Virtual threads detect and handle correctly
 - ✅ Identical semantics guaranteed
 
-### 2. Subject.doAsPrivileged() Compatibility
+### 2. Subject.doAsPrivileged() — Essential API for Explicit Context Control
 
-**Model:** Legacy `Subject.doAsPrivileged()` with explicit context
+**Why Essential:** `Subject.doAsPrivileged()` is the only Subject API that accepts an **explicit `AccessControlContext`**, enabling caller-independent privilege boundaries. Upstream itself acknowledged: *"There is no replacement for the Security Manager or this method."* It is retained, fully operational, and not deprecated in Dirty Chai.
+
+**The unique capability — null-context isolation:**
 
 ```
-// Legacy code with explicit context
+// doAsPrivileged with null ACC:
+//   null → AccessControlContext built from empty ProtectionDomain[]
+//   The caller's stack domains cannot widen the Subject's privilege.
+//   This clean-context isolation has no equivalent in callAs() or doAs().
+Subject.doAsPrivileged(subject, action, null);
+
+// doAsPrivileged with explicit ACC:
+//   Passes a captured context as the privilege boundary.
+//   Stack walk uses acc, not the current thread's ACC.
+AccessControlContext context = AccessController.getContext();
+Subject.doAsPrivileged(subject, action, context);
+```
+
+```
+// Concrete example with explicit context
 Subject subject = authenticateUser();
 AccessControlContext context = AccessController.getContext();
 
-// Using deprecated but fully supported Subject.doAsPrivileged()
+// doAsPrivileged() — essential API, fully operational in Dirty Chai
 Integer result = Subject.doAsPrivileged(subject,
     new PrivilegedAction<Integer>() {
         @Override
@@ -2173,27 +2193,29 @@ Integer result = Subject.doAsPrivileged(subject,
 // ✅ Result returned correctly
 ```
 
-**Backward Compatibility Details:**
-- ✅ No code changes required
-- ✅ Explicit context properly applied
-- ✅ Privilege boundaries respected
-- ✅ Virtual threads handle transparent to code
+**Why doAsPrivileged is Irreplaceable:**
+- ✅ **Unique capability:** Accepts an explicit `AccessControlContext` — no other Subject API does
+- ✅ **Null-context isolation:** `doAsPrivileged(subject, action, null)` constructs a context from an empty `ProtectionDomain[]`, isolating the action from the caller's stack; the caller's domains cannot widen the Subject's privilege — `callAs()` and `doAs()` have no equivalent
+- ✅ **No vanilla replacement:** Upstream's own deprecation note states "There is no replacement for the Security Manager or this method"
+- ✅ **First-class API in Dirty Chai:** Retained and maintained operational; deprecation annotations are commented out in `Subject.java`
+- ✅ **Virtual thread compatible:** Explicit context properly applied across mounts/unmounts
+- ✅ **Privilege boundaries respected:** Stack walk correctly uses provided ACC as the boundary
 
 ### 3. ThreadLocal Subject Access Patterns
 
 **Pattern:** Code accessing Subject from ThreadLocal remains compatible
 
 ```
-// Pattern 1: ThreadLocal Subject (old pattern)
+// Pattern 1: ThreadLocal Subject (old pattern — not inherited by child threads)
 private static final ThreadLocal<Subject> subjectLocal = 
     new ThreadLocal<>();
 
-// DEPRECATED but compatible:
-// In virtual threads, use ScopedValue instead
-private static final ScopedValue<Subject> subjectScoped = 
-    ScopedValue.newInstance();
+// In Dirty Chai (allowSecurityManager = true), the correct replacement is NOT
+// a user-defined ScopedValue<Subject>, but Subject.callAs() / Subject.doAs(),
+// which stores the Subject in the AccessControlContext via SubjectDomainCombiner.
+// Subject.current() then retrieves it via getSubject(AccessController.getContext()).
 
-// Pattern 2: AccessControlContext from SecurityManager
+// Pattern 2: AccessControlContext from SecurityManager (the Dirty Chai approach)
 AccessControlContext acc = AccessController.getContext();
 
 // Works in virtual threads:
@@ -2211,7 +2233,7 @@ Subject.doAs(subject, new PrivilegedAction<Void>() {
     }
 });
 
-// New code (recommended for VTs):
+// Alternative API using Callable signature (callAs always delegates to doAs in Dirty Chai):
 Subject.callAs(subject, () -> {
     // Same semantics, callAs always uses doAs in Dirty Chai
     return null;
@@ -2251,7 +2273,7 @@ if (sm != null) {
 **Pattern:** Reflection within privileged actions
 
 ```
-// Legacy pattern with reflection
+// Using Subject.doAs() with reflection (older PrivilegedAction style)
 Subject.doAs(subject, new PrivilegedAction<Object>() {
     @Override
     public Object run() {
@@ -2296,8 +2318,8 @@ Subject.doAs(subject, new PrivilegedAction<Object>() {
 | **DNS DoS during permission check** | Slow/hanging DNS delays `SocketPermission.implies()` | `SocketPermission.init()` pre-fetches DNS at policy construction |
 | **All-invalid-URI wildcard grant** | Typo/injected URI turns grant into wildcard CodeSource | `URIGrant` throws `SecurityException` on `URISyntaxException`; no silent omission |
 | **Stale policy on refresh failure** | Exception swallowed in `ConcurrentPolicyFile.refresh()` | `refresh()` now throws `SecurityException`; no silent continue |
-| **Virtual thread context escape** | Child VT steals parent's ScopedValue | ScopedValue design: inherited, not stolen |
-| **Cross-virtual thread pollution** | One VT accesses another VT's context | ScopedValue isolation: separate instances |
+| **Virtual thread context escape** | Child VT inherits parent's ACC/Subject without intended restriction | ACC immutability + Subject stored in ACC (SubjectDomainCombiner): child VTs inherit ACC but cannot modify it |
+| **Cross-virtual thread pollution** | One VT accesses another VT's Subject context | ACC isolation: each thread's `Thread.inheritedAccessControlContext` is a separate snapshot |
 | **ACC tampering in VT** | Modify inherited AccessControlContext | ACC immutability: cannot be modified post-inheritance |
 | **Carrier thread stack inclusion** | Carrier domain included in check | Stack walk ignores carrier (only VT frames used) |
 | **callAs/doAs bypass** | Attempt to bypass Subject context | allowSecurityManager() = true forces doAs() path |
@@ -2350,11 +2372,13 @@ Attack:
   in order to act with elevated privileges outside the parent scope.
 
 Prevention:
-  1. ScopedValue.where() creates a new, scoped binding per invocation
-  2. Binding is read-only inside the scope; cannot be modified
-  3. Children only inherit if explicitly passed via ScopedValue.where()
-  4. Outside the scope boundary Subject.current() returns null
-  5. ✅ Context cannot escape its original scope
+  1. Subject propagates via AccessControlContext (SubjectDomainCombiner),
+     established by Subject.callAs() → Subject.doAs()
+  2. ACC is captured at Thread.ofVirtual() builder creation and is immutable
+  3. A thread created OUTSIDE the callAs() scope captures a different
+     (or no-Subject) ACC — it does NOT inherit the parent's Subject
+  4. Subject.current() reads from the thread's own inherited ACC only
+  5. ✅ Context cannot escape its original Subject.callAs() scope
 
 Result: Virtual thread context leaks prevented; principle of containment upheld
 ```
@@ -2383,7 +2407,7 @@ Attack:
   
 Prevention:
   1. AccessControlContext is immutable
-  2. Inherited via ScopedValue (read-only binding)
+  2. Inherited via Thread.inheritedAccessControlContext field (read-only)
   3. Cannot be modified post-inheritance
   4. New context creation requires explicit doPrivileged()
   5. ✅ Tampering attempt fails
@@ -2395,16 +2419,18 @@ Result: ACC integrity maintained
 
 ```
 Attack:
-  Child virtual thread tries to access parent's Subject context
+  Child virtual thread tries to access another thread's Subject context
   
 Prevention:
-  1. Subject bound via ScopedValue
-  2. ScopedValue.where() creates new binding scope
-  3. Parent's Subject NOT accessible outside binding
-  4. Child VTs only inherit if explicitly wrapped
+  1. Subject is stored in the AccessControlContext (SubjectDomainCombiner),
+     established by Subject.callAs() → Subject.doAs()
+  2. ACC is immutable once captured in Thread.inheritedAccessControlContext
+  3. A new child thread created outside the callAs() scope captures a different
+     (or null-Subject) ACC — it does NOT inherit the parent's Subject
+  4. Subject.current() reads from the thread's own inherited ACC only
   5. ✅ Context escape prevented
   
-Result: Subject isolation maintained per scope
+Result: Subject isolation maintained per AccessControlContext scope
 ```
 
 ### 3. Fail-Secure Design
@@ -2559,7 +2585,7 @@ Properties:
 - Class bytecode protected by JVM memory
 - Credentials protected in Subject
 - Policy files protected by OS file permissions
-- Virtual thread context protected by ScopedValue isolation
+- Virtual thread context protected by ACC immutability (Subject stored in AccessControlContext)
 - AccessControlContext protected by immutability
 
 ---
@@ -2570,14 +2596,14 @@ Properties:
 - Certificate validation in CodeSourceKey
 - Principal verification in Subject
 - Policy-based permission grants
-- ScopedValue immutability (inherited, not modified)
+- AccessControlContext immutability (inherited, not modified; Subject travels with ACC via SubjectDomainCombiner)
 - AccessControlContext immutability (cannot be tampered)
 
 **Guarantees:**
 - Modified code fails certificate check
 - Corrupted principals detected by Subject validation
 - Policy tampering detected via permission denial
-- ScopedValue context cannot be corrupted by child threads
+- AccessControlContext context cannot be corrupted by child threads (immutable inheritance via Thread.inheritedAccessControlContext)
 - AccessControlContext remains pristine throughout execution
 
 ---
@@ -2588,7 +2614,7 @@ Properties:
 - Subject-based principal authentication
 - LoginModule-driven authentication process
 - Principal presence validation in each class load
-- ScopedValue-preserved authentication across virtual thread boundaries
+- AccessControlContext-preserved authentication across virtual thread boundaries (Subject via SubjectDomainCombiner in inherited ACC)
 - AccessControlContext immutable inheritance
 - Subject.callAs() always uses doAs() path (allowSecurityManager = true)
 
@@ -2608,7 +2634,7 @@ Properties:
 - (Principal, CodeSource) matching in policy
 - Permission evaluation independent per class
 - Transitive dependency validation
-- ScopedValue-based context inheritance
+- AccessControlContext-based context inheritance (Subject via SubjectDomainCombiner, propagated via Thread.inheritedAccessControlContext)
 - AccessController stack walk with privilege boundary detection
 
 **Guarantees:**
@@ -2627,7 +2653,7 @@ Properties:
 - Principal tracking in ProtectionDomain
 - Audit logging via SecurityManager
 - Permission check logging
-- ScopedValue context in exception handlers
+- AccessControlContext context available in exception handlers (Subject.current() reads from inherited ACC)
 - AccessController logging with caller information
 
 **Capabilities:**
@@ -2654,12 +2680,12 @@ if (DebugHolder.debug != null) {
 }
 
 // Virtual thread context audit
-ScopedValue.where(SUBJECT, subject)
-    .where(ACC, context)
-    .run(() -> {
-        logger.info("Virtual thread task started for principal: " + 
-            subject.getPrincipals());
-    });
+// In Dirty Chai, Subject is retrieved from the inherited ACC — use Subject.callAs() to establish context
+Subject.callAs(subject, () -> {
+    logger.info("Virtual thread task started for principal: " + 
+        subject.getPrincipals());
+    return null;
+});
 
 // AccessController audit
 AccessController.doPrivileged(() -> {
@@ -2694,15 +2720,15 @@ Subject.callAs(subject, () -> {
 });
 ```
 
-#### **Authentication Setup (Legacy - Still Fully Supported)**
+#### **Authentication Setup (PrivilegedAction / doAs variant)**
 
 ```
-// Legacy approach (still works everywhere)
+// Subject.doAs() — fully operational in Dirty Chai (not deprecated)
 Subject subject = new Subject();
 LoginContext lc = new LoginContext("MyApp");
 lc.login();
 
-// Using deprecated but fully supported Subject.doAs()
+// Subject.doAs() with PrivilegedAction — works identically on platform and virtual threads
 Subject.doAs(subject, new PrivilegedAction<Void>() {
     @Override
     public Void run() {
@@ -2716,45 +2742,34 @@ Subject.doAs(subject, new PrivilegedAction<Void>() {
 #### **Virtual Thread Usage (Modern)**
 
 ```
-// Modern pattern for virtual threads
-private static final ScopedValue<Subject> SUBJECT_CONTEXT = 
-    ScopedValue.newInstance();
-// Note: The JVM propagates AccessControlContext automatically via
-// Thread.inheritedAccessControlContext (captured at Thread.ofVirtual() builder creation).
-// The ScopedValue<AccessControlContext> below is an optional explicit pattern,
-// useful only when you need tasks to operate under a *specific* ACC that differs
-// from the one already captured by the executor's builder.
-private static final ScopedValue<AccessControlContext> ACC_CONTEXT = 
-    ScopedValue.newInstance();
-
+// Modern pattern for virtual threads in Dirty Chai (allowSecurityManager = true):
+// Subject.callAs() delegates to Subject.doAs(), which creates an
+// AccessControlContext carrying the Subject via SubjectDomainCombiner.
+// Create the executor *inside* the callAs() scope so that the builder captures
+// the authenticated ACC; all submitted tasks inherit it automatically.
 public void executeWithVirtualThreads(Subject subject) throws Exception {
-    AccessControlContext acc = AccessController.getContext();
-    
-    try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
-        for (int i = 0; i < 10_000; i++) {
-            executor.submit(
-                ScopedValue.where(SUBJECT_CONTEXT, subject)
-                    .where(ACC_CONTEXT, acc)
-                    .runner(() -> {
-                        // Child virtual thread inherits both subject and ACC
-                        Subject current = SUBJECT_CONTEXT.get();
-                        AccessControlContext currentAcc = ACC_CONTEXT.get();
-                        assert current == subject;        // ✅ Inherited
-                        assert currentAcc == acc;         // ✅ Inherited immutably
-                        
-                        // All operations use inherited authentication
-                        ClassLoader cl = new SecureClassLoader();
-                        Class<?> appClass = cl.loadClass("com.app.Task");
-                        appClass.getMethod("run").invoke(null);
-                    })
-            );
+    Subject.callAs(subject, () -> {
+        try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
+            for (int i = 0; i < 10_000; i++) {
+                executor.submit(() -> {
+                    // Child virtual thread inherits Subject via inherited ACC ✅
+                    Subject current = Subject.current(); // reads from ACC
+                    assert current == subject;           // ✅ Inherited
+                    
+                    // All operations use inherited authentication
+                    ClassLoader cl = new SecureClassLoader();
+                    Class<?> appClass = cl.loadClass("com.app.Task");
+                    appClass.getMethod("run").invoke(null);
+                });
+            }
+            
+            executor.shutdown();
+            if (!executor.awaitTermination(5, TimeUnit.MINUTES)) {
+                executor.shutdownNow();
+            }
         }
-        
-        executor.shutdown();
-        if (!executor.awaitTermination(5, TimeUnit.MINUTES)) {
-            executor.shutdownNow();
-        }
-    }
+        return null;
+    });
 }
 ```
 
@@ -2825,7 +2840,7 @@ grep "Permission denied" /var/log/application.log
 □ Subject authentication required at entry points
 □ SecurityManager installation validated
 □ Virtual thread scheduler configured appropriately
-□ ScopedValue context properly isolated
+□ AccessControlContext properly isolated per Subject.callAs() scope
 □ No ThreadLocal usage for sensitive context
 □ AccessControlContext immutability verified
 □ Privileged action boundaries correctly placed
@@ -2847,9 +2862,9 @@ grep "Permission denied" /var/log/application.log
 |-----------|----------|-------|
 | First class load (cache miss) | ~2–5 ms | Full validation: CodeSource + Subject + policy lookup |
 | Subsequent class load (cache hit) | < 0.1 ms | `ConcurrentHashMap` lock-free read + principal re-check |
-| `Subject.callAs()` / `doAs()` | < 0.05 ms | Scoped value binding only |
+| `Subject.callAs()` / `doAs()` | < 0.05 ms | AccessControlContext with SubjectDomainCombiner setup |
 | `AccessController.checkPermission()` | < 0.01 ms | Single-level permission lookup with cached domain |
-| Virtual thread spawn with context | ~0.1 ms | `ScopedValue.where()` binding |
+| Virtual thread spawn with context | ~0.1 ms | ACC inheritance via `Thread.inheritedAccessControlContext` (captured at builder creation) |
 
 > **Rule of thumb:** Class loading costs are amortised. Most applications load each class once and then benefit from cache hits for the lifetime of the JVM.
 
@@ -2876,7 +2891,7 @@ grep "Permission denied" /var/log/application.log
 
 - The `pdcache` (`ConcurrentHashMap`) scales linearly with unique `(CodeSource, Principal)` combinations.
 - For applications with > 10,000 unique combinations, monitor heap usage — each entry is approximately a few hundred bytes (varies with CodeSource URL length, certificate chain size, and Principal set size).
-- Virtual thread security context propagation adds zero per-thread allocation (ScopedValue uses carrier-local storage).
+- Virtual thread security context propagation adds zero per-thread allocation (AccessControlContext is an immutable snapshot shared by threads from the same builder).
 - Avoid calling `Subject.setReadOnly()` before class loading is complete; it forces re-validation on every check.
 
 ---
@@ -2887,8 +2902,9 @@ grep "Permission denied" /var/log/application.log
 
 | Method | Class | When to Use | Signature |
 |--------|-------|-------------|-----------|
-| `callAs()` | `javax.security.auth.Subject` | Modern replacement for `doAs()`; use in all new code | `static <T> T callAs(Subject subject, Callable<T> action)` |
-| `doAs()` | `javax.security.auth.Subject` | Legacy pattern; fully supported | `static <T> T doAs(Subject subject, PrivilegedAction<T> action)` |
+| `callAs()` | `javax.security.auth.Subject` | Subject context execution with `Callable`/`CompletionException` signature; delegates to `doAs()` in Dirty Chai — not a replacement for `doAs()`, all three Subject APIs are first-class | `static <T> T callAs(Subject subject, Callable<T> action)` |
+| `doAs()` | `javax.security.auth.Subject` | Fully operational first-class API; preferred when `PrivilegedAction`/`PrivilegedExceptionAction` signatures are needed | `static <T> T doAs(Subject subject, PrivilegedAction<T> action)` |
+| `doAsPrivileged()` | `javax.security.auth.Subject` | Essential when an explicit `AccessControlContext` is required; `null` acc gives clean caller-independent isolation — **no callAs/doAs equivalent** | `static <T> T doAsPrivileged(Subject subject, PrivilegedAction<T> action, AccessControlContext acc)` |
 | `defineClass()` | `java.security.SecureClassLoader` | Override to customise class loading; Dirty Chai validation runs here | `protected Class<?> defineClass(String name, byte[] b, int off, int len, CodeSource cs)` |
 | `getPermissions()` | `java.security.SecureClassLoader` | Override to provide custom `PermissionCollection` per `CodeSource` | `protected PermissionCollection getPermissions(CodeSource cs)` |
 | `doPrivileged()` | `java.security.AccessController` | Elevate to a specific, limited context | `static <T> T doPrivileged(PrivilegedAction<T> action, AccessControlContext context)` |
@@ -2962,8 +2978,8 @@ public class MyClassLoader extends SecureClassLoader {
 | "Subject must remain mutable" | Subject.freeze() called too early | Don't freeze until after all class loading |
 | "Cached domain has no principals" | Race condition in cache | Retry or fall through to revalidation |
 | "Certificate chain invalid" | Untrusted or expired certificate | Verify certificate and re-sign if needed |
-| "Virtual thread ScopedValue not bound" | Accessed outside ScopedValue.where() scope | Ensure call within run()/call() context |
-| "Virtual thread context not inherited" | Not wrapped with ScopedValue.where() | Use ScopedValue.where().runner() or .callable() |
+| "Subject not available in virtual thread" | Virtual thread created outside `Subject.callAs()` scope | Create virtual thread executor **inside** `Subject.callAs()` so the builder captures the authenticated ACC |
+| "Virtual thread context not inherited" | Executor or thread builder created before `Subject.callAs()` | Move executor/thread creation inside the `Subject.callAs()` call frame |
 | "PrivilegedAction not working" | ACC not inherited properly | Check that `Thread.ofVirtual()` builder is created in the correct security context; `AccessController.getContext()` uses `Thread.inheritedAccessControlContext` automatically — no `ScopedValue` needed |
 | "Stack walk returns wrong domains" | Carrier thread domains included | Verify virtual thread stack walk only |
 | "callAs not using doAs" | SecurityManager not installed | Verify -Djava.security.manager=... specified |
@@ -3060,6 +3076,166 @@ java -Xlog:security=debug \
 
 ---
 
+## API Stability Contract & Multi-Release JAR Strategy
+
+### 1. Dirty Chai API Stability Commitment
+
+Dirty Chai commits to retaining the following APIs as **permanently operational first-class APIs**, regardless of what upstream OpenJDK does:
+
+| API | Dirty Chai Status | Upstream Status (as of JDK 24) | Notes |
+|-----|-------------------|-------------------------------|-------|
+| `javax.security.auth.Subject.doAs()` | ✅ Permanent | Disabled by default (JEP 486) | Deprecation annotations commented out in `Subject.java` |
+| `javax.security.auth.Subject.doAsPrivileged()` | ✅ Permanent | Disabled by default (JEP 486) | Only API accepting explicit `AccessControlContext`; upstream acknowledged no replacement exists |
+| `javax.security.auth.Subject.callAs()` | ✅ Permanent | Present; delegates to `doAs()` in Dirty Chai | Always takes the `doAs()` path when SecurityManager is installed |
+| `java.security.AccessController` | ✅ Permanent | Disabled by default (JEP 486) | Central to the privilege execution model |
+| `java.security.AccessControlContext` | ✅ Permanent | Disabled by default (JEP 486) | Essential for Subject propagation via SubjectDomainCombiner |
+| `java.lang.SecurityManager` | ✅ Permanent | Permanently disabled (JEP 486) | Dirty Chai overrides JEP 486 behaviour in `java.base` |
+| `au.zeus.jdk.authorization.sm.CombinerSecurityManager` | ✅ Permanent | N/A (Dirty Chai only) | The recommended SecurityManager implementation |
+| `au.zeus.jdk.authorization.policy.ConcurrentPolicyFile` | ✅ Permanent | N/A (Dirty Chai only) | Policy enforcement engine |
+
+### 2. Upstream Removal Timeline
+
+| Milestone | JDK Version | JEP / CSR | Effect |
+|-----------|-------------|-----------|--------|
+| Deprecated for removal | JDK 17 | JEP 411 | `@Deprecated(forRemoval=true)` annotations added |
+| Permanently disabled | JDK 24 | JEP 486 | `System.setSecurityManager()` throws `UnsupportedOperationException` on vanilla JDK; APIs still present as class files |
+| **Removal** | JDK 26–28 (est.) | No finalised JEP as of April 2026 | Class files removed; code using these APIs fails to **compile** against vanilla `javac` |
+
+> **Dirty Chai patches `java.base` to reverse the JEP 486 disablement.** On a Dirty Chai JVM all listed APIs are fully functional regardless of the upstream JDK version being tracked.
+
+### 3. The Portability Problem
+
+When upstream removes these APIs, application code that uses `Subject.doAs*`, `AccessControlContext`, or `AccessController` will encounter two distinct problems:
+
+| Problem | When It Occurs | Scope |
+|---------|----------------|-------|
+| **Compile-time failure** | Developer's build machine uses vanilla JDK N toolchain (after removal) | Affects developers building Dirty Chai applications on vanilla JDK toolchains |
+| **Runtime failure** | Application runs on a vanilla JDK N JVM (after removal) | Not a concern for Dirty Chai users — the runtime is always a Dirty Chai JVM |
+
+**Key clarification:** Dirty Chai users always run on a Dirty Chai JVM. Runtime portability to vanilla OpenJDK is therefore not a goal. The problem to solve is **compile-time portability** — allowing application source code to be compiled using vanilla JDK toolchains (`javac`, Maven, Gradle with vanilla JDK) while targeting Dirty Chai as the runtime.
+
+### 4. Multi-Release JAR Strategy for a Compat Shim
+
+A **Multi-Release JAR (MRJAR)**, introduced in JEP 238 (JDK 9), allows a single JAR to contain version-specific class implementations under `META-INF/versions/N/`. The JVM selects the highest-versioned implementation it supports.
+
+The strategy is to publish a **separate `au.zeus.jdk.compat` artifact** (not part of the Dirty Chai JDK fork itself) that exposes the Dirty Chai authorization APIs as a library dependency.
+
+#### MRJAR Layout
+
+```
+au.zeus.jdk.compat.jar
+├── META-INF/
+│   └── MANIFEST.MF               (Multi-Release: true)
+├── au/zeus/jdk/compat/
+│   ├── SubjectCompat.java         (base tier — compiled against Dirty Chai JDK)
+│   └── AccessControllerCompat.java
+└── META-INF/versions/
+    └── N/                          (N = JDK version that removes the APIs)
+        └── au/zeus/jdk/compat/
+            ├── SubjectCompat.java  (version-N tier — compiled against vanilla JDK N)
+            └── AccessControllerCompat.java
+```
+
+#### Base Tier (compiled against Dirty Chai)
+
+The base tier delegates directly to the built-in JDK APIs:
+
+```java
+// au/zeus/jdk/compat/SubjectCompat.java (base tier)
+public final class SubjectCompat {
+    public static <T> T doAs(Subject subject, PrivilegedAction<T> action) {
+        return Subject.doAs(subject, action);
+    }
+    public static <T> T doAsPrivileged(Subject subject,
+                                       PrivilegedAction<T> action,
+                                       AccessControlContext acc) {
+        return Subject.doAsPrivileged(subject, action, acc);
+    }
+}
+```
+
+#### Version-N Tier (compiled against vanilla JDK N after removal)
+
+The upper tier provides best-effort emulation for the compile-time stub. Application code compiled against the compat artifact will continue to compile on vanilla toolchains; at runtime on Dirty Chai the base tier is selected, so full semantics apply.
+
+```java
+// META-INF/versions/N/au/zeus/jdk/compat/SubjectCompat.java (version-N tier)
+public final class SubjectCompat {
+    public static <T> T doAs(Subject subject, Callable<T> action) {
+        // On vanilla JDK N: delegates to callAs(), which uses ScopedValue path
+        // ⚠ Semantics differ from Dirty Chai (no AccessControlContext/SubjectDomainCombiner)
+        try {
+            return Subject.callAs(subject, action);
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+    }
+    public static <T> T doAsPrivileged(Subject subject,
+                                       Callable<T> action,
+                                       Object acc) {
+        // ⚠ Explicit-context semantics cannot be replicated on vanilla JDK N.
+        // Best-effort: ignore acc and delegate to callAs().
+        // Applications must not rely on the acc argument on non-Dirty-Chai JVMs.
+        return doAs(subject, action);
+    }
+}
+```
+
+### 5. The Hard Case: doAsPrivileged with null ACC
+
+`doAsPrivileged(subject, action, null)` constructs a fresh `AccessControlContext` backed by an empty `ProtectionDomain[]`. This gives the action a **clean, caller-independent privilege context** where only the Subject's own policy grants apply. No caller domain can widen or narrow this context.
+
+This semantics **cannot be replicated** on a vanilla JDK N JVM after API removal, because:
+- `AccessControlContext` no longer exists as a class
+- `Subject.callAs()` uses `ScopedValue`, which carries no privilege boundary concept
+- There is no standard way to "start with zero caller context"
+
+**Recommended approach for application code using null-ACC:**
+
+1. On Dirty Chai JVM: use `Subject.doAsPrivileged(subject, action, null)` directly — full clean-context semantics apply.
+2. If compile-time portability is needed: guard the call with a runtime check or abstract it behind an interface, with a Dirty Chai-specific implementation loaded via `ServiceLoader` or factory pattern.
+3. Document clearly that the null-ACC isolation guarantee only holds on Dirty Chai.
+
+### 6. Build Toolchain Guidance for Downstream Application Developers
+
+#### Compiling against a Dirty Chai JDK (recommended)
+
+The simplest approach: set the Dirty Chai JDK as the compile-time and runtime JDK. No MRJAR needed. All APIs are present and fully operational.
+
+```xml
+<!-- Maven: point JAVA_HOME at the Dirty Chai JDK installation -->
+<properties>
+    <maven.compiler.source>21</maven.compiler.source>
+    <maven.compiler.target>21</maven.compiler.target>
+</properties>
+```
+
+#### Using the compat shim with a vanilla JDK toolchain
+
+When a vanilla JDK toolchain is mandated (CI, shared build infrastructure, etc.), add the `au.zeus.jdk.compat` artifact as a `provided`/`compileOnly` dependency. At runtime the Dirty Chai JVM's base tier is used; the version-N tier is only active on vanilla JDK N.
+
+```xml
+<!-- Maven -->
+<dependency>
+    <groupId>au.zeus.jdk</groupId>
+    <artifactId>dirty-chai-compat</artifactId>
+    <version>${dirty-chai.version}</version>
+    <scope>provided</scope>
+</dependency>
+```
+
+#### MANIFEST.MF entry for MRJARs
+
+Any JAR that uses version-specific class directories must declare:
+
+```
+Multi-Release: true
+```
+
+This is set automatically by Maven's `maven-jar-plugin` (3.x+) when the `multiRelease` flag is enabled, and by Gradle's `compileJava` with `options.release` per source set.
+
+---
+
 ## Conclusion
 
 **Dirty Chai** provides **comprehensive protection** against privilege escalation, code injection, and context escape attacks through:
@@ -3068,9 +3244,9 @@ java -Xlog:security=debug \
 2. **Principal-based authorization** requiring both identity and code source
 3. **Independent evaluation** of each dependency
 4. **Fail-secure design** with no silent failures
-5. **Virtual thread integration** via ScopedValue + immutable ACC + native stack walk
+5. **Virtual thread integration** via immutable ACC (SubjectDomainCombiner) + native stack walk
 6. **Unified Subject context** via Subject.callAs() → Subject.doAs() delegation (allowSecurityManager = true)
-7. **Full backward compatibility** with Subject.doAs() and legacy APIs
+7. **Essential Authorization APIs** (`Subject.doAs()`, `Subject.doAsPrivileged()`, `AccessControlContext`) retained and fully operational; not deprecated in Dirty Chai
 8. **PrivilegedAction support** with inherited and explicit contexts
 9. **High-performance caching** without sacrificing security
 10. **Clear audit trails** for compliance and monitoring
@@ -3079,12 +3255,13 @@ This architecture successfully enforces the **Principle of Least Privilege** whi
 
 ---
 
-**Document Version:** 1.4  
-**Last Updated:** 2025  
-**Classification:** Technical Documentation  
-**Project:** Dirty Chai - OpenJDK with Authorization  
-**Base:** OpenJDK (trunk)  
-**License:** GPL v2 + Classpath Exception  
-**Subject Context:** Subject.callAs() always delegates to Subject.doAs() in Dirty Chai system (allowSecurityManager() = true)  
-**Virtual Thread Support:** Fully Integrated via Immutable AccessControlContext + Native Stack Walk + ScopedValue  
-**Backward Compatibility:** Complete (Subject.doAs(), PrivilegedAction, legacy APIs fully operational)
+**Document Version:** 1.5
+**Last Updated:** April 2026
+**Classification:** Technical Documentation
+**Project:** Dirty Chai - OpenJDK with Authorization
+**Base:** OpenJDK (trunk)
+**License:** GPL v2 + Classpath Exception
+**Subject Context:** Subject.callAs() always delegates to Subject.doAs() in Dirty Chai system (allowSecurityManager() = true)
+**Virtual Thread Support:** Fully Integrated via Immutable AccessControlContext + SubjectDomainCombiner + Native Stack Walk
+**Essential Authorization APIs:** `Subject.doAs()`, `Subject.doAsPrivileged()`, and `AccessControlContext` retained and fully operational; not deprecated in Dirty Chai
+
