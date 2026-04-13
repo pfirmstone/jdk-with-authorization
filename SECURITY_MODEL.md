@@ -1071,9 +1071,9 @@ Virtual Thread executing:
 - Carrier thread's stack NOT included (correct behavior)
 - Privilege boundaries detected correctly
 
-### 4. ScopedValue-Based Context Propagation
+### 4. Subject Context Propagation
 
-**Architecture:** `Subject` security context propagates via `ScopedValue`; `AccessControlContext` propagates via its own dedicated JVM mechanism
+**Architecture:** `Subject` security context propagates via `AccessControlContext` which propagates via its own dedicated JVM mechanism
 
 ```
 Context Propagation Mechanisms:
