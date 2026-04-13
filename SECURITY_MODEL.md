@@ -44,7 +44,7 @@
 - **Optional Principal-Authenticated Signed Code Loading:** Infrastructure enabling policy-configured Subject context and CodeSigner requirements;
 - **Transitive Dependency Lockdown:** Each dependency independently validated; no trust transfer
 - **Platform Module Authorization:** Even standard OpenJDK modules require explicit policy grants
-- **Virtual Thread Integration:** ScopedValue preserves security context; AccessControlContext inherited immutably; PrivilegedActions fully supported
+- **Virtual Thread Integration:** AccessControlContext inherited immutably; PrivilegedActions fully supported
 - **Unified Subject Context:** Subject.callAs() always delegates to Subject.doAs() in Dirty Chai system (allowSecurityManager = true)
 - **AccessController Stack Walk:** Native stack walking compatible with virtual threads
 - **Backward Compatible APIs:** Subject.doAs() and legacy security APIs fully operational
@@ -60,7 +60,7 @@
 | **Authentication** | Policy-configured Subject validation (grants with principals enforce; grants without principals allow unauthenticated) | Administrator-controlled through policy grants | Enables flexible enforcement from optional to mandatory per codebase |
 | **Principal-Based Authorization** | Policy grants require (Principal, CodeSource) match | Code alone insufficient; users alone insufficient | Prevents stolen JARs from gaining access |
 | **No Trust Transfer** | Each dependency re-validated independently | Transitive dependencies cannot escalate privileges | Evil transitive dependency cannot piggyback on trusted lib |
-| **Virtual Thread Compatible** | ScopedValue + AccessControlContext + StackWalk | Security context maintained across mounts/unmounts | 1M+ concurrent threads remain fully governed |
+| **Virtual Thread Compatible** | AccessControlContext + StackWalk | Security context maintained across mounts/unmounts | 1M+ concurrent threads remain fully governed |
 | **Subject Management** | callAs() always delegates to doAs() via SecurityManager | Unified access control model | Single predictable code path; no bypass routes |
 | **Backward Compatible** | Subject.doAs() fully operational; legacy APIs supported | Existing code works without modification | Zero migration cost for existing applications |
 | **Non-Blocking Performance** | ConcurrentHashMap with lock-free reads | High-concurrency throughput maintained | Security does not become the bottleneck |
@@ -153,7 +153,7 @@ Subject.callAs(subject, () -> {
 | Untrusted JAR loads | Loads silently | `SecurityException` thrown |
 | Anonymous code execution | Allowed | Blocked when policy grants require principals (policy-driven) |
 | Transitive dependency privilege | Inherits caller's trust | Re-validated independently |
-| Virtual thread context | No propagation guarantee | `ScopedValue` ensures consistent context |
+| Virtual thread context | No propagation guarantee | consistent context |
 | Policy violation | May silently succeed | `SecurityException` always |
 
 ### Common Pitfalls
