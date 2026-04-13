@@ -142,12 +142,32 @@ The authoritative text of the policy is in [`openjdk_ai_policy.md`](openjdk_ai_p
 | Prohibited Activity | Reason |
 |---------------------|--------|
 | **Generate source code** | Constitutes an AI-generated contribution — violates OpenJDK policy |
-| **Generate documentation** | Includes README, JavaDoc, comments, and all text files |
+| **Generate documentation** | Includes JavaDoc, comments, and shipped text files — **except** repository-root developer docs (see exception below) |
 | **Generate tests** | Even test code is a contribution and must be human-written |
 | **Write commit messages** | Commit messages are content subject to the policy |
 | **Draft PR descriptions** | PR body content is contribution content under the policy |
 | **Auto-create pull requests** | PRs containing AI-generated content violate the policy |
 | **Edit human-written code** | Partial AI edits still make the contribution partially AI-generated |
+
+### Repository Documentation Exception
+
+The following repository-root Markdown files are **exempt** from the AI contribution prohibition.
+They are not shipped as part of the DirtyChai/JDK build artefacts; they exist solely to inform
+developers and users who read the GitHub repository:
+
+- `EXECUTIVE_SUMMARY.md`
+- `SECURITY_ANALYSIS.md`
+- `CONTRIBUTING.md`
+- `STACK_VALIDATION_ANALYSIS.md`
+- `SECURITY_MODEL.md`
+- `VULNERABILITIES_ADDRESSED.md`
+- `PHILOSOPHY.md`
+- `README.md`
+- `SECURITY.md`
+
+Claude MAY assist in drafting or editing content in these files when asked. The contribution
+restrictions of the OpenJDK Interim Policy apply only to artefacts that become part of the
+distributed product (source code, tests, build scripts, and JavaDoc embedded in shipped classes).
 
 ### How to Flag AI-Generated Content
 
@@ -271,8 +291,9 @@ Before writing any code, an AI agent MUST verify the following:
 
 ### Step 0: OpenJDK Policy Check (MUST be first)
 
-- [ ] **Am I about to generate code, documentation, tests, or commit messages?**
+- [ ] **Am I about to generate code, tests, or commit messages — or documentation other than the exempt repository-root Markdown files?**
   - If YES: **STOP. This violates the OpenJDK Interim Policy. Advise only — do not generate content.**
+  - Exception: repository-root `.md` developer docs (see Repository Documentation Exception) are permitted.
 - [ ] Have I confirmed the user understands that contributions must be human-written?
 
 
