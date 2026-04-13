@@ -3005,16 +3005,19 @@ public final class System {
      * Detects MethodHandles/invoke API frames.
      */
     private static boolean isMethodHandlesFrame(String className, String methodName) {
-        if (className.startsWith("java.lang.invoke.")) {
-            return true;
-        }
-        // LambdaMetafactory, MethodHandle.invoke, etc.
-        if (className.contains("LambdaMetafactory") || 
-            (className.equals("java.lang.invoke.MethodHandle") && 
-             (methodName.equals("invoke") || methodName.equals("invokeExact")))) {
-            return true;
-        }
-        return false;
+        if (!className.startsWith("java.lang.invoke.")) return false;
+        // Whitelist classes that run at class-linkage time only and can never
+        // be on the call stack when setSecurityManager is actually invoked:
+        return switch (className) {
+            case "java.lang.invoke.StringConcatFactory", 
+                "java.lang.invoke.LambdaMetafactory", 
+                "java.lang.invoke.AbstractValidatingLambdaMetafactory", 
+                "java.lang.invoke.BootstrapMethodInvoker", 
+                "java.lang.invoke.ConstantBootstraps", 
+                "java.lang.invoke.MethodHandles", // lookup only, not invocation
+                "java.lang.invoke.MethodType" -> false; // type descriptor, not invocation
+            default -> true;
+        }; 
     }
 
     /**
