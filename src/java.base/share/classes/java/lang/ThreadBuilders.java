@@ -29,6 +29,8 @@ import java.lang.Thread.Builder.OfVirtual;
 import java.lang.Thread.UncaughtExceptionHandler;
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.VarHandle;
+import java.security.AccessControlContext;
+import java.security.AccessController;
 import java.util.Locale;
 import java.util.Objects;
 import java.util.concurrent.Executor;
@@ -51,6 +53,7 @@ class ThreadBuilders {
         private long counter;
         private int characteristics;
         private UncaughtExceptionHandler uhe;
+        protected final AccessControlContext inheritedSecurityContext = AccessController.getContext();
 
         String name() {
             return name;
@@ -179,7 +182,7 @@ class ThreadBuilders {
         public Thread unstarted(Runnable task) {
             Objects.requireNonNull(task);
             String name = nextThreadName();
-            var thread = new Thread(group, name, characteristics(), task, stackSize, null);
+            var thread = new Thread(group, name, characteristics(), task, stackSize, inheritedSecurityContext);
             if (daemonChanged)
                 thread.daemon(daemon);
             if (priority != 0)
@@ -200,7 +203,7 @@ class ThreadBuilders {
         @Override
         public ThreadFactory factory() {
             return new PlatformThreadFactory(group, name(), counter(), characteristics(),
-                    daemonChanged, daemon, priority, stackSize, uncaughtExceptionHandler());
+                    daemonChanged, daemon, priority, stackSize, uncaughtExceptionHandler(), inheritedSecurityContext);
         }
 
     }
@@ -249,7 +252,7 @@ class ThreadBuilders {
         @Override
         public Thread unstarted(Runnable task) {
             Objects.requireNonNull(task);
-            var thread = newVirtualThread(scheduler, nextThreadName(), characteristics(), task);
+            var thread = newVirtualThread(scheduler, nextThreadName(), characteristics(), task, inheritedSecurityContext);
             UncaughtExceptionHandler uhe = uncaughtExceptionHandler();
             if (uhe != null)
                 thread.uncaughtExceptionHandler(uhe);
@@ -266,7 +269,7 @@ class ThreadBuilders {
         @Override
         public ThreadFactory factory() {
             return new VirtualThreadFactory(scheduler, name(), counter(), characteristics(),
-                    uncaughtExceptionHandler());
+                    uncaughtExceptionHandler(), inheritedSecurityContext);
         }
     }
 
@@ -283,11 +286,13 @@ class ThreadBuilders {
 
         private final boolean hasCounter;
         private volatile long count;
+        protected final AccessControlContext inheritedSecurityContext;
 
         BaseThreadFactory(String name,
                           long start,
                           int characteristics,
-                          UncaughtExceptionHandler uhe)  {
+                          UncaughtExceptionHandler uhe,
+                          AccessControlContext context)  {
             this.name = name;
             if (name != null && start >= 0) {
                 this.hasCounter = true;
@@ -297,6 +302,7 @@ class ThreadBuilders {
             }
             this.characteristics = characteristics;
             this.uhe = uhe;
+            this.inheritedSecurityContext = context;
         }
 
         int characteristics() {
@@ -334,8 +340,9 @@ class ThreadBuilders {
                               boolean daemon,
                               int priority,
                               long stackSize,
-                              UncaughtExceptionHandler uhe) {
-            super(name, start, characteristics, uhe);
+                              UncaughtExceptionHandler uhe, 
+                              AccessControlContext securityContext) {
+            super(name, start, characteristics, uhe, securityContext);
             this.group = group;
             this.daemonChanged = daemonChanged;
             this.daemon = daemon;
@@ -353,7 +360,7 @@ class ThreadBuilders {
         public Thread newThread(Runnable task) {
             Objects.requireNonNull(task);
             String name = nextThreadName();
-            Thread thread = new Thread(group, name, characteristics(), task, stackSize, null);
+            Thread thread = new Thread(group, name, characteristics(), task, stackSize, inheritedSecurityContext);
             if (daemonChanged)
                 thread.daemon(daemon);
             if (priority != 0)
@@ -375,8 +382,9 @@ class ThreadBuilders {
                              String name,
                              long start,
                              int characteristics,
-                             UncaughtExceptionHandler uhe) {
-            super(name, start, characteristics, uhe);
+                             UncaughtExceptionHandler uhe,
+                             AccessControlContext context) {
+            super(name, start, characteristics, uhe, context);
             this.scheduler = scheduler;
         }
 
@@ -384,7 +392,7 @@ class ThreadBuilders {
         public Thread newThread(Runnable task) {
             Objects.requireNonNull(task);
             String name = nextThreadName();
-            Thread thread = newVirtualThread(scheduler, name, characteristics(), task);
+            Thread thread = newVirtualThread(scheduler, name, characteristics(), task, inheritedSecurityContext);
             UncaughtExceptionHandler uhe = uncaughtExceptionHandler();
             if (uhe != null)
                 thread.uncaughtExceptionHandler(uhe);
@@ -398,13 +406,14 @@ class ThreadBuilders {
     static Thread newVirtualThread(Executor scheduler,
                                    String name,
                                    int characteristics,
-                                   Runnable task) {
+                                   Runnable task,
+                                   AccessControlContext securityContext) {
         if (ContinuationSupport.isSupported()) {
-            return new VirtualThread(scheduler, name, characteristics, task);
+            return new VirtualThread(scheduler, name, characteristics, task, securityContext);
         } else {
             if (scheduler != null)
                 throw new UnsupportedOperationException();
-            return new BoundVirtualThread(name, characteristics, task);
+            return new BoundVirtualThread(name, characteristics, task, securityContext);
         }
     }
 
@@ -418,8 +427,8 @@ class ThreadBuilders {
         private final Runnable task;
         private boolean runInvoked;
 
-        BoundVirtualThread(String name, int characteristics, Runnable task) {
-            super(name, characteristics, true);
+        BoundVirtualThread(String name, int characteristics, Runnable task, AccessControlContext context) {
+            super(name, characteristics, true, context);
             this.task = task;
         }
 

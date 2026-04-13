@@ -24,6 +24,8 @@
  */
 package java.lang;
 
+import java.security.AccessControlContext;
+
 /**
  * Base class for virtual thread implementations.
  */
@@ -36,9 +38,10 @@ abstract sealed class BaseVirtualThread extends Thread
      * @param name thread name, can be null
      * @param characteristics thread characteristics
      * @param bound true when bound to an OS thread
+     * @param inheritedContext the inherited security context.
      */
-    BaseVirtualThread(String name, int characteristics, boolean bound) {
-        super(name, characteristics, bound);
+    BaseVirtualThread(String name, int characteristics, boolean bound, AccessControlContext inheritedContext) {
+        super(name, characteristics, bound, inheritedContext);
     }
 
     /**

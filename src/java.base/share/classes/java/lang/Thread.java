@@ -189,10 +189,7 @@ import static java.util.concurrent.TimeUnit.NANOSECONDS;
  * AccessController#doPrivileged(PrivilegedAction) privileged action}. The captured
  * caller context is the new thread's "Inherited {@link AccessControlContext}". 
  * <p>
- * Creating a virtual thread does not capture the caller context when the System 
- * SecurityManager is null; these virtual threads have no permissions when
- * executing code that performs a privileged action.  When the System
- * SecurityManager is not null, creating a virtual thread captures the 
+ * Creating a virtual thread {@linkplain AccessController#getContext() captures} the
  * {@linkplain AccessControlContext caller context} to limit the {@linkplain Permission
  * permissions} of the new thread when it executes code that performs a {@linkplain
  * AccessController#doPrivileged(PrivilegedAction) privileged action}. The captured
@@ -810,7 +807,7 @@ public class Thread implements Runnable {
                     sm.checkPermission(SecurityConstants.SUBCLASS_IMPLEMENTATION_PERMISSION);
                 }
             }
-
+            
             int priority = Math.min(parent.getPriority(), g.getMaxPriority());
             this.holder = new FieldHolder(g, task, stackSize, priority, parent.isDaemon());
         }
@@ -857,11 +854,10 @@ public class Thread implements Runnable {
      * @param characteristics thread characteristics
      * @param bound true when bound to an OS thread
      */
-    Thread(String name, int characteristics, boolean bound) {
+    Thread(String name, int characteristics, boolean bound, AccessControlContext inheritedContext) {
         this.tid = ThreadIdentifiers.next();
         this.name = (name != null) ? name : "";
-        this.inheritedAccessControlContext = System.getSecurityManager() != null ? 
-                AccessController.getContext() : Constants.NO_PERMISSIONS_ACC;
+        this.inheritedAccessControlContext = inheritedContext;
 
         // thread locals
         if ((characteristics & NO_INHERIT_THREAD_LOCALS) == 0) {
@@ -1581,7 +1577,7 @@ public class Thread implements Runnable {
      */
     public static Thread startVirtualThread(Runnable task) {
         Objects.requireNonNull(task);
-        var thread = ThreadBuilders.newVirtualThread(null, null, 0, task);
+        var thread = ThreadBuilders.newVirtualThread(null, null, 0, task, AccessController.getContext());
         thread.start();
         return thread;
     }

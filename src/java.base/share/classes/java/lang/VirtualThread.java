@@ -25,6 +25,7 @@
 package java.lang;
 
 import java.security.AccessController;
+import java.security.AccessControlContext;
 import java.security.PrivilegedAction;
 import java.util.Arrays;
 import java.util.Locale;
@@ -220,9 +221,10 @@ final class VirtualThread extends BaseVirtualThread {
      * @param name thread name
      * @param characteristics characteristics
      * @param task the task to execute
+     * @param context the inherited security context
      */
-    VirtualThread(Executor scheduler, String name, int characteristics, Runnable task) {
-        super(name, characteristics, /*bound*/ false);
+    VirtualThread(Executor scheduler, String name, int characteristics, Runnable task, AccessControlContext context) {
+        super(name, characteristics, /*bound*/ false, context);
         Objects.requireNonNull(task);
 
         // choose scheduler if not specified
