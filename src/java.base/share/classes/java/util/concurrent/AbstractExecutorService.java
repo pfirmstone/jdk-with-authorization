@@ -199,7 +199,7 @@ public abstract class AbstractExecutorService implements ExecutorService {
             // Start one task for sure; the rest incrementally
             Callable<T> next = it.next();
             if (context != null && !(next instanceof Executors.PrivilegedCallable)){
-                futures.add(ecs.submit(Executors.privilegedCallable(next, context)));
+                futures.add(ecs.submit(new Executors.PrivilegedCallable<>(next, context)));
             } else {
                 futures.add(ecs.submit(next));
             }
@@ -213,7 +213,7 @@ public abstract class AbstractExecutorService implements ExecutorService {
                         --ntasks;
                         next = it.next();
                         if (context != null && !(next instanceof Executors.PrivilegedCallable)){
-                            futures.add(ecs.submit(Executors.privilegedCallable(next, context)));
+                            futures.add(ecs.submit(new Executors.PrivilegedCallable<>(next, context)));
                         } else {
                             futures.add(ecs.submit(next));
                         }
@@ -299,7 +299,7 @@ public abstract class AbstractExecutorService implements ExecutorService {
             if (context != null){
                 for (Callable<T> t : tasks) {
                     Objects.requireNonNull(t);
-                    RunnableFuture<T> f = newTaskFor(Executors.privilegedCallable(t, context));
+                    RunnableFuture<T> f = newTaskFor(new Executors.PrivilegedCallable<>(t, context));
                     futures.add(f);
                     execute(f);
                 }
@@ -348,7 +348,7 @@ public abstract class AbstractExecutorService implements ExecutorService {
             } else {
                 for (Callable<T> t : tasks){
                     Objects.requireNonNull(t);
-                    futures.add(newTaskFor(Executors.privilegedCallable(t, context)));
+                    futures.add(newTaskFor(new Executors.PrivilegedCallable<>(t, context)));
                 }
             }
 

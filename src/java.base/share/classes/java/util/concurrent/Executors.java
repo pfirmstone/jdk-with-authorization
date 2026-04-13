@@ -503,9 +503,7 @@ public final class Executors {
      * action; or if not possible, throw an associated {@link
      * AccessControlException}.
      * <p> Deprecated since 17, removed or disabled since 24, retained and 
-     * maintained operational for Authorization.  This method will be made
-     * package private in future, as all tasks will by default be decorated
-     * with context when SecurityManager is in force.
+     * maintained operational for Authorization.  
      * 
      * @param task the underlying task
      * @param <T> the type of the task's result
@@ -515,27 +513,6 @@ public final class Executors {
     public static <T> Callable<T> privilegedCallable(Callable<T> task) {
         Objects.requireNonNull(task, "task");
         return new PrivilegedCallable<>(task);
-    }
-    
-    /**
-     * Returns a {@link Callable} object that will, when called,
-     * execute the given {@code task} under the current access
-     * control context. This method should normally be invoked within
-     * an {@link AccessController#doPrivileged AccessController.doPrivileged}
-     * action to create callables that will, if possible, execute
-     * under the selected permission settings holding within that
-     * action; or if not possible, throw an associated {@link
-     * AccessControlException}.
-     * @param task the underlying task
-     * @param context the AccessControlContext
-     * @param <T> the type of the task's result
-     * @return a callable object
-     * @throws NullPointerException if task or context is null
-     */
-    static <T> Callable<T> privilegedCallable(Callable<T> task, AccessControlContext context) {
-        Objects.requireNonNull(task, "task");
-        Objects.requireNonNull(context, "context");
-        return new PrivilegedCallable<>(task, context);
     }
     
     /**
@@ -555,27 +532,6 @@ public final class Executors {
     static Runnable privilegedRunnable(Runnable task) {
         Objects.requireNonNull(task, "task");
         return new PrivilegedRunnable(task);
-    }
-    
-    /**
-     * Returns a {@link Runnable} object that will, when run,
-     * execute the given {@code task} under the current access
-     * control context. This method should normally be invoked within
-     * an {@link AccessController#doPrivileged AccessController.doPrivileged}
-     * action to create runnables that will, if possible, execute
-     * under the selected permission settings holding within that
-     * action; or if not possible, throw an associated {@link
-     * AccessControlException}.
-     * 
-     * @param task the underlying task
-     * @param context the AccessControlContext
-     * @return runnable dectorated with context.
-     * @throws NullPointerException if task or context null
-     */
-    static Runnable privilegedRunnable(Runnable task, AccessControlContext context) {
-        Objects.requireNonNull(task, "task");
-        Objects.requireNonNull(context, "context");
-        return new PrivilegedRunnable(task, context);
     }
 
     /**
@@ -635,12 +591,12 @@ public final class Executors {
         final AccessControlContext acc;
 
         @SuppressWarnings("removal")
-        private PrivilegedCallable(Callable<T> task) {
+        PrivilegedCallable(Callable<T> task) {
             this.task = task;
             this.acc = AccessController.getContext();
         }
         
-        private PrivilegedCallable(Callable<T> task, AccessControlContext context){
+        PrivilegedCallable(Callable<T> task, AccessControlContext context){
             this.task = task;
             this.acc = context;
         }
@@ -671,12 +627,12 @@ public final class Executors {
         final AccessControlContext acc;
 
         @SuppressWarnings("removal")
-        private PrivilegedRunnable(Runnable task) {
+        PrivilegedRunnable(Runnable task) {
             this.task = task;
             this.acc = AccessController.getContext();
         }
         
-        private PrivilegedRunnable(Runnable task, AccessControlContext context){
+        PrivilegedRunnable(Runnable task, AccessControlContext context){
             this.task = task;
             this.acc = context;
         }
