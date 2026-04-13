@@ -517,7 +517,7 @@ extends SecurityManager implements CachingSecurityManager {
                 } catch (ExecutionException ex) {
                     // This should never happen, unless a runtime exception occurs.
                     if (getLogger().isLoggable(Level.DEBUG)) getLogger().log(Level.DEBUG, "Unexpected exception", ex);
-                    throw new RuntimeException("Unrecoverable: ", ex.getCause()); // Bail out.
+                    throw new SecurityException("Unrecoverable: ", ex.getCause()); // Bail out.
                 }
             } catch (InterruptedException ex) {
                 // REMIND: Java Memory Model and thread interruption.           
