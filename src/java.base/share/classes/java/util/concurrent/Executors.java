@@ -585,7 +585,7 @@ public final class Executors {
     /**
      * A callable that runs under established access control settings.
      */
-    static final class PrivilegedCallable<T> implements Callable<T> {
+    private static final class PrivilegedCallable<T> implements Callable<T> {
         final Callable<T> task;
         @SuppressWarnings("removal")
         final AccessControlContext acc;
@@ -596,11 +596,6 @@ public final class Executors {
             this.acc = AccessController.getContext();
         }
         
-        PrivilegedCallable(Callable<T> task, AccessControlContext context){
-            this.task = task;
-            this.acc = context;
-        }
-
         @SuppressWarnings("removal")
         @Override
         public T call() throws Exception {
@@ -621,7 +616,7 @@ public final class Executors {
     /**
      * A runnable that runs under established access control settings.
      */
-    static final class PrivilegedRunnable implements Runnable {
+    private static final class PrivilegedRunnable implements Runnable {
         final Runnable task;
         @SuppressWarnings("removal")
         final AccessControlContext acc;
@@ -630,11 +625,6 @@ public final class Executors {
         PrivilegedRunnable(Runnable task) {
             this.task = task;
             this.acc = AccessController.getContext();
-        }
-        
-        PrivilegedRunnable(Runnable task, AccessControlContext context){
-            this.task = task;
-            this.acc = context;
         }
 
         @SuppressWarnings("removal")

@@ -98,9 +98,6 @@ public abstract class AbstractExecutorService implements ExecutorService {
      * @since 1.6
      */
     protected <T> RunnableFuture<T> newTaskFor(Runnable runnable, T value) {
-        if (System.getSecurityManager() != null && !(runnable instanceof Executors.PrivilegedRunnable)) {
-            runnable = Executors.privilegedRunnable(runnable);
-        }
         return new FutureTask<T>(runnable, value);
     }
 
@@ -116,9 +113,6 @@ public abstract class AbstractExecutorService implements ExecutorService {
      * @since 1.6
      */
     protected <T> RunnableFuture<T> newTaskFor(Callable<T> callable) {
-        if (System.getSecurityManager() != null && !(callable instanceof Executors.PrivilegedCallable)) {
-            callable = Executors.privilegedCallable(callable);
-        }
         return new FutureTask<T>(callable);
     }
 
@@ -129,9 +123,6 @@ public abstract class AbstractExecutorService implements ExecutorService {
     @Override
     public Future<?> submit(Runnable task) {
         Objects.requireNonNull(task, "task");
-        if (System.getSecurityManager() != null && !(task instanceof Executors.PrivilegedRunnable)) {
-            task = Executors.privilegedRunnable(task);
-        }
         RunnableFuture<Void> ftask = newTaskFor(task, null);
         execute(ftask);
         return ftask;
@@ -144,9 +135,6 @@ public abstract class AbstractExecutorService implements ExecutorService {
     @Override
     public <T> Future<T> submit(Runnable task, T result) {
         Objects.requireNonNull(task, "task");
-        if (System.getSecurityManager() != null && !(task instanceof Executors.PrivilegedRunnable)) {
-            task = Executors.privilegedRunnable(task);
-        }
         RunnableFuture<T> ftask = newTaskFor(task, result);
         execute(ftask);
         return ftask;
@@ -159,9 +147,6 @@ public abstract class AbstractExecutorService implements ExecutorService {
     @Override
     public <T> Future<T> submit(Callable<T> task) {
         Objects.requireNonNull(task, "task");
-        if (System.getSecurityManager() != null && !(task instanceof Executors.PrivilegedCallable)) {
-            task = Executors.privilegedCallable(task);
-        }
         RunnableFuture<T> ftask = newTaskFor(task);
         execute(ftask);
         return ftask;
@@ -180,8 +165,6 @@ public abstract class AbstractExecutorService implements ExecutorService {
         ArrayList<Future<T>> futures = new ArrayList<>(ntasks);
         ExecutorCompletionService<T> ecs =
             new ExecutorCompletionService<T>(this);
-        AccessControlContext context = System.getSecurityManager() != null ? 
-                AccessController.getContext() : null;
 
         // For efficiency, especially in executors with limited
         // parallelism, check to see if previously submitted tasks are
@@ -197,12 +180,7 @@ public abstract class AbstractExecutorService implements ExecutorService {
             Iterator<? extends Callable<T>> it = tasks.iterator();
 
             // Start one task for sure; the rest incrementally
-            Callable<T> next = it.next();
-            if (context != null && !(next instanceof Executors.PrivilegedCallable)){
-                futures.add(ecs.submit(new Executors.PrivilegedCallable<>(next, context)));
-            } else {
-                futures.add(ecs.submit(next));
-            }
+            futures.add(ecs.submit(it.next()));
             --ntasks;
             int active = 1;
 
@@ -211,12 +189,7 @@ public abstract class AbstractExecutorService implements ExecutorService {
                 if (f == null) {
                     if (ntasks > 0) {
                         --ntasks;
-                        next = it.next();
-                        if (context != null && !(next instanceof Executors.PrivilegedCallable)){
-                            futures.add(ecs.submit(new Executors.PrivilegedCallable<>(next, context)));
-                        } else {
-                            futures.add(ecs.submit(next));
-                        }
+                        futures.add(ecs.submit(it.next()));
                         ++active;
                     }
                     else if (active == 0)
@@ -292,23 +265,12 @@ public abstract class AbstractExecutorService implements ExecutorService {
     public <T> List<Future<T>> invokeAll(Collection<? extends Callable<T>> tasks)
         throws InterruptedException {
         Objects.requireNonNull(tasks, "tasks");
-        AccessControlContext context = System.getSecurityManager() != null ? 
-                AccessController.getContext() : null;
         ArrayList<Future<T>> futures = new ArrayList<>(tasks.size());
         try {
-            if (context != null){
-                for (Callable<T> t : tasks) {
-                    Objects.requireNonNull(t);
-                    RunnableFuture<T> f = newTaskFor(new Executors.PrivilegedCallable<>(t, context));
-                    futures.add(f);
-                    execute(f);
-                }
-            } else {
-                for (Callable<T> t : tasks) {
-                    RunnableFuture<T> f = newTaskFor(t);
-                    futures.add(f);
-                    execute(f);
-                }
+            for (Callable<T> t : tasks) {
+                RunnableFuture<T> f = newTaskFor(t);
+                futures.add(f);
+                execute(f);
             }
             for (int i = 0, size = futures.size(); i < size; i++) {
                 Future<T> f = futures.get(i);
@@ -335,22 +297,13 @@ public abstract class AbstractExecutorService implements ExecutorService {
         throws InterruptedException {
         Objects.requireNonNull(tasks, "tasks");
         Objects.requireNonNull(unit, "unit");
-        AccessControlContext context = System.getSecurityManager() != null ? 
-                AccessController.getContext() : null;
         final long nanos = unit.toNanos(timeout);
         final long deadline = System.nanoTime() + nanos;
         ArrayList<Future<T>> futures = new ArrayList<>(tasks.size());
         int j = 0;
         timedOut: try {
-            if (context == null){
-                for (Callable<T> t : tasks)
-                    futures.add(newTaskFor(t));
-            } else {
-                for (Callable<T> t : tasks){
-                    Objects.requireNonNull(t);
-                    futures.add(newTaskFor(new Executors.PrivilegedCallable<>(t, context)));
-                }
-            }
+            for (Callable<T> t : tasks)
+                futures.add(newTaskFor(t));
 
             final int size = futures.size();
 

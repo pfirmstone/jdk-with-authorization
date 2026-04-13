@@ -48,8 +48,6 @@ import java.util.Objects;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.ReentrantLock;
-import java.security.AccessControlContext;
-import java.security.AccessController;
 
 /**
  * A {@link ThreadPoolExecutor} that can additionally schedule
@@ -544,10 +542,6 @@ public class ScheduledThreadPoolExecutor
                                        TimeUnit unit) {
         if (command == null || unit == null)
             throw new NullPointerException();
-        AccessControlContext context = 
-            (System.getSecurityManager() != null && !(command instanceof Executors.PrivilegedRunnable))?
-            AccessController.getContext() : null;
-        if (context != null) command = new Executors.PrivilegedRunnable(command, context);
         RunnableScheduledFuture<Void> t = decorateTask(command,
             new ScheduledFutureTask<Void>(command, null,
                                           triggerTime(delay, unit),
@@ -565,10 +559,6 @@ public class ScheduledThreadPoolExecutor
                                            TimeUnit unit) {
         if (callable == null || unit == null)
             throw new NullPointerException();
-        AccessControlContext context = 
-            (System.getSecurityManager() != null && !(callable instanceof Executors.PrivilegedCallable))? 
-            AccessController.getContext() : null;
-        if (context != null) callable = new Executors.PrivilegedCallable<>(callable, context);
         RunnableScheduledFuture<V> t = decorateTask(callable,
             new ScheduledFutureTask<V>(callable,
                                        triggerTime(delay, unit),
@@ -618,10 +608,6 @@ public class ScheduledThreadPoolExecutor
             throw new NullPointerException();
         if (period <= 0L)
             throw new IllegalArgumentException();
-        AccessControlContext context = 
-            (System.getSecurityManager() != null && !(command instanceof Executors.PrivilegedRunnable))? 
-            AccessController.getContext() : null;
-        if (context != null) command = new Executors.PrivilegedRunnable(command, context);
         ScheduledFutureTask<Void> sft =
             new ScheduledFutureTask<Void>(command,
                                           null,
@@ -670,10 +656,6 @@ public class ScheduledThreadPoolExecutor
             throw new NullPointerException();
         if (delay <= 0L)
             throw new IllegalArgumentException();
-        AccessControlContext context = 
-            (System.getSecurityManager() != null && !(command instanceof Executors.PrivilegedRunnable))? 
-            AccessController.getContext() : null;
-        if (context != null) command = new Executors.PrivilegedRunnable(command, context);
         ScheduledFutureTask<Void> sft =
             new ScheduledFutureTask<Void>(command,
                                           null,
