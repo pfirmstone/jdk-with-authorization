@@ -6,11 +6,6 @@ There may be legal ramifications of using AI Generated code and generated docume
 
 https://openjdk.org/legal/ai
 
-This is the description of what the code block changes:
-Apply project preference: Adding comprehensive documentation about the conditional validation strategy for SecurityManager installation, including rationale, implementation details, and developer guidance for working with trusted vs. custom SecurityManager implementations.
-
-This is the code block that represents the suggested code change:
-
 # Claude Development Guide
 
 ## Overview
