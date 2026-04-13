@@ -1,0 +1,33 @@
+name: "Copilot Setup Steps"
+
+# Automatically run the setup steps when they are changed to allow for easy
+# validation, and allow manual testing through the repository's "Actions" tab
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - .github/workflows/copilot-setup-steps.yml
+  pull_request:
+    paths:
+      - .github/workflows/copilot-setup-steps.yml
+
+jobs:
+  # The job MUST be called `copilot-setup-steps` or it will not be picked up by Copilot.
+  copilot-setup-steps:
+    runs-on: ubuntu-latest
+
+    # Permissions needed by Copilot's own token for its operations.
+    # contents:write  — commit and push changes to the working branch
+    # pull-requests:write — open / update pull requests
+    # issues:write    — create and comment on GitHub issues
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+
+    steps:
+      # Copilot will check out the repository automatically after setup steps
+      # complete; an explicit checkout is only needed if a setup step itself
+      # must read repo files.
+      - name: Checkout code
+        uses: actions/checkout@v4
