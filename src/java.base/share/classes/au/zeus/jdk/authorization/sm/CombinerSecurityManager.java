@@ -502,7 +502,7 @@ extends SecurityManager implements CachingSecurityManager {
             }
             try {
                 // We can change either call to add a timeout.
-                if (!latch.await(180L, TimeUnit.SECONDS)) return false; // Throws InterruptedException
+                if (!latch.await(10L, TimeUnit.SECONDS)) return false; // Throws InterruptedException
                 it = resultList.iterator();
                 try {
                     while (it.hasNext()){

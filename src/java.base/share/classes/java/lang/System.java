@@ -544,7 +544,7 @@ public final class System {
             sm.checkPackageAccess("java.lang");
         } catch (Exception e) {
             // no-op will never happen.
-            throw new Error("Something went horribly wrong.", e);
+            throw new SecurityException("Access to java.lang was denied.", e);
         }      
     
         setSecurityManager0(sm);
