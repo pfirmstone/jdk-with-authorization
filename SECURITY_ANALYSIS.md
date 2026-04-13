@@ -238,7 +238,7 @@ setSecurityManager(SecurityManager sm) called
 
 ### Trusted Class Detection
 
-
+```
 private static boolean trustedSMClass(SecurityManager sm){
     Class smClass = sm.getClass();
     if (CombinerSecurityManager.class.equals(smClass)) return true;
@@ -248,7 +248,7 @@ private static boolean trustedSMClass(SecurityManager sm){
     // and is for staging only; the 4-layer validation prevents runtime installation.
     return (PolicyOnlySecurityManager.class.equals(smClass));
 }
-
+```
 
 **Key Security Property:**
 - Uses exact class matching (not `instanceof`)
