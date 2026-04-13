@@ -388,7 +388,7 @@ public final class Executors {
      * @return a thread factory
      */
     public static ThreadFactory defaultThreadFactory() {
-        return new DefaultThreadFactory();
+        return Thread.ofPlatform().factory();
     }
 
     /**
