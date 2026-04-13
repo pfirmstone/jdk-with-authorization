@@ -296,7 +296,7 @@ public final class SocketPermission extends Permission
             getCanonName();
             isUntrusted();
         } catch (UnknownHostException e){
-            //Swallow.
+            //Swallow, invalid will be set to true, failing securely.
         }
     }
 
