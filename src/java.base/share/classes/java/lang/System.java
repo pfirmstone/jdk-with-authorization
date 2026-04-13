@@ -101,6 +101,7 @@ import sun.nio.cs.UTF_8;
 import sun.security.util.SecurityConstants;
 import au.zeus.jdk.authorization.tool.SecurityPolicyWriter;
 import au.zeus.jdk.authorization.sm.CombinerSecurityManager;
+import au.zeus.jdk.authorization.sm.PolicyOnlySecurityManager;
 import java.security.PrivilegedExceptionAction;
 import java.security.PrivilegedActionException;
 
@@ -3073,6 +3074,13 @@ public final class System {
      * Detects trusted SM class
      */
     private static boolean trustedSMClass(SecurityManager sm){
-        return System.class.getModule().equals(sm.getClass().getModule());
+        Class smClass = sm.getClass();
+        if (CombinerSecurityManager.class.equals(smClass)) return true;
+        if (SecurityManager.class.equals(smClass)) return true;
+        return (PolicyOnlySecurityManager.class.equals(smClass));
+        // We don't trust SecurityPolicyWriter because it grants all permission
+        // it is for staging only, not production.  The defensive measures are
+        // in place to ensure that SecurityPolicyWriter which is not exported
+        // from the java.base module, isn't installed by runtime code.
     }
 }
