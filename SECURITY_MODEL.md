@@ -92,7 +92,6 @@ Like steeping tea (chai), security flows through multiple layers:
 ### Why OpenJDK?
 
 - ✅ Open source (GPL v2 + Classpath Exception)
-- ✅ No TCK restrictions - full modification rights
 - ✅ Active upstream community
 - ✅ Virtual thread support (Project Loom)
 - ✅ ScopedValue integration
@@ -2037,6 +2036,86 @@ Dirty Chai System Design:
   ├─ All principals bound to domains
   └─ ✅ callAs() always uses doAs()
 ```
+
+### 7a. Why Subject.doAs() Is Superior to Subject.callAs() for Virtual Thread Pools
+
+**The Core Distinction: Thread-Local vs. Safely-Published Immutable Context**
+
+`Subject.callAs()`, when no SecurityManager is present, propagates the Subject via a
+`ScopedValue<Subject>` binding. `ScopedValue` was explicitly designed as a structured,
+thread-scoped replacement for `ThreadLocal`: its binding is active for the duration of one
+delimited scope on one thread of execution and is not directly transferable to a pool of
+independently scheduled threads.
+
+`Subject.doAs()`, by contrast, records the Subject inside an `AccessControlContext` through a
+`SubjectDomainCombiner`. `AccessControlContext` is **immutable** after construction. Immutability
+enables **safe publication** under the Java Memory Model: once the object is fully constructed,
+any thread that obtains a reference to it sees a consistent, correctly initialised state without
+additional synchronisation. The context can therefore be captured once and handed to an arbitrary
+number of virtual threads concurrently.
+
+| Property | ScopedValue (callAs path) | AccessControlContext (doAs path) |
+|----------|--------------------------|----------------------------------|
+| **Design intent** | Replace `ThreadLocal`; scoped to one thread of execution | Immutable snapshot of the privilege context at a point in time |
+| **Mutability** | Binding is active only within the structured scope on the calling thread | Immutable after construction |
+| **Safe publication** | Not applicable across independently scheduled threads | ✅ JMM safe publication — any thread can use the same instance |
+| **Virtual thread pool** | ❌ Binding does not propagate to pooled threads outside the structured scope | ✅ Capture once, share across unlimited virtual threads |
+| **Stack walk integration** | ❌ No ACC; StackWalker-based privilege evaluation not possible | ✅ Full stack walk + DomainCombiner + principal binding |
+| **Privilege boundary** | None | ✅ `doPrivileged` boundaries observed |
+
+**Concrete consequence for virtual thread pools:**
+
+When work fans out across a pool of virtual threads (e.g., a `newVirtualThreadPerTaskExecutor`
+or a fixed pool created with `Thread.ofVirtual().factory()`), each submitted task runs on a
+thread that is independently scheduled by the JVM. The `ScopedValue` binding from the submitting
+thread is not active in those tasks unless the pool is created *inside* a structured concurrency
+scope and the `ScopedValue` infrastructure explicitly propagates the binding — a fragile,
+framework-dependent arrangement.
+
+With `Subject.doAs()`, the `AccessControlContext` carrying the Subject is captured before the
+pool is created and is inherited by every virtual thread spawned inside the `doAs` scope via
+`Thread.inheritedAccessControlContext`. Because the ACC is immutable, all threads safely share
+the same object with no races, no copies, and no re-establishment of context per task:
+
+```java
+// ✅ Correct: pool created inside doAs() scope
+//    Every virtual thread inherits the AccessControlContext that carries the Subject.
+Subject.doAs(authenticatedSubject, (PrivilegedAction<Void>) () -> {
+    // ACC captured here includes SubjectDomainCombiner → subject is bound
+    ExecutorService pool = Executors.newVirtualThreadPerTaskExecutor();
+    pool.submit(() -> {
+        // Inherits ACC from the creating thread ✅
+        Subject s = Subject.current();  // returns authenticatedSubject ✅
+        performTask();
+    });
+    pool.shutdown();
+    pool.awaitTermination(1, TimeUnit.MINUTES);
+    return null;
+});
+```
+
+With `Subject.callAs()` on a plain JDK (no SecurityManager), submitting to the pool above would
+leave the tasks running with no Subject binding, because the `ScopedValue` scope closes on the
+submitting thread and is not propagated to the pooled virtual threads by the executor:
+
+```java
+// ⚠ callAs() on plain JDK (ScopedValue path) — Subject NOT visible in pool tasks
+Subject.callAs(authenticatedSubject, () -> {
+    ExecutorService pool = Executors.newVirtualThreadPerTaskExecutor();
+    pool.submit(() -> {
+        Subject s = Subject.current();  // returns null ❌
+        performTask();
+    });
+    // ...
+});
+```
+
+**In Dirty Chai this asymmetry never arises** because `callAs()` unconditionally delegates to
+`doAs()`, and the `AccessControlContext`-based path is always taken. The superiority of `doAs()`
+for virtual thread pools is nevertheless the architectural justification for this design choice:
+immutable, safely-published `AccessControlContext` is the correct primitive for governing a pool
+of concurrently executing virtual threads, whereas `ScopedValue` — like `ThreadLocal` before it —
+is a single-thread, single-scope mechanism unsuited to that role.
 
 ### 8. Configuration Verification
 
