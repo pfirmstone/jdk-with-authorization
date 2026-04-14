@@ -92,7 +92,6 @@ Like steeping tea (chai), security flows through multiple layers:
 ### Why OpenJDK?
 
 - ✅ Open source (GPL v2 + Classpath Exception)
-- ✅ No TCK restrictions - full modification rights
 - ✅ Active upstream community
 - ✅ Virtual thread support (Project Loom)
 - ✅ ScopedValue integration
