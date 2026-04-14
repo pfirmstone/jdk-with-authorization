@@ -35,6 +35,7 @@
 
 package java.util.concurrent;
 
+import java.lang.Thread.Builder;
 import static java.lang.ref.Reference.reachabilityFence;
 import java.lang.ref.Cleaner.Cleanable;
 import java.security.AccessControlContext;
@@ -388,7 +389,15 @@ public final class Executors {
      * @return a thread factory
      */
     public static ThreadFactory defaultThreadFactory() {
-        return Thread.ofPlatform().factory();
+        ThreadGroup group;
+        String namePrefix;
+        SecurityManager s = System.getSecurityManager();
+        group = (s != null) ? s.getThreadGroup() :
+                              Thread.currentThread().getThreadGroup();
+        namePrefix = "pool-" +
+                      DefaultThreadFactory.poolNumber.getAndIncrement() +
+                     "-thread-";
+        return Thread.ofPlatform().name(namePrefix, 1L).group(group).factory();
     }
 
     /**
@@ -699,7 +708,7 @@ public final class Executors {
     /**
      * The default thread factory.
      */
-    private static class DefaultThreadFactory implements ThreadFactory {
+    private static abstract class DefaultThreadFactory implements ThreadFactory {
         private static final AtomicInteger poolNumber = new AtomicInteger(1);
         private final ThreadGroup group;
         private final AtomicInteger threadNumber = new AtomicInteger(1);
