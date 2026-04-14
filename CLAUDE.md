@@ -117,6 +117,19 @@ An AI agent **MUST stop and ask a human** when:
 - **Contribution authorship:** All contributions submitted to this repository must be human-written and
   comply with the OpenJDK Interim Policy on Generative AI (see `openjdk_ai_policy.md`).
 
+### Required GitHub Token Permissions
+The Copilot agent session requires the following GitHub token permissions. These are declared in
+`.github/workflows/copilot-setup-steps.yml` and must also be enabled in the repository's
+**Settings → Copilot → Coding agent → Permissions** panel:
+| Permission | Scope | Why |
+|---|---|---|
+| `contents` | `write` | Commit and push changes to the working branch |
+| `pull-requests` | `write` | Open and update pull requests |
+| `issues` | `write` | Create and comment on GitHub issues (e.g., cross-project analysis issues) |
+If `issues:write` is absent, `gh issue create` and any MCP issue-creation calls will fail with
+HTTP 403. In that case the agent will compose the issue bodies and present them in the chat for
+the human to paste into GitHub manually.
+
 ---
 
 ## OpenJDK Policy Compliance
