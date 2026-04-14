@@ -364,3 +364,338 @@ untrusted remote input is:
    process is compromised, the attacker is confined to that process and cannot
    directly access other services or the host OS without an additional
    privilege-escalation step.
+
+---
+
+## Analysis: Preventing Native Code Loaded by Untrusted Jars from Escaping the SecurityManager
+
+### Background — Why Native Code Is a Special Threat
+
+Java's security model operates entirely inside the JVM: every permission check,
+every `AccessControlContext` evaluation, and every `SecurityManager.checkPermission`
+call is Java code, running in managed memory, subject to the class and module
+systems.
+
+Native code — machine code loaded via JNI (`System.loadLibrary`) or invoked via
+the Foreign Function & Memory (FFM) API — runs at the OS level, in unmapped
+virtual address space outside the JVM's control.  Once native code is executing:
+
+- It can read and write arbitrary JVM heap memory directly.
+- It can make raw system calls, bypassing every Java security check.
+- It can call back into the JVM (`AttachCurrentThread`, `NewGlobalRef`,
+  `CallObjectMethod`, etc.) impersonating any class or protection domain it
+  chooses.
+- It is invisible to `StackWalker` — it does not appear in the Java call stack,
+  so caller-identity checks cannot see it.
+
+The consequence is that a single successful native library load by untrusted
+code **collapses the entire DirtyChai security model** for that JVM process.
+
+### What DirtyChai Already Does — Two Independent Loading Gates
+
+DirtyChai closes the *loading* attack surface through two independent permission
+checks that both fire before any native code executes.
+
+#### Gate 1 — `NativeAccessPermission` via `Module.ensureNativeAccess()`
+
+`Module.java` has been modified to call `NativeAccessPermission.checkGuard(null)`
+at the top of `ensureNativeAccess()`, which is invoked by
+`Reflection.ensureNativeAccess()` before every `@Restricted` method call.
+
+```java
+// Module.java — ensureNativeAccess() (DirtyChai modification)
+void ensureNativeAccess(Class<?> owner, String methodName,
+                        Class<?> currentClass, boolean jni) {
+    new NativeAccessPermission(
+            currentClass != null ? currentClass.getName() : "code",
+            methodName).checkGuard(null);      // ← SM policy check fires here
+    // ... module-flag check follows
+}
+```
+
+`Permission.checkGuard(null)` calls `SecurityManager.checkPermission(this)` when
+a SecurityManager is active.  The calling code's `ProtectionDomain` must have
+`NativeAccessPermission` granted in the policy file, or a `SecurityException` is
+thrown before any native call proceeds.
+
+The `@Restricted` / FFM entry points that all flow through this gate include:
+
+| API | Restricted Method |
+|-----|-------------------|
+| `System.load(String)` | `System::load` |
+| `System.loadLibrary(String)` | `System::loadLibrary` |
+| `Runtime.load(String)` | `Runtime::load` |
+| `Runtime.loadLibrary(String)` | `Runtime::loadLibrary` |
+| `Linker.downcallHandle(...)` | `Linker::downcallHandle` |
+| `Linker.upcallStub(...)` | `Linker::upcallStub` |
+| `SymbolLookup.libraryLookup(...)` | `SymbolLookup::libraryLookup` |
+| `MemorySegment.reinterpret(...)` | `MemorySegment::reinterpret` |
+| `AddressLayout.withTargetLayout(...)` | `AddressLayout::withTargetLayout` |
+
+Every one of these is blocked for untrusted code unless the policy explicitly
+grants `NativeAccessPermission` to that code's `ProtectionDomain`.
+
+#### Gate 2 — `RuntimePermission("loadLibrary.*")` via `SecurityManager.checkLink()`
+
+`Runtime.load0()` and `Runtime.loadLibrary0()` additionally call
+`security.checkLink(filename/libname)`, which translates to
+`checkPermission(new RuntimePermission("loadLibrary." + lib))`.
+
+This provides a second, independent block for the classic JNI loading path that
+is distinct from the FFM API gate.  A policy can therefore apply fine-grained
+controls:
+
+```
+// Allow loading only the specific library "mylib", not arbitrary natives
+grant codeBase "file:/trusted/app/-" {
+    permission java.lang.RuntimePermission "loadLibrary.mylib";
+};
+```
+
+#### How the Two Gates Compose
+
+For `System.loadLibrary("foo")`:
+
+```
+System.loadLibrary("foo")
+    │
+    ├─1─ Reflection.ensureNativeAccess(caller, System.class, "loadLibrary", false)
+    │        └─ Module.ensureNativeAccess(...)
+    │               └─ NativeAccessPermission("callerClass","loadLibrary").checkGuard(null)
+    │                       └─ SecurityManager.checkPermission(NativeAccessPermission)
+    │                               ← GATE 1: SM policy check
+    │
+    └─2─ Runtime.loadLibrary0(fromClass, libname)
+             └─ security.checkLink("foo")
+                     └─ checkPermission(RuntimePermission("loadLibrary.foo"))
+                             ← GATE 2: SM policy check
+```
+
+Both gates must pass.  A policy that grants one but not the other still blocks
+the call.
+
+#### Module-System Layer (Not Policy-Controlled)
+
+After the SecurityManager checks, `ensureNativeAccess()` also evaluates the
+module system's `enableNativeAccess` flag and the JVM startup mode
+(`ModuleBootstrap.IllegalNativeAccess`).  The modes are:
+
+| Mode | Behaviour | JVM Flag |
+|------|-----------|----------|
+| `ALLOW` | No module restriction enforced | `--enable-native-access=ALL-UNNAMED` |
+| `WARN` | Warning printed, access granted (default) | (none) |
+| `DENY` | `IllegalCallerException` if module not listed | `--illegal-native-access=deny` |
+
+For DirtyChai deployments the SecurityManager check fires *before* this module
+check, so `WARN` mode does not weaken the policy enforcement — the SM will have
+already thrown a `SecurityException` for untrusted code.  The recommended startup
+configuration adds `--illegal-native-access=deny` as a defence-in-depth measure
+so that the module system also blocks any path not covered by the SM check.
+
+### The Residual Gap — Already-Loaded Native Code
+
+The two loading gates fully protect against untrusted jars *loading new* native
+libraries.  They do not protect against the following scenarios:
+
+#### 1. Native code loaded before untrusted code runs
+
+If a trusted class loaded `mylib.so` via `System.loadLibrary("mylib")` earlier
+in the JVM session, that library is permanently registered in the class loader's
+`NativeLibraries` instance.  Unloading a native library is not supported by
+the JVM.  The library's native functions remain callable via JNI or FFM for
+the rest of the JVM's lifetime.
+
+**Implication:** Untrusted code that can persuade a trusted class to call a
+native method on its behalf — a confused-deputy attack — can indirectly invoke
+native functionality without itself holding `NativeAccessPermission`.
+
+**Mitigation:** Use `AccessController.doPrivileged` with a restricted context
+when trusted classes call native methods on behalf of caller-supplied inputs.
+This is a design obligation for trusted library code, not something DirtyChai
+can enforce automatically.
+
+#### 2. JNI callbacks from within native code
+
+Native code that has already been loaded by a trusted class can call back into
+the JVM via the JNI `CallXxxMethod` family without any Java-side permission
+check.  The JVM executes those calls in whatever thread is current, which may
+not have the restricted `AccessControlContext` the Java caller intended.
+
+**Mitigation:** `doPrivileged` with a limited context in the Java wrapper method,
+combined with explicit input validation before any JNI call.  DirtyChai's
+`SerialObjectPermission` guards the deserialization path; native method wrappers
+must apply analogous input validation.
+
+#### 3. JVMTI and JVM agents
+
+A `-javaagent:` or `-agentlib:` loaded at JVM startup runs as a JVMTI agent
+and can intercept, modify, or bypass any Java-level security check.  There is
+no JVM mechanism by which the SecurityManager can block a JVMTI agent — the
+agent was attached before the SecurityManager was installed.
+
+**Mitigation:** Process isolation (OS process per service) and OS-level controls
+on the JVM command line (e.g., launch wrappers that reject `-agentlib:` for
+untrusted service processes).
+
+### Summary — What the Guards Protect
+
+| Attack Path | Guarded By | Status |
+|-------------|-----------|--------|
+| Untrusted jar calls `System.loadLibrary()` | `NativeAccessPermission` + `RuntimePermission("loadLibrary.*")` | **Blocked by DirtyChai** |
+| Untrusted jar uses FFM `Linker.downcallHandle()` | `NativeAccessPermission("callerClass","downcallHandle")` | **Blocked by DirtyChai** |
+| Untrusted jar uses `MemorySegment.reinterpret()` | `NativeAccessPermission("callerClass","reinterpret")` | **Blocked by DirtyChai** |
+| Untrusted jar calls `SymbolLookup.libraryLookup()` | `NativeAccessPermission("callerClass","libraryLookup")` | **Blocked by DirtyChai** |
+| Confused-deputy: trusted class calls native on behalf of untrusted caller | `doPrivileged` with restricted context (design requirement on trusted code) | **Not automated — requires design discipline** |
+| Native code already loaded by trusted class | No Java-side gate (native code is already at OS level) | **Residual gap — use process isolation** |
+| JVMTI / `-agentlib:` attached at startup | OS / JVM launch controls | **Out of scope for DirtyChai** |
+
+---
+
+## Implementation Plan: Native Code Isolation in DirtyChai
+
+The `NativeAccessPermission` class and its integration into `Module.ensureNativeAccess()`
+are already implemented.  The following tasks remain for a complete, policy-auditable
+native isolation story.
+
+### Task N-1 — Add `NativeAccessPermission` to the Default Deny Policy
+
+**Priority:** High  
+**Files:** `src/java.base/share/classes/au/zeus/jdk/authorization/policy/`
+(default policy template) and any example policy files in the repository.
+
+**Description:**  
+The default policy should grant `NativeAccessPermission` only to named trusted
+modules (e.g., `jrt:/java.base/*`, `jrt:/java.desktop/*`) and explicitly
+withhold it from the unnamed module and from application classpath code.
+
+**Policy pattern (human to implement):**
+
+```
+// Deny by default; grant only to bootstrap classes
+grant codeBase "jrt:/java.base/*" {
+    permission au.zeus.jdk.authorization.guards.NativeAccessPermission
+        "*", "*";
+};
+
+grant codeBase "jrt:/java.desktop/*" {
+    permission au.zeus.jdk.authorization.guards.NativeAccessPermission
+        "*", "*";
+};
+
+// Do NOT grant NativeAccessPermission to application classpath or untrusted jars
+```
+
+---
+
+### Task N-2 — Add `RuntimePermission("loadLibrary.*")` to the Default Deny Policy
+
+**Priority:** High  
+**Files:** Same as N-1.
+
+**Description:**  
+Pair the `NativeAccessPermission` deny with an explicit deny of
+`RuntimePermission("loadLibrary.*")` for untrusted code.  Because
+`SecurityManager.checkLink()` fires independently of `NativeAccessPermission`,
+both must be denied to close the loading gate.
+
+**Policy pattern (human to implement):**
+
+```
+// Deny loadLibrary to untrusted classpath code by omission
+// (no RuntimePermission "loadLibrary.*" grant in untrusted code's grant block)
+
+// Grant specific libraries to specific trusted code:
+grant codeBase "file:/opt/myapp/lib/trusted.jar" {
+    permission java.lang.RuntimePermission "loadLibrary.myspecificlib";
+};
+```
+
+---
+
+### Task N-3 — Extend `SecurityPolicyWriter` to Report `NativeAccessPermission` Grants
+
+**Priority:** Medium  
+**Files:** `src/java.base/share/classes/au/zeus/jdk/authorization/tool/SecurityPolicyWriter.java`
+
+**Description:**  
+`SecurityPolicyWriter` already enumerates `LoadClassPermission` and
+`SerialObjectPermission` grants, making the serialization and class-loading
+surfaces auditable.  The same tool should be extended to enumerate all
+`NativeAccessPermission` grants observed during a test run, so that policy
+authors can audit exactly which code attempted to use native or restricted APIs.
+
+This is a human implementation task because it involves modifying `SecurityPolicyWriter.java`,
+a production Java source file subject to the OpenJDK Interim Policy on
+Generative AI.
+
+---
+
+### Task N-4 — Document `NativeAccessPermission` in `RuntimePermission.java`'s Permission Table
+
+**Priority:** Medium  
+**Files:** `src/java.base/share/classes/java/lang/RuntimePermission.java`
+
+**Description:**  
+Add a row to the JavaDoc permission table in `RuntimePermission.java` that
+cross-references `NativeAccessPermission` so that users who look up
+`loadLibrary.*` also discover the companion DirtyChai permission.
+
+This is a human implementation task (JavaDoc in a shipped source file).
+
+---
+
+### Task N-5 — Add `--illegal-native-access=deny` to Recommended JVM Flags
+
+**Priority:** Low  
+**Files:** `README.md`, `SECURITY.md`, deployment documentation.
+
+**Description:**  
+Document that DirtyChai deployments should launch the JVM with
+`--illegal-native-access=deny` (or the equivalent for the target JDK version)
+as a defence-in-depth measure.  This ensures the module system's native access
+gate independently blocks any path not covered by the SecurityManager policy,
+so that a hypothetical bug in the SecurityManager installation cannot be
+exploited to load native code through the module-system path.
+
+---
+
+### Task N-6 — Confused-Deputy Guidance for Trusted Library Authors
+
+**Priority:** Medium  
+**Files:** `CONTRIBUTING.md`, `SECURITY_MODEL.md`.
+
+**Description:**  
+Document the pattern that trusted library code must follow when it calls native
+methods on behalf of caller-supplied inputs:
+
+```java
+// Pattern: restrict the AccessControlContext before calling native code
+// that uses caller-controlled inputs
+AccessController.doPrivileged(
+    () -> { nativeMethod(callerSuppliedInput); },
+    restrictedContext   // built from the caller's context, not the trusted class's
+);
+```
+
+Failing to do this creates a confused-deputy vulnerability where untrusted code
+can exploit the trusted class's `NativeAccessPermission` to indirectly invoke
+native functionality it could not invoke directly.
+
+This guidance is for documentation files only and is therefore within scope for
+this session.
+
+### Task N-7 — Add `NativeAccessPermission` Grant to `CombinerSecurityManager` Policy
+
+**Priority:** High  
+**Files:** Policy files used by `CombinerSecurityManager` tests and the
+`SecurityPolicyWriter` default output.
+
+**Description:**  
+`CombinerSecurityManager` intersects permission sets.  If neither the caller's
+policy nor the `CombinerSecurityManager`'s own policy grants
+`NativeAccessPermission`, a `checkPermission` call for that permission will
+correctly fail.  Confirm that the test policy files explicitly enumerate which
+trusted modules receive `NativeAccessPermission` so that the intersection logic
+is exercised in tests.
+
+This is a human implementation task (policy file changes and test additions).
