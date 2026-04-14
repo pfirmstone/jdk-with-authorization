@@ -177,6 +177,7 @@ developers and users who read the GitHub repository:
 - `PHILOSOPHY.md`
 - `README.md`
 - `SECURITY.md`
+- `PROCESS_ISOLATION.md`
 
 Claude MAY assist in drafting or editing content in these files when asked. The contribution
 restrictions of the OpenJDK Interim Policy apply only to artefacts that become part of the
