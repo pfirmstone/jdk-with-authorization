@@ -3074,7 +3074,7 @@ public final class System {
      * Detects trusted SM class
      */
     private static boolean trustedSMClass(SecurityManager sm){
-        Class smClass = sm.getClass();
+        Class<? extends SecurityManager> smClass = sm.getClass();
         if (CombinerSecurityManager.class.equals(smClass)) return true;
         if (SecurityManager.class.equals(smClass)) return true;
         return (PolicyOnlySecurityManager.class.equals(smClass));
