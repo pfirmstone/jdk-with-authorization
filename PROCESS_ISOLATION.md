@@ -699,3 +699,458 @@ trusted modules receive `NativeAccessPermission` so that the intersection logic
 is exercised in tests.
 
 This is a human implementation task (policy file changes and test additions).
+
+---
+
+## In-depth Analysis: JGDMS Activation for Process Isolation of Untrusted Code
+
+### Background — The Java Activation Framework and JGDMS Phoenix
+
+The Java RMI Activation system (`java.rmi.activation`) allowed remote objects to be
+instantiated on demand in a managed, monitored JVM process.  The standard activation
+daemon was `rmid`; JGDMS ships its own replacement, **Phoenix**, which adds a
+SecurityManager policy, logging, and fault recovery.
+
+Java removed `java.rmi.activation` from the JDK in Java 17 (JEP 407).  JGDMS
+maintains its own preserved and hardened copy of the Activation API and Phoenix daemon,
+making JGDMS the only actively maintained path for using the Activation pattern on a
+modern JVM.
+
+### Activation Groups as OS Process Boundaries
+
+The key architectural primitive is the **activation group**:
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│ Phoenix Activation Daemon (OS process 1)                                │
+│  ActivationSystem — manages all groups                                  │
+│  ActivationMonitor — watches group health                               │
+│  ActivationInstantiator — launches group JVMs on demand                │
+└────────────────────────────┬────────────────────────────────────────────┘
+                             │  forks on first request
+          ┌──────────────────┼──────────────────┐
+          │                  │                  │
+  ┌───────▼──────┐  ┌────────▼─────┐  ┌────────▼─────┐
+  │ Group JVM A  │  │ Group JVM B  │  │ Group JVM C  │
+  │ (OS proc 2)  │  │ (OS proc 3)  │  │ (OS proc 4)  │
+  │ ServiceImpl1 │  │ ServiceImpl2 │  │ ServiceImpl3 │
+  │ ServiceImpl4 │  │              │  │              │
+  └──────────────┘  └──────────────┘  └──────────────┘
+```
+
+Each activation group runs in a **separate OS process**, configured by an
+`ActivationGroupDesc` that specifies:
+
+| Parameter | Purpose |
+|---|---|
+| `codebase` | URL from which the service's classes are loaded |
+| `policy` | Path to the policy file governing the group's JVM |
+| JVM arguments | `-Djava.security.manager`, heap size, module flags, etc. |
+| `ActivationGroupID` | Stable identifier used to re-activate the group after a crash |
+
+Because each group is a separate OS process, it has its own:
+
+- **Heap** — no shared memory with other groups or the Phoenix daemon.
+- **Class loader hierarchy** — no class-loader confusion across groups.
+- **SecurityManager and policy** — fully independent permission set.
+- **File descriptors and sockets** — OS-level resource accounting per process.
+
+### DirtyChai SecurityManager Inside Each Activation Group
+
+The recommended deployment pattern is to install the DirtyChai SecurityManager inside
+every activation group JVM.  The group's JVM arguments include:
+
+```
+-Djava.security.manager=au.zeus.jdk.authorization.sm.CombinerSecurityManager
+-Djava.security.policy=/etc/myservice/group-a.policy
+```
+
+This means that every service implementation class running inside the group JVM is
+subject to the full DirtyChai permission model:
+
+- `SerialObjectPermission` controls what classes may be deserialized.
+- `NativeAccessPermission` blocks unauthorized native library loading.
+- `LoadClassPermission` gates class loader creation.
+- `ConcurrentPolicyFile` evaluates grants without DNS lookups.
+- `createVirtualThread` / `createPlatformThread` (proposed) limit thread creation.
+
+The combination of an OS process boundary **and** a DirtyChai SecurityManager means
+that even if an attacker successfully exploits a deserialization bug or logic flaw
+inside one service, the damage is contained to:
+
+1. The memory of that single OS process (OS boundary).
+2. The permissions explicitly granted in that group's policy file (DirtyChai boundary).
+
+### Activation Lifecycle and Trust
+
+**Service registration:**
+
+A trusted administrator calls `ActivationSystem.registerObject(ActivationDesc)` to
+register a service.  The `ActivationDesc` records the group, the implementation class
+name, the serialized data needed to reconstruct the service, and the codebase URL.
+Registration requires `java.rmi.activation.ActivationPermission "registerGroup"` in
+the administrator's policy, preventing untrusted code from registering new services.
+
+**On-demand activation:**
+
+When a client invokes a method on an activatable proxy, the proxy detects that the
+remote service is not running and calls `ActivationSystem.activate(ActivationID, ...)`.
+Phoenix forks a new group JVM (or reconnects to an existing one), the service is
+instantiated in that JVM, and the proxy's stub is updated to point to the live
+endpoint.  Subsequent calls go directly to the group JVM without involving Phoenix.
+
+**Crash recovery:**
+
+If a group JVM crashes (out-of-memory, killed by the OS OOM killer, unhandled
+exception in a finalizer thread), Phoenix detects the broken connection and will
+re-activate the group on the next client call.  The service implementation receives a
+fresh `ActivationID` and is reconstructed from the stored `ActivationDesc` data.
+The client proxy retries the call transparently.
+
+**Trust boundary between Phoenix and group JVMs:**
+
+Phoenix communicates with group JVMs over a local-loopback RMI connection.  Both
+ends must present credentials accepted by the other's SecurityManager policy.  Because
+Phoenix runs under its own DirtyChai policy (separate from the group's policy), a
+compromised group JVM cannot escalate privileges into Phoenix — it can only make calls
+that Phoenix's policy permits.
+
+### What Activation Isolation Does and Does Not Provide
+
+| Property | In-process (no Activation) | With JGDMS Activation |
+|---|---|---|
+| Separate heap | No | Yes — separate OS process |
+| SecurityManager isolation | Yes — same SM, same policy | Yes — independent SM and policy per group |
+| Crash isolation | No — one thread can crash the JVM | Yes — group crash does not affect Phoenix or other groups |
+| Side-channel isolation | No — shared cache lines | Partial — OS process boundary reduces but does not eliminate timing side channels |
+| Memory corruption isolation | No — shared heap | Yes — separate address spaces |
+| Network isolation | Depends on policy | Depends on policy + OS firewall |
+
+**What Activation does not solve:**
+
+- A group JVM that holds a `SocketPermission "* connect"` grant can still make
+  arbitrary outbound network connections unless the OS firewall also restricts the
+  group's process.
+- JVM-level side channels (Spectre, Meltdown) cross process boundaries on shared
+  hardware without OS-level mitigations (KPTI, retpoline, etc.).
+- A compromised Phoenix daemon can manipulate all group JVMs.  Phoenix itself must
+  therefore run under a strict DirtyChai policy and be considered a high-value
+  attack target.
+
+### Recommended Configuration for Untrusted Code
+
+1. **One activation group per untrusted service** — do not share a group between
+   services of differing trust levels.
+2. **Minimal policy per group** — use `SecurityPolicyWriter` to generate a
+   least-privilege policy for each service and apply it to that group's JVM only.
+3. **Phoenix under DirtyChai** — run the Phoenix daemon itself with the
+   DirtyChai SecurityManager and a tightly scoped policy.
+4. **OS-level containment** — run each group JVM under a separate OS user account or
+   Linux namespace (cgroup + seccomp) to prevent cross-process resource access even
+   if the SecurityManager is bypassed.
+5. **Outbound firewall per group** — use per-user or per-cgroup firewall rules to
+   restrict which remote hosts each group JVM may contact.
+
+---
+
+## Investigation: DirtyChai + JGDMS for In-Process and Remote Network Isolation
+
+### The Two Isolation Dimensions
+
+A JGDMS service deployment has two distinct isolation boundaries:
+
+| Dimension | Mechanism | Provided by |
+|---|---|---|
+| **In-process** | SecurityManager + policy enforcement | DirtyChai |
+| **Remote network** | JERI transport + endpoint constraints | JGDMS |
+
+These two dimensions are independent and complementary.  DirtyChai governs what code
+running *inside* a JVM process may do.  JGDMS governs what objects are permitted to
+*cross* the network boundary.  Neither is sufficient alone.
+
+### In-Process Isolation Layer (DirtyChai)
+
+When a DirtyChai SecurityManager is active in a service JVM, every permission-checked
+operation passes through `CombinerSecurityManager.checkPermission()` and is evaluated
+against the policy loaded by `ConcurrentPolicyFile`.
+
+**What is isolated in-process:**
+
+| Attack | DirtyChai Control |
+|---|---|
+| Deserialization gadget chain via `ObjectInputStream` | `SerialObjectPermission` — class must be whitelisted |
+| Arbitrary native library loading | `NativeAccessPermission` + `RuntimePermission("loadLibrary.*")` |
+| Unauthorized class loader creation | `LoadClassPermission` |
+| Thread bomb DoS | `createPlatformThread` / `createVirtualThread` (proposed) |
+| `System.exit()` | `RuntimePermission("exitVM.*")` |
+| Reflective access to internals | Module encapsulation + SecurityManager |
+| DNS / LDAP lookups (Log4j-style) | `SocketPermission` must be granted |
+
+**What in-process isolation cannot prevent:**
+
+- A thread that is already running can exhaust the CPU or heap without any
+  permission check.
+- Memory corruption through a JNI/JVMTI agent bypasses all Java-level checks.
+- An attacker who has already escalated to a fully-trusted context (e.g., through
+  the WhiteBox or Unsafe APIs) can read or corrupt any JVM state.
+
+These residual gaps make process isolation (Section above) essential for truly
+untrusted code.
+
+### Remote Network Isolation Layer (JGDMS JERI)
+
+JERI (Jini Extensible Remote Invocation) is the transport layer used for all
+JGDMS remote service communication.  It sits above the socket/SSL layer and below
+the Java application code.
+
+**JERI security features used for network isolation:**
+
+| Feature | How it works |
+|---|---|
+| **Transport authentication** | Kerberos, TLS mutual authentication, or anonymous — negotiated per endpoint |
+| **Message integrity** | `Integrity.YES` constraint ensures no MITM tampering with method arguments or return values |
+| **Confidentiality** | `Confidentiality.YES` constraint enables TLS encryption for sensitive transports |
+| **`AccessControlContext` propagation** | The caller's security context travels with the remote call; the server can inspect it |
+| **`AtomicMarshalInputStream`** | All unmarshalled objects cross the `@AtomicSerial` constructor — gadget chains cannot fire |
+
+**JERI constraint enforcement:**
+
+Every JERI endpoint is configured with a set of `InvocationConstraints`.  When the
+client proxy makes a call, the `BasicInvocationHandler` verifies that the negotiated
+transport satisfies all required constraints before the call is dispatched.  If the
+transport cannot satisfy a required constraint (e.g., the server does not support TLS),
+the call is rejected before any data is sent.
+
+```
+Client proxy (BasicInvocationHandler)
+        │
+        │  Required: Integrity.YES, Confidentiality.YES, ServerAuthentication
+        │
+        ▼
+JERI transport negotiation
+        │
+        ├── OK: transport satisfies all constraints → call dispatched
+        └── FAIL: constraint unsatisfied → RemoteException, no data sent
+```
+
+This means a network attacker who strips TLS or replaces the server certificate cannot
+cause the client to send sensitive method arguments — the client detects the constraint
+failure and aborts before transmission.
+
+### AccessControlContext Propagation Across the JERI Boundary
+
+JGDMS JERI can propagate the caller's `AccessControlContext` with the remote call.
+On the server side, the service implementation can call
+`ServerContext.getServerContextElement(AccessControlContext.class)` to retrieve the
+caller's context.  The server can then execute code under `doPrivileged(action, clientContext)`,
+applying the client's restrictions rather than the server's full privileges.
+
+**Threat model implication:**  Even if an attacker successfully authenticates to the
+service (e.g., with a valid but low-privilege Kerberos ticket), the server can enforce
+that the caller's operations are bounded by the caller's own `ProtectionDomain`
+permissions.  The server does not grant its own elevated permissions to arbitrary callers.
+
+### Combined Architecture for a JGDMS Service
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│ Client JVM                                                              │
+│  JGDMS smart proxy (BasicInvocationHandler)                            │
+│  Required constraints: Integrity.YES, TLS, ServerAuthentication        │
+└────────────────────────────────┬────────────────────────────────────────┘
+                                 │  JERI over TLS
+                                 ▼
+┌────────────────────────────────────────────────────────────────────────┐
+│ OS network boundary (firewall / namespace)                             │
+│  Allowed: specific port from specific source IP                        │
+└────────────────────────────────┬───────────────────────────────────────┘
+                                 │
+                                 ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│ Service OS process (Phoenix activation group)                           │
+│  ┌─────────────────────────────────────────────────────────────────┐   │
+│  │ DirtyChai SecurityManager (CombinerSecurityManager)             │   │
+│  │  ConcurrentPolicyFile — least-privilege policy for this group   │   │
+│  ├─────────────────────────────────────────────────────────────────┤   │
+│  │ JERI server endpoint                                            │   │
+│  │  AtomicMarshalInputStream — @AtomicSerial deserialization       │   │
+│  │  AccessControlContext propagation from client                   │   │
+│  ├─────────────────────────────────────────────────────────────────┤   │
+│  │ Service implementation                                          │   │
+│  │  SerialObjectPermission guards any ObjectInputStream use        │   │
+│  │  NativeAccessPermission guards any native API use               │   │
+│  └─────────────────────────────────────────────────────────────────┘   │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+### Network Isolation — What JGDMS Provides and What the OS Must Provide
+
+JGDMS JERI provides **application-layer network isolation**: it controls what objects
+and calls may cross a specific service endpoint.  It does not control which IP addresses
+or ports the service JVM may contact at the OS level.
+
+OS-level network isolation is required as a separate, independent layer:
+
+| OS Control | Effect |
+|---|---|
+| Per-process firewall rules (nftables, iptables) | Restrict which remote hosts the service JVM may contact |
+| Linux network namespaces | Give each service JVM its own loopback and a controlled external interface |
+| Container network policy (Kubernetes `NetworkPolicy`) | Enforce which services may communicate |
+| Egress-only firewall for sensitive services | Prevent a compromised service from becoming a pivot point |
+
+**Without OS-level network controls**, a service JVM that holds a
+`SocketPermission "* connect"` grant can contact any reachable host.  DirtyChai can
+narrow this grant to specific hosts and ports in the policy file, but the OS firewall
+provides a defence-in-depth layer that is not defeatable by a compromised SecurityManager.
+
+### Summary: Layered Isolation Model
+
+| Layer | Mechanism | Addresses |
+|---|---|---|
+| JVM in-process | DirtyChai SecurityManager + ConcurrentPolicyFile | Per-code-source permission enforcement |
+| Deserialization | `SerialObjectPermission` + JGDMS `@AtomicSerial` | Gadget chains, class whitelisting |
+| OS process | JGDMS Phoenix activation groups | Memory, crash, and class-loader isolation |
+| Network application | JGDMS JERI constraints + `AtomicMarshalInputStream` | Tampered proxies, MITM, malformed RPC arguments |
+| Network OS | Firewall, namespaces, container policy | Unrestricted outbound connections, pivot attacks |
+
+No single layer is sufficient.  All five layers are required for a defence-in-depth
+posture when handling untrusted remote input.
+
+---
+
+## Correction: How JGDMS Actually Handles Proxy Trust (No ProxyTrust)
+
+### The Misconception
+
+A common assumption when reading Jini or Apache River documentation is that **smart
+proxy trust** is established through the `net.jini.security.proxytrust.ProxyTrust`
+interface:
+
+```java
+// Classic Jini ProxyTrust pattern (NOT used in JGDMS)
+public interface ProxyTrust {
+    TrustVerifier getProxyVerifier() throws RemoteException;
+}
+```
+
+In this pattern, a smart proxy implements `ProxyTrust`.  A client calls
+`getProxyVerifier()` through a separate, already-trusted channel (the bootstrap stub),
+obtains a `TrustVerifier`, and then calls `TrustVerifier.isTrustedObject(proxy, context)`.
+If the verifier confirms the proxy, it is trusted.
+
+**JGDMS does not use this pattern** for its primary trust mechanism.
+
+### How JGDMS Actually Establishes Proxy Trust
+
+JGDMS replaces the `ProxyTrust` callback model with a combination of three independent
+mechanisms that together guarantee the same properties without requiring a
+`getProxyVerifier()` round-trip.
+
+#### Mechanism 1: Codebase Certificates (Static Trust)
+
+When a JGDMS service registers with the Jini lookup service (Reggie or equivalent),
+it annotates its proxy classes with a codebase URL.  The proxy JAR at that URL is
+signed with the service provider's certificate.
+
+When the client downloads the proxy:
+
+1. `RMIClassLoader` (or the JGDMS class loader) fetches the JAR from the codebase URL.
+2. The JAR signature is verified against the certificate in the client's truststore.
+3. The proxy class is loaded into a `ProtectionDomain` whose `CodeSource` records the
+   verified certificate.
+4. The client's policy grants permissions to `CodeSource` entries signed by trusted
+   certificates — unsigned or mis-signed proxies receive no permissions and are
+   immediately inert.
+
+This is equivalent to the `ProxyTrust` pattern's outer layer (confirming that the proxy
+*class* comes from a trusted source), but it is enforced by the JVM class loader and
+the DirtyChai `ConcurrentPolicyFile` rather than by a `getProxyVerifier()` call.
+
+#### Mechanism 2: JERI Endpoint Integrity Constraints (Dynamic Trust)
+
+Once the proxy class is loaded, all communication through the proxy passes through a
+`BasicInvocationHandler` configured with required `InvocationConstraints`:
+
+```
+Required: { Integrity.YES }
+```
+
+`Integrity.YES` is a mandatory constraint.  If the transport cannot guarantee message
+integrity (e.g., the connection is plain TCP with no HMAC), the `BasicInvocationHandler`
+refuses to make the call.  This ensures that:
+
+- Method arguments travelling from client to server are not tampered with in transit.
+- Return values travelling from server to client are not tampered with in transit.
+- A network attacker who intercepts the connection cannot substitute a different proxy
+  or alter the objects the server returns.
+
+This replaces the `ProxyTrust` pattern's inner layer (confirming that the proxy
+*instance* has not been tampered with at runtime), without requiring a
+`getProxyVerifier()` call through a separate trusted channel.
+
+#### Mechanism 3: GrantPermission (Dynamic Policy Trust)
+
+JGDMS uses `net.jini.security.GrantPermission` to allow authenticated services to
+request specific permissions from the client's policy.  The proxy JAR bundles a
+`PREFERRED/permissions.properties` or equivalent declaration of the permissions the
+service requires.  An administrator grants `GrantPermission` scoped to those specific
+permissions to authenticated service principals.
+
+When the service authenticates successfully (Kerberos or TLS mutual auth), the client's
+dynamic policy promotes the proxy's `ProtectionDomain` to include exactly the
+advertised permissions — no more.  If the proxy requests permissions beyond what the
+administrator has authorised, the `GrantPermission` grant does not cover them, and the
+call fails.
+
+This replaces the trust-grant step that `ProxyTrust.getProxyVerifier()` was sometimes
+used for, with a declarative, administrator-controlled permission grant.
+
+### Why ProxyTrust Is Not Needed
+
+The `ProxyTrust` interface was designed to answer the question: *"How does a client
+know that this smart proxy object it downloaded from the lookup service can be
+trusted?"*
+
+JGDMS answers that question through the three mechanisms above:
+
+| Question | ProxyTrust answer | JGDMS answer |
+|---|---|---|
+| Is the proxy class from a trusted source? | `getProxyVerifier()` call through bootstrap stub | Signed JAR + ConcurrentPolicyFile CodeSource grant |
+| Has the proxy instance been tampered with? | `TrustVerifier.isTrustedObject(proxy)` | JERI `Integrity.YES` constraint on all transport |
+| What permissions may this proxy use? | Not addressed by ProxyTrust | `GrantPermission` scoped to authenticated service principal |
+
+The `ProxyTrust` approach requires the client to have a pre-trusted bootstrap stub
+(typically a plain JRMP or JERI stub without smart-proxy logic) through which it can
+reach the server to call `getProxyVerifier()`.  This adds a round-trip and requires
+the bootstrap stub to be separately managed.
+
+The JGDMS approach eliminates the bootstrap stub requirement: the JAR signature alone
+establishes class-level trust, and the JERI endpoint integrity constraint establishes
+instance-level trust.  The only precondition is that the client's truststore contains
+the service provider's certificate — the same precondition that the `ProxyTrust`
+bootstrap stub approach requires for the bootstrap channel anyway.
+
+### Implications for @AtomicSerial
+
+Because all JGDMS proxies are reconstructed through `@AtomicSerial` constructors when
+they cross a JERI boundary (via `AtomicMarshalInputStream`), there is an additional
+implicit trust check: the proxy object's `@AtomicSerial` constructor validates all
+fields at construction time.  A tampered proxy that has syntactically invalid fields
+(e.g., a null endpoint reference, out-of-range constraint values) will throw
+`InvalidObjectException` before the proxy is usable, regardless of whether the
+transport integrity check passed.
+
+This means the trust model has an additional in-constructor layer that the classic
+`ProxyTrust` pattern does not provide.
+
+### Summary
+
+| Property | Classic Jini ProxyTrust | JGDMS |
+|---|---|---|
+| Mechanism | `getProxyVerifier()` round-trip through bootstrap stub | JAR certificate + JERI `Integrity.YES` + `GrantPermission` |
+| Requires bootstrap stub | Yes | No |
+| Class-level trust | Via `TrustVerifier.isTrustedObject()` | Via signed JAR CodeSource in policy |
+| Instance-level trust | Via `TrustVerifier.isTrustedObject()` | Via JERI mandatory `Integrity.YES` constraint |
+| Permission grant | Not addressed | `GrantPermission` scoped to authenticated principal |
+| Tampered-object detection at construction | No | Yes — `@AtomicSerial` constructor validates all fields |
+| Round-trips for trust establishment | 1 extra (`getProxyVerifier()`) | 0 extra (trust established by class loading + transport) |
