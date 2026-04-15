@@ -69,7 +69,13 @@ grant {
 
 **Mitigation:**
 - ✅ `SerialObjectPermission` implements class whitelisting
-- ✅ Only classes explicitly permitted can be deserialized
+- ⚠️ **Current limitation:** `SerialObjectPermission` only fires for classes with a custom
+  `readObject()` method. Classes using **default serialization** (no `readObject()`),
+  `Externalizable` classes, and `Record` classes currently bypass the check. Most gadget-chain
+  classes (e.g. `HashMap`, `PriorityQueue`, Commons Collections types) use default serialization
+  and are therefore **not yet covered**. A fix is pending (see `SECURITY_ANALYSIS.md` — "Full
+  Coverage Gap Analysis").
+- ✅ Only classes explicitly permitted can be deserialized (once coverage fix is applied)
 - ✅ `PolicyWriter` tool identifies ALL deserialized classes during auditing
 - ✅ Gadget chain libraries cannot be loaded unless explicitly whitelisted
 
@@ -436,7 +442,7 @@ executor.submit(() -> {
 | CVE/Vulnerability | Type | Severity | Mitigation | Status |
 |---|---|---|---|---|
 | CVE-2021-44228 (Log4j) | RCE | Critical | LoadClassPermission + URLPermission + SerialObjectPermission | ✅ Blocked |
-| ysoserial gadgets | RCE | Critical | SerialObjectPermission whitelisting | ✅ Blocked |
+| ysoserial gadgets | RCE | Critical | SerialObjectPermission whitelisting (fix pending — default Serializable path not yet covered) | ⚠️ Partial |
 | URLClassLoader injection | Privilege Escape | High | LoadClassPermission + URLPermission | ✅ Blocked |
 | XXE injection | RCE | High | XML parser LoadClassPermission | ✅ Blocked |
 | Reflection-based bypass | Privilege Escape | High | StackWalker + @CallerSensitive | ✅ Blocked |

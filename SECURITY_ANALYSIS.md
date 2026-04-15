@@ -13,9 +13,7 @@
 
 This document provides a comprehensive security analysis of the custom authorization system implementation in Dirty Chai. The system implements **defense-in-depth** security architecture with multiple validation layers protecting against privilege escalation, code injection, and caller spoofing attacks.
 
-### Overall Security Posture: **EXCELLENT** ✅
-
-The system demonstrates sophisticated security engineering with:
+The system demonstrates:
 - Multiple independent security layers
 - Fail-secure design patterns
 - Permission-based access control
@@ -729,10 +727,240 @@ The conditional validation implementation is **production-ready**. Recommended a
 
 ---
 
+## SerialObjectPermission: Full Coverage Gap Analysis
+
+### The Security Gap — Current State
+
+`SerialObjectPermission` fires in exactly **one place**: the `SerialCallbackContext` constructor,
+which is called inside `readSerialData()` only when the class being deserialised has a **custom
+`readObject()` method**:
+
+```java
+// ObjectInputStream.readSerialData() — only path where check fires today
+} else if (slotDesc.hasReadObjectMethod()) {
+    curContext = new SerialCallbackContext(obj, slotDesc);
+    // ^^^ SerialObjectPermission(className).checkGuard(null) fires here
+    slotDesc.invokeReadObject(obj, this);   // readObject() runs only if check passes
+} else {
+    // Default serialization — FieldValues read directly. NO permission check.
+    FieldValues values = new FieldValues(slotDesc, true);
+}
+```
+
+This means the check is **absent for the majority of serialisable classes**. The three uncovered
+paths in `readOrdinaryObject()` are:
+
+| Deserialization path | How the object is created | `SerialObjectPermission` check? |
+|---|---|---|
+| `Serializable` with custom `readObject()` | Via serialization factory — bypasses public constructor | ✅ Checked (via `SerialCallbackContext`) |
+| **`Serializable` with default serialization** (no `readObject()`) | Via serialization factory — bypasses public constructor | ❌ **Not checked** — `FieldValues` path, no context created |
+| **`Externalizable`** | Via the **public no-arg constructor** — runs construction code | ❌ **Not checked** — `curContext` set to `null` in `readExternalData()` |
+| **`Record`** | Via canonical constructor through `MethodHandle` | ❌ **Not checked** — handled by `readRecord()`, no context |
+
+Most gadget-chain classes are ordinary `Serializable` types with no custom `readObject()` method
+(e.g. `java.util.HashMap`, `java.util.PriorityQueue`, `org.apache.commons.collections.*`). They
+currently bypass `SerialObjectPermission` entirely.
+
+---
+
+### Gap 1 — Default Serializable (No `readObject()`)
+
+When a `Serializable` class declares no custom `readObject()` method, `readSerialData()` takes the
+`else` branch and reads the object's fields directly into a `FieldValues` structure with no
+`SerialCallbackContext` and therefore no permission check:
+
+```java
+// ObjectInputStream.readSerialData() — no custom readObject
+} else {
+    FieldValues values = new FieldValues(slotDesc, true); // no permission check
+    if (slotValues != null) {
+        slotValues[i] = values;
+    } else {
+        values.defaultCheckFieldValues(obj);
+        values.defaultSetFieldValues(obj);
+    }
+}
+```
+
+This is the **dominant path** for gadget-chain classes. `HashMap`, `PriorityQueue`,
+`TreeMap`, `LinkedList` — all of the commonly abused collection and comparison types in the standard
+library, and virtually all classes in third-party gadget libraries — use default serialization. None
+of them are currently checked by `SerialObjectPermission`.
+
+---
+
+### Gap 2 — Externalizable (`readExternal()`)
+
+Inside `readExternalData()`, `curContext` is explicitly set to `null` and `readExternal()` is called
+directly on the already-instantiated object with no `SerialCallbackContext` and therefore no
+`SerialObjectPermission` check:
+
+```java
+private void readExternalData(Externalizable obj, ObjectStreamClass desc) {
+    SerialCallbackContext oldContext = curContext;
+    if (oldContext != null) oldContext.check();
+    curContext = null;           // context cleared — no SerialCallbackContext created
+    try {
+        ...
+        obj.readExternal(this);  // readExternal fires with NO permission check
+        ...
+    } finally {
+        curContext = oldContext;
+    }
+}
+```
+
+The `Externalizable.readExternal()` method has complete, unrestricted read access to the stream. It
+can call `in.readObject()` to recursively deserialise arbitrary sub-objects, read primitive data in
+any format it chooses, and execute arbitrary Java logic with the full permissions of the deserialising
+thread. This makes `readExternal()` at least as dangerous as `readObject()`, yet it receives no
+protection from the existing DirtyChai security model.
+
+**JDK classes with non-trivial `readExternal()` implementations:**
+
+| Class | Module | `readExternal` action |
+|---|---|---|
+| `java.time.Ser` | `java.base` | Reads a type byte and dispatches to `LocalDate`, `LocalTime`, `Duration`, `ZonedDateTime`, `Period`, etc. — a mini-deserialisation multiplexer across 14 target types |
+| `java.time.chrono.Ser` | `java.base` | Same pattern for `HijrahDate`, `JapaneseDate`, `MinguoDate`, `ThaiBuddhistDate` |
+| `java.time.zone.Ser` | `java.base` | Reads `ZoneRules` from stream |
+| `sun.rmi.server.UnicastRef` | `java.rmi` | Calls `LiveRef.read()` — reads a remote object identifier and a `TCPEndpoint` (host + port) from the stream; the RMI runtime will later open a connection to this endpoint |
+| `sun.rmi.server.UnicastRef2` | `java.rmi` | Extended version of above, reads SSL channel info |
+| `sun.rmi.server.UnicastServerRef` | `java.rmi` | Reads `ObjID` + `LiveRef` |
+| `java.awt.datatransfer.DataFlavor` | `java.datatransfer` | Reads MIME type string and representation class name from stream |
+| `java.awt.datatransfer.MimeType` | `java.datatransfer` | Reads a raw MIME type string |
+
+The RMI entries are especially sensitive in a JGDMS context. `UnicastRef.readExternal()` calls
+`LiveRef.read()`, which reads a remote object identifier and a `TCPEndpoint` from the stream. An
+attacker who can deliver a malicious serialised stream to a JGDMS server can use this path to
+construct arbitrary remote references and trigger SSRF connections to attacker-controlled hosts —
+with no `SerialObjectPermission` check currently blocking the call.
+
+A policy that grants `SerialObjectPermission "java.time.Ser"` also provides no protection today
+because `Ser` takes the `Externalizable` path and `SerialObjectPermission` is never checked for it.
+
+---
+
+### Gap 3 — Record Deserialization
+
+`Record` classes are handled by `readRecord()`, which never constructs a `SerialCallbackContext`.
+The record is assembled entirely from field values read by `FieldValues` and then instantiated via a
+`MethodHandle` to the canonical constructor — no permission check at any point:
+
+```java
+private Object readRecord(ObjectStreamClass desc) throws IOException {
+    FieldValues fieldValues = new FieldValues(desc, true);  // no permission check
+    ...
+    MethodHandle ctrMH = RecordSupport.deserializationCtr(desc);
+    return (Object) ctrMH.invokeExact(fieldValues.primValues, fieldValues.objValues);
+}
+```
+
+---
+
+### Proposed Fix: Single Check in `readOrdinaryObject()`
+
+All three gaps share a common funnel: `readOrdinaryObject()`. This method is the single entry point
+through which every ordinary object (Serializable, Externalizable, Record) passes before
+instantiation. Placing the `SerialObjectPermission` check here — after the existing
+`String`/`Class`/`ObjectStreamClass` guard and **before** `desc.newInstance()` — closes all three
+gaps with one insertion and no new permission class:
+
+```java
+// ObjectInputStream.readOrdinaryObject() — proposed insertion point
+private Object readOrdinaryObject(boolean unshared) throws IOException {
+    if (bin.readByte() != TC_OBJECT) {
+        throw new InternalError();
+    }
+
+    ObjectStreamClass desc = readClassDesc(false);
+    desc.checkDeserialize();
+
+    Class<?> cl = desc.forClass();
+    if (cl == String.class || cl == Class.class
+            || cl == ObjectStreamClass.class) {
+        throw new InvalidClassException("invalid class descriptor");
+    }
+
+    // Proposed SerialObjectPermission check — covers all deserialization paths:
+    new SerialObjectPermission(cl.getName()).checkGuard(null);
+
+    Object obj;
+    try {
+        obj = desc.isInstantiable() ? desc.newInstance() : null;
+    } catch (Exception ex) {
+        throw new InvalidClassException(desc.forClass().getName(),
+                                        "unable to create instance", ex);
+    }
+    ...
+}
+```
+
+**Why this location is optimal:**
+
+- `readOrdinaryObject()` is called for every ordinary object regardless of serialisation mechanism
+  (default `Serializable`, custom `readObject`, `Externalizable`, `Record`).
+- The check fires **before instantiation** (`desc.newInstance()`), so no object is created if the
+  permission is denied — fail-secure by design.
+- `cl = desc.forClass()` is already computed immediately above, so the class name is available at
+  zero additional cost.
+- Once this check is in place, the existing check in `SerialCallbackContext` becomes redundant and
+  can be removed to avoid double-checking classes with a custom `readObject()`.
+
+**Effect on the `SerialCallbackContext` check:**
+
+The existing check in `SerialCallbackContext` should be removed after the `readOrdinaryObject()`
+guard is in place. The permission will already have been checked (and denied if not granted) before
+the object is instantiated, making the `SerialCallbackContext` check unreachable for any class that
+does not already have permission.
+
+---
+
+### Relationship to `ObjectInputFilter`
+
+`ObjectInputFilter` and `SerialObjectPermission` (when correctly placed) are complementary, not
+overlapping:
+
+| Mechanism | When it fires | What it blocks |
+|---|---|---|
+| `ObjectInputFilter` | Class resolution time | Prevents the class from being accepted into the stream at all |
+| `SerialObjectPermission` (proposed location) | Before instantiation in `readOrdinaryObject()` | Prevents an accepted class from being instantiated |
+
+For classes that are legitimately on the classpath (e.g. trusted `java.time.Ser`),
+`ObjectInputFilter` cannot differentiate "deserialise this class in this context" from "deserialise
+this class in that context". `SerialObjectPermission` at the instantiation boundary provides the
+invocation-time enforcement that `ObjectInputFilter` cannot.
+
+---
+
+### Benefits Summary
+
+| Benefit | Description |
+|---|---|
+| **Complete Serializable coverage** | Closes the gap for the majority of classes: those using default serialization with no custom `readObject()` |
+| **Externalizable coverage** | `readExternal()` cannot be invoked without an explicit `SerialObjectPermission` grant — including `UnicastRef`, `java.time.Ser`, etc. |
+| **Record coverage** | Record canonical constructor invocation via `MethodHandle` is now guarded |
+| **RMI SSRF protection** | `UnicastRef.readExternal()` cannot be invoked without an explicit grant |
+| **Fail-secure** | Denied objects are never instantiated — the check fires before `desc.newInstance()` |
+| **No new permission class** | A single `SerialObjectPermission` check in one location replaces the need for a separate `ExternalizableObjectPermission` |
+| **`ObjectInputFilter` complementarity** | Adds an instantiation-time guard that `ObjectInputFilter` cannot provide |
+| **Minimal change** | One `checkGuard()` call added to `readOrdinaryObject()`; one `checkGuard()` call removed from `SerialCallbackContext` |
+
+### Recommendation: **IMPLEMENT** ✅
+
+The gaps are real. Default-serialization gadget classes (collections, comparators, etc.) are the
+most commonly exploited path in practice and are currently entirely unprotected by
+`SerialObjectPermission`. The fix is a single line in `readOrdinaryObject()` — the most minimal
+change possible for the broadest coverage. Once in place, the redundant check in
+`SerialCallbackContext` should be removed.
+
+---
+
 ## Document History
 
 | Version | Date | Author | Changes |
 |---------|------|--------|---------|
+| 1.6 | 2026-04-15 | Security Analysis | Revised gap analysis: documents three uncovered paths (default Serializable, Externalizable, Record); identifies `readOrdinaryObject()` as the single optimal check location covering all paths; supersedes the `ExternalizableObjectPermission` proposal with a single `SerialObjectPermission` check before `desc.newInstance()` |
+| 1.5 | 2026-04-15 | Security Analysis | Added `ExternalizableObjectPermission` gap analysis: identifies unguarded `readExternal()` path in `ObjectInputStream.readExternalData()`; documents affected JDK classes (`java.time.Ser`, `UnicastRef`, etc.); proposes new `BasicPermission` subclass and `readExternalData()` guard; enumerates required platform policy grants |
 | 1.4 | 2026-04-13 | pfirmstone (Issue #85) | Resolved all 11 findings; `trustedSMClass()` updated to 3-class whitelist; `isMethodHandlesFrame()` switch whitelist; `isUnsafeReflectionFrame()` + `sun.misc.Unsafe`; frame limit 50; `ConcurrentPolicyFile`/`URIGrant` fail-secure; `CombinerSM` fixes; `Uri.implies()` null guard; `SocketPermission.init()` DNS prefetch |
 | 1.3 | 2026-04-13 | Code Review (Issue #85) | Documented 11 open issues (F-1–F-11) found in new code; updated risk assessment |
 | 1.2 | 2026-04-09 | Security Review | Conditional stack validation implementation analysis |
