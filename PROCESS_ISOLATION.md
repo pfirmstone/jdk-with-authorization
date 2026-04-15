@@ -1772,3 +1772,337 @@ blocks native access even if the SecurityManager is bypassed (defence-in-depth).
 | Native library loading is blocked in all group JVMs | `NativeAccessPermission` not granted; `--illegal-native-access=deny` in effect |
 | Phoenix crash does not affect the other groups | OS process isolation; each group is an independent process |
 | A policy-file tampering attack is limited to the process whose file was changed | One policy file per process; file owned by that process's OS user |
+
+---
+
+## Analysis: `Runtime::exec` vs `ProcessBuilder` — Secure Process Management for Phoenix
+
+### The Problem with `Runtime.exec()`
+
+Phoenix currently uses `Runtime.exec()` (or an equivalent OS API) to fork group JVMs.
+There are two overload families:
+
+| Overload | Argument Parsing | Environment | Working Directory |
+|----------|-----------------|-------------|-------------------|
+| `Runtime.exec(String cmd)` | Tokenises at whitespace; platform-dependent on some JVMs | Inherits parent | Inherits parent |
+| `Runtime.exec(String[] cmdarray)` | Treats each element as a distinct argument token | Inherits parent | Inherits parent |
+| `Runtime.exec(String[], String[] envp, File dir)` | Distinct tokens | Caller-supplied array | Caller-supplied |
+
+**Why the single-String overload is dangerous:**  The `Runtime.exec(String)` overload
+tokenises its argument at whitespace boundaries.  This is subtly different from shell
+tokenisation (no glob expansion, no quote handling), but it remains ambiguous: any
+whitespace in a path or argument — for example a policy file path containing a space —
+silently produces extra tokens, changing the meaning of the command.  Developers who
+write `Runtime.exec(buildCommandString(...))` with user-influenced input routinely
+produce argument-injection bugs even without a shell being involved.
+
+**Why all `Runtime.exec()` overloads share the same critical weakness:**  Every
+`Runtime.exec()` overload that does not accept an explicit `envp` array **inherits the
+parent process's environment**.  This exposes a class of injection attack that is
+entirely separate from argument injection and that the existing `ActivationGroupDesc`
+content-validation layers do not address.
+
+### The Environment Variable Injection Vector
+
+The JVM honours several environment variables that it reads at startup to modify its
+own argument list.  An attacker who can set these variables in the process environment
+that Phoenix inherits — or in the group JVM's inherited environment — can inject
+arbitrary JVM arguments without touching `ActivationGroupDesc` at all:
+
+| Variable | Effect | Scope |
+|----------|--------|-------|
+| `JAVA_TOOL_OPTIONS` | JVM argument list prepended at startup | All JDK implementations |
+| `_JAVA_OPTIONS` | JVM argument list prepended/appended (HotSpot extension) | HotSpot only |
+| `JDK_JAVA_OPTIONS` | JVM argument list prepended (Java 9+, replaces `_JAVA_OPTIONS`) | OpenJDK / DirtyChai |
+| `CLASSPATH` | Modifies the application classpath | All JDK implementations |
+| `JAVA_HOME` | Redirects to a different JVM binary | Launcher scripts |
+
+**Attack scenario — same-user compromise:**
+
+If any process running as the same OS user as Phoenix is compromised, that process can
+set `JAVA_TOOL_OPTIONS=-javaagent:/tmp/evil.jar` in the shared environment (via
+`/proc/self/environ` tricks on Linux, or `putenv()` in a JNI agent).  When Phoenix
+subsequently calls `Runtime.exec()` with an inherited environment, the group JVM
+starts with the attacker's agent injected — bypassing all `ActivationGroupDesc`
+whitelist validation.
+
+**Why this is not covered by the existing mitigation layers:**
+
+The "Layer 2: Phoenix-Side Content Validation" section describes filtering the
+`CommandEnvironment.getCommandOptions()` list from the `ActivationGroupDesc`.  That
+filtering acts on the **command-line arguments** that Phoenix explicitly builds.  It
+has no visibility into the **inherited environment variables** that the JVM launcher
+reads independently of the command line.
+
+### `ProcessBuilder` — The Direct Replacement
+
+`ProcessBuilder` (introduced in Java 5) provides all of the safety properties that
+`Runtime.exec()` lacks:
+
+| Property | `Runtime.exec(String)` | `Runtime.exec(String[])` | `ProcessBuilder(List<String>)` |
+|----------|------------------------|--------------------------|-------------------------------|
+| Argument tokenisation ambiguity | Yes — whitespace split | No | No — each List element is one token |
+| Explicit environment control | No | Partial (`envp` array) | Yes — mutable `Map<String,String>` |
+| Ability to clear inherited environment | No | No (empty `envp` means inherit) | Yes — `environment().clear()` |
+| I/O stream control | Limited | Limited | Full — `redirectInput/Output/Error()` |
+| Working directory control | No | Yes (3-arg overload) | Yes — `directory()` |
+| Cross-platform consistency | Varies by OS | Better | Best |
+| Readable, auditable code | Low | Medium | High |
+
+### ProcessBuilder Security Hardening Pattern for Phoenix
+
+The following describes the security properties a human implementer should achieve
+when replacing `Runtime.exec()` with `ProcessBuilder` in Phoenix.  All code below
+is illustrative of the required design; the actual implementation must be
+human-written per the OpenJDK Interim Policy on Generative AI.
+
+**Step 1 — Build the command from a validated List, not a String:**
+
+Rather than concatenating a command string, build the argument list as a
+`List<String>` where each element is a distinct, validated token.  This eliminates
+whitespace tokenisation ambiguity entirely.
+
+The whitelist validation from the "ActivationGroupDesc JVM Argument Injection"
+section should be applied to each element of the list **before** it is passed to
+`ProcessBuilder`, so that the validated list is the only input to the builder.
+
+**Step 2 — Clear the environment, then add back only what is required:**
+
+```
+ProcessBuilder pb = new ProcessBuilder(validatedCommandList);
+
+// Start with an empty environment.
+pb.environment().clear();
+
+// Add only the variables the group JVM needs.
+pb.environment().put("PATH", "/usr/lib/jvm/dirtychai-24/bin:/usr/bin:/bin");
+pb.environment().put("LANG", "en_US.UTF-8");
+pb.environment().put("HOME", groupWorkDir.getAbsolutePath());
+
+// Defensively remove injection vectors even after clear(),
+// in case clear() is skipped in a future maintenance change.
+pb.environment().remove("JAVA_TOOL_OPTIONS");
+pb.environment().remove("_JAVA_OPTIONS");
+pb.environment().remove("JDK_JAVA_OPTIONS");
+pb.environment().remove("CLASSPATH");
+pb.environment().remove("JAVA_HOME");
+```
+
+`clear()` is the primary defence.  The explicit `remove()` calls are a second line
+of defence against accidental reintroduction of these variables during maintenance.
+
+**Step 3 — Redirect I/O to prevent file descriptor leakage:**
+
+Phoenix's own stdin, stdout, and stderr file descriptors should not be inherited by
+group JVMs.  A group JVM that inherits Phoenix's stdin can block waiting for input
+that Phoenix never provides; a group JVM that inherits Phoenix's stdout can pollute
+Phoenix's log stream.
+
+```
+pb.redirectInput(ProcessBuilder.Redirect.from(new File("/dev/null")));
+pb.redirectOutput(groupLogFile);
+pb.redirectErrorStream(true);  // merge stderr into stdout for unified logging
+```
+
+**Step 4 — Set an explicit working directory:**
+
+```
+pb.directory(groupWorkDirectory);
+```
+
+This ensures that relative paths in the group JVM's code resolve predictably and
+cannot traverse into directories that the group JVM's OS user does not own.
+
+### Java 9+ `ProcessHandle` for Lifecycle Management
+
+`Runtime.exec()` returns a `Process` object with limited lifecycle visibility:
+polling `process.isAlive()` is the only way to detect termination.  In contrast,
+`ProcessBuilder.start()` also returns a `Process`, and Java 9 extended `Process`
+with `toHandle()` which provides the richer `ProcessHandle` API:
+
+| `ProcessHandle` Feature | Phoenix Benefit |
+|------------------------|-----------------|
+| `handle.onExit()` — `CompletableFuture<ProcessHandle>` | Asynchronous crash detection without polling; enables the activation-storm backoff described in M-P5 |
+| `handle.info().startInstant()` | Audit log timestamp for group JVM starts |
+| `handle.info().totalCpuDuration()` | CPU-time monitoring; detect runaway group JVMs |
+| `handle.descendants()` | Enumerate child processes spawned by the group JVM (e.g., if the service itself calls `exec()`) |
+| `handle.destroy()` / `handle.destroyForcibly()` | Graceful SIGTERM then SIGKILL for group shutdown; replaces `process.destroy()` with explicit escalation |
+| `handle.pid()` | PID for OS-level audit log correlation |
+
+The `onExit()` callback directly enables the activation-storm limiting strategy
+(M-P5 above): Phoenix increments a per-group crash counter in the callback and
+marks the group `INACTIVE` after *N* consecutive crashes, without requiring a
+background polling thread.
+
+### OS-Level Resource Controls for Group JVMs
+
+`ProcessBuilder` controls *what process is launched* and *what it inherits*; it
+does not control *how many resources* that process may consume.  OS-level controls
+are the correct tool for resource limits:
+
+#### Linux cgroups v2
+
+cgroups v2 allows Phoenix (or a privileged wrapper) to assign each group JVM to a
+dedicated cgroup with explicit resource limits before the JVM starts.  The
+recommended approach is to use `systemd-run` as the launcher, which applies a
+transient systemd unit with cgroup accounting:
+
+```
+systemd-run --scope \
+    --property=MemoryMax=512M \
+    --property=CPUQuota=50% \
+    --property=TasksMax=64 \
+    -- java -Djava.security.manager=... -jar service-a.jar
+```
+
+When Phoenix launches the group JVM, it calls `systemd-run` (via `ProcessBuilder`)
+as a thin wrapper around the actual `java` binary.  The cgroup created by systemd
+automatically limits the group JVM and all processes it forks to the declared
+resource envelope.
+
+**Effect:** A `createVirtualThread` permission bypass or a thread-bomb attack inside
+the group JVM is bounded by the cgroup `TasksMax` and `CPUQuota` limits.  The
+attacker cannot exhaust the host OS thread table or saturate all CPU cores.
+
+#### seccomp-BPF Syscall Filtering
+
+A seccomp profile applied to the group JVM's process restricts which Linux system
+calls the JVM may make.  A group JVM running a network service does not need
+`fork(2)`, `execve(2)`, `ptrace(2)`, or `mount(2)`.  Denying these at the OS level
+provides a backstop that survives a complete JVM security model bypass:
+
+| Denied Syscall | Attack It Prevents |
+|----------------|-------------------|
+| `execve` | Group JVM cannot spawn new processes (complements `RuntimePermission("exec")` denial) |
+| `fork` / `vfork` | Group JVM cannot create child processes |
+| `ptrace` | Group JVM cannot attach a debugger to other processes |
+| `mount` | Group JVM cannot remount the filesystem |
+| `setuid` / `setgid` | Group JVM cannot change its OS identity |
+| `socket` with `AF_NETLINK` | Group JVM cannot manipulate network interfaces |
+
+Docker and Podman apply a default seccomp profile that already denies many of these
+calls.  For a non-container deployment, `libseccomp` or a systemd `SystemCallFilter`
+directive can apply the same restrictions.
+
+#### Linux Network Namespaces
+
+Each group JVM can be placed in its own network namespace, giving it a private
+loopback interface and a single controlled external interface.  Traffic rules on that
+interface are enforced by the OS kernel, not by the JVM SecurityManager.  A
+compromised SecurityManager cannot bypass a kernel netfilter rule.
+
+The deployment model is:
+
+```
+Host network namespace
+│
+├─ Phoenix daemon (loopback + one NIC shared with group JVMs via veth pairs)
+│
+└─ Group JVM A network namespace
+       ├─ lo (loopback, for intra-JVM connections)
+       └─ veth0 ↔ veth1 (virtual Ethernet pair to host bridge)
+              Egress iptables: only allow dport 5432 (database)
+```
+
+This means the group JVM can only reach its declared upstream services, regardless
+of what `SocketPermission` its DirtyChai policy happens to grant.
+
+### Architectural Alternatives to `Runtime.exec()` for Process Management
+
+The Phoenix activation model is one specific solution to the process isolation
+problem.  Depending on the operational environment, alternative architectures may be
+more suitable:
+
+#### Container-Per-Service (Docker / Podman)
+
+Each service runs in its own container, with the container runtime (Docker daemon,
+`podman`, `containerd`) acting as the "activation manager" instead of Phoenix.
+
+| Property | JGDMS Phoenix | Container-Per-Service |
+|----------|--------------|----------------------|
+| Process isolation | Yes — separate OS process | Yes — separate OS process + namespace + cgroup |
+| SecurityManager control | Yes — DirtyChai per group | Yes — DirtyChai in container JVM |
+| Crash recovery | Phoenix re-activates on client call | Container restart policy (e.g., `--restart=on-failure:3`) |
+| Process launch API | `Runtime.exec()` / `ProcessBuilder` | Container runtime API / OCI |
+| JVM argument injection surface | `ActivationGroupDesc` command options | Container image entrypoint + env vars |
+| Resource limits | OS-level (manual cgroup setup) | Built-in per container (cgroup delegation) |
+| Network isolation | Manual (namespaces) | Built-in (bridge network per compose service) |
+| Audit | Custom Phoenix log | Container runtime event log (`docker events`) |
+
+The trade-off is operational complexity: containers require a runtime daemon
+(Docker/Podman) but provide richer resource management, image signing, and network
+isolation out of the box.  JGDMS Phoenix provides richer Java-level lifecycle
+management (activation on demand, `ActivationID`-based recovery) without requiring a
+container daemon.
+
+**Combining both:** JGDMS Phoenix can run *inside* a container alongside its group
+JVMs, gaining the container's cgroup/namespace isolation while retaining Phoenix's
+activation-on-demand semantics.
+
+#### systemd Socket Activation
+
+systemd supports *socket activation*: the OS holds the listening socket and starts
+the service process only when an incoming connection arrives.  This is directly
+analogous to the Java Activation Framework's on-demand instantiation model, but
+implemented at the OS level.
+
+For a JGDMS service, this means:
+
+1. A systemd socket unit holds the JERI transport port.
+2. On the first incoming connection, systemd starts the group JVM service unit.
+3. The group JVM receives the pre-bound socket via file descriptor passing
+   (`SD_LISTEN_FDS`).
+4. If the group JVM crashes, systemd restarts it on the next connection (subject to
+   restart rate limits).
+
+This eliminates the Phoenix daemon as a single point of failure: the OS init system
+manages process lifecycle.  The trade-off is the loss of Phoenix's
+`ActivationGroupDesc`-based configuration model and its cross-host failover
+capability.
+
+#### GraalVM Isolates (In-Process, Separate Heap)
+
+GraalVM Isolates allow multiple isolated heap regions within a single OS process.
+Each isolate has its own garbage collector and cannot directly share object
+references with other isolates.  Data crossing an isolate boundary must be
+explicitly marshalled (similar to FFM memory segments).
+
+| Property | JGDMS Activation (OS process) | GraalVM Isolates (in-process) |
+|----------|------------------------------|-------------------------------|
+| Memory isolation | Full — separate address space | Partial — separate heap, shared native memory |
+| Crash isolation | Full — JVM crash terminates only that process | Partial — isolate crash may destabilise host JVM |
+| SecurityManager | Independent per process | Shared JVM SecurityManager (not per-isolate) |
+| Start-up latency | High — JVM startup | Low — isolate creation |
+| Resource limits | OS cgroups | JVM-level; no per-isolate cgroup |
+| Compatibility | Full JVM compatibility | Requires GraalVM; limited dynamic class loading |
+| `Runtime.exec()` equivalent | Required | Not needed |
+
+GraalVM Isolates are a better fit for *same-trust-level* parallelism (e.g., running
+multiple requests in parallel with heap isolation) than for *different-trust-level*
+service isolation (e.g., an untrusted service that might crash or exhaust resources).
+The lack of per-isolate SecurityManager means DirtyChai cannot enforce separate
+least-privilege policies across isolates.
+
+For JGDMS use cases involving different-trust-level services, OS process isolation
+(via Phoenix or containers) remains the correct architecture.
+
+### Recommendation Summary
+
+The following changes are recommended to make Phoenix's process management more
+secure.  All code changes are human implementation tasks.
+
+| Task | Priority | Addresses |
+|------|----------|-----------|
+| Replace `Runtime.exec()` with `ProcessBuilder(List<String>)` | **High** | Argument tokenisation ambiguity |
+| Clear inherited environment and remove injection variables (`JAVA_TOOL_OPTIONS`, `_JAVA_OPTIONS`, `JDK_JAVA_OPTIONS`, `CLASSPATH`) | **Critical** | Environment variable injection vector |
+| Redirect group JVM stdin to `/dev/null`, stdout/stderr to log file | **High** | File descriptor leakage |
+| Set explicit working directory | **Medium** | Relative path ambiguity |
+| Use `ProcessHandle.onExit()` for crash detection | **High** | Activation-storm backoff (M-P5) |
+| Apply systemd `MemoryMax`, `CPUQuota`, `TasksMax` per group JVM | **High** | Resource exhaustion |
+| Apply seccomp profile denying `execve`, `fork`, `ptrace` to group JVMs | **Medium** | Syscall-level escape prevention |
+| Place each group JVM in its own network namespace | **Medium** | Unrestricted outbound connections |
+
+The environment-variable injection fix (`environment().clear()` + targeted `remove()`
+calls) is the highest-priority item because it is the only attack vector that
+bypasses all of the existing `ActivationGroupDesc` whitelist validation layers
+described earlier in this document.
