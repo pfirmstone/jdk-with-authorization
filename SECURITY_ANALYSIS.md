@@ -13,9 +13,7 @@
 
 This document provides a comprehensive security analysis of the custom authorization system implementation in Dirty Chai. The system implements **defense-in-depth** security architecture with multiple validation layers protecting against privilege escalation, code injection, and caller spoofing attacks.
 
-### Overall Security Posture: **EXCELLENT** ✅
-
-The system demonstrates sophisticated security engineering with:
+The system demonstrates:
 - Multiple independent security layers
 - Fail-secure design patterns
 - Permission-based access control
@@ -729,10 +727,222 @@ The conditional validation implementation is **production-ready**. Recommended a
 
 ---
 
+## ExternalizableObjectPermission: Gap Analysis and Proposal
+
+### The Security Gap
+
+DirtyChai's `SerialObjectPermission` guards the `Serializable` path through `ObjectInputStream`. The
+check fires inside `SerialCallbackContext`, which is constructed immediately before a class's custom
+`readObject` method is invoked in `readSerialData()`:
+
+```java
+// ObjectInputStream.readSerialData() — Serializable path
+curContext = new SerialCallbackContext(obj, slotDesc);
+// SerialObjectPermission(className).checkGuard(null) fires here ^^^
+slotDesc.invokeReadObject(obj, this);   // readObject() runs only if check passes
+```
+
+The `Externalizable` path is structurally different and is **not guarded by `SerialObjectPermission`**.
+The dispatch in `readOrdinaryObject()` is:
+
+```java
+} else if (desc.isExternalizable()) {
+    readExternalData((Externalizable) obj, desc);   // ← no permission check
+} else {
+    readSerialData(obj, desc);                       // ← SerialObjectPermission fires here
+}
+```
+
+Inside `readExternalData()`, `curContext` is explicitly set to `null`, and `readExternal()` is called
+directly on the already-instantiated object with no `SerialCallbackContext` and therefore no
+`SerialObjectPermission` check:
+
+```java
+private void readExternalData(Externalizable obj, ObjectStreamClass desc) {
+    SerialCallbackContext oldContext = curContext;
+    if (oldContext != null) oldContext.check();
+    curContext = null;           // context cleared — no SerialCallbackContext created
+    try {
+        ...
+        obj.readExternal(this);  // readExternal fires with NO permission check
+        ...
+    } finally {
+        curContext = oldContext;
+    }
+}
+```
+
+**Consequence:** Any class implementing `Externalizable` can have its `readExternal()` method invoked
+by an untrusted deserialiser without any DirtyChai permission check standing in the way.
+`ObjectInputFilter` (the serial filter) applies at class-resolution time for both paths equally, but
+it cannot block the *execution* of `readExternal()` once the class is resolved — that requires a
+guard at the invocation point.
+
+---
+
+### Why `readExternal()` Is a Distinct Threat Surface
+
+The `Serializable` path (`readObject`) and the `Externalizable` path (`readExternal`) have
+fundamentally different contracts:
+
+| Property | `Serializable` + custom `readObject` | `Externalizable` + `readExternal` |
+|---|---|---|
+| Object instantiation | Via `reflFactory.newConstructorForSerialization()` — bypasses public constructor | Via the **public no-arg constructor** — runs normal construction code |
+| State population | JVM reads fields from stream; `readObject` may supplement | `readExternal` is **fully responsible** for reading all state |
+| Access to `ObjectInputStream` | Via `defaultReadObject()` / `readFields()` | Direct `ObjectInput` reference — can call `readObject()` on sub-objects recursively |
+| `curContext` at call site | Set to `SerialCallbackContext` (permission check fires) | Set to `null` — no context |
+| DirtyChai guard | `SerialObjectPermission` | **None** |
+
+The `Externalizable.readExternal()` method has complete, unrestricted read access to the stream. It
+can call `in.readObject()` to recursively deserialise arbitrary sub-objects, read primitive data in
+any format it chooses, and execute arbitrary Java logic with the full permissions of the deserialising
+thread. This makes `readExternal()` at least as dangerous as `readObject()`, yet it receives no
+protection from the existing DirtyChai security model.
+
+---
+
+### JDK Classes With Non-Trivial `readExternal()` Implementations
+
+| Class | Module | `readExternal` action |
+|---|---|---|
+| `java.time.Ser` | `java.base` | Reads a type byte and dispatches to `LocalDate`, `LocalTime`, `Duration`, `ZonedDateTime`, `Period`, etc. — a mini-deserialisation multiplexer across 14 target types |
+| `java.time.chrono.Ser` | `java.base` | Same pattern for `HijrahDate`, `JapaneseDate`, `MinguoDate`, `ThaiBuddhistDate` |
+| `java.time.zone.Ser` | `java.base` | Reads `ZoneRules` from stream |
+| `sun.rmi.server.UnicastRef` | `java.rmi` | Calls `LiveRef.read()` — reads a remote object identifier and a `TCPEndpoint` (host + port) from the stream; the RMI runtime will later open a connection to this endpoint |
+| `sun.rmi.server.UnicastRef2` | `java.rmi` | Extended version of above, reads SSL channel info |
+| `sun.rmi.server.UnicastServerRef` | `java.rmi` | Reads `ObjID` + `LiveRef` |
+| `java.awt.datatransfer.DataFlavor` | `java.datatransfer` | Reads MIME type string and representation class name from stream |
+| `java.awt.datatransfer.MimeType` | `java.datatransfer` | Reads a raw MIME type string |
+
+The RMI entries are especially sensitive in a JGDMS context. `UnicastRef.readExternal()` calls
+`LiveRef.read()`, which reads a remote object identifier and a `TCPEndpoint` from the stream. This
+is the wire mechanism by which a JGDMS client constructs a reference to a remote service. An attacker
+who can deliver a malicious serialised stream to a JGDMS server can use this path to construct
+arbitrary remote references and trigger SSRF connections to attacker-controlled hosts — with no
+`SerialObjectPermission` check currently blocking the call.
+
+The `java.time.Ser` multiplexer is also notable: a policy that does not grant
+`SerialObjectPermission "java.time.Ser"` provides no protection today because `Ser` takes the
+`Externalizable` path and `SerialObjectPermission` is never checked for it.
+
+---
+
+### Proposed: `ExternalizableObjectPermission`
+
+An `ExternalizableObjectPermission` would guard the single `readExternal()` call site in
+`readExternalData()`, mirroring the way `SerialObjectPermission` guards `readObject()` via
+`SerialCallbackContext`. The optimal insertion point is immediately before `obj.readExternal(this)`:
+
+```java
+// ObjectInputStream.readExternalData() — with proposed guard
+private void readExternalData(Externalizable obj, ObjectStreamClass desc) {
+    SerialCallbackContext oldContext = curContext;
+    if (oldContext != null) oldContext.check();
+    curContext = null;
+    try {
+        boolean blocked = desc.hasBlockExternalData();
+        if (blocked) bin.setBlockDataMode(true);
+        if (obj != null) {
+            // Proposed ExternalizableObjectPermission check:
+            new ExternalizableObjectPermission(desc.getName()).checkGuard(null);
+            try {
+                obj.readExternal(this);
+            } catch (ClassNotFoundException ex) {
+                handles.markException(passHandle, ex);
+            }
+        }
+        if (blocked) skipCustomData();
+    } finally {
+        if (oldContext != null) oldContext.check();
+        curContext = oldContext;
+    }
+}
+```
+
+The permission name is the fully-qualified class name of the class being externalised, mirroring the
+`SerialObjectPermission` naming convention.
+
+**Implementation — new class `ExternalizableObjectPermission extends BasicPermission`:**
+
+The permission should be a new top-level class in `au.zeus.jdk.authorization.guards`, following the
+same pattern as `SerialObjectPermission`. Using a separate class (rather than reusing
+`SerialObjectPermission` for both paths) is preferable because:
+
+- Policies can distinguish between `Serializable` and `Externalizable` allowlists explicitly.
+- `readExternal()` has a materially different threat surface (full stream control vs. supplementary
+  `readObject`), warranting its own named permission in audit trails.
+- A new `BasicPermission` subclass is a minimal change that follows the established pattern exactly.
+
+**Policy grants required for the JDK platform codebases (minimal set):**
+
+```
+// In the java.base platform policy:
+grant CodeBase "jrt:/java.base/*" {
+    permission au.zeus.jdk.authorization.guards.ExternalizableObjectPermission
+              "java.time.Ser";
+    permission au.zeus.jdk.authorization.guards.ExternalizableObjectPermission
+              "java.time.chrono.Ser";
+    permission au.zeus.jdk.authorization.guards.ExternalizableObjectPermission
+              "java.time.zone.Ser";
+};
+
+// In the java.rmi platform policy:
+grant CodeBase "jrt:/java.rmi/*" {
+    permission au.zeus.jdk.authorization.guards.ExternalizableObjectPermission
+              "sun.rmi.server.UnicastRef";
+    permission au.zeus.jdk.authorization.guards.ExternalizableObjectPermission
+              "sun.rmi.server.UnicastRef2";
+    permission au.zeus.jdk.authorization.guards.ExternalizableObjectPermission
+              "sun.rmi.server.UnicastServerRef";
+};
+```
+
+Application `Externalizable` classes require explicit grants in their own policy entries,
+exactly as application `Serializable` classes require `SerialObjectPermission` grants.
+
+---
+
+### Relationship to `ObjectInputFilter`
+
+`ObjectInputFilter` and `ExternalizableObjectPermission` are complementary, not overlapping:
+
+| Mechanism | When it fires | What it blocks |
+|---|---|---|
+| `ObjectInputFilter` | Class resolution time | Prevents the class from being accepted into the stream at all |
+| `ExternalizableObjectPermission` | `readExternal()` invocation time | Prevents execution of `readExternal()` even after the class is resolved |
+
+For `Externalizable` classes that are legitimately on the classpath (e.g. trusted `java.time.Ser`),
+`ObjectInputFilter` cannot differentiate "deserialise this class in this context" from "deserialise
+this class in that context". `ExternalizableObjectPermission` provides the invocation-time
+enforcement that `ObjectInputFilter` cannot.
+
+---
+
+### Benefits Summary
+
+| Benefit | Description |
+|---|---|
+| **Symmetry** | Closes the gap so that every user-defined deserialisation method (`readObject` and `readExternal`) is guarded by a DirtyChai permission check |
+| **RMI SSRF protection** | `UnicastRef.readExternal()` cannot be invoked without an explicit `ExternalizableObjectPermission "sun.rmi.server.UnicastRef"` grant |
+| **`java.time.Ser` multiplexer protection** | The dynamic type-dispatch in `java.time.Ser.readExternal()` cannot be triggered without an explicit grant |
+| **Audit clarity** | Policies can separately enumerate which `Externalizable` and which `Serializable` classes are permitted — independent allowlists with independent audit trails |
+| **`ObjectInputFilter` complementarity** | Adds an invocation-time guard that `ObjectInputFilter` cannot provide |
+| **Minimal change** | One new `BasicPermission` subclass + one `checkGuard()` call in `readExternalData()` |
+
+### Recommendation: **IMPLEMENT** ✅
+
+The gap is real and exploitable in practice. The fix is small and follows the existing pattern
+exactly. The policy overhead is manageable (six platform grants, plus per-application grants for
+application `Externalizable` classes). The protection is symmetric with `SerialObjectPermission`
+and closes the last unguarded user-defined deserialisation path in `ObjectInputStream`.
+
+---
+
 ## Document History
 
 | Version | Date | Author | Changes |
 |---------|------|--------|---------|
+| 1.5 | 2026-04-15 | Security Analysis | Added `ExternalizableObjectPermission` gap analysis: identifies unguarded `readExternal()` path in `ObjectInputStream.readExternalData()`; documents affected JDK classes (`java.time.Ser`, `UnicastRef`, etc.); proposes new `BasicPermission` subclass and `readExternalData()` guard; enumerates required platform policy grants |
 | 1.4 | 2026-04-13 | pfirmstone (Issue #85) | Resolved all 11 findings; `trustedSMClass()` updated to 3-class whitelist; `isMethodHandlesFrame()` switch whitelist; `isUnsafeReflectionFrame()` + `sun.misc.Unsafe`; frame limit 50; `ConcurrentPolicyFile`/`URIGrant` fail-secure; `CombinerSM` fixes; `Uri.implies()` null guard; `SocketPermission.init()` DNS prefetch |
 | 1.3 | 2026-04-13 | Code Review (Issue #85) | Documented 11 open issues (F-1–F-11) found in new code; updated risk assessment |
 | 1.2 | 2026-04-09 | Security Review | Conditional stack validation implementation analysis |
