@@ -25,6 +25,7 @@
 
 package java.io;
 
+import au.zeus.jdk.authorization.guards.SerialObjectPermission;
 import java.io.ObjectInputFilter.Config;
 import java.io.ObjectStreamClass.RecordSupport;
 import java.lang.System.Logger;
@@ -2227,7 +2228,7 @@ public class ObjectInputStream
                 || cl == ObjectStreamClass.class) {
             throw new InvalidClassException("invalid class descriptor");
         }
-
+        new SerialObjectPermission(cl.getName()).checkGuard(null);
         Object obj;
         try {
             obj = desc.isInstantiable() ? desc.newInstance() : null;

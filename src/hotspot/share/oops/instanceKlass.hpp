@@ -330,9 +330,6 @@ class InstanceKlass: public Klass {
   bool defined_by_other_loaders() const    { return _misc_flags.defined_by_other_loaders(); }
   void set_class_loader_type()             { _misc_flags.set_class_loader_type(_class_loader_data); }
 
-  // Check if the class can be shared in CDS
-  bool is_shareable() const;
-
   bool shared_loading_failed() const { return _misc_flags.shared_loading_failed(); }
 
   void set_shared_loading_failed() { _misc_flags.set_shared_loading_failed(true); }

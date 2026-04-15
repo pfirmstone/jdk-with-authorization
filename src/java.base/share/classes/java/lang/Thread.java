@@ -761,6 +761,17 @@ public class Thread implements Runnable {
             return parent.contextClassLoader;
         }
     }
+    
+    private static boolean canCreatePlatformThread() throws SecurityException {
+        SecurityManager sm = System.getSecurityManager();
+        if (sm != null) sm.checkPermission(new RuntimePermission("createPlatformThread"));
+        return true;
+    }
+    
+    Thread(ThreadGroup g, String name, int characteristics, Runnable task,
+           long stackSize, AccessControlContext acc, boolean canCreatePlatformThread) {
+        this(g, name, 0, task, stackSize, acc);
+    }
 
     /**
      * Initializes a platform Thread.
@@ -891,7 +902,10 @@ public class Thread implements Runnable {
      *
      * <p> <a id="ofplatform-security"><b>Interaction with security manager when
      * creating platform threads</b></a>
-     * <p> Creating a platform thread when there is a security manager set will
+     * <p> Prior to returning a {@link Builder.OfPlatform OfPlatform}, if a
+     * security manager is set, RuntimePermission "createPlatformThread" is checked.
+     * <p> 
+     * Creating a platform thread when there is a security manager set will
      * invoke the security manager's {@link SecurityManager#checkAccess(ThreadGroup)
      * checkAccess(ThreadGroup)} method with the thread's thread group.
      * If the thread group has not been set with the {@link
@@ -901,8 +915,11 @@ public class Thread implements Runnable {
      * manager {@code getThreadGroup} method returns {@code null} then the thread
      * group of the constructing thread is used.
      * <p>
-     * The Builder captures the parent Thread inherited AccessControlContext from this method,
-     * all Thread's originating from the Builder inherit the same AccessControlContext.
+     * The Builder captures the parent Thread inherited AccessControlContext in 
+     * the unstarted and factory methods.
+     * Unlike public Thread constructors, any Subject if present in the
+     * {@link AccessControlContext} will also be
+     * captured.
      *
      * @apiNote The following are examples using the builder:
      * {@snippet :
@@ -1232,7 +1249,7 @@ public class Thread implements Runnable {
      * @see <a href="#inheritance">Inheritance when creating threads</a>
      */
     public Thread() {
-        this(null, null, 0, null, 0, null);
+        this(null, null, 0, null, 0, null, canCreatePlatformThread());
     }
 
     /**
@@ -1253,7 +1270,7 @@ public class Thread implements Runnable {
      * @see <a href="#inheritance">Inheritance when creating threads</a>
      */
     public Thread(Runnable task) {
-        this(null, null, 0, task, 0, null);
+        this(null, null, 0, task, 0, null, canCreatePlatformThread());
     }
 
     /**
@@ -1262,7 +1279,7 @@ public class Thread implements Runnable {
      * This is not a public constructor.
      */
     Thread(Runnable task, @SuppressWarnings("removal") AccessControlContext acc) {
-        this(null, null, 0, task, 0, acc);
+        this(null, null, 0, task, 0, acc, true);
     }
 
     /**
@@ -1295,7 +1312,7 @@ public class Thread implements Runnable {
      * @see <a href="#inheritance">Inheritance when creating threads</a>
      */
     public Thread(ThreadGroup group, Runnable task) {
-        this(group, null, 0, task, 0, null);
+        this(group, null, 0, task, 0, null, canCreatePlatformThread());
     }
 
     /**
@@ -1312,7 +1329,7 @@ public class Thread implements Runnable {
      * @see <a href="#inheritance">Inheritance when creating threads</a>
      */
     public Thread(String name) {
-        this(null, checkName(name), 0, null, 0, null);
+        this(null, checkName(name), 0, null, 0, null, canCreatePlatformThread());
     }
 
     /**
@@ -1341,7 +1358,7 @@ public class Thread implements Runnable {
      * @see <a href="#inheritance">Inheritance when creating threads</a>
      */
     public Thread(ThreadGroup group, String name) {
-        this(group, checkName(name), 0, null, 0, null);
+        this(group, checkName(name), 0, null, 0, null, canCreatePlatformThread());
     }
 
     /**
@@ -1363,7 +1380,7 @@ public class Thread implements Runnable {
      * @see <a href="#inheritance">Inheritance when creating threads</a>
      */
     public Thread(Runnable task, String name) {
-        this(null, checkName(name), 0, task, 0, null);
+        this(null, checkName(name), 0, task, 0, null, canCreatePlatformThread());
     }
 
     /**
@@ -1417,7 +1434,7 @@ public class Thread implements Runnable {
      * @see <a href="#inheritance">Inheritance when creating threads</a>
      */
     public Thread(ThreadGroup group, Runnable task, String name) {
-        this(group, checkName(name), 0, task, 0, null);
+        this(group, checkName(name), 0, task, 0, null, canCreatePlatformThread());
     }
 
     /**
@@ -1499,9 +1516,9 @@ public class Thread implements Runnable {
      * @see <a href="#inheritance">Inheritance when creating threads</a>
      */
     public Thread(ThreadGroup group, Runnable task, String name, long stackSize) {
-        this(group, checkName(name), 0, task, stackSize, null);
+        this(group, checkName(name), 0, task, stackSize, null, canCreatePlatformThread());
     }
-
+    
     /**
      * Initializes a new platform {@code Thread} so that it has {@code task}
      * as its run object, has the specified {@code name} as its name,
@@ -1567,7 +1584,7 @@ public class Thread implements Runnable {
                   long stackSize, boolean inheritInheritableThreadLocals) {
         this(group, checkName(name),
                 (inheritInheritableThreadLocals ? 0 : NO_INHERIT_THREAD_LOCALS),
-                task, stackSize, null);
+                task, stackSize, null, canCreatePlatformThread());
     }
 
     /**

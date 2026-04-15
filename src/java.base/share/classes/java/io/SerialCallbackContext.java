@@ -25,11 +25,6 @@
 
 package java.io;
 
-import java.security.Guard;
-import java.util.Iterator;
-import java.util.ServiceLoader;
-import au.zeus.jdk.authorization.guards.SerialObjectPermission;
-
 /**
  * Context during upcalls from object stream to class-defined
  * readObject/writeObject methods.
@@ -51,23 +46,10 @@ final class SerialCallbackContext {
      */
     private Thread thread;
     
-    private static boolean check(Guard guard) throws SecurityException {
-        guard.checkGuard(null);
-        return true;
-    }
-    
-    private static Guard getGuard(String className){
-        return new SerialObjectPermission(className);
-    }
-
     SerialCallbackContext(Object obj, ObjectStreamClass desc) {
-        this(obj, desc, check(getGuard(desc.getName())), Thread.currentThread());
-    }
-    
-    SerialCallbackContext(Object obj, ObjectStreamClass desc, boolean check, Thread thread){
         this.obj = obj;
         this.desc = desc;
-        this.thread = thread;
+        this.thread = Thread.currentThread();
     }
 
     Object getObj() throws NotActiveException {

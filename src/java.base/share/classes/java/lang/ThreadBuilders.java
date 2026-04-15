@@ -53,7 +53,6 @@ class ThreadBuilders {
         private long counter;
         private int characteristics;
         private UncaughtExceptionHandler uhe;
-        protected final AccessControlContext inheritedSecurityContext = AccessController.getContext();
 
         String name() {
             return name;
@@ -182,7 +181,9 @@ class ThreadBuilders {
         public Thread unstarted(Runnable task) {
             Objects.requireNonNull(task);
             String name = nextThreadName();
-            var thread = new Thread(group, name, characteristics(), task, stackSize, inheritedSecurityContext);
+            SecurityManager sm = System.getSecurityManager();
+            if (sm != null) sm.checkPermission(new RuntimePermission("createPlatformThread"));
+            var thread = new Thread(group, name, characteristics(), task, stackSize, AccessController.getContext());
             if (daemonChanged)
                 thread.daemon(daemon);
             if (priority != 0)
@@ -202,8 +203,10 @@ class ThreadBuilders {
 
         @Override
         public ThreadFactory factory() {
+            SecurityManager sm = System.getSecurityManager();
+            if (sm != null) sm.checkPermission(new RuntimePermission("createPlatformThread"));
             return new PlatformThreadFactory(group, name(), counter(), characteristics(),
-                    daemonChanged, daemon, priority, stackSize, uncaughtExceptionHandler(), inheritedSecurityContext);
+                    daemonChanged, daemon, priority, stackSize, uncaughtExceptionHandler(), AccessController.getContext());
         }
 
     }
@@ -252,7 +255,9 @@ class ThreadBuilders {
         @Override
         public Thread unstarted(Runnable task) {
             Objects.requireNonNull(task);
-            var thread = newVirtualThread(scheduler, nextThreadName(), characteristics(), task, inheritedSecurityContext);
+            SecurityManager sm = System.getSecurityManager();
+            if (sm != null) sm.checkPermission(new RuntimePermission("createVirtualThread"));
+            var thread = newVirtualThread(scheduler, nextThreadName(), characteristics(), task, AccessController.getContext());
             UncaughtExceptionHandler uhe = uncaughtExceptionHandler();
             if (uhe != null)
                 thread.uncaughtExceptionHandler(uhe);
@@ -268,8 +273,10 @@ class ThreadBuilders {
 
         @Override
         public ThreadFactory factory() {
+            SecurityManager sm = System.getSecurityManager();
+            if (sm != null) sm.checkPermission(new RuntimePermission("createVirtualThread"));
             return new VirtualThreadFactory(scheduler, name(), counter(), characteristics(),
-                    uncaughtExceptionHandler(), inheritedSecurityContext);
+                    uncaughtExceptionHandler(), AccessController.getContext());
         }
     }
 

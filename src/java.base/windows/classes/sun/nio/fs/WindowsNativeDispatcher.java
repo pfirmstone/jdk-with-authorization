@@ -1062,12 +1062,15 @@ class WindowsNativeDispatcher {
     private static final Unsafe unsafe = Unsafe.getUnsafe();
 
     static NativeBuffer asNativeBuffer(String s) throws WindowsException {
-        if (s.length() > (Integer.MAX_VALUE - 2)/2) {
+        // Convert to char array to ensure consistent encoding
+        char[] chars = s.toCharArray();
+
+        if (chars.length > (Integer.MAX_VALUE - 2)/2) {
             throw new WindowsException
                 ("String too long to convert to native buffer");
         }
 
-        int stringLengthInBytes = s.length() << 1;
+        int stringLengthInBytes = chars.length << 1;
         int sizeInBytes = stringLengthInBytes + 2;  // char terminator
 
         // get a native buffer of sufficient size
@@ -1081,7 +1084,6 @@ class WindowsNativeDispatcher {
         }
 
         // copy into buffer and zero terminate
-        char[] chars = s.toCharArray();
         unsafe.copyMemory(chars, Unsafe.ARRAY_CHAR_BASE_OFFSET, null,
             buffer.address(), (long)stringLengthInBytes);
         unsafe.putChar(buffer.address() + stringLengthInBytes, (char)0);

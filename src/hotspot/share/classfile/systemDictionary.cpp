@@ -1051,7 +1051,7 @@ bool SystemDictionary::is_shared_class_visible_impl(Symbol* class_name,
 
 bool SystemDictionary::check_shared_class_super_type(InstanceKlass* klass, InstanceKlass* super_type,
                                                      Handle class_loader, Handle protection_domain, bool is_superclass, TRAPS) {
-  assert(super_type->is_shared(), "must be");
+  assert(super_type->in_aot_cache(), "must be");
 
   // Quick check if the super type has been already loaded.
   // + Don't do it for unregistered classes -- they can be unloaded so
