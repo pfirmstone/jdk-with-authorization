@@ -364,7 +364,7 @@ untrusted remote input is:
    process is compromised, the attacker is confined to that process and cannot
    directly access other services or the host OS without an additional
    privilege-escalation step.
-   
+
 ---
 
 ## Analysis: Preventing Native Code Loaded by Untrusted Jars from Escaping the SecurityManager
@@ -725,7 +725,7 @@ The key architectural primitive is the **activation group**:
 │ Phoenix Activation Daemon (OS process 1)                                │
 │  ActivationSystem — manages all groups                                  │
 │  ActivationMonitor — watches group health                               │
-│  ActivationInstantiator — launches group JVMs on demand                │
+│  ActivationInstantiator — launches group JVMs on demand                 │
 └────────────────────────────┬────────────────────────────────────────────┘
                              │  forks on first request
           ┌──────────────────┼──────────────────┐
@@ -966,8 +966,8 @@ permissions.  The server does not grant its own elevated permissions to arbitrar
 └────────────────────────────────┬───────────────────────────────────────┘
                                  │
                                  ▼
-┌─────────────────────────────────────────────────────────────────────────┐
-│ Service OS process (Phoenix activation group)                           │
+┌────────────────────────────────────────────────────────────────────────┐
+│ Service OS process (Phoenix activation group)                          │
 │  ┌─────────────────────────────────────────────────────────────────┐   │
 │  │ DirtyChai SecurityManager (CombinerSecurityManager)             │   │
 │  │  ConcurrentPolicyFile — least-privilege policy for this group   │   │
@@ -980,7 +980,7 @@ permissions.  The server does not grant its own elevated permissions to arbitrar
 │  │  SerialObjectPermission guards any ObjectInputStream use        │   │
 │  │  NativeAccessPermission guards any native API use               │   │
 │  └─────────────────────────────────────────────────────────────────┘   │
-└─────────────────────────────────────────────────────────────────────────┘
+└────────────────────────────────────────────────────────────────────────┘
 ```
 
 ### Network Isolation — What JGDMS Provides and What the OS Must Provide
@@ -1154,3 +1154,621 @@ This means the trust model has an additional in-constructor layer that the class
 | Permission grant | Not addressed | `GrantPermission` scoped to authenticated principal |
 | Tampered-object detection at construction | No | Yes — `@AtomicSerial` constructor validates all fields |
 | Round-trips for trust establishment | 1 extra (`getProxyVerifier()`) | 0 extra (trust established by class loading + transport) |
+
+---
+
+## Analysis: Phoenix as a High-Value Attack Target — Security Hardening
+
+### Why Phoenix Is the Crown Jewel of a JGDMS Deployment
+
+The activation section above correctly identifies that "a compromised Phoenix daemon can
+manipulate all group JVMs."  This section analyses *why* that is true, and derives the
+minimum security hardening steps that must be applied to Phoenix itself.
+
+Phoenix holds two powers that no other process in a JGDMS deployment shares:
+
+1. **Fork authority** — Phoenix calls `Runtime.exec()` (or an equivalent OS API) to
+   create each group JVM process.  The command line passed to `exec()` determines the
+   SecurityManager class, policy file path, codebase, and every JVM argument for the
+   group.  An attacker who can influence Phoenix's `exec()` call can install any
+   SecurityManager, any policy, or any JVMTI agent in the spawned group.
+
+2. **Registration authority** — Phoenix is the `ActivationSystem` implementation.  It
+   decides which `ActivationGroupDesc` and `ActivationDesc` objects are valid.  An
+   attacker who compromises Phoenix can register new services or modify existing
+   registrations without any caller-side SecurityManager check catching the action.
+
+The consequence is: **Phoenix is not just another service process; it is the trust anchor
+for the entire activation topology.**  It must be treated with the same security posture
+as the OS kernel of the host.
+
+### Threat Model for Phoenix
+
+| Threat | Attack Vector | Impact |
+|--------|--------------|--------|
+| T-P1: Policy injection | Attacker registers a malicious `ActivationGroupDesc` with a crafted policy path | All services in that group run under attacker-controlled policy |
+| T-P2: SecurityManager injection | Malicious `ActivationGroupDesc` specifies `-Djava.security.manager=com.attacker.EvilSM` | DirtyChai SM replaced for that group |
+| T-P3: JVMTI agent injection | Malicious JVM args include `-agentlib:evil` in `ActivationGroupDesc` | Native agent bypasses all Java-level security in that group |
+| T-P4: ActivationDesc tampering | Attacker modifies Phoenix persistence store (log file) between restarts | Arbitrary service class loaded at activation time |
+| T-P5: DoS via activation storm | Attacker causes continuous group crashes → continuous re-fork → CPU/memory exhaustion | Phoenix and all groups become unavailable |
+| T-P6: Phoenix policy bypass | Phoenix itself is exploited (e.g., via a deserialisation bug in its internal RMI) | All groups can be controlled |
+
+### Mitigations
+
+#### M-P1 and M-P2: ActivationGroupDesc Validation
+
+The primary guard is `java.rmi.activation.ActivationPermission "registerGroup"`.  Phoenix
+only accepts a `registerGroup` call when the calling code's `ProtectionDomain` is granted
+this permission.  With DirtyChai, the policy entry is:
+
+```
+// Phoenix policy — restrict who may register groups
+grant CodeBase "file:/path/to/admin-tool/-"
+      signedBy "admin-cert" {
+    permission java.rmi.activation.ActivationPermission "registerGroup";
+};
+```
+
+**No other codebase** should hold `registerGroup`.  This single grant is the entire
+gate on T-P1, T-P2, and T-P3.
+
+However, `ActivationPermission "registerGroup"` only controls *who* can call the API.
+It does not validate the *content* of the `ActivationGroupDesc` after the call is
+authorised.  A malicious but authorised admin tool could still pass a crafted descriptor.
+
+The second layer of defence is therefore **OS-level path controls**:
+- Phoenix should only accept policy file paths under a directory that the Phoenix OS
+  user owns and that no other account can write to.
+- The Phoenix startup wrapper script should validate that the `ActivationGroupDesc`'s
+  policy path is an absolute path under a known-good prefix before forwarding it to
+  `exec()`.
+
+#### M-P3: JVMTI Agent Exclusion
+
+Phoenix forks group JVMs using a command-line template.  The template should explicitly
+reject any `ActivationGroupDesc` that attempts to include `-agentlib:`, `-agentpath:`,
+`-javaagent:`, or `-Xrun` in its JVM arguments.
+
+With DirtyChai, the recommended approach is to use a Phoenix startup wrapper that
+filters the JVM argument list from `ActivationGroupDesc.getCommandEnvironment()` against
+a whitelist of permitted flags before passing them to `exec()`.
+
+#### M-P4: Persistence Store Integrity
+
+Phoenix persists its activation state to a log directory.  If an attacker can write to
+this directory between Phoenix restarts, they can inject arbitrary `ActivationDesc` or
+`ActivationGroupDesc` objects that will be deserialised and acted upon at next startup.
+
+Required OS controls:
+- The log directory must be owned by the Phoenix OS user and mode `0700`.
+- No other account (including the group JVM accounts) may write to it.
+- A file-integrity monitor (e.g., `inotifywait`, AIDE, Tripwire) should alert on
+  changes to the log directory between scheduled maintenance windows.
+
+#### M-P5: Activation Storm Limiting
+
+Phoenix does not natively limit how many re-activation attempts it makes for a crashing
+group.  A service implementation that always crashes on startup will cause Phoenix to
+fork indefinitely.  With DirtyChai, the recommended mitigation is to use a backoff
+strategy:
+- Phoenix (or the wrapper) tracks consecutive crash counts per group.
+- After *N* consecutive crashes (suggested: 3), the group is marked `INACTIVE` and
+  not re-activated until an administrator explicitly resets it.
+- The JGDMS `ActivationPermission "system"` action allows management tools to reset
+  group state.
+
+#### M-P6: Phoenix's Own DirtyChai Policy
+
+Phoenix must run under a DirtyChai `CombinerSecurityManager` with a minimal policy.
+The policy should grant Phoenix only the permissions it needs:
+
+```
+// Minimum Phoenix policy — high-value-target hardening
+grant CodeBase "file:/path/to/phoenix/-" {
+
+    // Fork group JVMs
+    permission java.lang.RuntimePermission "exec";
+
+    // Read group policies (absolute paths under controlled directory)
+    permission java.io.FilePermission "/etc/activation/groups/-", "read";
+
+    // Read/write its own persistence store
+    permission java.io.FilePermission "/var/lib/phoenix/-", "read,write,delete";
+
+    // Listen for incoming activation requests (loopback, fixed port)
+    permission java.net.SocketPermission "localhost:1098", "listen,accept";
+
+    // Connect back to group JVMs on loopback (ephemeral ports)
+    permission java.net.SocketPermission "localhost:1024-", "connect,resolve";
+
+    // Deserialise ActivationDesc et al. from its persistence store
+    permission au.zeus.jdk.authorization.guards.SerialObjectPermission
+              "java.rmi.activation.ActivationDesc";
+    permission au.zeus.jdk.authorization.guards.SerialObjectPermission
+              "java.rmi.activation.ActivationGroupDesc";
+    permission au.zeus.jdk.authorization.guards.SerialObjectPermission
+              "java.rmi.activation.ActivationGroupDesc$CommandEnvironment";
+    permission au.zeus.jdk.authorization.guards.SerialObjectPermission
+              "java.rmi.activation.ActivationID";
+    permission au.zeus.jdk.authorization.guards.SerialObjectPermission
+              "java.rmi.activation.ActivationGroupID";
+    permission au.zeus.jdk.authorization.guards.SerialObjectPermission
+              "java.rmi.MarshalledObject";
+    permission au.zeus.jdk.authorization.guards.SerialObjectPermission
+              "java.util.Properties";
+
+    // EXPLICITLY NOT GRANTED:
+    //   NativeAccessPermission — Phoenix has no native library needs
+    //   SocketPermission "* connect" — Phoenix only talks to loopback
+    //   ActivationPermission "registerGroup" — Phoenix is the registrar, not a caller
+    //   AllPermission — Phoenix must not hold AllPermission
+};
+```
+
+**Why Phoenix must not hold `AllPermission`:** A Phoenix process running with
+`AllPermission` is equivalent to running as root from the security model's perspective.
+If Phoenix is exploited, `AllPermission` means the attacker immediately gains all JVM
+privileges.  A minimal policy limits the blast radius to exactly the permissions listed.
+
+---
+
+## Analysis: SerialObjectPermission Requirements for Phoenix and Group JVMs
+
+### Background
+
+DirtyChai's `SerialObjectPermission` is checked in `SerialCallbackContext` immediately
+before a class's custom `readObject`/`readFields` method is invoked during
+`ObjectInputStream` deserialisation.  The permission name is the fully-qualified class
+name of the class being deserialised.
+
+```java
+// SerialCallbackContext.java (DirtyChai modification)
+SerialCallbackContext(Object obj, ObjectStreamClass desc) {
+    this(obj, desc, check(getGuard(desc.getName())), Thread.currentThread());
+    //                    ^^^^^^^^^^^^^^^^^^^^^^^^^^
+    //                    SerialObjectPermission(className).checkGuard(null)
+    //                    fires here, before readObject is called
+}
+```
+
+The effect is that **every class that implements `Serializable` and has a custom
+`readObject` method** requires a `SerialObjectPermission` grant in the deserialising
+thread's `AccessControlContext` stack.  Classes that rely purely on default serialisation
+(no `readObject`) do not trigger this check — only those with custom `readObject`
+implementations do.
+
+### Activation Classes That Require SerialObjectPermission
+
+The following classes are part of the JGDMS activation serialisation path and have
+custom `readObject` implementations:
+
+| Class | Why it needs SerialObjectPermission |
+|-------|-------------------------------------|
+| `java.rmi.activation.ActivationDesc` | Custom `readObject` validates fields |
+| `java.rmi.activation.ActivationGroupDesc` | Custom `readObject` validates policy/codebase |
+| `java.rmi.activation.ActivationGroupDesc$CommandEnvironment` | Custom `readObject` validates JVM args list |
+| `java.rmi.activation.ActivationID` | Custom `readObject` validates UID and activator ref |
+| `java.rmi.activation.ActivationGroupID` | Custom `readObject` validates UID and system ref |
+| `java.rmi.MarshalledObject` | Custom `readObject` reads serialised byte array |
+
+Classes that use default serialisation only (e.g., `java.util.Properties`,
+`java.lang.String`, primitive wrappers) do not require `SerialObjectPermission` and may
+be freely deserialised as long as the `ObjectInputFilter` does not reject them.
+
+### Where SerialObjectPermission Must Be Granted
+
+#### Phoenix Daemon
+
+Phoenix reads its persistence log at startup and when recovering from a crash.  The log
+contains serialised `ActivationDesc` and `ActivationGroupDesc` objects.  Phoenix's
+policy must grant `SerialObjectPermission` for all the classes in the table above.
+
+Failure to grant these permissions causes Phoenix to throw a `SecurityException` during
+log replay, which prevents all registered services from being re-activated after a
+restart.
+
+#### Group JVMs
+
+Group JVMs do not typically read the Phoenix persistence log.  However, they do receive
+`ActivationID` and `MarshalledObject` over the Phoenix↔group loopback RMI channel.
+JERI's `AtomicMarshalInputStream` (when used) bypasses standard `ObjectInputStream`
+entirely; but if a group JVM uses standard RMI unmarshalling for Phoenix communication,
+it needs `SerialObjectPermission` for `ActivationID` and `MarshalledObject`.
+
+The JGDMS recommendation is that group JVMs use `AtomicMarshalInputStream` exclusively.
+If this is correctly configured, the group JVM policy does **not** need
+`SerialObjectPermission` for Phoenix wire objects.
+
+#### Service Implementations Inside Group JVMs
+
+Service implementations may deserialise their own domain objects.  Each deserialised
+class that has a custom `readObject` method needs `SerialObjectPermission` granted to
+the service's codebase:
+
+```
+// Group JVM policy — service-specific SerialObjectPermission grants
+grant CodeBase "file:/path/to/my-service.jar"
+      signedBy "service-cert" {
+
+    // Service's own serialisable domain objects
+    permission au.zeus.jdk.authorization.guards.SerialObjectPermission
+              "com.example.service.DomainObject";
+    permission au.zeus.jdk.authorization.guards.SerialObjectPermission
+              "com.example.service.RequestRecord";
+    // ... enumerate all classes with custom readObject in this service
+};
+```
+
+The `SecurityPolicyWriter` tool can generate these grants automatically by scanning
+the service JAR for classes that implement `readObject`.
+
+### SerialObjectPermission as a Defence Against Gadget Chains
+
+A serialisation gadget chain requires that at least one class in the chain has a
+custom `readObject` that triggers a dangerous side-effect (arbitrary code execution,
+SSRF, file write, etc.).  By requiring an explicit `SerialObjectPermission` grant for
+every such class, DirtyChai ensures that:
+
+1. A service policy that does not grant `SerialObjectPermission "com.sun.jndi.*"` will
+   throw `SecurityException` before the JNDI gadget's `readObject` fires.
+2. A dependency JAR that unexpectedly ships a gadget class cannot be weaponised unless
+   the administrator explicitly grants `SerialObjectPermission` for that class.
+
+This is a defence-in-depth supplement to the `ObjectInputFilter` (serial filter), not a
+replacement.  Both should be configured: the serial filter enforces an allowlist of
+deserialised class names; `SerialObjectPermission` enforces an allowlist of classes
+whose custom `readObject` logic may execute.
+
+---
+
+## Analysis: LoadClassPermission and Codebase Loading During Activation
+
+### How LoadClassPermission Is Enforced
+
+DirtyChai modifies `SecureClassLoader.getProtectionDomain()` to check
+`LoadClassPermission` before caching a new `ProtectionDomain`:
+
+```java
+// SecureClassLoader.java (DirtyChai modification)
+SecurityManager sm = System.getSecurityManager();
+if (sm != null) {
+    sm.checkPermission(LOAD_CLASS_ALLOW,
+            AccessControlContext.build(new ProtectionDomain[]{pd}));
+    //                                 ^^
+    //                                 AccessControlContext contains ONLY the
+    //                                 new class's own ProtectionDomain
+}
+```
+
+The critical detail is the `AccessControlContext` used for the check: it contains
+**only the ProtectionDomain of the class being loaded**, not the calling stack.  This
+means the policy must grant `LoadClassPermission` to the `CodeSource` of the JAR that
+contains the class — not to the caller that triggered the class load.
+
+**Consequence:** Every JAR codebase from which classes are loaded under a DirtyChai
+SecurityManager must have an explicit `LoadClassPermission` grant in the active policy,
+or class loading will fail with `AccessControlException`.
+
+### LoadClassPermission in the Activation Context
+
+When Phoenix forks a group JVM and the group JVM starts loading service classes from the
+codebase URL, the loading path is:
+
+```
+Group JVM startup
+    │
+    ├─ Bootstrap classloader loads java.base (never goes through SecureClassLoader)
+    │
+    ├─ System classloader (AppClassLoader extends URLClassLoader extends SecureClassLoader)
+    │       loads the JGDMS runtime JARs from the classpath
+    │       → each JAR codebase needs LoadClassPermission in the group policy
+    │
+    └─ JGDMS codebase classloader (URLClassLoader extends SecureClassLoader)
+            loads the service JAR from the ActivationGroupDesc codebase URL
+            → service JAR codebase needs LoadClassPermission in the group policy
+```
+
+The group JVM policy must therefore grant `LoadClassPermission` to at minimum:
+
+1. Every JAR on the group JVM's classpath that is not in `java.base` (i.e., everything
+   loaded by `AppClassLoader`).
+2. The service JAR loaded from the JGDMS codebase URL.
+3. Any transitive dependency JARs loaded from codebase URLs.
+
+A wildcard grant covering the JGDMS distribution directory is the minimal practical
+configuration:
+
+```
+// Group JVM policy — LoadClassPermission for codebase loading
+grant CodeBase "file:/opt/jgdms/-" {
+    permission au.zeus.jdk.authorization.guards.LoadClassPermission;
+};
+
+grant CodeBase "file:/opt/services/my-service/-" {
+    permission au.zeus.jdk.authorization.guards.LoadClassPermission;
+};
+```
+
+**Do not use a universal `LoadClassPermission` grant** (i.e., do not grant it to all
+codebases with `grant { ... }`).  The purpose of `LoadClassPermission` is to prevent
+untrusted JARs from being loaded at all.  A universal grant defeats this purpose.
+
+### The Relationship Between LoadClassPermission and the Codebase URL
+
+The JGDMS codebase URL is specified in the `ActivationGroupDesc`.  If an attacker can
+register a malicious `ActivationGroupDesc` with a codebase URL pointing to an attacker-
+controlled JAR, that JAR would be loaded into the group JVM.  The two guards against
+this are:
+
+1. `ActivationPermission "registerGroup"` — prevents the attacker from registering the
+   malicious descriptor in the first place (see Phoenix hardening section above).
+
+2. `LoadClassPermission` — if the attacker somehow bypasses the registration guard, the
+   attacker's JAR would still need `LoadClassPermission` in the group's policy.  Since
+   the group's policy is controlled by the administrator, the attacker's codebase URL
+   will not be in the policy and class loading will fail.
+
+These two guards are complementary and both are necessary.
+
+### Interaction with URI Validation in ConcurrentPolicyFile
+
+DirtyChai's `ConcurrentPolicyFile` validates all `CodeSource` URLs through RFC 3986 URI
+parsing (`Uri.java`).  This validation fires when the policy file is loaded and when a
+`ProtectionDomain` is matched against grants.
+
+If a malicious codebase URL contains path traversal sequences (e.g.,
+`file:/opt/jgdms/../../../etc/evil.jar`), the URI validation will either:
+- Normalise the path (removing `..` segments), resulting in a path that does not match
+  the policy grant for `/opt/jgdms/-`, or
+- Reject the URL entirely with a `URISyntaxException`, causing `getCodeSource()` to
+  return `null` (fail-secure).
+
+Either outcome means the class cannot gain permissions beyond the empty set, regardless
+of what the policy file says.
+
+---
+
+## Analysis: ActivationGroupDesc JVM Argument Injection Attack Surface
+
+### The Attack
+
+An `ActivationGroupDesc` carries three JVM-argument mechanisms:
+
+| Mechanism | API | Example Dangerous Value |
+|-----------|-----|------------------------|
+| Java property overrides | `CommandEnvironment.getCommandOptions()` | `-Djava.security.manager=com.attacker.EvilSM` |
+| JVM flags | Same `getCommandOptions()` list | `-agentlib:evil` |
+| Environment variables | `ActivationGroupDesc.getPropertyOverrides()` (as `Properties`) | `JAVA_TOOL_OPTIONS=-Djava.security.manager=...` |
+
+If a caller who holds `ActivationPermission "registerGroup"` submits a crafted
+`ActivationGroupDesc`, Phoenix will pass the contents directly to `Runtime.exec()` when
+forking the group JVM.
+
+### Analysis of the Guard
+
+`ActivationPermission "registerGroup"` is the only guard provided by the activation
+framework.  It controls *who* can call `ActivationSystem.registerGroup()`, but it does
+not validate the *contents* of the `ActivationGroupDesc` after the call is authorised.
+
+This means that **the `registerGroup` grant is transitive**: any tool or service that
+holds `ActivationPermission "registerGroup"` and accepts externally-supplied group
+descriptors inherits the ability to inject arbitrary JVM arguments.  A vulnerable admin
+tool that passes user input to `registerGroup` is itself an injection vector.
+
+### Mitigations
+
+#### Layer 1: Minimal Grant of ActivationPermission "registerGroup"
+
+Grant `ActivationPermission "registerGroup"` to as few codebases as possible.  Ideally,
+only a dedicated administrative command-line tool (signed JAR, trusted certificate) holds
+this permission.  No service implementation, no library, and no Phoenix plugin should
+hold it.
+
+#### Layer 2: Phoenix-Side Content Validation
+
+Phoenix should validate the `CommandEnvironment.getCommandOptions()` list against a
+whitelist of permitted JVM flags before constructing the `exec()` call.  The validation
+rules are:
+
+| Flag Pattern | Decision |
+|---|---|
+| `-Djava.security.manager=au.zeus.jdk.authorization.sm.*` | Allow (DirtyChai SM only) |
+| `-Djava.security.policy=/etc/activation/groups/*.policy` | Allow (controlled directory only) |
+| `-Xmx[0-9]+[kmgKMG]` | Allow (heap sizing only) |
+| `-agentlib:*` | **Reject unconditionally** |
+| `-agentpath:*` | **Reject unconditionally** |
+| `-javaagent:*` | **Reject unconditionally** |
+| `-Djava.security.manager=*` where `*` is not a DirtyChai SM | **Reject** |
+| `-Djava.security.policy=*` where `*` is not under the controlled directory | **Reject** |
+| Any other flag not in the whitelist | **Reject** |
+
+This validation happens inside Phoenix, which runs under a minimal DirtyChai policy.
+Because Phoenix does not hold `ActivationPermission "registerGroup"` itself, it cannot
+register new groups; it can only validate and fork the groups already registered.
+
+#### Layer 3: OS-Level Argument Sanitisation
+
+The Phoenix startup wrapper (shell script or equivalent) can log the exact `exec()` call
+before it is made, providing an audit trail.  A syslog or centralized logging system
+receiving this audit trail gives an operator visibility into every group fork.
+
+#### Layer 4: Policy File Path Restriction
+
+The policy path in a `ActivationGroupDesc` should be validated against an allowed prefix
+before being passed to `exec()`.  Phoenix running under a DirtyChai policy that only
+grants `java.io.FilePermission "/etc/activation/groups/-" "read"` can only read policy
+files from that directory.  If the attacker supplies a path outside that directory,
+Phoenix's own SecurityManager will prevent the group JVM from reading the attacker's
+policy even if the path validation is bypassed.
+
+This is a defence-in-depth layer: Phoenix's `FilePermission` grant limits the effect of
+a path-traversal attack on the policy argument.
+
+---
+
+## Recommended DirtyChai + JGDMS Activation Policy Configuration
+
+This section provides a concrete, worked policy configuration for a minimal Phoenix
+deployment.  All paths, class names, and certificate aliases must be adapted to the
+specific deployment.
+
+### Overview of Policy Files
+
+| Process | Policy file | SecurityManager |
+|---------|-------------|-----------------|
+| Phoenix daemon | `/etc/activation/phoenix.policy` | `CombinerSecurityManager` |
+| Group JVM A (service-a) | `/etc/activation/groups/service-a.policy` | `CombinerSecurityManager` |
+| Admin tool | Inherits JVM policy | `CombinerSecurityManager` |
+
+### Phoenix Daemon Policy (`/etc/activation/phoenix.policy`)
+
+```
+// DirtyChai policy for the Phoenix activation daemon.
+// Phoenix is a high-value target: policy is deliberately minimal.
+
+// Java SE permissions that Phoenix needs from the platform
+grant CodeBase "jrt:/java.rmi/*" {
+    permission java.net.SocketPermission "localhost:*", "listen,accept,connect,resolve";
+};
+
+// Phoenix implementation code
+grant CodeBase "file:/opt/jgdms/jgdms-phoenix.jar"
+      signedBy "jgdms-cert" {
+
+    // Load JGDMS classes from the distribution directory
+    permission au.zeus.jdk.authorization.guards.LoadClassPermission;
+
+    // Fork group JVMs
+    permission java.lang.RuntimePermission "exec";
+
+    // Policy files for group JVMs (read-only access to controlled directory)
+    permission java.io.FilePermission "/etc/activation/groups/-", "read";
+
+    // Phoenix persistence log
+    permission java.io.FilePermission "/var/lib/phoenix/-", "read,write,delete";
+
+    // Listen for activation requests on fixed loopback port
+    permission java.net.SocketPermission "localhost:1098", "listen,accept";
+
+    // Communicate with group JVMs on loopback (ephemeral ports)
+    permission java.net.SocketPermission "localhost:1024-65535", "connect,resolve";
+
+    // Deserialise activation state from persistence log
+    permission au.zeus.jdk.authorization.guards.SerialObjectPermission
+              "java.rmi.activation.ActivationDesc";
+    permission au.zeus.jdk.authorization.guards.SerialObjectPermission
+              "java.rmi.activation.ActivationGroupDesc";
+    permission au.zeus.jdk.authorization.guards.SerialObjectPermission
+              "java.rmi.activation.ActivationGroupDesc$CommandEnvironment";
+    permission au.zeus.jdk.authorization.guards.SerialObjectPermission
+              "java.rmi.activation.ActivationID";
+    permission au.zeus.jdk.authorization.guards.SerialObjectPermission
+              "java.rmi.activation.ActivationGroupID";
+    permission au.zeus.jdk.authorization.guards.SerialObjectPermission
+              "java.rmi.MarshalledObject";
+
+    // Logging
+    permission java.util.logging.LoggingPermission "control";
+    permission java.io.FilePermission "/var/log/phoenix.log", "write";
+};
+
+// NOT GRANTED to Phoenix: NativeAccessPermission, AllPermission,
+// SocketPermission "* connect" (only loopback), ActivationPermission "registerGroup"
+```
+
+### Group JVM Policy (`/etc/activation/groups/service-a.policy`)
+
+```
+// DirtyChai policy for activation group JVM running service-a.
+// One policy file per group; each group is a separate OS process.
+
+// JGDMS runtime JARs loaded from application classpath
+grant CodeBase "file:/opt/jgdms/-"
+      signedBy "jgdms-cert" {
+    permission au.zeus.jdk.authorization.guards.LoadClassPermission;
+    // JGDMS runtime only needs network access for its own JERI transport
+    permission java.net.SocketPermission "localhost:*", "listen,accept,connect,resolve";
+};
+
+// Service implementation JAR loaded from codebase URL
+grant CodeBase "file:/opt/services/service-a.jar"
+      signedBy "service-a-cert" {
+
+    permission au.zeus.jdk.authorization.guards.LoadClassPermission;
+
+    // Service-specific network access (adjust to actual service needs)
+    permission java.net.SocketPermission "db.internal:5432", "connect,resolve";
+
+    // Service-specific file access
+    permission java.io.FilePermission "/var/data/service-a/-", "read,write";
+
+    // Deserialise only known-good service domain classes
+    permission au.zeus.jdk.authorization.guards.SerialObjectPermission
+              "com.example.service.DomainObject";
+    permission au.zeus.jdk.authorization.guards.SerialObjectPermission
+              "com.example.service.RequestRecord";
+    // Add one entry per class with a custom readObject in service-a.jar
+
+    // Communicate with Phoenix (activation registration / heartbeat)
+    permission java.rmi.activation.ActivationPermission "system";
+};
+
+// NOT GRANTED to group JVM:
+//   ActivationPermission "registerGroup" — groups do not register new groups
+//   NativeAccessPermission — service has no native library needs
+//   AllPermission — never grant this
+//   SerialObjectPermission for gadget classes (e.g., com.sun.jndi.*)
+```
+
+### Admin Tool Policy
+
+The admin tool that calls `ActivationSystem.registerGroup()` requires only:
+
+```
+grant CodeBase "file:/opt/tools/activation-admin.jar"
+      signedBy "admin-cert" {
+
+    permission au.zeus.jdk.authorization.guards.LoadClassPermission;
+
+    // The only privileged activation action this tool needs
+    permission java.rmi.activation.ActivationPermission "registerGroup";
+    permission java.rmi.activation.ActivationPermission "registerObject";
+
+    // Connect to Phoenix
+    permission java.net.SocketPermission "activation-host:1098", "connect,resolve";
+};
+```
+
+Granting `ActivationPermission "registerGroup"` to this tool means that if the admin
+tool is compromised, an attacker could register malicious groups.  This is why the
+admin tool must itself be tightly scoped, signed, and not accessible from the network.
+
+### DirtyChai SecurityManager Startup for Each Process
+
+Every process in the activation topology must start the DirtyChai SecurityManager via
+the JVM property:
+
+```
+-Djava.security.manager=au.zeus.jdk.authorization.sm.CombinerSecurityManager
+-Djava.security.policy=/path/to/process-specific.policy
+--illegal-native-access=deny
+```
+
+`CombinerSecurityManager` is on the DirtyChai trusted whitelist (it is in the
+`trustedSMClass()` method), so no stack inspection is performed when it is installed —
+startup overhead is negligible.
+
+The `--illegal-native-access=deny` flag adds a module-system layer that independently
+blocks native access even if the SecurityManager is bypassed (defence-in-depth).
+
+### Security Properties of the Complete Configuration
+
+| Property | Achieved By |
+|---|---|
+| Phoenix cannot be influenced by group JVMs | Phoenix does not grant any group access to its persistence store or port 1098 |
+| A compromised group JVM cannot register new groups | `ActivationPermission "registerGroup"` not granted to group JVMs |
+| An attacker who reads a service's serialised data cannot inject gadget classes | `SerialObjectPermission` allowlist is per-service, enumerated, non-wildcard |
+| An attacker who controls a codebase URL cannot load classes without policy approval | `LoadClassPermission` must be explicitly granted per-codebase |
+| Native library loading is blocked in all group JVMs | `NativeAccessPermission` not granted; `--illegal-native-access=deny` in effect |
+| Phoenix crash does not affect the other groups | OS process isolation; each group is an independent process |
+| A policy-file tampering attack is limited to the process whose file was changed | One policy file per process; file owned by that process's OS user |
