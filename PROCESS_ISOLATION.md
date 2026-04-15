@@ -265,6 +265,8 @@ It is checked at the entry to standard Java serialization and deserialization.
 **What it does:**
 - Forces policy authors to explicitly whitelist every class that may be
   serialized or deserialized via `ObjectInputStream` / `ObjectOutputStream`.
+  After the planned fix described in the Background section below, this covers
+  all `Serializable` classes — not just those with a custom `readObject`.
 - Prevents gadget-chain attacks by default: a class not in the policy cannot be
   deserialized even if it appears in the stream.
 - Works as a policy-file declaration, making the serialization surface auditable
@@ -275,9 +277,9 @@ It is checked at the entry to standard Java serialization and deserialization.
 - It does not validate the *content* of the deserialized object, only whether
   the class is permitted.  Content validation is the responsibility of the
   `@AtomicSerial` constructor or the application's own validation logic.
-- It does not prevent a permitted class from executing malicious logic in its
-  `readResolve()` or `readObject()` method.  For classes that implement these
-  callbacks the behaviour of those callbacks is still the responsibility of the
+- It does not prevent a whitelisted class from executing logic in its
+  `readResolve()` or `readObject()` callback.  For classes that implement these
+  callbacks the behaviour of those callbacks remains the responsibility of the
   class author.
 **The combined defence:**
 ```
@@ -319,8 +321,17 @@ thread running in the same process can leak secrets from other threads via these
 channels regardless of permission grants.
 #### 3. JVM internals access
 Despite module encapsulation and permission checks, the JVM exposes internal
-state (e.g., via `sun.misc.Unsafe`, JNI, or JVMTI) that can be exploited by
-native code or compromised JVM extensions to escape the security model entirely.
+state that can be exploited to escape the security model entirely:
+- **`sun.misc.Unsafe` / `jdk.internal.misc.Unsafe`** — allows arbitrary memory
+  reads and writes at native-pointer offsets.
+- **JNI / FFM** — native code runs outside the JVM and is invisible to
+  `StackWalker`; it can call back into the JVM impersonating any class.
+- **JVMTI** — a `-agentlib:` agent attached at startup can intercept or
+  redefine any class before the SecurityManager is installed.
+- **`java.lang.instrument.Instrumentation`** — a `-javaagent:` can redefine
+  classes at runtime, including security-critical classes, after the JVM is
+  running.  Unlike JVMTI, an `Instrumentation` agent can be loaded post-startup
+  via the `VirtualMachine.attach()` API if the JVM is not locked down.
 #### 4. Resource exhaustion
 As analysed above, a running thread cannot be forcibly terminated.  Even if all
 creation guards are in place, code that has been granted `createVirtualThread`
@@ -343,12 +354,16 @@ OS-level process isolation:
 | Blast-radius containment | Isolated `ForkJoinPool` + deadline | JGDMS service layer |
 | Memory isolation | Separate OS process | OS / GraalVM Espresso / container |
 | Network isolation | Firewall / namespace | OS / container runtime |
-> **Non-goal of DirtyChai**: Sandboxing untrusted code.  DirtyChai focuses on
-> user *authorisation* — ensuring users have access only when using approved,
-> policy-controlled code — and provides tooling to audit and limit the
-> privileges requested by third-party code prior to deployment.  Developers
-> needing untrusted-code sandboxing should consider GraalVM Espresso or Graal
-> process isolation.
+> **Scope of DirtyChai**: DirtyChai provides the *in-process* layer of the
+> combined confinement architecture.  Its core goals are user authorisation —
+> ensuring principals have access only when using approved, policy-controlled
+> code — least-privilege enforcement, and tooling to audit third-party code
+> before deployment.  When combined with JGDMS activation groups and OS-level
+> process and network isolation (as described in this document), DirtyChai's
+> in-process permission layer becomes one tier of a full defence-in-depth
+> posture that can confine untrusted code.  Neither DirtyChai alone nor JGDMS
+> alone is sufficient for that goal; the layers described in "The Correct
+> Architecture" table above are all required.
 In practice, the recommended deployment model for JGDMS services that handle
 untrusted remote input is:
 1. Each service runs in its own OS process.
@@ -855,6 +870,13 @@ that Phoenix's policy permits.
 
 ## Investigation: DirtyChai + JGDMS for In-Process and Remote Network Isolation
 
+> **JDK compatibility note:** JGDMS requires a SecurityManager-capable JDK.
+> Standard OpenJDK removed `SecurityManager` in Java 24.  DirtyChai restores
+> this infrastructure, making DirtyChai the required JDK for any deployment
+> that combines JGDMS services with the in-process permission model described
+> in this document.  Using JGDMS on standard OpenJDK 24+ without DirtyChai
+> leaves the in-process permission layer absent.
+
 ### The Two Isolation Dimensions
 
 A JGDMS service deployment has two distinct isolation boundaries:
@@ -888,14 +910,10 @@ against the policy loaded by `ConcurrentPolicyFile`.
 
 **What in-process isolation cannot prevent:**
 
-- A thread that is already running can exhaust the CPU or heap without any
-  permission check.
-- Memory corruption through a JNI/JVMTI agent bypasses all Java-level checks.
-- An attacker who has already escalated to a fully-trusted context (e.g., through
-  the WhiteBox or Unsafe APIs) can read or corrupt any JVM state.
-
-These residual gaps make process isolation (Section above) essential for truly
-untrusted code.
+See "Why Process Isolation Remains Essential" earlier in this document
+(shared memory, side-channel attacks, JVM internals, resource exhaustion,
+class-loader confusion).  These residual gaps make OS process isolation
+essential for truly untrusted code.
 
 ### Remote Network Isolation Layer (JGDMS JERI)
 
@@ -1020,6 +1038,11 @@ posture when handling untrusted remote input.
 
 ## Correction: How JGDMS Actually Handles Proxy Trust (No ProxyTrust)
 
+> **Reference context:** This section documents JGDMS-specific proxy-trust
+> mechanics for developers integrating DirtyChai-based services into a JGDMS
+> deployment.  It corrects a common misreading of Jini/Apache River
+> documentation.
+
 ### The Misconception
 
 A common assumption when reading Jini or Apache River documentation is that **smart
@@ -1054,11 +1077,15 @@ signed with the service provider's certificate.
 
 When the client downloads the proxy:
 
-1. `RMIClassLoader` (or the JGDMS class loader) fetches the JAR from the codebase URL.
-2. The JAR signature is verified against the certificate in the client's truststore.
-3. The proxy class is loaded into a `ProtectionDomain` whose `CodeSource` records the
+1. The client's JGDMS dynamic policy first requires `DownloadPermission` to be
+   granted to the lookup service's authenticated principal before it will fetch
+   any proxy JAR.  This prevents an untrusted lookup service from injecting
+   arbitrary proxy classes.
+2. `RMIClassLoader` (or the JGDMS class loader) fetches the JAR from the codebase URL.
+3. The JAR signature is verified against the certificate in the client's truststore.
+4. The proxy class is loaded into a `ProtectionDomain` whose `CodeSource` records the
    verified certificate.
-4. The client's policy grants permissions to `CodeSource` entries signed by trusted
+5. The client's policy grants permissions to `CodeSource` entries signed by trusted
    certificates — unsigned or mis-signed proxies receive no permissions and are
    immediately inert.
 
@@ -1316,13 +1343,22 @@ privileges.  A minimal policy limits the blast radius to exactly the permissions
 
 ### Background
 
-DirtyChai's `SerialObjectPermission` is checked in `SerialCallbackContext` immediately
-before a class's custom `readObject`/`readFields` method is invoked during
-`ObjectInputStream` deserialisation.  The permission name is the fully-qualified class
-name of the class being deserialised.
+DirtyChai's `SerialObjectPermission` is checked during `ObjectInputStream`
+deserialisation.  The permission name is the fully-qualified class name of the
+class being deserialised.
+
+**Planned scope (full coverage):** The check is being extended to fire for
+every class resolved by `ObjectInputStream`, not only those that have a custom
+`readObject` method.  When this fix lands, holding `SerialObjectPermission` for
+a class will be required before that class can be reconstructed from any Java
+serialization stream, regardless of whether it uses default or custom
+serialization.
+
+The current implementation fires in `SerialCallbackContext`, which is invoked
+immediately before a class's custom `readObject`/`readFields` method:
 
 ```java
-// SerialCallbackContext.java (DirtyChai modification)
+// SerialCallbackContext.java (DirtyChai modification — current)
 SerialCallbackContext(Object obj, ObjectStreamClass desc) {
     this(obj, desc, check(getGuard(desc.getName())), Thread.currentThread());
     //                    ^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -1331,16 +1367,16 @@ SerialCallbackContext(Object obj, ObjectStreamClass desc) {
 }
 ```
 
-The effect is that **every class that implements `Serializable` and has a custom
-`readObject` method** requires a `SerialObjectPermission` grant in the deserialising
-thread's `AccessControlContext` stack.  Classes that rely purely on default serialisation
-(no `readObject`) do not trigger this check — only those with custom `readObject`
-implementations do.
+After the planned fix, the check will additionally fire at the point where
+`ObjectInputStream` resolves each class descriptor, covering classes that rely
+on default serialization and have no custom `readObject`.
 
 ### Activation Classes That Require SerialObjectPermission
 
-The following classes are part of the JGDMS activation serialisation path and have
-custom `readObject` implementations:
+The following classes are part of the JGDMS activation serialisation path.
+All of them have custom `readObject` implementations and therefore require
+`SerialObjectPermission` under both the current and the planned
+implementations:
 
 | Class | Why it needs SerialObjectPermission |
 |-------|-------------------------------------|
@@ -1351,9 +1387,10 @@ custom `readObject` implementations:
 | `java.rmi.activation.ActivationGroupID` | Custom `readObject` validates UID and system ref |
 | `java.rmi.MarshalledObject` | Custom `readObject` reads serialised byte array |
 
-Classes that use default serialisation only (e.g., `java.util.Properties`,
-`java.lang.String`, primitive wrappers) do not require `SerialObjectPermission` and may
-be freely deserialised as long as the `ObjectInputFilter` does not reject them.
+Once the full-coverage fix lands, all other `Serializable` classes that cross a
+standard `ObjectInputStream` path will also need explicit grants — including
+classes that previously relied on default serialization.  Use
+`SecurityPolicyWriter` to scan service JARs and generate the required grants.
 
 ### Where SerialObjectPermission Must Be Granted
 
@@ -1382,8 +1419,7 @@ If this is correctly configured, the group JVM policy does **not** need
 #### Service Implementations Inside Group JVMs
 
 Service implementations may deserialise their own domain objects.  Each deserialised
-class that has a custom `readObject` method needs `SerialObjectPermission` granted to
-the service's codebase:
+class needs `SerialObjectPermission` granted to the service's codebase:
 
 ```
 // Group JVM policy — service-specific SerialObjectPermission grants
@@ -1395,29 +1431,32 @@ grant CodeBase "file:/path/to/my-service.jar"
               "com.example.service.DomainObject";
     permission au.zeus.jdk.authorization.guards.SerialObjectPermission
               "com.example.service.RequestRecord";
-    // ... enumerate all classes with custom readObject in this service
+    // Enumerate all Serializable classes in this service once full-coverage
+    // fix lands; SecurityPolicyWriter can generate these grants automatically.
 };
 ```
 
 The `SecurityPolicyWriter` tool can generate these grants automatically by scanning
-the service JAR for classes that implement `readObject`.
+the service JAR for `Serializable` classes.
 
 ### SerialObjectPermission as a Defence Against Gadget Chains
 
 A serialisation gadget chain requires that at least one class in the chain has a
 custom `readObject` that triggers a dangerous side-effect (arbitrary code execution,
 SSRF, file write, etc.).  By requiring an explicit `SerialObjectPermission` grant for
-every such class, DirtyChai ensures that:
+every class reaching the deserialisation path, DirtyChai ensures that:
 
 1. A service policy that does not grant `SerialObjectPermission "com.sun.jndi.*"` will
    throw `SecurityException` before the JNDI gadget's `readObject` fires.
 2. A dependency JAR that unexpectedly ships a gadget class cannot be weaponised unless
    the administrator explicitly grants `SerialObjectPermission` for that class.
+3. Once the full-coverage fix lands, even gadget classes that use only default
+   serialization (previously unguarded) will require an explicit grant.
 
 This is a defence-in-depth supplement to the `ObjectInputFilter` (serial filter), not a
 replacement.  Both should be configured: the serial filter enforces an allowlist of
 deserialised class names; `SerialObjectPermission` enforces an allowlist of classes
-whose custom `readObject` logic may execute.
+that may be reconstructed from a stream.
 
 ---
 
