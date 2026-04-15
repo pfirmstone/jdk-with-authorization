@@ -520,14 +520,27 @@ in the JVM session, that library is permanently registered in the class loader's
 the JVM.  The library's native functions remain callable via JNI or FFM for
 the rest of the JVM's lifetime.
 
-**Implication:** Untrusted code that can persuade a trusted class to call a
-native method on its behalf — a confused-deputy attack — can indirectly invoke
-native functionality without itself holding `NativeAccessPermission`.
+**Implication:** This confused-deputy attack only succeeds when the trusted
+class uses **unrestricted** `AccessController.doPrivileged` (i.e. without
+supplying a restricted `AccessControlContext`).  Unrestricted `doPrivileged`
+tells the access-control stack walk to stop at that frame, dropping all caller
+`ProtectionDomain`s above it from the intersection.  Once the caller's domain
+is absent, the trusted class's own `NativeAccessPermission` is sufficient and
+the check passes even though the ultimate caller holds no such permission.
 
-**Mitigation:** Use `AccessController.doPrivileged` with a restricted context
-when trusted classes call native methods on behalf of caller-supplied inputs.
-This is a design obligation for trusted library code, not something DirtyChai
-can enforce automatically.
+Without any `doPrivileged`, the untrusted caller's `ProtectionDomain` remains
+on the call stack.  `SecurityManager.checkPermission` computes the intersection
+of every domain on the stack, so the untrusted domain's absence of
+`NativeAccessPermission` blocks the call automatically — no additional pattern
+is required from the trusted class.
+
+**Mitigation:** Trusted library code must **not** use unrestricted
+`AccessController.doPrivileged` when calling native methods on behalf of
+caller-supplied inputs.  The normal call path — without any `doPrivileged` —
+allows the security policy's call-stack intersection to enforce the restriction
+automatically.  This is a design obligation for trusted library code; DirtyChai
+cannot detect and prevent a trusted class from using unrestricted `doPrivileged`
+on its own behalf.
 
 #### 2. JNI callbacks from within native code
 
@@ -560,7 +573,7 @@ untrusted service processes).
 | Untrusted jar uses FFM `Linker.downcallHandle()` | `NativeAccessPermission("callerClass","downcallHandle")` | **Blocked by DirtyChai** |
 | Untrusted jar uses `MemorySegment.reinterpret()` | `NativeAccessPermission("callerClass","reinterpret")` | **Blocked by DirtyChai** |
 | Untrusted jar calls `SymbolLookup.libraryLookup()` | `NativeAccessPermission("callerClass","libraryLookup")` | **Blocked by DirtyChai** |
-| Confused-deputy: trusted class calls native on behalf of untrusted caller | `doPrivileged` with restricted context (design requirement on trusted code) | **Not automated — requires design discipline** |
+| Confused-deputy: trusted class calls native on behalf of untrusted caller | Call-stack intersection (SM checks all `ProtectionDomain`s); only fails if trusted code uses unrestricted `doPrivileged` | **Protected by default — trusted code must avoid unrestricted `doPrivileged`** |
 | Native code already loaded by trusted class | No Java-side gate (native code is already at OS level) | **Residual gap — use process isolation** |
 | JVMTI / `-agentlib:` attached at startup | OS / JVM launch controls | **Out of scope for DirtyChai** |
 
@@ -680,21 +693,49 @@ exploited to load native code through the module-system path.
 **Files:** `CONTRIBUTING.md`, `SECURITY_MODEL.md`.
 
 **Description:**  
-Document the pattern that trusted library code must follow when it calls native
-methods on behalf of caller-supplied inputs:
+Document the obligation that trusted library code must honour when it calls
+native methods that may be triggered by caller-supplied inputs.
+
+The Java security model protects against the confused-deputy attack
+automatically: `SecurityManager.checkPermission` walks the entire call stack
+and computes the *intersection* of the `PermissionCollection`s held by every
+`ProtectionDomain` on the stack.  As long as the untrusted caller's domain
+remains on the stack, its absence of `NativeAccessPermission` prevents the call
+from succeeding — no special coding pattern is required in the trusted class.
+
+The attack only becomes possible when the trusted class uses **unrestricted**
+`AccessController.doPrivileged` (without supplying a restricted
+`AccessControlContext`).  Unrestricted `doPrivileged` tells the stack walk to
+stop at that frame, removing the untrusted caller's domain from the intersection.
+With the caller's domain gone, the trusted class's own `NativeAccessPermission`
+is sufficient and the permission check passes incorrectly.
+
+**The obligation for trusted library authors is therefore:**
+
+> Do **not** use unrestricted `AccessController.doPrivileged` on code paths
+> that lead to native method calls when those paths can be triggered by
+> caller-supplied inputs.  The normal call path (no `doPrivileged`) lets the
+> security policy enforce the restriction through stack-intersection automatically.
+
+If a trusted class genuinely needs to perform a privileged operation while
+still honouring the caller's restrictions (e.g., it must open a file but must
+also respect the caller's `FilePermission` grants), it must supply a restricted
+`AccessControlContext` built from the caller's context:
 
 ```java
-// Pattern: restrict the AccessControlContext before calling native code
-// that uses caller-controlled inputs
+// Only needed when elevated privilege AND caller restriction are both required.
+// For the confused-deputy case alone, simply omit doPrivileged entirely.
+AccessControlContext callerContext = AccessController.getContext();
 AccessController.doPrivileged(
     () -> { nativeMethod(callerSuppliedInput); },
-    restrictedContext   // built from the caller's context, not the trusted class's
+    callerContext   // caller's ProtectionDomain remains in the intersection
 );
 ```
 
-Failing to do this creates a confused-deputy vulnerability where untrusted code
-can exploit the trusted class's `NativeAccessPermission` to indirectly invoke
-native functionality it could not invoke directly.
+Failing to avoid unrestricted `doPrivileged` creates a confused-deputy
+vulnerability where untrusted code exploits the trusted class's
+`NativeAccessPermission` to invoke native functionality it could not invoke
+directly.
 
 This guidance is for documentation files only and is therefore within scope for
 this session.
