@@ -585,29 +585,45 @@ The `NativeAccessPermission` class and its integration into `Module.ensureNative
 are already implemented.  The following tasks remain for a complete, policy-auditable
 native isolation story.
 
-### Task N-1 — Add `NativeAccessPermission` to the Default Deny Policy
+### Task N-1 — ~~Add `NativeAccessPermission` to the Default Deny Policy~~ ✅ Already Complete
 
-**Priority:** High  
-**Files:** `src/java.base/share/classes/au/zeus/jdk/authorization/policy/`
-(default policy template) and any example policy files in the repository.
+**Priority:** High — **No action required: already implemented.**  
+**Files:**
+- `src/java.base/share/lib/security/default.policy`
+- `src/java.base/windows/lib/security/default.policy`
 
-**Description:**  
-The default policy should grant `NativeAccessPermission` only to named trusted
-modules (e.g., `jrt:/java.base/*`, `jrt:/java.desktop/*`) and explicitly
-withhold it from the unnamed module and from application classpath code.
+**Status:** Complete.  `NativeAccessPermission "*", "*"` has been added to every
+platform-loader module in the default policy that loads or uses native libraries:
 
-**Policy pattern (human to implement):**
+| Module | Policy file | Grant |
+|--------|-------------|-------|
+| `jrt:/java.smartcardio` | `share/lib/security/default.policy` | `NativeAccessPermission "*", "*"` |
+| `jrt:/jdk.crypto.cryptoki` | `share/lib/security/default.policy` | `NativeAccessPermission "*", "*"` |
+| `jrt:/java.desktop` | `share/lib/security/default.policy` | `NativeAccessPermission "*", "*"` |
+| `jrt:/jdk.crypto.mscapi` | `windows/lib/security/default.policy` | `NativeAccessPermission "*", "*"` |
+
+Modules that already hold `AllPermission` (e.g., `java.sql`, `jdk.dynalink`,
+`jdk.security.auth`) implicitly satisfy any `NativeAccessPermission` check
+because `AllPermission.implies()` returns `true` for all permissions — no
+explicit entry is needed for those modules.
+
+> **Note:** No explicit grant is needed for `jrt:/java.base/*`.  Classes in the
+> `java.base` module are loaded by the bootstrap class loader.  When only
+> bootstrap-loaded code is present on the call stack,
+> `AccessController.getStackAccessControlContext()` returns `null`, and
+> `AccessController.checkPermission()` returns immediately without consulting the
+> policy — bootstrap code is effectively always fully privileged.  Adding a
+> `grant codeBase "jrt:/java.base/*"` block has no runtime effect and should be
+> omitted to avoid misleading policy authors.
+
+**Policy pattern applied:**
 
 ```
-// Deny by default; grant only to bootstrap classes
-grant codeBase "jrt:/java.base/*" {
-    permission au.zeus.jdk.authorization.guards.NativeAccessPermission
-        "*", "*";
-};
-
-grant codeBase "jrt:/java.desktop/*" {
-    permission au.zeus.jdk.authorization.guards.NativeAccessPermission
-        "*", "*";
+// Deny by default; grant only to trusted platform modules that require native access.
+// Note: java.base does NOT need an explicit grant — bootstrap code bypasses the
+// policy engine entirely (getStackAccessControlContext() returns null).
+grant codeBase "jrt:/java.desktop" {
+    permission au.zeus.jdk.authorization.guards.NativeAccessPermission "*", "*";
 };
 
 // Do NOT grant NativeAccessPermission to application classpath or untrusted jars
@@ -615,26 +631,40 @@ grant codeBase "jrt:/java.desktop/*" {
 
 ---
 
-### Task N-2 — Add `RuntimePermission("loadLibrary.*")` to the Default Deny Policy
+### Task N-2 — ~~Add `RuntimePermission("loadLibrary.*")` to the Default Deny Policy~~ ✅ Already Complete
 
-**Priority:** High  
+**Priority:** High — **No action required: already implemented.**  
 **Files:** Same as N-1.
 
-**Description:**  
-Pair the `NativeAccessPermission` deny with an explicit deny of
-`RuntimePermission("loadLibrary.*")` for untrusted code.  Because
-`SecurityManager.checkLink()` fires independently of `NativeAccessPermission`,
-both must be denied to close the loading gate.
+**Status:** Complete.  The existing default policy already closes the
+`loadLibrary.*` gate via omission.  The generic `grant {}` block (which all
+protection domains receive) contains no `loadLibrary.*` entry.  Only the
+specific named-module blocks carry targeted `loadLibrary.<libname>` grants:
 
-**Policy pattern (human to implement):**
+| Module | Permitted library |
+|--------|-------------------|
+| `jrt:/java.smartcardio` | `loadLibrary.j2pcsc` |
+| `jrt:/jdk.crypto.cryptoki` | `loadLibrary.j2pkcs11` |
+| `jrt:/jdk.crypto.mscapi` (Windows) | `loadLibrary.sunmscapi` |
+
+Application-classpath code and unnamed-module code receive none of these grants,
+so `SecurityManager.checkLink()` will throw `SecurityException` when untrusted
+code attempts to call `System.loadLibrary()`.
+
+**Policy structure (deny by omission):**
 
 ```
-// Deny loadLibrary to untrusted classpath code by omission
-// (no RuntimePermission "loadLibrary.*" grant in untrusted code's grant block)
+// Untrusted application-classpath code gets only the minimal generic grant.
+// No loadLibrary.* appears here, so System.loadLibrary() is denied.
+grant {
+    permission java.net.SocketPermission "localhost:0", "listen";
+    // ... standard read-only property permissions only ...
+};
 
-// Grant specific libraries to specific trusted code:
-grant codeBase "file:/opt/myapp/lib/trusted.jar" {
-    permission java.lang.RuntimePermission "loadLibrary.myspecificlib";
+// Named trusted modules receive only the specific library they require:
+grant codeBase "jrt:/java.smartcardio" {
+    permission java.lang.RuntimePermission "loadLibrary.j2pcsc";
+    // ... other smartcardio-specific permissions ...
 };
 ```
 
@@ -770,6 +800,35 @@ trusted modules receive `NativeAccessPermission` so that the intersection logic
 is exercised in tests.
 
 This is a human implementation task (policy file changes and test additions).
+
+---
+
+> **Footnote — Recommended Policy Authoring Workflow**
+>
+> The wildcard grants (`"*", "*"`) used in Tasks N-1 and N-2 above are a safe
+> starting point for trusted platform-loader modules, but they are deliberately
+> broad.  For application code and any module whose actual permission requirements
+> are not yet known, the recommended workflow is:
+>
+> 1. **Generate first with polpAudit.**  Run the application (or its test suite)
+>    under [`polpAudit`](https://github.com/pfirmstone/JGDMS/tree/trunk/tools/polpAudit)
+>    (or the equivalent `SecurityPolicyWriter` instrumentation built into
+>    DirtyChai — see Task N-3 above).  polpAudit observes every
+>    `SecurityManager.checkPermission()` call that occurs during the run and
+>    emits a least-privilege policy file containing only the permissions that
+>    were actually checked.
+>
+> 2. **Review and widen if needed.**  Inspect the generated policy file.  If a
+>    legitimate code path was not exercised during the capture run (e.g., an
+>    error-recovery branch or a rarely-used feature), add the missing permission
+>    entries manually after verifying that granting them is intentional.
+>
+> This two-step approach — *capture then widen* — avoids both under-granting
+> (which causes `SecurityException` at runtime) and over-granting (which enlarges
+> the attack surface unnecessarily).  The wildcard entries in the platform-module
+> policy blocks above were applied only after confirming that every platform module
+> listed there is fully trusted and loaded by the platform class loader; the same
+> shortcut must **not** be applied to application-classpath or plugin code.
 
 ---
 
