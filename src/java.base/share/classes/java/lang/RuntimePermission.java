@@ -184,6 +184,21 @@ import java.lang.module.ModuleFinder;
  *   <td>This allows an attacker to create thread groups and
  * set their run priority.</td>
  * </tr>
+ * 
+ * <tr>
+ *   <th scope="row">createPlatformThread</th>
+ *   <td>creation of platform threads</td>
+ *   <td>This allows an attacker to create platform threads and perform denial
+ * of service by consuming all system resources.</td>
+ * </tr>
+ * 
+ * <tr>
+ *   <th scope="row">createVirtualThread</th>
+ *   <td>creation of virtual threads</td>
+ *   <td>This allows an attacker to create virtual threads and perform denial 
+ * of service by carrier thread starvation, eventually pinning all platform threads,
+ * or by performing hot CPU busy loops.</td>
+ * </tr>
  *
  * <tr>
  *   <th scope="row">getProtectionDomain</th>
