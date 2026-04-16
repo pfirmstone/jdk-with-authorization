@@ -127,7 +127,51 @@ Dirty Chai preserves authorization behavior with virtual threads by carrying eff
 
 ---
 
-## 9) Threats Addressed
+## 9) Thread Creation Security Semantics (Detailed)
+
+### 9.1 Runtime permissions enforced at thread-creation entry points
+
+When a SecurityManager is installed, Dirty Chai enforces explicit runtime permissions before creating threads:
+
+- **Platform threads:** `RuntimePermission("createPlatformThread")`
+- **Virtual threads:** `RuntimePermission("createVirtualThread")`
+
+These checks are applied in builder paths (`ThreadBuilders`) and in public platform-thread constructor paths (`Thread`), so both modern and traditional creation APIs are guarded.
+
+### 9.2 Builder methods vs traditional constructors
+
+The implementation distinguishes context capture behavior:
+
+- **`Thread.ofPlatform()` / `Thread.ofVirtual()` builders** capture an `AccessControlContext` at builder unstarted/factory creation points and propagate that captured context to created threads/factories.
+- **Traditional public `Thread(...)` constructors** create platform threads through constructor flow where Subject-specific capture is not preserved the same way as the builder flow.
+
+In this codebase, the builder path is explicitly documented and implemented to preserve Subject-bearing authorization context more predictably for thread/factory creation workflows.
+
+### 9.3 Platform thread builder behavior
+
+For platform builders:
+
+1. Permission check for `createPlatformThread`
+2. Capture caller context with `AccessController.getContext()`
+3. Create thread/factory with captured inherited security context
+4. Apply group/priority/daemon/UEH builder options
+
+### 9.4 Virtual thread builder behavior
+
+For virtual builders:
+
+1. Permission check for `createVirtualThread`
+2. Capture caller context with `AccessController.getContext()`
+3. Create virtual thread/factory with captured inherited security context
+4. Preserve configured characteristics and exception handler
+
+### 9.5 Security implication
+
+For Subject-aware authorization, prefer `Thread.Builder` / builder-produced `ThreadFactory` created inside the intended Subject scope (for example within `Subject.callAs(...)`) so downstream thread creation consistently inherits the intended authorization context.
+
+---
+
+## 10) Threats Addressed
 
 - Reflection/proxy/generated-code attempts to bypass SecurityManager installation controls
 - Privilege escalation via overly broad or inherited permission assumptions
@@ -136,7 +180,7 @@ Dirty Chai preserves authorization behavior with virtual threads by carrying eff
 
 ---
 
-## 10) Non-Goals / Limitations
+## 11) Non-Goals / Limitations
 
 - Dirty Chai is an authorization and policy-enforcement model, not a complete malware sandbox by itself.
 - Misconfigured policy can still over-grant privileges.
@@ -144,7 +188,7 @@ Dirty Chai preserves authorization behavior with virtual threads by carrying eff
 
 ---
 
-## 11) Recommended Deployment Pattern
+## 12) Recommended Deployment Pattern
 
 1. **Stage/Audit** with `polpAudit` (`SecurityPolicyWriter`) to discover required permissions.
 2. Review and narrow grants (remove over-broad file/socket/all-permission entries).
@@ -153,7 +197,7 @@ Dirty Chai preserves authorization behavior with virtual threads by carrying eff
 
 ---
 
-## 12) Security Invariants (Must Hold)
+## 13) Security Invariants (Must Hold)
 
 1. Trusted SecurityManager checks use exact class identity, not subclass trust.
 2. Custom SecurityManager installation requires all validation layers.
@@ -163,10 +207,9 @@ Dirty Chai preserves authorization behavior with virtual threads by carrying eff
 
 ---
 
-## 13) Related Documents
+## 14) Related Documents
 
 - `SECURITY_ANALYSIS.md` (detailed findings and historical fixes)
 - `STACK_VALIDATION_ANALYSIS.md` (stack-validation trade-offs)
 - `VULNERABILITIES_ADDRESSED.md` (resolved issues)
 - `SECURITY.md` (security policy and reporting)
-
