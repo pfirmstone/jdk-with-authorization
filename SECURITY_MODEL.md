@@ -2412,7 +2412,7 @@ When a `SecurityManager` is installed, workers are created via `doPrivileged` wi
 regularACC  (non-common pool):
   → RuntimePermission("getClassLoader")
   → RuntimePermission("setContextClassLoader")
-  → RuntimePermission("enableContextClassLoaderOverride")
+  → RuntimePermission("enableContextClassLoaderOverride")   ← required by Thread constructor (see below)
 
 commonACC  (common pool):
   → above plus RuntimePermission("modifyThread")
@@ -2420,6 +2420,36 @@ commonACC  (common pool):
 ```
 
 These static ACCs are constructed once (lazy, effectively pinned) and shared by all workers.  The submitter's code-permission stack walk is unaffected (the submitter is on the call stack), but submitter **Subject** context is not propagated; this is intentional for the common pool so that work-stealing tasks cannot assume an authenticated identity.
+
+> **Correction — Thread superclass constructor permission check.**
+> `RuntimePermission("enableContextClassLoaderOverride")` is not merely a policy convenience: it is a
+> **mandatory permission demanded by the `Thread` superclass constructor**.  The constructor contains
+> the following check (non-attached path, `Thread.java` lines 814-820):
+>
+> ```java
+> // permission checks when creating a child Thread
+> if (sm != null) {
+>     sm.checkAccess(g);
+>     if (isCCLOverridden(getClass())) {
+>         sm.checkPermission(SecurityConstants.SUBCLASS_IMPLEMENTATION_PERMISSION);
+>         // SUBCLASS_IMPLEMENTATION_PERMISSION = new RuntimePermission("enableContextClassLoaderOverride")
+>     }
+> }
+> ```
+>
+> `isCCLOverridden()` inspects (via reflection) whether the concrete class or any superclass up to
+> `Thread` overrides `getContextClassLoader()` or `setContextClassLoader()`.
+> `ForkJoinWorkerThread` overrides `setContextClassLoader()` (to track when it has been customised so
+> it can be reset after each task), so `isCCLOverridden(ForkJoinWorkerThread.class)` returns `true`.
+> `InnocuousForkJoinWorkerThread` also overrides `setContextClassLoader()` (to enforce that only the
+> system class loader is accepted), so the same applies to it.
+>
+> Therefore **every** code path that calls `new ForkJoinWorkerThread(...)` or
+> `new InnocuousForkJoinWorkerThread(...)` while a `SecurityManager` is active must already hold
+> `RuntimePermission("enableContextClassLoaderOverride")` on the call stack, or the Thread constructor
+> will throw `SecurityException` before the worker is even returned.  The `doPrivileged` wrappers in
+> `newRegularWithACC` and `newCommonWithACC` supply this permission through the static ACCs for exactly
+> this reason.
 
 #### `CallerContextForkJoinWorkerThreadFactory` (DirtyChai extension)
 
