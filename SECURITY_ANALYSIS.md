@@ -110,31 +110,6 @@ Dirty Chai runtime `Subject` behavior is single-path because `allowSecurityManag
 
 Security impact in Dirty Chai runtime: legacy authorization checks remain consistently active for subject propagation paths.
 
----
-
-## What Was Corrected (Errors in Prior Version)
-
-1. **Incorrect claim: `System.getSecurityManager()` performs ProtectionDomain validation.**  
-   **Current reality:** `getSecurityManager()` returns `security` directly and performs no validation.
-
-2. **Outdated recommendation: “Update JavaDoc for conditional validation.”**  
-   **Current reality:** `System.setSecurityManager()` JavaDoc already documents the conditional strategy.
-
-3. **Outdated deserialization gap status.**  
-   **Current reality:** `ObjectInputStream.readOrdinaryObject()` calls
-   `new SerialObjectPermission(cl.getName()).checkGuard(null);` before
-   `desc.newInstance()` (see
-   `src/java.base/share/classes/java/io/ObjectInputStream.java`:
-   line ~2231 check, line ~2234 instantiation), covering ordinary object paths at
-   the common funnel point:
-   - `new SerialObjectPermission(cl.getName()).checkGuard(null);`
-   - `obj = desc.isInstantiable() ? desc.newInstance() : null;`
-
-4. **Document duplication and drift.**  
-   Repeated sections (“Conditional Validation Strategy” appeared multiple times), repeated conclusions, and stale recommendations were removed.
-
----
-
 ## Security Model (Current State)
 
 ### 1) SecurityManager Installation Gate (`System.setSecurityManager`)
@@ -308,3 +283,26 @@ The main remaining risks are **operational** (policy configuration and whitelist
 - `src/java.base/share/classes/au/zeus/jdk/net/Uri.java` — URI validation behavior used in CodeSource/policy matching rationale
 - Issue #85 (repository issue tracker) — remediation baseline for hardened exception and validation handling
 - OpenJDK 21 reference (`jdk-21+35`): `java/lang/System.java`, `java/security/AccessController.java`, `java/security/AccessControlContext.java`, `javax/security/auth/Subject.java`, `java/lang/ThreadBuilders.java`, `java/lang/Thread.java`, `java/util/concurrent/Executors.java`, `java/security/SecureClassLoader.java`, `java/lang/Module.java`, `java/io/ObjectInputStream.java`
+
+---
+
+## What Was Corrected (Errors in Prior Version)
+
+1. **Incorrect claim: `System.getSecurityManager()` performs ProtectionDomain validation.**
+   **Current reality:** `getSecurityManager()` returns `security` directly and performs no validation.
+
+2. **Outdated recommendation: “Update JavaDoc for conditional validation.”**
+   **Current reality:** `System.setSecurityManager()` JavaDoc already documents the conditional strategy.
+
+3. **Outdated deserialization gap status.**
+   **Current reality:** `ObjectInputStream.readOrdinaryObject()` calls
+   `new SerialObjectPermission(cl.getName()).checkGuard(null);` before
+   `desc.newInstance()` (see
+   `src/java.base/share/classes/java/io/ObjectInputStream.java`:
+   line ~2231 check, line ~2234 instantiation), covering ordinary object paths at
+   the common funnel point:
+   - `new SerialObjectPermission(cl.getName()).checkGuard(null);`
+   - `obj = desc.isInstantiable() ? desc.newInstance() : null;`
+
+4. **Document duplication and drift.**
+   Repeated sections (“Conditional Validation Strategy” appeared multiple times), repeated conclusions, and stale recommendations were removed.
