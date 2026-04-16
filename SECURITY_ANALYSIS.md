@@ -16,6 +16,21 @@ This update corrects stale claims in the prior document, removes duplication, an
 
 ---
 
+## Comparison to OpenJDK 21 (LTS)
+
+OpenJDK 21 is the last LTS release line that still includes SecurityManager APIs, but Dirty Chai applies materially stronger hardening in the analyzed paths.
+
+| Area | OpenJDK 21 | Dirty Chai |
+|---|---|---|
+| `System.setSecurityManager()` behavior | Compatibility-focused path with `allow/disallow` gating and no Dirty Chai-style caller-stack hardening | Conditional trust gate plus layered validation for untrusted/custom SecurityManager implementations |
+| Trusted-vs-untrusted SecurityManager distinction | No explicit `trustedSMClass()` gate with exact-class whitelist | Exact-class trust gate (`SecurityManager`, `CombinerSecurityManager`, `PolicyOnlySecurityManager`) |
+| Reflection/generated-caller blocking for custom SM install | Not implemented as a dedicated layered defense at install time | Explicit stack/reflection/method-handle/generated-code blocking for custom SM install |
+| Thread creation permissions (`createPlatformThread`, `createVirtualThread`) | No dedicated checks in OpenJDK 21 `ThreadBuilders` path | Explicit `RuntimePermission` checks added for platform + virtual builder flows and platform thread creation paths |
+
+This makes Dirty Chai’s posture stricter both at SecurityManager installation and at thread-creation authorization boundaries.
+
+---
+
 ## What Was Corrected (Errors in Prior Version)
 
 1. **Incorrect claim: `System.getSecurityManager()` performs ProtectionDomain validation.**  
@@ -83,6 +98,25 @@ URI validation is consistently RFC-3986-oriented (via URI parsing paths), reduci
 
 `SerialObjectPermission` now executes at `ObjectInputStream.readOrdinaryObject()` before `desc.newInstance()`, which is the right boundary for ordinary object instantiation control.
 
+### 6) RuntimePermission Thread-Creation Controls
+
+Dirty Chai enforces explicit permissions for thread creation:
+
+- `RuntimePermission("createPlatformThread")`
+- `RuntimePermission("createVirtualThread")`
+
+Enforcement points in current implementation include:
+
+- `ThreadBuilders.PlatformThreadBuilder.unstarted/factory` (`createPlatformThread`)
+- `ThreadBuilders.VirtualThreadBuilder.unstarted/factory` (`createVirtualThread`)
+- `Thread.canCreatePlatformThread()` and platform construction path checks
+
+Security effect:
+
+- policy can separately govern code allowed to spawn platform vs virtual threads
+- reduces uncontrolled thread-creation abuse risk (resource-exhaustion/DoS vectors)
+- strengthens least-privilege for concurrent runtimes where thread creation is security-sensitive
+
 ---
 
 ## Threat Review (Current)
@@ -99,6 +133,7 @@ URI validation is consistently RFC-3986-oriented (via URI parsing paths), reduci
 
 - Trusted SecurityManager installation bypasses deep stack checks by design; safety depends on policy and runtime permission model.
 - Mis-scoped policy grants can still over-authorize trusted code.
+- Over-broad grants of `createVirtualThread` / `createPlatformThread` can expand DoS blast radius.
 
 ---
 
@@ -138,7 +173,8 @@ URI validation is consistently RFC-3986-oriented (via URI parsing paths), reduci
    - Edge-case generated/invoke frame classification
 
 3. **Synchronize security docs**
-   Align `VULNERABILITIES_ADDRESSED.md`, `SECURITY_MODEL.md`, and related docs with current deserialization and `getSecurityManager()` facts.
+    Align `VULNERABILITIES_ADDRESSED.md`, `SECURITY_MODEL.md`, and related docs with current deserialization and `getSecurityManager()` facts.
+    Also align thread-creation permission guidance for `createVirtualThread` and `createPlatformThread`.
 
 ### Medium priority
 
@@ -163,8 +199,11 @@ The main remaining risks are **operational** (policy configuration and whitelist
 ## References
 
 - `src/java.base/share/classes/java/lang/System.java` — conditional SecurityManager validation, stack-walk depth (`limit(50)`), trusted-class gate
+- `src/java.base/share/classes/java/lang/ThreadBuilders.java` — enforcement points for `RuntimePermission("createPlatformThread")` and `RuntimePermission("createVirtualThread")`
+- `src/java.base/share/classes/java/lang/Thread.java` — platform thread-creation security checks and builder security notes
 - `src/java.base/share/classes/java/io/ObjectInputStream.java` — `SerialObjectPermission` check placement in `readOrdinaryObject()` before instantiation
 - `src/java.base/share/classes/java/io/SerialCallbackContext.java` — confirms callback context no longer carries the permission check logic
 - `src/java.base/share/classes/au/zeus/jdk/authorization/policy/ConcurrentPolicyFile.java` — policy grant evaluation and fail-secure behavior references
 - `src/java.base/share/classes/au/zeus/jdk/net/Uri.java` — URI validation behavior used in CodeSource/policy matching rationale
 - Issue #85 (repository issue tracker) — remediation baseline for hardened exception and validation handling
+- OpenJDK 21 reference (`jdk-21+35`): `java/lang/System.java`, `java/lang/ThreadBuilders.java`, `java/lang/Thread.java`
