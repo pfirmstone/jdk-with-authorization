@@ -73,8 +73,6 @@ grant {
   `ObjectInputStream.readOrdinaryObject()` before object instantiation
 - ✅ This substantially improves ysoserial-style gadget coverage, including ordinary
   default-`Serializable` object paths
-- ⚠️ Coverage is more complete but still should be tracked against
-  `SECURITY_ANALYSIS.md` for residual edge cases
 - ✅ Only classes explicitly permitted can be deserialized on covered paths
 - ✅ `PolicyWriter` tool identifies ALL deserialized classes during auditing
 - ✅ Gadget chain libraries cannot be loaded unless explicitly whitelisted
