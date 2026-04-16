@@ -585,16 +585,27 @@ The `NativeAccessPermission` class and its integration into `Module.ensureNative
 are already implemented.  The following tasks remain for a complete, policy-auditable
 native isolation story.
 
-### Task N-1 — Add `NativeAccessPermission` to the Default Deny Policy
+### Task N-1 — ~~Add `NativeAccessPermission` to the Default Deny Policy~~ ✅ Already Complete
 
-**Priority:** High  
-**Files:** `src/java.base/share/classes/au/zeus/jdk/authorization/policy/`
-(default policy template) and any example policy files in the repository.
+**Priority:** High — **No action required: already implemented.**  
+**Files:**
+- `src/java.base/share/lib/security/default.policy`
+- `src/java.base/windows/lib/security/default.policy`
 
-**Description:**  
-The default policy should grant `NativeAccessPermission` only to named trusted
-platform modules (e.g., `jrt:/java.desktop/*`) and explicitly withhold it from
-the unnamed module and from application classpath code.
+**Status:** Complete.  `NativeAccessPermission "*", "*"` has been added to every
+platform-loader module in the default policy that loads or uses native libraries:
+
+| Module | Policy file | Grant |
+|--------|-------------|-------|
+| `jrt:/java.smartcardio` | `share/lib/security/default.policy` | `NativeAccessPermission "*", "*"` |
+| `jrt:/jdk.crypto.cryptoki` | `share/lib/security/default.policy` | `NativeAccessPermission "*", "*"` |
+| `jrt:/java.desktop` | `share/lib/security/default.policy` | `NativeAccessPermission "*", "*"` |
+| `jrt:/jdk.crypto.mscapi` | `windows/lib/security/default.policy` | `NativeAccessPermission "*", "*"` |
+
+Modules that already hold `AllPermission` (e.g., `java.sql`, `jdk.dynalink`,
+`jdk.security.auth`) implicitly satisfy any `NativeAccessPermission` check
+because `AllPermission.implies()` returns `true` for all permissions — no
+explicit entry is needed for those modules.
 
 > **Note:** No explicit grant is needed for `jrt:/java.base/*`.  Classes in the
 > `java.base` module are loaded by the bootstrap class loader.  When only
@@ -605,15 +616,14 @@ the unnamed module and from application classpath code.
 > `grant codeBase "jrt:/java.base/*"` block has no runtime effect and should be
 > omitted to avoid misleading policy authors.
 
-**Policy pattern (human to implement):**
+**Policy pattern applied:**
 
 ```
 // Deny by default; grant only to trusted platform modules that require native access.
 // Note: java.base does NOT need an explicit grant — bootstrap code bypasses the
 // policy engine entirely (getStackAccessControlContext() returns null).
-grant codeBase "jrt:/java.desktop/*" {
-    permission au.zeus.jdk.authorization.guards.NativeAccessPermission
-        "*", "*";
+grant codeBase "jrt:/java.desktop" {
+    permission au.zeus.jdk.authorization.guards.NativeAccessPermission "*", "*";
 };
 
 // Do NOT grant NativeAccessPermission to application classpath or untrusted jars
@@ -621,26 +631,40 @@ grant codeBase "jrt:/java.desktop/*" {
 
 ---
 
-### Task N-2 — Add `RuntimePermission("loadLibrary.*")` to the Default Deny Policy
+### Task N-2 — ~~Add `RuntimePermission("loadLibrary.*")` to the Default Deny Policy~~ ✅ Already Complete
 
-**Priority:** High  
+**Priority:** High — **No action required: already implemented.**  
 **Files:** Same as N-1.
 
-**Description:**  
-Pair the `NativeAccessPermission` deny with an explicit deny of
-`RuntimePermission("loadLibrary.*")` for untrusted code.  Because
-`SecurityManager.checkLink()` fires independently of `NativeAccessPermission`,
-both must be denied to close the loading gate.
+**Status:** Complete.  The existing default policy already closes the
+`loadLibrary.*` gate via omission.  The generic `grant {}` block (which all
+protection domains receive) contains no `loadLibrary.*` entry.  Only the
+specific named-module blocks carry targeted `loadLibrary.<libname>` grants:
 
-**Policy pattern (human to implement):**
+| Module | Permitted library |
+|--------|-------------------|
+| `jrt:/java.smartcardio` | `loadLibrary.j2pcsc` |
+| `jrt:/jdk.crypto.cryptoki` | `loadLibrary.j2pkcs11` |
+| `jrt:/jdk.crypto.mscapi` (Windows) | `loadLibrary.sunmscapi` |
+
+Application-classpath code and unnamed-module code receive none of these grants,
+so `SecurityManager.checkLink()` will throw `SecurityException` when untrusted
+code attempts to call `System.loadLibrary()`.
+
+**Policy structure (deny by omission):**
 
 ```
-// Deny loadLibrary to untrusted classpath code by omission
-// (no RuntimePermission "loadLibrary.*" grant in untrusted code's grant block)
+// Untrusted application-classpath code gets only the minimal generic grant.
+// No loadLibrary.* appears here, so System.loadLibrary() is denied.
+grant {
+    permission java.net.SocketPermission "localhost:0", "listen";
+    // ... standard read-only property permissions only ...
+};
 
-// Grant specific libraries to specific trusted code:
-grant codeBase "file:/opt/myapp/lib/trusted.jar" {
-    permission java.lang.RuntimePermission "loadLibrary.myspecificlib";
+// Named trusted modules receive only the specific library they require:
+grant codeBase "jrt:/java.smartcardio" {
+    permission java.lang.RuntimePermission "loadLibrary.j2pcsc";
+    // ... other smartcardio-specific permissions ...
 };
 ```
 

@@ -46,6 +46,7 @@ grant codeBase "jrt:/java.security.jgss" {
 grant codeBase "jrt:/java.smartcardio" {
     permission javax.smartcardio.CardPermission "*", "*";
     permission java.lang.RuntimePermission "loadLibrary.j2pcsc";
+    permission au.zeus.jdk.authorization.guards.NativeAccessPermission "*", "*";
     permission java.lang.RuntimePermission
                    "accessClassInPackage.sun.security.jca";
     permission java.lang.RuntimePermission
@@ -136,6 +137,7 @@ grant codeBase "jrt:/jdk.crypto.cryptoki" {
                    "accessClassInPackage.sun.security.*";
     permission java.lang.RuntimePermission "accessClassInPackage.sun.nio.ch";
     permission java.lang.RuntimePermission "loadLibrary.j2pkcs11";
+    permission au.zeus.jdk.authorization.guards.NativeAccessPermission "*", "*";
     permission java.util.PropertyPermission "sun.security.pkcs11.allowSingleThreadedModules", "read";
     permission java.util.PropertyPermission "sun.security.pkcs11.disableKeyExtraction", "read";
     permission java.util.PropertyPermission "os.name", "read";
@@ -200,6 +202,24 @@ grant codeBase "jrt:/jdk.zipfs" {
     permission java.util.PropertyPermission "user.dir", "read";
     permission java.util.PropertyPermission "user.name", "read";
 };
+
+// java.desktop uses native libraries (AWT, Sound, etc.) via the FFM API.
+// Grant NativeAccessPermission so its platform-loader ProtectionDomain passes
+// the check in Module.ensureNativeAccess().  java.base does NOT need a matching
+// entry here: bootstrap-loaded code bypasses the policy engine entirely
+// (AccessController.getStackAccessControlContext() returns null for pure
+// bootstrap stacks).
+grant codeBase "jrt:/java.desktop" {
+    permission au.zeus.jdk.authorization.guards.NativeAccessPermission "*", "*";
+    // loadLibrary.* is NOT granted here; java.desktop's native libs are loaded
+    // via the bootstrap class loader path which does not consult this policy.
+};
+
+// Task N-2 (PROCESS_ISOLATION.md): RuntimePermission("loadLibrary.*") is denied
+// to untrusted code by omission — the generic grant{} block below does not
+// include any loadLibrary.* entry, so application-classpath code cannot load
+// arbitrary native libraries.  Only the specific module blocks above carry
+// targeted loadLibrary.<name> grants for the exact library each module needs.
 
 // permissions needed by applications using java.desktop module
 grant {
