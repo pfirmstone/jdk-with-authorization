@@ -1641,9 +1641,7 @@ address StubGenerator::generate_disjoint_short_copy(address *entry) {
   if (entry != nullptr) {
     *entry = __ pc();
     // caller can pass a 64-bit byte count here (from Unsafe.copyMemory)
-    // Convert from byte count to word (2-byte) count
-    __ shrq(c_rarg2, (unsigned char)1);
-    BLOCK_COMMENT("Entry from Unsafe.copyMemory (convert byte count to word count):");
+    BLOCK_COMMENT("Entry:");
   }
 
   setup_arg_regs(); // from => rdi, to => rsi, count => rdx
@@ -1811,9 +1809,7 @@ address StubGenerator::generate_conjoint_short_copy(address nooverlap_target, ad
   if (entry != nullptr) {
     *entry = __ pc();
     // caller can pass a 64-bit byte count here (from Unsafe.copyMemory)
-    // Convert from byte count to word (2-byte) count
-    __ shrq(c_rarg2, (unsigned char)1);
-    BLOCK_COMMENT("Entry from Unsafe.copyMemory (convert byte count to word count):");
+    BLOCK_COMMENT("Entry:");
   }
 
   array_overlap_test(nooverlap_target, Address::times_2);
@@ -1944,9 +1940,7 @@ address StubGenerator::generate_disjoint_int_oop_copy(StubId stub_id, address* e
   if (entry != nullptr) {
     *entry = __ pc();
     // caller can pass a 64-bit byte count here (from Unsafe.copyMemory)
-    // Convert from byte count to dword (4-byte) element count
-    __ shrq(c_rarg2, (unsigned char)2);
-    BLOCK_COMMENT("Entry from Unsafe.copyMemory (convert byte count to dword count):");
+    BLOCK_COMMENT("Entry:");
   }
 
   setup_arg_regs_using_thread(); // from => rdi, to => rsi, count => rdx
@@ -2068,21 +2062,18 @@ address StubGenerator::generate_conjoint_int_oop_copy(StubId stub_id, address no
   const Register qword_count = count;
 
   __ enter(); // required for proper stackwalking of RuntimeStub frame
-  // Save no-overlap entry point for generate_conjoint_long_oop_copy()
   assert_clean_int(c_rarg2, rax);    // Make sure 'count' is clean int.
 
   if (entry != nullptr) {
     *entry = __ pc();
-    // caller can pass a 64-bit byte count here (from Unsafe.copyMemory)
-    // Convert from byte count to qword (8-byte) element count
-    __ shrq(c_rarg2, (unsigned char)3);
-    BLOCK_COMMENT("Entry from Unsafe.copyMemory (convert byte count to qword count):");
+     // caller can pass a 64-bit byte count here (from Unsafe.copyMemory)
+    BLOCK_COMMENT("Entry:");
   }
 
-  /*array_overlap_test(nooverlap_target, Address::times_4);*/
+  array_overlap_test(nooverlap_target, Address::times_4);
   setup_arg_regs_using_thread(); // from => rdi, to => rsi, count => rdx
                                  // r9 is used to save r15_thread
-  // 'from', 'to' and 'qword_count' are now valid
+
   DecoratorSet decorators = IN_HEAP | IS_ARRAY;
   if (dest_uninitialized) {
     decorators |= IS_DEST_UNINITIALIZED;
@@ -2213,9 +2204,7 @@ address StubGenerator::generate_disjoint_long_oop_copy(StubId stub_id, address *
   if (entry != nullptr) {
     *entry = __ pc();
     // caller can pass a 64-bit byte count here (from Unsafe.copyMemory)
-    // Convert from byte count to qword (8-byte) element count
-    __ shrq(c_rarg2, (unsigned char)3);
-    BLOCK_COMMENT("Entry from Unsafe.copyMemory (convert byte count to qword count):");
+    BLOCK_COMMENT("Entry:");
   }
 
   setup_arg_regs_using_thread(); // from => rdi, to => rsi, count => rdx
@@ -2343,9 +2332,7 @@ address StubGenerator::generate_conjoint_long_oop_copy(StubId stub_id, address n
   if (entry != nullptr) {
     *entry = __ pc();
     // caller can pass a 64-bit byte count here (from Unsafe.copyMemory)
-    // Convert from byte count to qword (8-byte) element count
-    __ shrq(c_rarg2, (unsigned char)3);
-    BLOCK_COMMENT("Entry from Unsafe.copyMemory (convert byte count to qword count):");
+    BLOCK_COMMENT("Entry:");
   }
 
   array_overlap_test(nooverlap_target, Address::times_8);
