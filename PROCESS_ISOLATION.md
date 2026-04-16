@@ -640,21 +640,36 @@ grant codeBase "file:/opt/myapp/lib/trusted.jar" {
 
 ---
 
-### Task N-3 — Extend `SecurityPolicyWriter` to Report `NativeAccessPermission` Grants
+### Task N-3 — ~~Extend `SecurityPolicyWriter` to Report `NativeAccessPermission` Grants~~ ✅ Already Complete
 
-**Priority:** Medium  
+**Priority:** Medium — **No action required: already implemented.**  
 **Files:** `src/java.base/share/classes/au/zeus/jdk/authorization/tool/SecurityPolicyWriter.java`
 
-**Description:**  
-`SecurityPolicyWriter` already enumerates `LoadClassPermission` and
-`SerialObjectPermission` grants, making the serialization and class-loading
-surfaces auditable.  The same tool should be extended to enumerate all
-`NativeAccessPermission` grants observed during a test run, so that policy
-authors can audit exactly which code attempted to use native or restricted APIs.
+**Status:** Complete.  `SecurityPolicyWriter` already records every
+`NativeAccessPermission` checked during a test run without any modification.
 
-This is a human implementation task because it involves modifying `SecurityPolicyWriter.java`,
-a production Java source file subject to the OpenJDK Interim Policy on
-Generative AI.
+**Explanation:**  
+`SecurityPolicyWriter.checkPermission(ProtectionDomain, Permission)` records
+*every* `Permission` instance generically (the only exclusion is
+`AllPermission`):
+
+```java
+// SecurityPolicyWriter.java — line 353
+if (!(p instanceof AllPermission)) perms.add(p);
+```
+
+`NativeAccessPermission.checkGuard(null)` delegates to
+`SecurityManager.checkPermission(this)` (inherited from
+`java.security.Permission`), which flows through
+`CombinerSecurityManager` and reaches `SecurityPolicyWriter.checkPermission`.
+The permission is therefore captured and written to the policy file at JVM
+shutdown alongside every other permission observed during the run.
+
+No distinction is made between `LoadClassPermission`,
+`SerialObjectPermission`, `NativeAccessPermission`, or any other type: the
+tool records all of them through the same generic path.  Policy authors who
+run their test suite under `SecurityPolicyWriter` will see all
+`NativeAccessPermission` grants in the generated policy file automatically.
 
 ---
 
