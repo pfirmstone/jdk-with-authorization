@@ -21,7 +21,49 @@ This document covers the active model implemented in:
 
 ---
 
-## 2) Core Security Guarantees
+## 2) Quick Start (Developer Workflow)
+
+Use this path first, then return to the deeper sections below.
+
+1. **Audit in staging with `polpAudit`** (alias of `SecurityPolicyWriter`) to generate policy grants from real permission checks:
+
+   ```bash
+   java -Djava.security.manager=polpAudit \
+        -DpolpAudit.path.properties=/path/to/audit.properties \
+        -jar your-app.jar
+   ```
+
+2. **Review generated policy** and narrow broad grants (`AllPermission`, wide file/socket wildcards).
+3. **Deploy in production** with strict policy:
+
+   ```bash
+   java -Djava.security.manager=default \
+        -Djava.security.policy==/path/to/app.policy \
+        -jar your-app.jar
+   ```
+
+4. **Use Subject-aware execution where policy requires principals**:
+   - Wrap entrypoints in `Subject.callAs(...)` / `Subject.doAs(...)`.
+   - Use `Thread.Builder` / `ThreadFactory` inside that scope for consistent Subject-aware context inheritance.
+
+### Why `polpAudit` first?
+
+Manual policy authoring is error-prone in real systems. `polpAudit` observes actual runtime checks and incrementally writes required grants, giving a practical least-privilege baseline before human tightening.
+
+---
+
+## 3) Simple Mental Model
+
+1. **Who is calling?** (`Subject`, caller context)
+2. **What code is running?** (`CodeSource`, signer, module/path)
+3. **What does policy grant?** (`ConcurrentPolicyFile` matching + permission implication)
+4. **Does execution stay bounded?** (`AccessController` context boundaries, fail-secure on mismatch)
+
+If any required condition does not match, the operation is denied.
+
+---
+
+## 4) Core Security Guarantees
 
 1. **Fail-secure defaults**: validation failures deny access (exception or unprivileged state).
 2. **Least privilege**: permissions must be explicitly granted by policy.
@@ -32,7 +74,7 @@ This document covers the active model implemented in:
 
 ---
 
-## 3) High-Level Architecture
+## 5) High-Level Architecture
 
 1. Application invokes security-sensitive operation.
 2. `SecurityManager.checkPermission(...)` delegates to policy evaluation.
@@ -42,7 +84,7 @@ This document covers the active model implemented in:
 
 ---
 
-## 4) SecurityManager Installation Model (`System.setSecurityManager`)
+## 6) SecurityManager Installation Model (`System.setSecurityManager`)
 
 Dirty Chai uses **conditional validation** when installing a SecurityManager.
 
@@ -73,7 +115,7 @@ If any layer fails, installation is blocked with `SecurityException`.
 
 ---
 
-## 5) AccessController and Privilege Boundaries
+## 7) AccessController and Privilege Boundaries
 
 Dirty Chai keeps `AccessController` and `doPrivileged` semantics active for authorization use.
 
@@ -85,7 +127,7 @@ Security depends on minimizing privileged blocks and scoping them to the smalles
 
 ---
 
-## 6) Policy Model (`ConcurrentPolicyFile`)
+## 8) Policy Model (`ConcurrentPolicyFile`)
 
 Policy decisions are computed from:
 
@@ -107,7 +149,7 @@ This makes principal enforcement configurable by policy rather than globally for
 
 ---
 
-## 7) Class Loading and Authorization
+## 9) Class Loading and Authorization
 
 Dirty Chai introduces authorization-aware class loading controls (including `LoadClassPermission`) to reduce unauthorized code execution risk.
 
@@ -119,7 +161,7 @@ Security posture assumes:
 
 ---
 
-## 8) Virtual Threads and Subject Context
+## 10) Virtual Threads and Subject Context
 
 Dirty Chai preserves authorization behavior with virtual threads by carrying effective context through standard Java security context mechanisms.
 
@@ -127,9 +169,9 @@ Dirty Chai preserves authorization behavior with virtual threads by carrying eff
 
 ---
 
-## 9) Thread Creation Security Semantics (Detailed)
+## 11) Thread Creation Security Semantics (Detailed)
 
-### 9.1 Runtime permissions enforced at thread-creation entry points
+### 11.1 Runtime permissions enforced at thread-creation entry points
 
 When a SecurityManager is installed, Dirty Chai enforces explicit runtime permissions before creating threads:
 
@@ -138,7 +180,7 @@ When a SecurityManager is installed, Dirty Chai enforces explicit runtime permis
 
 These checks are applied in builder paths (`ThreadBuilders`) and in public platform-thread constructor paths (`Thread`), so both modern and traditional creation APIs are guarded.
 
-### 9.2 Builder methods vs traditional constructors
+### 11.2 Builder methods vs traditional constructors
 
 The implementation distinguishes context capture behavior:
 
@@ -147,7 +189,7 @@ The implementation distinguishes context capture behavior:
 
 In this codebase, the builder path is explicitly documented and implemented to preserve Subject-bearing authorization context more predictably for thread/factory creation workflows.
 
-### 9.3 Platform thread builder behavior
+### 11.3 Platform thread builder behavior
 
 For platform builders:
 
@@ -156,7 +198,7 @@ For platform builders:
 3. Create thread/factory with captured inherited security context
 4. Apply group/priority/daemon/UEH builder options
 
-### 9.4 Virtual thread builder behavior
+### 11.4 Virtual thread builder behavior
 
 For virtual builders:
 
@@ -165,13 +207,13 @@ For virtual builders:
 3. Create virtual thread/factory with captured inherited security context
 4. Preserve configured characteristics and exception handler
 
-### 9.5 Security implication
+### 11.5 Security implication
 
 For Subject-aware authorization, prefer `Thread.Builder` / builder-produced `ThreadFactory` created inside the intended Subject scope (for example within `Subject.callAs(...)`) so downstream thread creation consistently inherits the intended authorization context.
 
 ---
 
-## 10) Threats Addressed
+## 12) Threats Addressed
 
 - Reflection/proxy/generated-code attempts to bypass SecurityManager installation controls
 - Privilege escalation via overly broad or inherited permission assumptions
@@ -180,7 +222,7 @@ For Subject-aware authorization, prefer `Thread.Builder` / builder-produced `Thr
 
 ---
 
-## 11) Non-Goals / Limitations
+## 13) Non-Goals / Limitations
 
 - Dirty Chai is an authorization and policy-enforcement model, not a complete malware sandbox by itself.
 - Misconfigured policy can still over-grant privileges.
@@ -188,7 +230,7 @@ For Subject-aware authorization, prefer `Thread.Builder` / builder-produced `Thr
 
 ---
 
-## 12) Recommended Deployment Pattern
+## 14) Recommended Deployment Pattern
 
 1. **Stage/Audit** with `polpAudit` (`SecurityPolicyWriter`) to discover required permissions.
 2. Review and narrow grants (remove over-broad file/socket/all-permission entries).
@@ -197,7 +239,7 @@ For Subject-aware authorization, prefer `Thread.Builder` / builder-produced `Thr
 
 ---
 
-## 13) Security Invariants (Must Hold)
+## 15) Security Invariants (Must Hold)
 
 1. Trusted SecurityManager checks use exact class identity, not subclass trust.
 2. Custom SecurityManager installation requires all validation layers.
@@ -207,7 +249,7 @@ For Subject-aware authorization, prefer `Thread.Builder` / builder-produced `Thr
 
 ---
 
-## 14) Related Documents
+## 16) Related Documents
 
 - `SECURITY_ANALYSIS.md` (detailed findings and historical fixes)
 - `STACK_VALIDATION_ANALYSIS.md` (stack-validation trade-offs)
