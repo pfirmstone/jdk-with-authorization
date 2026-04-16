@@ -28,6 +28,7 @@ OpenJDK 21 is the last LTS release line that still includes SecurityManager APIs
 | Guard permission model | No `au.zeus.jdk.authorization.guards.*` guard classes | Adds dedicated guard permissions (`LoadClassPermission`, `NativeAccessPermission`, `SerialObjectPermission`) and integrates them into security-critical flows |
 | Executors + thread factory behavior | `Executors.defaultThreadFactory()` returns classic `DefaultThreadFactory` | `Executors.defaultThreadFactory()` routes through `Thread.ofPlatform().group(...).factory()` and therefore through Dirty Chai platform-thread permission checks |
 | Virtual thread creation path | `ThreadBuilders` virtual/platform builder paths do not enforce dedicated `createVirtualThread`/`createPlatformThread` checks | Builder `unstarted()` and `factory()` paths enforce explicit runtime permissions and capture `AccessController.getContext()` for inherited security context |
+| `AccessController` / `AccessControlContext` / `Subject` model | LTS baseline wrappers around deprecated SecurityManager-era ACC semantics | Adds authorization-preserving ACC builders/intersection behavior, CodeSource-backed permission-domain intersection for limited-privilege paths, and dual-path `Subject` behavior (ACC when SM allowed, `ScopedValue` when not) |
 
 ### A) New Guards vs OpenJDK 21
 
@@ -64,6 +65,37 @@ Dirty Chai retains this authorization-relevant API path and updates internal che
 - builder-created factories/threads capture and propagate `AccessController.getContext()`
 
 OpenJDK 21 builder paths do not include these explicit thread-creation runtime-permission checks, and use less restrictive inherited-context defaults.
+
+### D) `AccessController`, `AccessControlContext`, and `Subject` Delta vs OpenJDK 21
+
+#### `AccessController`
+
+Dirty Chai changes the limited-privilege overload behavior from OpenJDK 21 wrapper construction to explicit permission-domain intersection:
+
+- OpenJDK 21 `doPrivileged(..., AccessControlContext, Permission...)` paths use wrapper/context validation flow (`checkContext`/`createWrapper`).
+- Dirty Chai computes a caller-linked protection domain (`DomainIdentity`) from caller `CodeSource` + requested permissions and intersects it into the effective context before executing privileged code.
+
+Security impact: tighter binding of limited-privilege execution to caller provenance and explicit intersection semantics, reducing risk of over-broad inherited privilege in mixed-domain calls.
+
+#### `AccessControlContext`
+
+Dirty Chai introduces non-LTS builder APIs and authorization checks around ACC construction (`AccessControlContext.build(...)`, `checkAuthorized(...)`, permission intersection helpers).
+
+Notable security effect versus OpenJDK 21:
+
+- if caller lacks `createAccessControlContext`, Dirty Chai builder paths fold caller-context domains into the resulting ACC rather than allowing construction of a potentially more-privileged synthetic context.
+- permission-limiting operations are represented as explicit ACC intersection operations (`intersectionPermissions`, `intersectionOfPermsDoWithCombiner`).
+
+Security impact: stronger anti-escalation behavior when constructing or constraining ACCs programmatically.
+
+#### `Subject`
+
+Dirty Chai diverges from OpenJDK 21’s ACC-only retrieval/execution model by adding an explicit dual path:
+
+- when security-manager mode is allowed: behavior remains ACC/`SubjectDomainCombiner` based (legacy compatibility path),
+- when security-manager mode is not allowed: `Subject.current()` / `Subject.callAs(...)` use `ScopedValue`-bound subject propagation.
+
+Security impact: preserves legacy authorization checks where SecurityManager flows are active, while reducing dependence on deprecated ACC propagation where they are not.
 
 ---
 
@@ -235,6 +267,9 @@ The main remaining risks are **operational** (policy configuration and whitelist
 ## References
 
 - `src/java.base/share/classes/java/lang/System.java` — conditional SecurityManager validation, stack-walk depth (`limit(50)`), trusted-class gate
+- `src/java.base/share/classes/java/security/AccessController.java` — privileged execution and limited-privilege intersection behavior
+- `src/java.base/share/classes/java/security/AccessControlContext.java` — ACC construction/authorization and intersection helpers
+- `src/java.base/share/classes/javax/security/auth/Subject.java` — subject propagation behavior across ACC and `ScopedValue` paths
 - `src/java.base/share/classes/java/lang/ThreadBuilders.java` — enforcement points for `RuntimePermission("createPlatformThread")` and `RuntimePermission("createVirtualThread")`
 - `src/java.base/share/classes/java/lang/Thread.java` — platform thread-creation security checks and builder security notes
 - `src/java.base/share/classes/java/util/concurrent/Executors.java` — default/privileged thread factory behavior and virtual-thread executor entry points
@@ -248,4 +283,4 @@ The main remaining risks are **operational** (policy configuration and whitelist
 - `src/java.base/share/classes/au/zeus/jdk/authorization/policy/ConcurrentPolicyFile.java` — policy grant evaluation and fail-secure behavior references
 - `src/java.base/share/classes/au/zeus/jdk/net/Uri.java` — URI validation behavior used in CodeSource/policy matching rationale
 - Issue #85 (repository issue tracker) — remediation baseline for hardened exception and validation handling
-- OpenJDK 21 reference (`jdk-21+35`): `java/lang/System.java`, `java/lang/ThreadBuilders.java`, `java/lang/Thread.java`, `java/util/concurrent/Executors.java`, `java/security/SecureClassLoader.java`, `java/lang/Module.java`, `java/io/ObjectInputStream.java`
+- OpenJDK 21 reference (`jdk-21+35`): `java/lang/System.java`, `java/security/AccessController.java`, `java/security/AccessControlContext.java`, `javax/security/auth/Subject.java`, `java/lang/ThreadBuilders.java`, `java/lang/Thread.java`, `java/util/concurrent/Executors.java`, `java/security/SecureClassLoader.java`, `java/lang/Module.java`, `java/io/ObjectInputStream.java`
