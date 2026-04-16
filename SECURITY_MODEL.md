@@ -2340,6 +2340,53 @@ Key implementation details:
 
 **Note:** The inherited ACC is consulted only after the call stack is exhausted.  Low-privilege code that submits a task to the pool is present on the call stack during task execution; its domain constraints therefore apply normally through the standard stack-walk algorithm.  What is **not** automatically present in the worker thread is the submitter's **Subject** context — principals and the policy grants tied to those principals are lost unless the task re-establishes them explicitly.
 
+> **Correction — `RuntimePermission("createPlatformThread")` and `RuntimePermission("createVirtualThread")` checks.**
+>
+> The `Thread` builder API and all public `Thread(...)` constructors gate thread creation behind two additional
+> permissions when a `SecurityManager` is active.
+>
+> **`RuntimePermission("createPlatformThread")`** is checked in two distinct places:
+>
+> 1. **Every public `Thread(...)` constructor** — via the private helper `canCreatePlatformThread()`
+>    (`Thread.java` lines 765–769):
+>    ```java
+>    private static boolean canCreatePlatformThread() throws SecurityException {
+>        SecurityManager sm = System.getSecurityManager();
+>        if (sm != null) sm.checkPermission(new RuntimePermission("createPlatformThread"));
+>        return true;
+>    }
+>    ```
+>    This helper is called from every public platform-thread constructor (`new Thread()`,
+>    `new Thread(Runnable)`, `new Thread(ThreadGroup, Runnable)`, etc.), so any direct `new Thread(...)`
+>    while a `SecurityManager` is active requires `createPlatformThread` on the effective call stack.
+>
+> 2. **`Thread.Builder.ofPlatform().unstarted(task)`** and **`.factory()`** — checked eagerly inside
+>    `PlatformThreadBuilder` (`ThreadBuilders.java` lines 185 and 207 respectively):
+>    ```java
+>    // PlatformThreadBuilder.unstarted()
+>    if (sm != null) sm.checkPermission(new RuntimePermission("createPlatformThread"));
+>    // PlatformThreadBuilder.factory()
+>    if (sm != null) sm.checkPermission(new RuntimePermission("createPlatformThread"));
+>    ```
+>    After the check, `unstarted()` / `start()` calls the *package-private*
+>    `Thread(group, name, characteristics, task, stackSize, acc)` constructor, which does **not** invoke
+>    `canCreatePlatformThread()` again — the check happens exactly once, at the builder call site.
+>
+> **`RuntimePermission("createVirtualThread")`** is checked by `VirtualThreadBuilder.unstarted(task)` and
+> `.factory()` (`ThreadBuilders.java` lines 259 and 277):
+> ```java
+> // VirtualThreadBuilder.unstarted()
+> if (sm != null) sm.checkPermission(new RuntimePermission("createVirtualThread"));
+> // VirtualThreadBuilder.factory()
+> if (sm != null) sm.checkPermission(new RuntimePermission("createVirtualThread"));
+> ```
+> Virtual thread creation through the builder API always requires this permission.  The check is **absent**
+> from the internal constructors used by pool-internal factories (`PlatformThreadFactory.newThread()`,
+> `VirtualThreadFactory.newThread()`, `ForkJoinWorkerThreadFactory.newThread()`), which bypass the builder
+> API and call the package-private `Thread(...)` constructor directly.  Only the code that calls
+> `.factory()` or `.unstarted()` must hold the permission — not the pool itself when it later calls
+> `factory.newThread(task)` on an already-created factory.
+
 ---
 
 ### 2. Thread Pool Boundary (`ThreadPoolExecutor`)
@@ -2395,6 +2442,43 @@ public T call() throws Exception {
 | `privilegedThreadFactory()` | Factory construction time | Factory-creator's code ACC replayed via `doPrivileged`; submitter Subject absent |
 | `privilegedCallable(task)` | Task submission time | Submitter's code ACC replayed via `doPrivileged`; submitter Subject absent unless explicitly included |
 | Plain `submit(task)` | Never | Submitter code constraints apply via stack walk; worker inherited ACC is fallback after stack exhausted; submitter Subject absent |
+
+> **Correction — `createPlatformThread` and `createVirtualThread` impact on Executor factories.**
+>
+> `Executors.defaultThreadFactory()` is implemented as:
+> ```java
+> return Thread.ofPlatform().name(namePrefix, 1L).group(group).factory();
+> ```
+> The call to `.factory()` fires `RuntimePermission("createPlatformThread")` **at the moment
+> `defaultThreadFactory()` is called**, i.e., at pool-construction time.  Code that constructs a
+> `ThreadPoolExecutor` or any standard executor that relies on the default thread factory therefore
+> requires `createPlatformThread` on its effective call stack at construction time.
+>
+> Similarly, `Executors.newVirtualThreadPerTaskExecutor()`:
+> ```java
+> ThreadFactory factory = Thread.ofVirtual().factory();   // ← createVirtualThread checked here
+> return newThreadPerTaskExecutor(factory);
+> ```
+> fires `RuntimePermission("createVirtualThread")` **at executor-construction time**.
+>
+> | Thread / Executor creation call | Permission required | Point in time |
+> |---|---|---|
+> | `new Thread()` / `new Thread(Runnable)` / other public constructors | `createPlatformThread` | At constructor call |
+> | `Thread.ofPlatform().unstarted(task)` / `.start(task)` | `createPlatformThread` | At thread-creation call |
+> | `Thread.ofPlatform().factory()` | `createPlatformThread` | At factory-creation call |
+> | `Executors.defaultThreadFactory()` | `createPlatformThread` | At factory-creation call (delegates to `.factory()`) |
+> | `Executors.newFixedThreadPool(n)` (no-factory overload) | `createPlatformThread` | At pool-construction time (calls `defaultThreadFactory()`) |
+> | `Executors.newCachedThreadPool()` (no-factory overload) | `createPlatformThread` | At pool-construction time |
+> | `Thread.ofVirtual().unstarted(task)` / `.start(task)` | `createVirtualThread` | At thread-creation call |
+> | `Thread.ofVirtual().factory()` | `createVirtualThread` | At factory-creation call |
+> | `Executors.newVirtualThreadPerTaskExecutor()` | `createVirtualThread` | At executor-construction time (delegates to `.factory()`) |
+>
+> **Key boundary:** Pool-internal factories (`PlatformThreadFactory.newThread()`,
+> `VirtualThreadFactory.newThread()`) call the package-private `Thread(...)` constructor which bypasses
+> both `canCreatePlatformThread()` and the builder API checks.  A worker pool therefore does **not**
+> require `createPlatformThread` or `createVirtualThread` when it calls `factory.newThread(task)` after
+> the factory has already been constructed.  The permission gate sits entirely at the builder / factory
+> *creation* boundary, not at the per-task thread-creation boundary inside the pool.
 
 ---
 
