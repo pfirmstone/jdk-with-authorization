@@ -803,6 +803,35 @@ This is a human implementation task (policy file changes and test additions).
 
 ---
 
+> **Footnote — Recommended Policy Authoring Workflow**
+>
+> The wildcard grants (`"*", "*"`) used in Tasks N-1 and N-2 above are a safe
+> starting point for trusted platform-loader modules, but they are deliberately
+> broad.  For application code and any module whose actual permission requirements
+> are not yet known, the recommended workflow is:
+>
+> 1. **Generate first with polpAudit.**  Run the application (or its test suite)
+>    under [`polpAudit`](https://github.com/pfirmstone/JGDMS/tree/trunk/tools/polpAudit)
+>    (or the equivalent `SecurityPolicyWriter` instrumentation built into
+>    DirtyChai — see Task N-3 above).  polpAudit observes every
+>    `SecurityManager.checkPermission()` call that occurs during the run and
+>    emits a least-privilege policy file containing only the permissions that
+>    were actually checked.
+>
+> 2. **Review and widen if needed.**  Inspect the generated policy file.  If a
+>    legitimate code path was not exercised during the capture run (e.g., an
+>    error-recovery branch or a rarely-used feature), add the missing permission
+>    entries manually after verifying that granting them is intentional.
+>
+> This two-step approach — *capture then widen* — avoids both under-granting
+> (which causes `SecurityException` at runtime) and over-granting (which enlarges
+> the attack surface unnecessarily).  The wildcard entries in the platform-module
+> policy blocks above were applied only after confirming that every platform module
+> listed there is fully trusted and loaded by the platform class loader; the same
+> shortcut must **not** be applied to application-classpath or plugin code.
+
+---
+
 ## In-depth Analysis: JGDMS Activation for Process Isolation of Untrusted Code
 
 ### Background — The Java Activation Framework and JGDMS Phoenix
