@@ -90,12 +90,12 @@ Security impact: stronger anti-escalation behavior when constructing or constrai
 
 #### `Subject`
 
-Dirty Chai diverges from OpenJDK 21’s ACC-only retrieval/execution model by adding an explicit dual path:
+Dirty Chai diverges from OpenJDK 21 by carrying dual-path `Subject` logic in source, but the effective runtime path in Dirty Chai is single-path because `allowSecurityManager()` is always true (`System.java`):
 
-- when the JVM SecurityManager-installation capability is enabled (`SharedSecrets.getJavaLangAccess().allowSecurityManager()` returns true): behavior remains ACC/`SubjectDomainCombiner` based (legacy compatibility path),
-- when the JVM SecurityManager-installation capability is disabled (`allowSecurityManager()` returns false): `Subject.current()` / `Subject.callAs(...)` use `ScopedValue`-bound subject propagation.
+- effective Dirty Chai runtime path: ACC/`SubjectDomainCombiner`-based retrieval and execution (legacy compatibility path)
+- alternate `ScopedValue` branch exists in `Subject.current()` / `Subject.callAs(...)` source but is not active under Dirty Chai’s current capability setting
 
-Security impact: preserves legacy authorization checks where SecurityManager flows are active, while reducing dependence on deprecated ACC propagation where they are not.
+Security impact in Dirty Chai runtime: legacy authorization checks remain consistently active for subject propagation paths.
 
 ---
 
