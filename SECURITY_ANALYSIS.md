@@ -286,23 +286,42 @@ The main remaining risks are **operational** (policy configuration and whitelist
 
 ---
 
-## What Was Corrected (Errors in Prior Version)
+## Vulnerabilities identified and addressed in prior analysis:
+(Issue [#85](https://github.com/pfirmstone/DirtyChai/issues/85) — All Findings Resolved)
 
-1. **Incorrect claim: `System.getSecurityManager()` performs ProtectionDomain validation.**
-   **Current reality:** `getSecurityManager()` returns `security` directly and performs no validation.
+A code review raised eleven findings (F-1–F-11) against the new `java.base` security code.
+All were addressed by pfirmstone in nine commits on April 13, 2026.
 
-2. **Outdated recommendation: “Update JavaDoc for conditional validation.”**
-   **Current reality:** `System.setSecurityManager()` JavaDoc already documents the conditional strategy.
+| ID   | Severity | Description | Fix Committed |
+|------|----------|-------------|---------------|
+| F-1  | High | `limit(10)` in `validateCallerStackWithStackWalker()` allowed a deep-stack bypass | Raised to `limit(50)` |
+| F-2  | High | `Uri.implies(null)` threw NPE; propagated as `RuntimeException` past `SecurityException` catch blocks | Null guard restored in `Uri.implies()` |
+| F-3  | High | All-invalid-URI grant silently became a wildcard CodeSource grant | `URIGrant` constructor now throws `SecurityException` on any `URISyntaxException` |
+| F-4  | Medium | `SecurityPolicyWriter` and `PolicyOnlySecurityManager` (bootstrap-loaded, `java.base`) ran through the full 4-layer custom-SM validation unnecessarily | Added `PolicyOnlySecurityManager` to `trustedSMClass()` whitelist; rationale for excluding `SecurityPolicyWriter` documented |
+| F-5  | Medium | `ConcurrentPolicyFile.refresh()` silently swallowed errors and leaked paths to `System.err` | Now throws `SecurityException("Unable to refresh policy.", ex)` |
+| F-6  | Medium | `CombinerSecurityManager` latch had a 180-second DoS window | Timeout reduced to 10 seconds |
+| F-7  | Medium | Worker `ExecutionException` wrapped as `RuntimeException`, escaping `SecurityException` catch blocks; logger level mismatch | Log level corrected (`Level.DEBUG` check and call now match); `RuntimeException` re-throw preserved with correct wrapping |
+| F-8  | Low | Truncated `LAYEAccessController.` comment in `System.java` | Corrected to `LAYER 3: AccessController.` |
+| F-9  | Low | `Level.ERROR` tested but `Level.DEBUG` used — exception silently dropped in production | Fixed: `isLoggable(Level.DEBUG)` now guards `log(Level.DEBUG, ...)` |
+| F-10 | Low | Overly broad `java.lang.invoke.*` filter could block legitimate JDK-internal linkage-time frames | Replaced with switch-based whitelist; linkage-time-only classes (`StringConcatFactory`, `LambdaMetafactory`, `MethodHandles`, `MethodType`, etc.) are now excluded |
+| F-11 | Low | `sun.misc.Unsafe` not detected in `isUnsafeReflectionFrame()` | Added `sun.misc.Unsafe` check alongside `jdk.internal.misc.Unsafe` |
 
-3. **Outdated deserialization gap status.**
-   **Current reality:** `ObjectInputStream.readOrdinaryObject()` calls
-   `new SerialObjectPermission(cl.getName()).checkGuard(null);` before
-   `desc.newInstance()` (see
-   `src/java.base/share/classes/java/io/ObjectInputStream.java`:
-   line ~2231 check, line ~2234 instantiation), covering ordinary object paths at
-   the common funnel point:
-   - `new SerialObjectPermission(cl.getName()).checkGuard(null);`
-   - `obj = desc.isInstantiable() ? desc.newInstance() : null;`
+### Additional Fix — SocketPermission DNS Pre-fetch (DoS Prevention)
 
-4. **Document duplication and drift.**
-   Repeated sections (“Conditional Validation Strategy” appeared multiple times), repeated conclusions, and stale recommendations were removed.
+During the same review a denial-of-service risk was identified: hostname lookups in
+`SocketPermission.implies()` would occur at access-check time (after the SecurityManager is
+active), opening a window for DNS-based DoS attacks.
+
+**Fix:** A new `SocketPermission.init()` method eagerly resolves the canonical hostname and
+the untrusted-host flag during policy construction. `PermissionGrant` now calls `sp.init()`
+for every `SocketPermission` added to a grant.
+
+The `init()` catch block swallows `UnknownHostException` because `init()` sets `invalid = true`
+before the exception propagates; any subsequent `implies()` call on the permission will return
+`false`, so swallowing is fail-secure:
+
+```java
+} catch (UnknownHostException e){
+    //Swallow, invalid will be set to true, failing securely.
+}
+```
