@@ -25,7 +25,7 @@ This document covers the active model implemented in:
 
 Use this path first, then return to the deeper sections below.
 
-1. **Audit in staging by setting `-Djava.security.manager=polpAudit`** (`polpAudit` is the `SecurityPolicyWriter` alias) to generate policy grants from real permission checks:
+1. **Audit in staging by setting `-Djava.security.manager=polpAudit`** (`polpAudit` activates `SecurityPolicyWriter` audit mode) to generate policy grants from real permission checks:
 
    ```bash
    java -Djava.security.manager=polpAudit \
