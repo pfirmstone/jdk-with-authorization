@@ -471,7 +471,7 @@ DirtyChai consistently treats null or invalid `CodeSource` as unprivileged. URI 
 | CVE/Vulnerability | Type | Severity | Mitigation | Status |
 |---|---|---|---|---|
 | CVE-2021-44228 (Log4j) | RCE | Critical | LoadClassPermission + URLPermission + SerialObjectPermission | ✅ Blocked |
-| ysoserial gadgets | RCE | Critical | SerialObjectPermission in `readOrdinaryObject()` + class allowlist + policy audit | ⚠️ Substantially improved (residual edge-case review ongoing) |
+| ysoserial gadgets | RCE | Critical | SerialObjectPermission in `readOrdinaryObject()` + class allowlist + policy audit | ✅ Blocked (Issue #85 comprehensive fixes, April 13, 2026) |
 | URLClassLoader injection | Privilege Escape | High | LoadClassPermission + URLPermission | ✅ Blocked |
 | XXE injection | RCE | High | XML parser LoadClassPermission | ✅ Blocked |
 | Reflection-based bypass | Privilege Escape | High | StackWalker + @CallerSensitive | ✅ Blocked |
