@@ -593,18 +593,24 @@ native isolation story.
 
 **Description:**  
 The default policy should grant `NativeAccessPermission` only to named trusted
-modules (e.g., `jrt:/java.base/*`, `jrt:/java.desktop/*`) and explicitly
-withhold it from the unnamed module and from application classpath code.
+platform modules (e.g., `jrt:/java.desktop/*`) and explicitly withhold it from
+the unnamed module and from application classpath code.
+
+> **Note:** No explicit grant is needed for `jrt:/java.base/*`.  Classes in the
+> `java.base` module are loaded by the bootstrap class loader.  When only
+> bootstrap-loaded code is present on the call stack,
+> `AccessController.getStackAccessControlContext()` returns `null`, and
+> `AccessController.checkPermission()` returns immediately without consulting the
+> policy — bootstrap code is effectively always fully privileged.  Adding a
+> `grant codeBase "jrt:/java.base/*"` block has no runtime effect and should be
+> omitted to avoid misleading policy authors.
 
 **Policy pattern (human to implement):**
 
 ```
-// Deny by default; grant only to bootstrap classes
-grant codeBase "jrt:/java.base/*" {
-    permission au.zeus.jdk.authorization.guards.NativeAccessPermission
-        "*", "*";
-};
-
+// Deny by default; grant only to trusted platform modules that require native access.
+// Note: java.base does NOT need an explicit grant — bootstrap code bypasses the
+// policy engine entirely (getStackAccessControlContext() returns null).
 grant codeBase "jrt:/java.desktop/*" {
     permission au.zeus.jdk.authorization.guards.NativeAccessPermission
         "*", "*";
