@@ -265,6 +265,8 @@ It is checked at the entry to standard Java serialization and deserialization.
 **What it does:**
 - Forces policy authors to explicitly whitelist every class that may be
   serialized or deserialized via `ObjectInputStream` / `ObjectOutputStream`.
+  After the planned fix described in the Background section below, this covers
+  all `Serializable` classes — not just those with a custom `readObject`.
 - Prevents gadget-chain attacks by default: a class not in the policy cannot be
   deserialized even if it appears in the stream.
 - Works as a policy-file declaration, making the serialization surface auditable
@@ -275,9 +277,9 @@ It is checked at the entry to standard Java serialization and deserialization.
 - It does not validate the *content* of the deserialized object, only whether
   the class is permitted.  Content validation is the responsibility of the
   `@AtomicSerial` constructor or the application's own validation logic.
-- It does not prevent a permitted class from executing malicious logic in its
-  `readResolve()` or `readObject()` method.  For classes that implement these
-  callbacks the behaviour of those callbacks is still the responsibility of the
+- It does not prevent a whitelisted class from executing logic in its
+  `readResolve()` or `readObject()` callback.  For classes that implement these
+  callbacks the behaviour of those callbacks remains the responsibility of the
   class author.
 **The combined defence:**
 ```
@@ -319,8 +321,17 @@ thread running in the same process can leak secrets from other threads via these
 channels regardless of permission grants.
 #### 3. JVM internals access
 Despite module encapsulation and permission checks, the JVM exposes internal
-state (e.g., via `sun.misc.Unsafe`, JNI, or JVMTI) that can be exploited by
-native code or compromised JVM extensions to escape the security model entirely.
+state that can be exploited to escape the security model entirely:
+- **`sun.misc.Unsafe` / `jdk.internal.misc.Unsafe`** — allows arbitrary memory
+  reads and writes at native-pointer offsets.
+- **JNI / FFM** — native code runs outside the JVM and is invisible to
+  `StackWalker`; it can call back into the JVM impersonating any class.
+- **JVMTI** — a `-agentlib:` agent attached at startup can intercept or
+  redefine any class before the SecurityManager is installed.
+- **`java.lang.instrument.Instrumentation`** — a `-javaagent:` can redefine
+  classes at runtime, including security-critical classes, after the JVM is
+  running.  Unlike JVMTI, an `Instrumentation` agent can be loaded post-startup
+  via the `VirtualMachine.attach()` API if the JVM is not locked down.
 #### 4. Resource exhaustion
 As analysed above, a running thread cannot be forcibly terminated.  Even if all
 creation guards are in place, code that has been granted `createVirtualThread`
@@ -343,12 +354,16 @@ OS-level process isolation:
 | Blast-radius containment | Isolated `ForkJoinPool` + deadline | JGDMS service layer |
 | Memory isolation | Separate OS process | OS / GraalVM Espresso / container |
 | Network isolation | Firewall / namespace | OS / container runtime |
-> **Non-goal of DirtyChai**: Sandboxing untrusted code.  DirtyChai focuses on
-> user *authorisation* — ensuring users have access only when using approved,
-> policy-controlled code — and provides tooling to audit and limit the
-> privileges requested by third-party code prior to deployment.  Developers
-> needing untrusted-code sandboxing should consider GraalVM Espresso or Graal
-> process isolation.
+> **Scope of DirtyChai**: DirtyChai provides the *in-process* layer of the
+> combined confinement architecture.  Its core goals are user authorisation —
+> ensuring principals have access only when using approved, policy-controlled
+> code — least-privilege enforcement, and tooling to audit third-party code
+> before deployment.  When combined with JGDMS activation groups and OS-level
+> process and network isolation (as described in this document), DirtyChai's
+> in-process permission layer becomes one tier of a full defence-in-depth
+> posture that can confine untrusted code.  Neither DirtyChai alone nor JGDMS
+> alone is sufficient for that goal; the layers described in "The Correct
+> Architecture" table above are all required.
 In practice, the recommended deployment model for JGDMS services that handle
 untrusted remote input is:
 1. Each service runs in its own OS process.
@@ -505,14 +520,27 @@ in the JVM session, that library is permanently registered in the class loader's
 the JVM.  The library's native functions remain callable via JNI or FFM for
 the rest of the JVM's lifetime.
 
-**Implication:** Untrusted code that can persuade a trusted class to call a
-native method on its behalf — a confused-deputy attack — can indirectly invoke
-native functionality without itself holding `NativeAccessPermission`.
+**Implication:** This confused-deputy attack only succeeds when the trusted
+class uses **unrestricted** `AccessController.doPrivileged` (i.e. without
+supplying a restricted `AccessControlContext`).  Unrestricted `doPrivileged`
+tells the access-control stack walk to stop at that frame, dropping all caller
+`ProtectionDomain`s above it from the intersection.  Once the caller's domain
+is absent, the trusted class's own `NativeAccessPermission` is sufficient and
+the check passes even though the ultimate caller holds no such permission.
 
-**Mitigation:** Use `AccessController.doPrivileged` with a restricted context
-when trusted classes call native methods on behalf of caller-supplied inputs.
-This is a design obligation for trusted library code, not something DirtyChai
-can enforce automatically.
+Without any `doPrivileged`, the untrusted caller's `ProtectionDomain` remains
+on the call stack.  `SecurityManager.checkPermission` computes the intersection
+of every domain on the stack, so the untrusted domain's absence of
+`NativeAccessPermission` blocks the call automatically — no additional pattern
+is required from the trusted class.
+
+**Mitigation:** Trusted library code must **not** use unrestricted
+`AccessController.doPrivileged` when calling native methods on behalf of
+caller-supplied inputs.  The normal call path — without any `doPrivileged` —
+allows the security policy's call-stack intersection to enforce the restriction
+automatically.  This is a design obligation for trusted library code; DirtyChai
+cannot detect and prevent a trusted class from using unrestricted `doPrivileged`
+on its own behalf.
 
 #### 2. JNI callbacks from within native code
 
@@ -545,7 +573,7 @@ untrusted service processes).
 | Untrusted jar uses FFM `Linker.downcallHandle()` | `NativeAccessPermission("callerClass","downcallHandle")` | **Blocked by DirtyChai** |
 | Untrusted jar uses `MemorySegment.reinterpret()` | `NativeAccessPermission("callerClass","reinterpret")` | **Blocked by DirtyChai** |
 | Untrusted jar calls `SymbolLookup.libraryLookup()` | `NativeAccessPermission("callerClass","libraryLookup")` | **Blocked by DirtyChai** |
-| Confused-deputy: trusted class calls native on behalf of untrusted caller | `doPrivileged` with restricted context (design requirement on trusted code) | **Not automated — requires design discipline** |
+| Confused-deputy: trusted class calls native on behalf of untrusted caller | Call-stack intersection (SM checks all `ProtectionDomain`s); only fails if trusted code uses unrestricted `doPrivileged` | **Protected by default — trusted code must avoid unrestricted `doPrivileged`** |
 | Native code already loaded by trusted class | No Java-side gate (native code is already at OS level) | **Residual gap — use process isolation** |
 | JVMTI / `-agentlib:` attached at startup | OS / JVM launch controls | **Out of scope for DirtyChai** |
 
@@ -557,29 +585,45 @@ The `NativeAccessPermission` class and its integration into `Module.ensureNative
 are already implemented.  The following tasks remain for a complete, policy-auditable
 native isolation story.
 
-### Task N-1 — Add `NativeAccessPermission` to the Default Deny Policy
+### Task N-1 — ~~Add `NativeAccessPermission` to the Default Deny Policy~~ ✅ Already Complete
 
-**Priority:** High  
-**Files:** `src/java.base/share/classes/au/zeus/jdk/authorization/policy/`
-(default policy template) and any example policy files in the repository.
+**Priority:** High — **No action required: already implemented.**  
+**Files:**
+- `src/java.base/share/lib/security/default.policy`
+- `src/java.base/windows/lib/security/default.policy`
 
-**Description:**  
-The default policy should grant `NativeAccessPermission` only to named trusted
-modules (e.g., `jrt:/java.base/*`, `jrt:/java.desktop/*`) and explicitly
-withhold it from the unnamed module and from application classpath code.
+**Status:** Complete.  `NativeAccessPermission "*", "*"` has been added to every
+platform-loader module in the default policy that loads or uses native libraries:
 
-**Policy pattern (human to implement):**
+| Module | Policy file | Grant |
+|--------|-------------|-------|
+| `jrt:/java.smartcardio` | `share/lib/security/default.policy` | `NativeAccessPermission "*", "*"` |
+| `jrt:/jdk.crypto.cryptoki` | `share/lib/security/default.policy` | `NativeAccessPermission "*", "*"` |
+| `jrt:/java.desktop` | `share/lib/security/default.policy` | `NativeAccessPermission "*", "*"` |
+| `jrt:/jdk.crypto.mscapi` | `windows/lib/security/default.policy` | `NativeAccessPermission "*", "*"` |
+
+Modules that already hold `AllPermission` (e.g., `java.sql`, `jdk.dynalink`,
+`jdk.security.auth`) implicitly satisfy any `NativeAccessPermission` check
+because `AllPermission.implies()` returns `true` for all permissions — no
+explicit entry is needed for those modules.
+
+> **Note:** No explicit grant is needed for `jrt:/java.base/*`.  Classes in the
+> `java.base` module are loaded by the bootstrap class loader.  When only
+> bootstrap-loaded code is present on the call stack,
+> `AccessController.getStackAccessControlContext()` returns `null`, and
+> `AccessController.checkPermission()` returns immediately without consulting the
+> policy — bootstrap code is effectively always fully privileged.  Adding a
+> `grant codeBase "jrt:/java.base/*"` block has no runtime effect and should be
+> omitted to avoid misleading policy authors.
+
+**Policy pattern applied:**
 
 ```
-// Deny by default; grant only to bootstrap classes
-grant codeBase "jrt:/java.base/*" {
-    permission au.zeus.jdk.authorization.guards.NativeAccessPermission
-        "*", "*";
-};
-
-grant codeBase "jrt:/java.desktop/*" {
-    permission au.zeus.jdk.authorization.guards.NativeAccessPermission
-        "*", "*";
+// Deny by default; grant only to trusted platform modules that require native access.
+// Note: java.base does NOT need an explicit grant — bootstrap code bypasses the
+// policy engine entirely (getStackAccessControlContext() returns null).
+grant codeBase "jrt:/java.desktop" {
+    permission au.zeus.jdk.authorization.guards.NativeAccessPermission "*", "*";
 };
 
 // Do NOT grant NativeAccessPermission to application classpath or untrusted jars
@@ -587,46 +631,75 @@ grant codeBase "jrt:/java.desktop/*" {
 
 ---
 
-### Task N-2 — Add `RuntimePermission("loadLibrary.*")` to the Default Deny Policy
+### Task N-2 — ~~Add `RuntimePermission("loadLibrary.*")` to the Default Deny Policy~~ ✅ Already Complete
 
-**Priority:** High  
+**Priority:** High — **No action required: already implemented.**  
 **Files:** Same as N-1.
 
-**Description:**  
-Pair the `NativeAccessPermission` deny with an explicit deny of
-`RuntimePermission("loadLibrary.*")` for untrusted code.  Because
-`SecurityManager.checkLink()` fires independently of `NativeAccessPermission`,
-both must be denied to close the loading gate.
+**Status:** Complete.  The existing default policy already closes the
+`loadLibrary.*` gate via omission.  The generic `grant {}` block (which all
+protection domains receive) contains no `loadLibrary.*` entry.  Only the
+specific named-module blocks carry targeted `loadLibrary.<libname>` grants:
 
-**Policy pattern (human to implement):**
+| Module | Permitted library |
+|--------|-------------------|
+| `jrt:/java.smartcardio` | `loadLibrary.j2pcsc` |
+| `jrt:/jdk.crypto.cryptoki` | `loadLibrary.j2pkcs11` |
+| `jrt:/jdk.crypto.mscapi` (Windows) | `loadLibrary.sunmscapi` |
+
+Application-classpath code and unnamed-module code receive none of these grants,
+so `SecurityManager.checkLink()` will throw `SecurityException` when untrusted
+code attempts to call `System.loadLibrary()`.
+
+**Policy structure (deny by omission):**
 
 ```
-// Deny loadLibrary to untrusted classpath code by omission
-// (no RuntimePermission "loadLibrary.*" grant in untrusted code's grant block)
+// Untrusted application-classpath code gets only the minimal generic grant.
+// No loadLibrary.* appears here, so System.loadLibrary() is denied.
+grant {
+    permission java.net.SocketPermission "localhost:0", "listen";
+    // ... standard read-only property permissions only ...
+};
 
-// Grant specific libraries to specific trusted code:
-grant codeBase "file:/opt/myapp/lib/trusted.jar" {
-    permission java.lang.RuntimePermission "loadLibrary.myspecificlib";
+// Named trusted modules receive only the specific library they require:
+grant codeBase "jrt:/java.smartcardio" {
+    permission java.lang.RuntimePermission "loadLibrary.j2pcsc";
+    // ... other smartcardio-specific permissions ...
 };
 ```
 
 ---
 
-### Task N-3 — Extend `SecurityPolicyWriter` to Report `NativeAccessPermission` Grants
+### Task N-3 — ~~Extend `SecurityPolicyWriter` to Report `NativeAccessPermission` Grants~~ ✅ Already Complete
 
-**Priority:** Medium  
+**Priority:** Medium — **No action required: already implemented.**  
 **Files:** `src/java.base/share/classes/au/zeus/jdk/authorization/tool/SecurityPolicyWriter.java`
 
-**Description:**  
-`SecurityPolicyWriter` already enumerates `LoadClassPermission` and
-`SerialObjectPermission` grants, making the serialization and class-loading
-surfaces auditable.  The same tool should be extended to enumerate all
-`NativeAccessPermission` grants observed during a test run, so that policy
-authors can audit exactly which code attempted to use native or restricted APIs.
+**Status:** Complete.  `SecurityPolicyWriter` already records every
+`NativeAccessPermission` checked during a test run without any modification.
 
-This is a human implementation task because it involves modifying `SecurityPolicyWriter.java`,
-a production Java source file subject to the OpenJDK Interim Policy on
-Generative AI.
+**Explanation:**  
+`SecurityPolicyWriter.checkPermission(ProtectionDomain, Permission)` records
+*every* `Permission` instance generically (the only exclusion is
+`AllPermission`):
+
+```java
+// SecurityPolicyWriter.java — line 353
+if (!(p instanceof AllPermission)) perms.add(p);
+```
+
+`NativeAccessPermission.checkGuard(null)` delegates to
+`SecurityManager.checkPermission(this)` (inherited from
+`java.security.Permission`), which flows through
+`CombinerSecurityManager` and reaches `SecurityPolicyWriter.checkPermission`.
+The permission is therefore captured and written to the policy file at JVM
+shutdown alongside every other permission observed during the run.
+
+No distinction is made between `LoadClassPermission`,
+`SerialObjectPermission`, `NativeAccessPermission`, or any other type: the
+tool records all of them through the same generic path.  Policy authors who
+run their test suite under `SecurityPolicyWriter` will see all
+`NativeAccessPermission` grants in the generated policy file automatically.
 
 ---
 
@@ -665,21 +738,49 @@ exploited to load native code through the module-system path.
 **Files:** `CONTRIBUTING.md`, `SECURITY_MODEL.md`.
 
 **Description:**  
-Document the pattern that trusted library code must follow when it calls native
-methods on behalf of caller-supplied inputs:
+Document the obligation that trusted library code must honour when it calls
+native methods that may be triggered by caller-supplied inputs.
+
+The Java security model protects against the confused-deputy attack
+automatically: `SecurityManager.checkPermission` walks the entire call stack
+and computes the *intersection* of the `PermissionCollection`s held by every
+`ProtectionDomain` on the stack.  As long as the untrusted caller's domain
+remains on the stack, its absence of `NativeAccessPermission` prevents the call
+from succeeding — no special coding pattern is required in the trusted class.
+
+The attack only becomes possible when the trusted class uses **unrestricted**
+`AccessController.doPrivileged` (without supplying a restricted
+`AccessControlContext`).  Unrestricted `doPrivileged` tells the stack walk to
+stop at that frame, removing the untrusted caller's domain from the intersection.
+With the caller's domain gone, the trusted class's own `NativeAccessPermission`
+is sufficient and the permission check passes incorrectly.
+
+**The obligation for trusted library authors is therefore:**
+
+> Do **not** use unrestricted `AccessController.doPrivileged` on code paths
+> that lead to native method calls when those paths can be triggered by
+> caller-supplied inputs.  The normal call path (no `doPrivileged`) lets the
+> security policy enforce the restriction through stack-intersection automatically.
+
+If a trusted class genuinely needs to perform a privileged operation while
+still honouring the caller's restrictions (e.g., it must open a file but must
+also respect the caller's `FilePermission` grants), it must supply a restricted
+`AccessControlContext` built from the caller's context:
 
 ```java
-// Pattern: restrict the AccessControlContext before calling native code
-// that uses caller-controlled inputs
+// Only needed when elevated privilege AND caller restriction are both required.
+// For the confused-deputy case alone, simply omit doPrivileged entirely.
+AccessControlContext callerContext = AccessController.getContext();
 AccessController.doPrivileged(
     () -> { nativeMethod(callerSuppliedInput); },
-    restrictedContext   // built from the caller's context, not the trusted class's
+    callerContext   // caller's ProtectionDomain remains in the intersection
 );
 ```
 
-Failing to do this creates a confused-deputy vulnerability where untrusted code
-can exploit the trusted class's `NativeAccessPermission` to indirectly invoke
-native functionality it could not invoke directly.
+Failing to avoid unrestricted `doPrivileged` creates a confused-deputy
+vulnerability where untrusted code exploits the trusted class's
+`NativeAccessPermission` to invoke native functionality it could not invoke
+directly.
 
 This guidance is for documentation files only and is therefore within scope for
 this session.
@@ -699,6 +800,35 @@ trusted modules receive `NativeAccessPermission` so that the intersection logic
 is exercised in tests.
 
 This is a human implementation task (policy file changes and test additions).
+
+---
+
+> **Footnote — Recommended Policy Authoring Workflow**
+>
+> The wildcard grants (`"*", "*"`) used in Tasks N-1 and N-2 above are a safe
+> starting point for trusted platform-loader modules, but they are deliberately
+> broad.  For application code and any module whose actual permission requirements
+> are not yet known, the recommended workflow is:
+>
+> 1. **Generate first with polpAudit.**  Run the application (or its test suite)
+>    under [`polpAudit`](https://github.com/pfirmstone/JGDMS/tree/trunk/tools/polpAudit)
+>    (or the equivalent `SecurityPolicyWriter` instrumentation built into
+>    DirtyChai — see Task N-3 above).  polpAudit observes every
+>    `SecurityManager.checkPermission()` call that occurs during the run and
+>    emits a least-privilege policy file containing only the permissions that
+>    were actually checked.
+>
+> 2. **Review and widen if needed.**  Inspect the generated policy file.  If a
+>    legitimate code path was not exercised during the capture run (e.g., an
+>    error-recovery branch or a rarely-used feature), add the missing permission
+>    entries manually after verifying that granting them is intentional.
+>
+> This two-step approach — *capture then widen* — avoids both under-granting
+> (which causes `SecurityException` at runtime) and over-granting (which enlarges
+> the attack surface unnecessarily).  The wildcard entries in the platform-module
+> policy blocks above were applied only after confirming that every platform module
+> listed there is fully trusted and loaded by the platform class loader; the same
+> shortcut must **not** be applied to application-classpath or plugin code.
 
 ---
 
@@ -855,6 +985,13 @@ that Phoenix's policy permits.
 
 ## Investigation: DirtyChai + JGDMS for In-Process and Remote Network Isolation
 
+> **JDK compatibility note:** JGDMS requires a SecurityManager-capable JDK.
+> Standard OpenJDK removed `SecurityManager` in Java 24.  DirtyChai restores
+> this infrastructure, making DirtyChai the required JDK for any deployment
+> that combines JGDMS services with the in-process permission model described
+> in this document.  Using JGDMS on standard OpenJDK 24+ without DirtyChai
+> leaves the in-process permission layer absent.
+
 ### The Two Isolation Dimensions
 
 A JGDMS service deployment has two distinct isolation boundaries:
@@ -888,14 +1025,10 @@ against the policy loaded by `ConcurrentPolicyFile`.
 
 **What in-process isolation cannot prevent:**
 
-- A thread that is already running can exhaust the CPU or heap without any
-  permission check.
-- Memory corruption through a JNI/JVMTI agent bypasses all Java-level checks.
-- An attacker who has already escalated to a fully-trusted context (e.g., through
-  the WhiteBox or Unsafe APIs) can read or corrupt any JVM state.
-
-These residual gaps make process isolation (Section above) essential for truly
-untrusted code.
+See "Why Process Isolation Remains Essential" earlier in this document
+(shared memory, side-channel attacks, JVM internals, resource exhaustion,
+class-loader confusion).  These residual gaps make OS process isolation
+essential for truly untrusted code.
 
 ### Remote Network Isolation Layer (JGDMS JERI)
 
@@ -1020,6 +1153,11 @@ posture when handling untrusted remote input.
 
 ## Correction: How JGDMS Actually Handles Proxy Trust (No ProxyTrust)
 
+> **Reference context:** This section documents JGDMS-specific proxy-trust
+> mechanics for developers integrating DirtyChai-based services into a JGDMS
+> deployment.  It corrects a common misreading of Jini/Apache River
+> documentation.
+
 ### The Misconception
 
 A common assumption when reading Jini or Apache River documentation is that **smart
@@ -1054,11 +1192,15 @@ signed with the service provider's certificate.
 
 When the client downloads the proxy:
 
-1. `RMIClassLoader` (or the JGDMS class loader) fetches the JAR from the codebase URL.
-2. The JAR signature is verified against the certificate in the client's truststore.
-3. The proxy class is loaded into a `ProtectionDomain` whose `CodeSource` records the
+1. The client's JGDMS dynamic policy first requires `DownloadPermission` to be
+   granted to the lookup service's authenticated principal before it will fetch
+   any proxy JAR.  This prevents an untrusted lookup service from injecting
+   arbitrary proxy classes.
+2. `RMIClassLoader` (or the JGDMS class loader) fetches the JAR from the codebase URL.
+3. The JAR signature is verified against the certificate in the client's truststore.
+4. The proxy class is loaded into a `ProtectionDomain` whose `CodeSource` records the
    verified certificate.
-4. The client's policy grants permissions to `CodeSource` entries signed by trusted
+5. The client's policy grants permissions to `CodeSource` entries signed by trusted
    certificates — unsigned or mis-signed proxies receive no permissions and are
    immediately inert.
 
@@ -1316,13 +1458,22 @@ privileges.  A minimal policy limits the blast radius to exactly the permissions
 
 ### Background
 
-DirtyChai's `SerialObjectPermission` is checked in `SerialCallbackContext` immediately
-before a class's custom `readObject`/`readFields` method is invoked during
-`ObjectInputStream` deserialisation.  The permission name is the fully-qualified class
-name of the class being deserialised.
+DirtyChai's `SerialObjectPermission` is checked during `ObjectInputStream`
+deserialisation.  The permission name is the fully-qualified class name of the
+class being deserialised.
+
+**Planned scope (full coverage):** The check is being extended to fire for
+every class resolved by `ObjectInputStream`, not only those that have a custom
+`readObject` method.  When this fix lands, holding `SerialObjectPermission` for
+a class will be required before that class can be reconstructed from any Java
+serialization stream, regardless of whether it uses default or custom
+serialization.
+
+The current implementation fires in `SerialCallbackContext`, which is invoked
+immediately before a class's custom `readObject`/`readFields` method:
 
 ```java
-// SerialCallbackContext.java (DirtyChai modification)
+// SerialCallbackContext.java (DirtyChai modification — current)
 SerialCallbackContext(Object obj, ObjectStreamClass desc) {
     this(obj, desc, check(getGuard(desc.getName())), Thread.currentThread());
     //                    ^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -1331,16 +1482,16 @@ SerialCallbackContext(Object obj, ObjectStreamClass desc) {
 }
 ```
 
-The effect is that **every class that implements `Serializable` and has a custom
-`readObject` method** requires a `SerialObjectPermission` grant in the deserialising
-thread's `AccessControlContext` stack.  Classes that rely purely on default serialisation
-(no `readObject`) do not trigger this check — only those with custom `readObject`
-implementations do.
+After the planned fix, the check will additionally fire at the point where
+`ObjectInputStream` resolves each class descriptor, covering classes that rely
+on default serialization and have no custom `readObject`.
 
 ### Activation Classes That Require SerialObjectPermission
 
-The following classes are part of the JGDMS activation serialisation path and have
-custom `readObject` implementations:
+The following classes are part of the JGDMS activation serialisation path.
+All of them have custom `readObject` implementations and therefore require
+`SerialObjectPermission` under both the current and the planned
+implementations:
 
 | Class | Why it needs SerialObjectPermission |
 |-------|-------------------------------------|
@@ -1351,9 +1502,10 @@ custom `readObject` implementations:
 | `java.rmi.activation.ActivationGroupID` | Custom `readObject` validates UID and system ref |
 | `java.rmi.MarshalledObject` | Custom `readObject` reads serialised byte array |
 
-Classes that use default serialisation only (e.g., `java.util.Properties`,
-`java.lang.String`, primitive wrappers) do not require `SerialObjectPermission` and may
-be freely deserialised as long as the `ObjectInputFilter` does not reject them.
+Once the full-coverage fix lands, all other `Serializable` classes that cross a
+standard `ObjectInputStream` path will also need explicit grants — including
+classes that previously relied on default serialization.  Use
+`SecurityPolicyWriter` to scan service JARs and generate the required grants.
 
 ### Where SerialObjectPermission Must Be Granted
 
@@ -1382,8 +1534,7 @@ If this is correctly configured, the group JVM policy does **not** need
 #### Service Implementations Inside Group JVMs
 
 Service implementations may deserialise their own domain objects.  Each deserialised
-class that has a custom `readObject` method needs `SerialObjectPermission` granted to
-the service's codebase:
+class needs `SerialObjectPermission` granted to the service's codebase:
 
 ```
 // Group JVM policy — service-specific SerialObjectPermission grants
@@ -1395,29 +1546,32 @@ grant CodeBase "file:/path/to/my-service.jar"
               "com.example.service.DomainObject";
     permission au.zeus.jdk.authorization.guards.SerialObjectPermission
               "com.example.service.RequestRecord";
-    // ... enumerate all classes with custom readObject in this service
+    // Enumerate all Serializable classes in this service once full-coverage
+    // fix lands; SecurityPolicyWriter can generate these grants automatically.
 };
 ```
 
 The `SecurityPolicyWriter` tool can generate these grants automatically by scanning
-the service JAR for classes that implement `readObject`.
+the service JAR for `Serializable` classes.
 
 ### SerialObjectPermission as a Defence Against Gadget Chains
 
 A serialisation gadget chain requires that at least one class in the chain has a
 custom `readObject` that triggers a dangerous side-effect (arbitrary code execution,
 SSRF, file write, etc.).  By requiring an explicit `SerialObjectPermission` grant for
-every such class, DirtyChai ensures that:
+every class reaching the deserialisation path, DirtyChai ensures that:
 
 1. A service policy that does not grant `SerialObjectPermission "com.sun.jndi.*"` will
    throw `SecurityException` before the JNDI gadget's `readObject` fires.
 2. A dependency JAR that unexpectedly ships a gadget class cannot be weaponised unless
    the administrator explicitly grants `SerialObjectPermission` for that class.
+3. Once the full-coverage fix lands, even gadget classes that use only default
+   serialization (previously unguarded) will require an explicit grant.
 
 This is a defence-in-depth supplement to the `ObjectInputFilter` (serial filter), not a
 replacement.  Both should be configured: the serial filter enforces an allowlist of
 deserialised class names; `SerialObjectPermission` enforces an allowlist of classes
-whose custom `readObject` logic may execute.
+that may be reconstructed from a stream.
 
 ---
 
