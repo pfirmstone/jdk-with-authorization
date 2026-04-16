@@ -28,7 +28,7 @@ OpenJDK 21 is the last LTS release line that still includes SecurityManager APIs
 | Guard permission model | No `au.zeus.jdk.authorization.guards.*` guard classes | Adds dedicated guard permissions (`LoadClassPermission`, `NativeAccessPermission`, `SerialObjectPermission`) and integrates them into security-critical flows |
 | Executors + thread factory behavior | `Executors.defaultThreadFactory()` returns classic `DefaultThreadFactory` | `Executors.defaultThreadFactory()` routes through `Thread.ofPlatform().group(...).factory()` and therefore through Dirty Chai platform-thread permission checks |
 | Virtual thread creation path | `ThreadBuilders` virtual/platform builder paths do not enforce dedicated `createVirtualThread`/`createPlatformThread` checks | Builder `unstarted()` and `factory()` paths enforce explicit runtime permissions and capture `AccessController.getContext()` for inherited security context |
-| `AccessController` / `AccessControlContext` / `Subject` model | OpenJDK 21 `doPrivileged(..., AccessControlContext, Permission...)` uses wrapper/context-validation flow (`checkContext`/`createWrapper`), with `Subject` propagation via ACC/`SubjectDomainCombiner` | Explicit limited-privilege domain intersection via `DomainIdentity`, ACC builder/authorization helpers, and dual ACC/`ScopedValue` Subject propagation |
+| `AccessController` / `AccessControlContext` / `Subject` model | OpenJDK 21 `doPrivileged(..., AccessControlContext, Permission...)` uses wrapper/context-validation flow (`checkContext`/`createWrapper`), with `Subject` propagation via ACC/`SubjectDomainCombiner` | Explicit limited-privilege domain intersection via `DomainIdentity`, ACC builder/authorization helpers, and ACC/`SubjectDomainCombiner` subject propagation in active Dirty Chai runtime path |
 
 ### A) New Guards vs OpenJDK 21
 
@@ -66,7 +66,21 @@ Dirty Chai retains this authorization-relevant API path and updates internal che
 
 OpenJDK 21 builder paths do not include these explicit thread-creation runtime-permission checks, and use less restrictive inherited-context defaults.
 
-### D) `AccessController`, `AccessControlContext`, and `Subject` Delta vs OpenJDK 21
+### D) Additional `ManagementPermission` Checks (Including Native-Backed Paths)
+
+Dirty Chai includes explicit `ManagementPermission("monitor")` / `ManagementPermission("control")` gating on management operations that feed into JNI/JMM native entry points.
+
+- Permission gate implementation is centralized in `sun.management.Util` (`checkMonitorAccess` / `checkControlAccess`).
+- Gate checks are applied in management implementations before privileged/native-backed operations, including:
+  - `sun.management.ThreadImpl` (`getAllThreadIds`, `getThreadInfo`, deadlock queries, dumps, peak/cpu/contention controls)
+  - `sun.management.MemoryImpl` / `MemoryPoolImpl` (verbosity and threshold/control operations)
+  - `sun.management.ClassLoadingImpl` (`setVerbose`)
+  - `sun.management.RuntimeImpl` (`getInputArguments`)
+- Native operation surfaces for these paths are in `src/java.management/share/native/libmanagement/*.c` (`ThreadImpl.c`, `MemoryImpl.c`, `MemoryPoolImpl.c`, `ClassLoadingImpl.c`) via `jmm_interface`/JVM calls.
+
+Security impact versus OpenJDK 21 baseline: Dirty Chai’s management surface is more explicitly permission-gated at Java entry points for operations that dispatch into native management functions, reducing risk of unauthorized runtime introspection/control through MXBean/JMM paths.
+
+### E) `AccessController`, `AccessControlContext`, and `Subject` Delta vs OpenJDK 21
 
 #### `AccessController`
 
@@ -90,10 +104,9 @@ Security impact: stronger anti-escalation behavior when constructing or constrai
 
 #### `Subject`
 
-Dirty Chai diverges from OpenJDK 21 by carrying dual-path `Subject` logic in source, but the effective runtime path in Dirty Chai is single-path because `allowSecurityManager()` is always true (`System.java`):
+Dirty Chai runtime `Subject` behavior is single-path because `allowSecurityManager()` is always true (`System.java`):
 
 - effective Dirty Chai runtime path: ACC/`SubjectDomainCombiner`-based retrieval and execution (legacy compatibility path)
-- alternate `ScopedValue` branch exists in `Subject.current()` / `Subject.callAs(...)` source but is not active under Dirty Chai’s current capability setting
 
 Security impact in Dirty Chai runtime: legacy authorization checks remain consistently active for subject propagation paths.
 
@@ -270,7 +283,17 @@ The main remaining risks are **operational** (policy configuration and whitelist
 - `src/java.base/share/classes/java/security/AccessController.java` — privileged execution and limited-privilege intersection behavior
 - `src/java.base/share/classes/java/security/AccessControlContext.java` — ACC construction/authorization and intersection helpers
 - `src/java.base/share/classes/java/security/DomainIdentity.java` — caller-linked protection-domain type used in limited-privilege intersection paths
-- `src/java.base/share/classes/javax/security/auth/Subject.java` — subject propagation behavior across ACC and `ScopedValue` paths
+- `src/java.base/share/classes/javax/security/auth/Subject.java` — active ACC/`SubjectDomainCombiner` subject propagation path in Dirty Chai runtime
+- `src/java.management/share/classes/sun/management/Util.java` — centralized `ManagementPermission("monitor"/"control")` gate checks
+- `src/java.management/share/classes/sun/management/ThreadImpl.java` — management permission checks protecting native-backed thread inspection/control operations
+- `src/java.management/share/classes/sun/management/MemoryImpl.java` — management permission checks for native-backed memory control operations
+- `src/java.management/share/classes/sun/management/MemoryPoolImpl.java` — management permission checks for threshold/reset sensor operations
+- `src/java.management/share/classes/sun/management/ClassLoadingImpl.java` — management permission checks before native class-loading verbosity control
+- `src/java.management/share/classes/sun/management/RuntimeImpl.java` — monitor access checks on runtime-arguments access
+- `src/java.management/share/native/libmanagement/ThreadImpl.c` — JNI/JMM thread management native entry points guarded by Java-side permission checks
+- `src/java.management/share/native/libmanagement/MemoryImpl.c` — JNI/JMM memory management native entry points
+- `src/java.management/share/native/libmanagement/MemoryPoolImpl.c` — JNI/JMM memory-pool management native entry points
+- `src/java.management/share/native/libmanagement/ClassLoadingImpl.c` — JNI/JMM class-loading management native entry points
 - `src/java.base/share/classes/java/lang/ThreadBuilders.java` — enforcement points for `RuntimePermission("createPlatformThread")` and `RuntimePermission("createVirtualThread")`
 - `src/java.base/share/classes/java/lang/Thread.java` — platform thread-creation security checks and builder security notes
 - `src/java.base/share/classes/java/util/concurrent/Executors.java` — default/privileged thread factory behavior and virtual-thread executor entry points
