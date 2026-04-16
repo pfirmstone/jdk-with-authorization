@@ -28,7 +28,7 @@ OpenJDK 21 is the last LTS release line that still includes SecurityManager APIs
 | Guard permission model | No `au.zeus.jdk.authorization.guards.*` guard classes | Adds dedicated guard permissions (`LoadClassPermission`, `NativeAccessPermission`, `SerialObjectPermission`) and integrates them into security-critical flows |
 | Executors + thread factory behavior | `Executors.defaultThreadFactory()` returns classic `DefaultThreadFactory` | `Executors.defaultThreadFactory()` routes through `Thread.ofPlatform().group(...).factory()` and therefore through Dirty Chai platform-thread permission checks |
 | Virtual thread creation path | `ThreadBuilders` virtual/platform builder paths do not enforce dedicated `createVirtualThread`/`createPlatformThread` checks | Builder `unstarted()` and `factory()` paths enforce explicit runtime permissions and capture `AccessController.getContext()` for inherited security context |
-| `AccessController` / `AccessControlContext` / `Subject` model | OpenJDK 21 LTS baseline wrappers around deprecated SecurityManager-era ACC semantics | Enhanced ACC builders, CodeSource-backed permission-domain intersection, and dual-path Subject propagation |
+| `AccessController` / `AccessControlContext` / `Subject` model | OpenJDK 21 limited-privilege paths rely on legacy wrapper/context-validation flow (`checkContext`/`createWrapper`) and ACC/`SubjectDomainCombiner` propagation | Enhanced ACC builders, CodeSource-backed permission-domain intersection, and dual-path Subject propagation |
 
 ### A) New Guards vs OpenJDK 21
 
@@ -92,7 +92,7 @@ Security impact: stronger anti-escalation behavior when constructing or constrai
 
 Dirty Chai diverges from OpenJDK 21’s ACC-only retrieval/execution model by adding an explicit dual path:
 
-- when SecurityManager installation is permitted by the JVM (`SharedSecrets.getJavaLangAccess().allowSecurityManager()` is true): behavior remains ACC/`SubjectDomainCombiner` based (legacy compatibility path),
+- when the JVM permits SecurityManager installation (`SharedSecrets.getJavaLangAccess().allowSecurityManager()` returns true): behavior remains ACC/`SubjectDomainCombiner` based (legacy compatibility path),
 - when SecurityManager installation is not permitted (`allowSecurityManager()` is false): `Subject.current()` / `Subject.callAs(...)` use `ScopedValue`-bound subject propagation.
 
 Security impact: preserves legacy authorization checks where SecurityManager flows are active, while reducing dependence on deprecated ACC propagation where they are not.
@@ -269,6 +269,7 @@ The main remaining risks are **operational** (policy configuration and whitelist
 - `src/java.base/share/classes/java/lang/System.java` — conditional SecurityManager validation, stack-walk depth (`limit(50)`), trusted-class gate
 - `src/java.base/share/classes/java/security/AccessController.java` — privileged execution and limited-privilege intersection behavior
 - `src/java.base/share/classes/java/security/AccessControlContext.java` — ACC construction/authorization and intersection helpers
+- `src/java.base/share/classes/java/security/DomainIdentity.java` — caller-linked protection-domain type used in limited-privilege intersection paths
 - `src/java.base/share/classes/javax/security/auth/Subject.java` — subject propagation behavior across ACC and `ScopedValue` paths
 - `src/java.base/share/classes/java/lang/ThreadBuilders.java` — enforcement points for `RuntimePermission("createPlatformThread")` and `RuntimePermission("createVirtualThread")`
 - `src/java.base/share/classes/java/lang/Thread.java` — platform thread-creation security checks and builder security notes
