@@ -48,7 +48,7 @@ Use this path first, then return to the deeper sections below.
 
 ### Why `polpAudit` first?
 
-Manual policy authoring is error-prone in real systems. `polpAudit` observes actual runtime checks and incrementally writes required grants, giving a practical least-privilege baseline before human tightening. For the full audit-review-deploy cycle, see [14) Recommended Deployment Pattern](#14-recommended-deployment-pattern).
+Manual policy authoring is error-prone in real systems. `polpAudit` observes actual runtime checks and incrementally writes required grants, giving a practical least-privilege baseline before human tightening. For the full audit-review-deploy cycle, see section 14 ("Recommended Deployment Pattern").
 
 ---
 
