@@ -454,7 +454,7 @@ Issue #85 and related commits resolved 11 reviewed findings plus a SocketPermiss
 | F-6 | `CombinerSecurityManager` timeout DoS window (180s) | ✅ Reduced timeout to 10 seconds |
 | F-7 | Exception/logging mismatch in policy refresh worker path | ✅ Corrected logging behavior and exception propagation |
 | F-11 | Unsafe frame detection incomplete | ✅ Added `sun.misc.Unsafe` detection alongside `jdk.internal.misc.Unsafe` |
-| SocketPermission | DNS lookups at access-check time enabled DNS-based DoS pressure | ✅ Canonical-host resolution moved to eager `SocketPermission.init()` during policy construction |
+| SocketPermission | DNS lookups performed during access checks could enable DNS-based DoS attacks | ✅ Canonical-host resolution moved to eager `SocketPermission.init()` during policy construction |
 
 ### SecurityManager Installation Model Alignment
 
