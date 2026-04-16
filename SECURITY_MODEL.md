@@ -45,6 +45,7 @@ Use this path first, then return to the deeper sections below.
 4. **Use Subject-aware execution where policy requires principals**:
    - Wrap entrypoints in `Subject.callAs(...)` / `Subject.doAs(...)`.
    - Use `Thread.Builder` / `ThreadFactory` inside that scope for consistent Subject-aware context inheritance.
+   - Create `Executors` that depend on those factories inside the same scope so worker threads inherit the intended context baseline.
 
 ### Why `polpAudit` first?
 
@@ -210,6 +211,36 @@ For virtual builders:
 ### 11.5 Security implication
 
 For Subject-aware authorization, prefer `Thread.Builder` / builder-produced `ThreadFactory` created inside the intended Subject scope (for example within `Subject.callAs(...)`) so downstream thread creation consistently inherits the intended authorization context.
+
+### 11.6 Executors, ThreadFactory, Thread, and AccessControlContext
+
+This section mirrors the thread-creation analysis for adjacent APIs that define runtime execution boundaries.
+
+#### 11.6.1 `Executors`
+
+- `Executors.newVirtualThreadPerTaskExecutor()` delegates to `Thread.ofVirtual().factory()`, so security context behavior follows virtual `Thread.Builder` factory capture semantics.
+- `Executors.defaultThreadFactory()` returns a platform builder-based factory (`Thread.ofPlatform()...factory()`), so creation-time context capture is aligned with builder flows.
+- `Executors.privilegedThreadFactory()` explicitly captures `AccessControlContext` and context class loader at factory creation, then runs work under `AccessController.doPrivileged(..., capturedAcc)`.
+
+**Operational guidance:** construct executor services in the intended Subject scope (`Subject.callAs(...)` / `Subject.doAs(...)`) when policy grants require principal-aware execution.
+
+#### 11.6.2 `ThreadFactory`
+
+- `Thread.Builder.factory()` checks `RuntimePermission("createPlatformThread")` or `RuntimePermission("createVirtualThread")` at factory creation.
+- Builder factories store captured `AccessControlContext` and apply it to each `newThread(...)` call, yielding consistent inherited security context across produced threads.
+- This is stronger and more predictable for Subject propagation than ad-hoc thread construction in mixed caller contexts.
+
+#### 11.6.3 `Thread` (constructors and builders)
+
+- Public platform-thread constructors perform platform-thread permission/checkAccess flow and set inherited context from either explicit ACC parameter or `AccessController.getContext()`.
+- `Thread.ofPlatform()` / `Thread.ofVirtual()` builder paths document and implement explicit inherited-context capture behavior used by both `unstarted/start` and `factory`.
+- In this codebase, builder flows are the recommended mechanism when consistent Subject-bearing context inheritance is required.
+
+#### 11.6.4 `AccessControlContext` and `AccessController.getContext()`
+
+- `AccessController.getContext()` snapshots current effective context (including inherited context and limited-privilege scope) and returns an optimized `AccessControlContext`.
+- `AccessControlContext.checkPermission(...)` evaluates against the encapsulated context (not merely the current thread at check site), enabling safe handoff to worker execution paths.
+- Dirty Chai retains authorization-focused ACC behavior and hardens context construction so unauthorized context creation does not result in privilege escalation.
 
 ---
 
