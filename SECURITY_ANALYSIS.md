@@ -2,7 +2,7 @@
 
 **Date:** 2026-04-16  
 **Project:** Dirty Chai  
-**Scope:** `System.setSecurityManager()`, `AccessController`, `ConcurrentPolicyFile`, URI handling, deserialization guard paths
+**Scope:** `System.setSecurityManager()`, `AccessController`, `ConcurrentPolicyFile`, URI handling, guard permissions, Executors, and virtual-thread/security-manager interaction paths
 
 ---
 
@@ -16,7 +16,7 @@ This update corrects stale claims in the prior document, removes duplication, an
 
 ---
 
-## Comparison to OpenJDK 21 (LTS)
+## Comparison to OpenJDK 21 (LTS) — In-Depth
 
 OpenJDK 21 is the last LTS release line that still includes SecurityManager APIs, but Dirty Chai applies materially stronger hardening in the analyzed paths.
 
@@ -25,9 +25,47 @@ OpenJDK 21 is the last LTS release line that still includes SecurityManager APIs
 | `System.setSecurityManager()` behavior | Compatibility-focused path with `allow/disallow` gating and no Dirty Chai-style caller-stack hardening | Conditional trust gate plus layered validation for untrusted/custom SecurityManager implementations |
 | Trusted-vs-untrusted SecurityManager distinction | No explicit `trustedSMClass()` gate with exact-class whitelist | Exact-class trust gate (`SecurityManager`, `CombinerSecurityManager`, `PolicyOnlySecurityManager`) |
 | Reflection/generated-caller blocking for custom SM install | Not implemented as a dedicated layered defense at install time | Explicit stack/reflection/method-handle/generated-code blocking for custom SM install |
-| Thread creation permissions (`createPlatformThread`, `createVirtualThread`) | No dedicated checks in OpenJDK 21 `ThreadBuilders` path | Explicit `RuntimePermission` checks added for platform + virtual builder flows and platform thread creation paths |
+| Guard permission model | No `au.zeus.jdk.authorization.guards.*` guard classes | Adds dedicated guard permissions (`LoadClassPermission`, `NativeAccessPermission`, `SerialObjectPermission`) and integrates them into security-critical flows |
+| Executors + thread factory behavior | `Executors.defaultThreadFactory()` returns classic `DefaultThreadFactory` | `Executors.defaultThreadFactory()` routes through `Thread.ofPlatform().group(...).factory()` and therefore through Dirty Chai platform-thread permission checks |
+| Virtual thread creation path | `ThreadBuilders` virtual/platform builder paths do not enforce dedicated `createVirtualThread`/`createPlatformThread` checks | Builder `unstarted()` and `factory()` paths enforce explicit runtime permissions and capture `AccessController.getContext()` for inherited security context |
 
-This makes Dirty Chai’s posture stricter both at SecurityManager installation and at thread-creation authorization boundaries.
+### A) New Guards vs OpenJDK 21
+
+Dirty Chai introduces and wires three new guard permissions that are absent in OpenJDK 21:
+
+- `LoadClassPermission` (`au.zeus.jdk.authorization.guards.LoadClassPermission`)
+  - integrated in `SecureClassLoader` (`LOAD_CLASS_ALLOW`) and checked during `ProtectionDomain` creation (`sm.checkPermission(LOAD_CLASS_ALLOW, ...)`)
+- `NativeAccessPermission` (`au.zeus.jdk.authorization.guards.NativeAccessPermission`)
+  - enforced in `Module.ensureNativeAccess(...)` before native/restricted access paths proceed
+- `SerialObjectPermission` (`au.zeus.jdk.authorization.guards.SerialObjectPermission`)
+  - enforced in `ObjectInputStream.readOrdinaryObject()` before `desc.newInstance()`
+
+In OpenJDK 21, these specific guard classes and checks are not present. This is a structural authorization-surface expansion in Dirty Chai.
+
+### B) Executors Delta vs OpenJDK 21
+
+#### `Executors.defaultThreadFactory()`
+
+- **OpenJDK 21:** returns `new DefaultThreadFactory()`
+- **Dirty Chai:** returns `Thread.ofPlatform().name(...).group(...).factory()`
+
+Security implication: Dirty Chai default executor thread factories now flow through platform-thread builder checks, including `RuntimePermission("createPlatformThread")` enforcement in `ThreadBuilders`.
+
+#### `Executors.privilegedThreadFactory()`
+
+Dirty Chai retains this authorization-relevant API path and updates internal checks to guard-based permission checks (`SecurityConstants.*.checkGuard(null)`) while preserving captured ACC/classloader semantics.
+
+### C) Virtual Threads Delta vs OpenJDK 21
+
+`Executors.newVirtualThreadPerTaskExecutor()` remains API-equivalent (`Thread.ofVirtual().factory()`), but its effective security posture differs because Dirty Chai changed the underlying builder path:
+
+- `ThreadBuilders.VirtualThreadBuilder.unstarted/factory` now check `RuntimePermission("createVirtualThread")`
+- platform builder paths analogously check `RuntimePermission("createPlatformThread")`
+- builder-created factories/threads capture and propagate `AccessController.getContext()`
+
+OpenJDK 21 builder paths do not include these explicit thread-creation runtime-permission checks, and use the less restrictive inherited-context defaults used there.
+
+This makes Dirty Chai stricter than OpenJDK 21 at SecurityManager installation, guard-based authorization boundaries, executor factory defaults, and virtual/platform thread creation control.
 
 ---
 
@@ -201,9 +239,15 @@ The main remaining risks are **operational** (policy configuration and whitelist
 - `src/java.base/share/classes/java/lang/System.java` — conditional SecurityManager validation, stack-walk depth (`limit(50)`), trusted-class gate
 - `src/java.base/share/classes/java/lang/ThreadBuilders.java` — enforcement points for `RuntimePermission("createPlatformThread")` and `RuntimePermission("createVirtualThread")`
 - `src/java.base/share/classes/java/lang/Thread.java` — platform thread-creation security checks and builder security notes
+- `src/java.base/share/classes/java/util/concurrent/Executors.java` — default/privileged thread factory behavior and virtual-thread executor entry points
+- `src/java.base/share/classes/java/security/SecureClassLoader.java` — `LoadClassPermission` integration in class-loading permission path
+- `src/java.base/share/classes/java/lang/Module.java` — `NativeAccessPermission` enforcement in native-access checks
+- `src/java.base/share/classes/au/zeus/jdk/authorization/guards/LoadClassPermission.java` — guard definition
+- `src/java.base/share/classes/au/zeus/jdk/authorization/guards/NativeAccessPermission.java` — guard definition
+- `src/java.base/share/classes/au/zeus/jdk/authorization/guards/SerialObjectPermission.java` — guard definition
 - `src/java.base/share/classes/java/io/ObjectInputStream.java` — `SerialObjectPermission` check placement in `readOrdinaryObject()` before instantiation
 - `src/java.base/share/classes/java/io/SerialCallbackContext.java` — confirms callback context no longer carries the permission check logic
 - `src/java.base/share/classes/au/zeus/jdk/authorization/policy/ConcurrentPolicyFile.java` — policy grant evaluation and fail-secure behavior references
 - `src/java.base/share/classes/au/zeus/jdk/net/Uri.java` — URI validation behavior used in CodeSource/policy matching rationale
 - Issue #85 (repository issue tracker) — remediation baseline for hardened exception and validation handling
-- OpenJDK 21 reference (`jdk-21+35`): `java/lang/System.java`, `java/lang/ThreadBuilders.java`, `java/lang/Thread.java`
+- OpenJDK 21 reference (`jdk-21+35`): `java/lang/System.java`, `java/lang/ThreadBuilders.java`, `java/lang/Thread.java`, `java/util/concurrent/Executors.java`, `java/security/SecureClassLoader.java`, `java/lang/Module.java`, `java/io/ObjectInputStream.java`
