@@ -316,9 +316,9 @@ active), opening a window for DNS-based DoS attacks.
 the untrusted-host flag during policy construction. `PermissionGrant` now calls `sp.init()`
 for every `SocketPermission` added to a grant.
 
-The `init()` catch block swallows `UnknownHostException` because `init()` sets `invalid = true`
-before the exception propagates; any subsequent `implies()` call on the permission will return
-`false`, so swallowing is fail-secure:
+The `init()` catch block swallows `UnknownHostException` because `init()` starts from a
+fail-secure `invalid = true` state; if hostname resolution fails, the permission remains invalid
+and any subsequent `implies()` call returns `false`, so swallowing is fail-secure:
 
 ```java
 } catch (UnknownHostException e){
