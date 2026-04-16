@@ -73,7 +73,7 @@ OpenJDK 21 builder paths do not include these explicit thread-creation runtime-p
 Dirty Chai changes the limited-privilege overload behavior from OpenJDK 21 wrapper construction to explicit permission-domain intersection:
 
 - OpenJDK 21 `doPrivileged(..., AccessControlContext, Permission...)` paths use wrapper/context validation flow (`checkContext`/`createWrapper`).
-- Dirty Chai computes a caller-linked protection domain (`DomainIdentity`, a Dirty Chai `ProtectionDomain` subtype in `src/java.base/share/classes/java/security/DomainIdentity.java`) from caller `CodeSource` + requested permissions and intersects it into the effective context before executing privileged code.
+- Dirty Chai computes a caller-linked protection domain (`DomainIdentity`, a Dirty Chai `ProtectionDomain` subtype in `src/java.base/share/classes/java/security/DomainIdentity.java`) from caller `CodeSource` + requested permissions and intersects it into the effective context before executing privileged code, binding the limitation directly to caller provenance instead of validating through a separate wrapper object.
 
 Security impact: tighter binding of limited-privilege execution to caller provenance and explicit intersection semantics, reducing risk of over-broad inherited privilege in mixed-domain calls.
 
@@ -92,8 +92,8 @@ Security impact: stronger anti-escalation behavior when constructing or constrai
 
 Dirty Chai diverges from OpenJDK 21’s ACC-only retrieval/execution model by adding an explicit dual path:
 
-- when SecurityManager installation is permitted by the JVM (`SharedSecrets.getJavaLangAccess().allowSecurityManager()` returns true): behavior remains ACC/`SubjectDomainCombiner` based (legacy compatibility path),
-- when SecurityManager installation is disabled by the JVM (`allowSecurityManager()` returns false): `Subject.current()` / `Subject.callAs(...)` use `ScopedValue`-bound subject propagation.
+- when the JVM SecurityManager-installation capability is enabled (`SharedSecrets.getJavaLangAccess().allowSecurityManager()` returns true): behavior remains ACC/`SubjectDomainCombiner` based (legacy compatibility path),
+- when the JVM SecurityManager-installation capability is disabled (`allowSecurityManager()` returns false): `Subject.current()` / `Subject.callAs(...)` use `ScopedValue`-bound subject propagation.
 
 Security impact: preserves legacy authorization checks where SecurityManager flows are active, while reducing dependence on deprecated ACC propagation where they are not.
 
