@@ -45,7 +45,7 @@ Use this path first, then return to the deeper sections below.
 4. **Use Subject-aware execution where policy requires principals**:
    - Wrap entrypoints in `Subject.callAs(...)` / `Subject.doAs(...)`.
    - Use `Thread.Builder` / `ThreadFactory` inside that scope for consistent Subject-aware context inheritance.
-   - Create `Executors` using those factories within the same scope so worker threads inherit the intended context baseline.
+   - Create executors using those factories within the same scope so worker threads inherit the intended context baseline.
 
 ### Why `polpAudit` first?
 
@@ -218,7 +218,7 @@ This section mirrors the thread-creation analysis for adjacent APIs that define 
 
 #### 11.6.1 `Executors`
 
-- `Executors.newVirtualThreadPerTaskExecutor()` delegates to `Thread.ofVirtual().factory()`, so security context behavior follows virtual `Thread.Builder` factory capture semantics.
+- `Executors.newVirtualThreadPerTaskExecutor()` delegates to `Thread.ofVirtual().factory()`, so security context behavior follows the capture semantics of a virtual-thread builder-produced factory.
 - `Executors.defaultThreadFactory()` returns a platform builder-based factory (`Thread.ofPlatform()...factory()`), so creation-time context capture is aligned with builder flows.
 - `Executors.privilegedThreadFactory()` explicitly captures `AccessControlContext` and context class loader at factory creation, then runs work under `AccessController.doPrivileged(..., capturedContext)`.
 
@@ -232,7 +232,7 @@ This section mirrors the thread-creation analysis for adjacent APIs that define 
 
 #### 11.6.3 `Thread` (constructors and builders)
 
-- Public platform-thread constructors perform platform-thread permission/checkAccess flow and set inherited context from either explicit ACC parameter or `AccessController.getContext()`.
+- Public platform-thread constructors perform platform-thread permission/checkAccess flow and set inherited context from either an explicit `AccessControlContext` parameter or `AccessController.getContext()`.
 - `Thread.ofPlatform()` / `Thread.ofVirtual()` builder paths document and implement explicit inherited-context capture behavior used by both `unstarted/start` and `factory`.
 - In this codebase, builder flows are the recommended mechanism when consistent Subject-bearing context inheritance is required.
 
