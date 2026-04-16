@@ -63,9 +63,7 @@ Dirty Chai retains this authorization-relevant API path and updates internal che
 - platform builder paths analogously check `RuntimePermission("createPlatformThread")`
 - builder-created factories/threads capture and propagate `AccessController.getContext()`
 
-OpenJDK 21 builder paths do not include these explicit thread-creation runtime-permission checks, and use the less restrictive inherited-context defaults used there.
-
-This makes Dirty Chai stricter than OpenJDK 21 at SecurityManager installation, guard-based authorization boundaries, executor factory defaults, and virtual/platform thread creation control.
+OpenJDK 21 builder paths do not include these explicit thread-creation runtime-permission checks, and use less restrictive inherited-context defaults.
 
 ---
 
