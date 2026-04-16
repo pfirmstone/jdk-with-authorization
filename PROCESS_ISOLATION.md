@@ -777,6 +777,18 @@ AccessController.doPrivileged(
 );
 ```
 
+Methods that support explicit privilege restriction:
+
+- `AccessController.getContext()`
+- `AccessController.doPrivileged(PrivilegedAction<T>, AccessControlContext)`
+- `AccessController.doPrivileged(PrivilegedExceptionAction<T>, AccessControlContext)`
+- `AccessController.doPrivileged(PrivilegedAction<T>, AccessControlContext, Permission...)`
+- `AccessController.doPrivileged(PrivilegedExceptionAction<T>, AccessControlContext, Permission...)`
+- `AccessController.doPrivilegedWithCombiner(PrivilegedAction<T>, AccessControlContext, Permission...)`
+- `AccessController.doPrivilegedWithCombiner(PrivilegedExceptionAction<T>, AccessControlContext, Permission...)`
+- `Subject.doAsPrivileged(Subject, PrivilegedAction<T>, AccessControlContext)`
+- `Subject.doAsPrivileged(Subject, PrivilegedExceptionAction<T>, AccessControlContext)`
+
 Failing to avoid unrestricted `doPrivileged` creates a confused-deputy
 vulnerability where untrusted code exploits the trusted class's
 `NativeAccessPermission` to invoke native functionality it could not invoke
