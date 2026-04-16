@@ -321,7 +321,10 @@ fail-secure `invalid = true` state; if hostname resolution fails, the permission
 and any subsequent `implies()` call returns `false`, so swallowing is fail-secure:
 
 ```java
+invalid = true;
+try {
+    // hostname canonicalization / trust checks
 } catch (UnknownHostException e){
-    //Swallow, invalid will be set to true, failing securely.
+    // Swallow: invalid remains true, failing securely.
 }
 ```
