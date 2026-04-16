@@ -762,19 +762,22 @@ is sufficient and the permission check passes incorrectly.
 > caller-supplied inputs.  The normal call path (no `doPrivileged`) lets the
 > security policy enforce the restriction through stack-intersection automatically.
 
-If a trusted class genuinely needs to perform a privileged operation while
-still honouring the caller's restrictions (e.g., it must open a file but must
-also respect the caller's `FilePermission` grants), it must supply a restricted
-`AccessControlContext` built from the caller's context:
+If a trusted class genuinely needs to perform privileged pre-processing while
+still honouring the caller's restrictions, it must reduce privileges to the
+minimum scope and preserve any active `DomainCombiner` (for example,
+authenticated-principal context) while parsing and sanitizing caller input:
 
 ```java
-// Only needed when elevated privilege AND caller restriction are both required.
-// For the confused-deputy case alone, simply omit doPrivileged entirely.
+// Preserve DomainCombiner and run with the smallest scope.
 AccessControlContext callerContext = AccessController.getContext();
-AccessController.doPrivileged(
-    () -> { nativeMethod(callerSuppliedInput); },
-    callerContext   // caller's ProtectionDomain remains in the intersection
+SanitizedInput sanitized = AccessController.doPrivilegedWithCombiner(
+    () -> parseAndSanitize(callerSuppliedInput),
+    callerContext,
+    new Permission[0]   // policy decides; no explicit extra permissions added
 );
+
+// For confused-deputy-sensitive native calls, do not use unrestricted doPrivileged.
+nativeMethod(sanitized);
 ```
 
 Methods that support explicit privilege restriction, grouped by whether a special
