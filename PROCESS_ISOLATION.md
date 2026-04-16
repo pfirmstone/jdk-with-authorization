@@ -343,7 +343,13 @@ the same JVM process.
 Timing attacks, cache-flush attacks, and speculative-execution side channels
 (Spectre, Meltdown class) operate below the Java security model.  A hostile
 thread running in the same process can leak secrets from other threads via these
-channels regardless of permission grants.
+channels regardless of permission grants.  Moving to separate OS processes (via
+JGDMS Activation) reduces but does not eliminate these channels, because two
+processes on the same physical CPU core still share microarchitectural state such
+as L1 cache, branch predictor tables, and Translation Lookaside Buffers (TLBs).
+Full mitigation requires hardware-level isolation; see
+[Hardware-Level Isolation Against Spectre/Meltdown-Class Attacks](#hardware-level-isolation-against-spectremeltdown-class-attacks)
+later in this document.
 #### 3. JVM internals access
 Despite module encapsulation and permission checks, the JVM exposes internal
 state that can be exploited to escape the security model entirely:
@@ -962,6 +968,94 @@ that Phoenix's policy permits.
    if the SecurityManager is bypassed.
 5. **Outbound firewall per group** — use per-user or per-cgroup firewall rules to
    restrict which remote hosts each group JVM may contact.
+
+### Hardware-Level Isolation Against Spectre/Meltdown-Class Attacks
+
+#### Why These Attacks Are Different
+
+Spectre and Meltdown exploit **CPU microarchitectural behaviour** — speculative
+execution, out-of-order execution, and shared cache structures — not software bugs.
+They leak information through timing rather than direct memory reads.  This means:
+
+- OS-level process isolation (separate address spaces, ASLR) **does not prevent
+  them** on its own.
+- The attack works across OS process boundaries as long as two processes share the
+  same physical CPU core or sibling hyper-thread, because they share the L1 cache,
+  branch predictor tables, and TLBs.
+
+#### OS-Level Software Mitigations
+
+The following mitigations are available today on Linux, Windows, and macOS and
+are what the table in [What Activation Isolation Does and Does Not Provide](#what-activation-isolation-does-and-does-not-provide)
+references:
+
+| Mitigation | What it does | OS / hardware support |
+|---|---|---|
+| **KPTI** (Kernel Page-Table Isolation) | Separates kernel and user-space page tables so kernel memory is not mapped while user code runs. Defeats Meltdown (CVE-2017-5754). | Linux ≥ 4.15 (default on); Windows 10; macOS 10.13.2+ |
+| **Retpoline** | Replaces indirect branches with a non-speculative trampoline; defeats most Spectre v2 (CVE-2017-5715) variants. | Linux (GCC/Clang, default); Windows (MSVC); requires recompiled kernel and JVM |
+| **IBRS / IBPB / STIBP** | CPU microcode patches from Intel/AMD that flush branch-predictor state on context switches. | Requires microcode update + OS support (Linux, Windows) |
+| **SSB Disable** (Spectre v4, CVE-2018-3639) | Disables speculative store bypass. Performance cost: 10–30 %. | Linux (`prctl(PR_SET_SPECULATION_CTRL, ...)`); Windows registry policy |
+| **SMT / Hyper-Threading disabled** | Completely removes cross-thread cache sharing on the same physical core. Most effective physical isolation short of a separate machine. | Linux (`echo off > /sys/devices/system/cpu/smt/control`); BIOS setting; OpenBSD (default) |
+
+**OpenBSD** is the most aggressive general-purpose OS in this space: it disables
+hyper-threading by default across the entire system and has applied KPTI, retpoline,
+and IBPB mitigations as kernel defaults since 2018.  For deployments where the
+threat model includes Spectre-class cross-process leakage, OpenBSD provides the
+strongest out-of-the-box posture among mainstream OSes.
+
+#### Physical Core Separation
+
+For a Phoenix host classified as a high-value target, software mitigations alone are
+not sufficient: an adversary with kernel access on the same physical host can disable
+or bypass them.  The definitive countermeasure is to remove the shared microarchitectural
+resource entirely:
+
+1. **Dedicated physical host for Phoenix** — bare metal or a dedicated-tenancy cloud
+   instance.  If no other process runs on the same physical CPUs, cross-process
+   speculative-execution leakage has no channel to exploit.
+
+2. **Disable SMT (hyper-threading)** — two hyper-threads on the same physical core
+   share the L1 cache and branch predictor.  Disabling SMT at the BIOS level (or via
+   the kernel interface above) eliminates this sharing for all processes on the host.
+
+3. **Hypervisor with strict CPU affinity** — when VMs are in use, pin Phoenix's VM
+   to physical cores that are never shared with untrusted VMs.  Xen supports this
+   via `cpupool`; VMware via vCPU affinity; KVM via `vcpupin` in the domain XML.
+   AWS Nitro dedicated instances provide physical-core exclusivity as a product
+   guarantee.
+
+4. **Apply all microcode + OS mitigations on the untrusted-code host** — KPTI, IBPB,
+   and retpoline on the host running group JVMs ensure that even if an untrusted
+   process can speculate, the kernel's view of Phoenix memory is not in scope.
+
+#### Platforms and Deployment Topologies
+
+| Platform / topology | Spectre/Meltdown posture |
+|---|---|
+| OpenBSD (bare metal or VM) | HT off by default; KPTI + IBPB applied; strongest general-purpose OS default |
+| Linux with `smt=off`, KPTI, IBPB, retpoline | Equivalent to OpenBSD when correctly configured; requires explicit setup |
+| AWS Nitro dedicated instance + SMT disabled | Physical-core exclusivity guaranteed by hypervisor; no neighbour noise |
+| seL4 microkernel | Formally verified isolation; minimal kernel attack surface; does not solve speculative execution but eliminates large classes of kernel-level attack that enable Meltdown exploitation |
+| Genode (on seL4 or Fiasco.OC) | Capability-based compartmentalisation; inherits seL4 isolation properties |
+| Shared multi-tenant cloud VM (default) | **Insufficient** — physical cores and cache shared with unknown neighbours; software mitigations only |
+
+#### Practical Recommendation for Phoenix
+
+For a Phoenix daemon considered a high-value target (see
+[What Activation does not solve](#what-activation-does-not-solve)):
+
+1. Run Phoenix on a **dedicated physical host** (bare metal, or dedicated-tenancy
+   cloud instance with confirmed physical-core exclusivity).
+2. **Disable SMT** at the BIOS or kernel level on the Phoenix host.
+3. **Enable KPTI + IBPB + retpoline** on every host running group JVMs, so those
+   processes cannot read the Phoenix host's kernel-level data even if a Meltdown
+   variant is discovered.
+4. Use **network-only communication** between Phoenix and group JVM hosts — no shared
+   memory segments, no shared IPC namespaces, no shared filesystems.
+
+With this topology, two processes running on the Phoenix host never share a physical
+CPU core with untrusted processes, and microarchitectural side channels have no viable
+path to leak Phoenix secrets.
 
 ---
 
