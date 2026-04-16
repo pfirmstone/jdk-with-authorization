@@ -314,6 +314,31 @@ All threads and objects in a JVM process share a heap.  A hostile thread that
 has already been scheduled can read or corrupt shared data structures without
 any permission check, because memory access does not pass through the
 `SecurityManager`.
+
+**Java Memory Model (JMM) guarantees and limits in this context:**
+
+- **Visibility is conditional, not isolated.**  The JMM guarantees visibility
+  across threads only when there is a proper *happens-before* edge (for example:
+  monitor enter/exit, `volatile`, thread start/join, or classes in
+  `java.util.concurrent`).  This improves correctness, but does not prevent
+  untrusted code from reading or writing any object graph it can reference.
+- **Data-race freedom gives predictability, not protection.**  Correctly
+  synchronized code gets well-defined behavior, but there is no policy check on
+  field reads/writes.  A malicious in-process thread can still mutate shared
+  state if it obtains references to that state.
+- **Atomicity scope is limited.**  The JMM guarantees atomic reads/writes for
+  references and 32-bit primitives (and, in modern JDKs, `long`/`double` as
+  well), but compound actions are still non-atomic unless synchronized.  This
+  enables race-based corruption of invariants even when individual reads/writes
+  are atomic.
+- **Ordering rules are semantic, not access control.**  The JMM constrains
+  legal reorderings by compilers/CPUs, but it is not a sandbox boundary.
+  Nothing in the model routes ordinary memory access through
+  `SecurityManager.checkPermission()`.
+
+Therefore, JMM guarantees help reason about *correctness* under concurrency, but
+they do not provide a security boundary between mutually untrusted threads in
+the same JVM process.
 #### 2. Side-channel attacks
 Timing attacks, cache-flush attacks, and speculative-execution side channels
 (Spectre, Meltdown class) operate below the Java security model.  A hostile
