@@ -777,17 +777,54 @@ AccessController.doPrivileged(
 );
 ```
 
-Methods that support explicit privilege restriction:
+Methods that support explicit privilege restriction, grouped by whether a special
+permission is required to invoke them:
 
-- `AccessController.getContext()`
-- `AccessController.doPrivileged(PrivilegedAction<T>, AccessControlContext)`
-- `AccessController.doPrivileged(PrivilegedExceptionAction<T>, AccessControlContext)`
-- `AccessController.doPrivileged(PrivilegedAction<T>, AccessControlContext, Permission...)`
-- `AccessController.doPrivileged(PrivilegedExceptionAction<T>, AccessControlContext, Permission...)`
-- `AccessController.doPrivilegedWithCombiner(PrivilegedAction<T>, AccessControlContext, Permission...)`
-- `AccessController.doPrivilegedWithCombiner(PrivilegedExceptionAction<T>, AccessControlContext, Permission...)`
-- `Subject.doAsPrivileged(Subject, PrivilegedAction<T>, AccessControlContext)`
-- `Subject.doAsPrivileged(Subject, PrivilegedExceptionAction<T>, AccessControlContext)`
+**No special permission required — any domain may call these**
+
+The methods below require no `SecurityPermission` or `AuthPermission` because
+they can only *reduce* the effective permission set of the code running inside
+them.  Stack-intersection semantics make this inherently safe: the intersection
+of the caller's `ProtectionDomain` with a restricted `AccessControlContext` or
+an explicit `Permission` list is always a *subset* of what the caller already
+holds.  A less-privileged domain therefore cannot exploit these methods to
+acquire permissions it does not already possess.
+
+- `AccessController.getContext()` — takes a read-only snapshot of the current
+  calling context; it does not alter any privilege and cannot be used to
+  escalate.
+- `AccessController.doPrivileged(PrivilegedAction<T>, AccessControlContext)` —
+  runs the action with the *intersection* of the caller's domain and the
+  supplied context.
+- `AccessController.doPrivileged(PrivilegedExceptionAction<T>, AccessControlContext)` —
+  same intersection semantics, for checked-exception actions.
+- `AccessController.doPrivileged(PrivilegedAction<T>, AccessControlContext, Permission...)` —
+  intersects with both the context and the explicit permission list; the
+  resulting privilege scope is bounded by all three.
+- `AccessController.doPrivileged(PrivilegedExceptionAction<T>, AccessControlContext, Permission...)` —
+  same, for checked-exception actions.
+- `AccessController.doPrivilegedWithCombiner(PrivilegedAction<T>, AccessControlContext, Permission...)` —
+  same intersection mechanics, additionally preserving the current
+  `DomainCombiner` (e.g. `SubjectDomainCombiner`) across the call boundary.
+- `AccessController.doPrivilegedWithCombiner(PrivilegedExceptionAction<T>, AccessControlContext, Permission...)` —
+  same, for checked-exception actions.
+
+**Explicit `AuthPermission` required — gated because they can change identity**
+
+The methods below associate running code with a `Subject`'s *principals*.
+Policy grants keyed on principals (e.g. `Principal "CN=Admin"`) can unlock
+permissions that the calling domain does not otherwise hold.  Executing code
+under a different Subject identity can therefore *expand* the effective
+permission set, not merely restrict it.  A security manager check gates each
+call to prevent an unprivileged domain from elevating itself by adopting a
+more powerful identity.
+
+- `Subject.doAsPrivileged(Subject, PrivilegedAction<T>, AccessControlContext)` —
+  requires `AuthPermission("doAsPrivileged")`; runs the action under the
+  supplied Subject's identity combined with the provided context (which may be
+  `null` to begin a fresh, caller-independent context).
+- `Subject.doAsPrivileged(Subject, PrivilegedExceptionAction<T>, AccessControlContext)` —
+  same permission requirement, for checked-exception actions.
 
 Failing to avoid unrestricted `doPrivileged` creates a confused-deputy
 vulnerability where untrusted code exploits the trusted class's
