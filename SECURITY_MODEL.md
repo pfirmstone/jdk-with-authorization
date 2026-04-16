@@ -45,7 +45,7 @@ Use this path first, then return to the deeper sections below.
 4. **Use Subject-aware execution where policy requires principals**:
    - Wrap entrypoints in `Subject.callAs(...)` / `Subject.doAs(...)`.
    - Use `Thread.Builder` / `ThreadFactory` inside that scope for consistent Subject-aware context inheritance.
-   - Create `Executors` that depend on those factories inside the same scope so worker threads inherit the intended context baseline.
+   - Create `Executors` using those factories within the same scope so worker threads inherit the intended context baseline.
 
 ### Why `polpAudit` first?
 
@@ -220,7 +220,7 @@ This section mirrors the thread-creation analysis for adjacent APIs that define 
 
 - `Executors.newVirtualThreadPerTaskExecutor()` delegates to `Thread.ofVirtual().factory()`, so security context behavior follows virtual `Thread.Builder` factory capture semantics.
 - `Executors.defaultThreadFactory()` returns a platform builder-based factory (`Thread.ofPlatform()...factory()`), so creation-time context capture is aligned with builder flows.
-- `Executors.privilegedThreadFactory()` explicitly captures `AccessControlContext` and context class loader at factory creation, then runs work under `AccessController.doPrivileged(..., capturedAcc)`.
+- `Executors.privilegedThreadFactory()` explicitly captures `AccessControlContext` and context class loader at factory creation, then runs work under `AccessController.doPrivileged(..., capturedContext)`.
 
 **Operational guidance:** construct executor services in the intended Subject scope (`Subject.callAs(...)` / `Subject.doAs(...)`) when policy grants require principal-aware execution.
 
