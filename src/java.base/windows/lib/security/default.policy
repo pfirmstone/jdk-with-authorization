@@ -6,7 +6,6 @@ grant codeBase "jrt:/jdk.crypto.mscapi" {
     permission java.lang.RuntimePermission
                    "accessClassInPackage.sun.security.*";
     permission java.lang.RuntimePermission "loadLibrary.sunmscapi";
-    permission au.zeus.jdk.authorization.guards.NativeAccessPermission "*", "*";
     permission java.security.SecurityPermission "putProviderProperty.SunMSCAPI";
     permission java.security.SecurityPermission
                    "clearProviderProperties.SunMSCAPI";
