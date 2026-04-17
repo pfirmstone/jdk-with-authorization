@@ -314,11 +314,42 @@ All threads and objects in a JVM process share a heap.  A hostile thread that
 has already been scheduled can read or corrupt shared data structures without
 any permission check, because memory access does not pass through the
 `SecurityManager`.
+
+**Java Memory Model (JMM) guarantees and limits in this context:**
+
+- **Visibility is conditional, not isolated.**  The JMM guarantees visibility
+  across threads only when there is a proper *happens-before* edge (for example:
+  monitor enter/exit, `volatile`, thread start/join, or classes in
+  `java.util.concurrent`).  This improves correctness, but does not prevent
+  untrusted code from reading or writing any object graph it can reference.
+- **Data-race freedom gives predictability, not protection.**  Correctly
+  synchronized code gets well-defined behavior, but there is no policy check on
+  field reads/writes.  A malicious in-process thread can still mutate shared
+  state if it obtains references to that state.
+- **Atomicity scope is limited.**  The JMM guarantees atomic reads/writes for
+  references and 32-bit primitives (and, in modern JDKs, `long`/`double` as
+  well), but compound actions are still non-atomic unless synchronized.  This
+  enables race-based corruption of invariants even when individual reads/writes
+  are atomic.
+- **Ordering rules are semantic, not access control.**  The JMM constrains
+  legal reorderings by compilers/CPUs, but it is not a sandbox boundary.
+  Nothing in the model routes ordinary memory access through
+  `SecurityManager.checkPermission()`.
+
+Therefore, JMM guarantees help reason about *correctness* under concurrency, but
+they do not provide a security boundary between mutually untrusted threads in
+the same JVM process.
 #### 2. Side-channel attacks
 Timing attacks, cache-flush attacks, and speculative-execution side channels
 (Spectre, Meltdown class) operate below the Java security model.  A hostile
 thread running in the same process can leak secrets from other threads via these
-channels regardless of permission grants.
+channels regardless of permission grants.  Moving to separate OS processes (via
+JGDMS Activation) reduces but does not eliminate these channels, because two
+processes on the same physical CPU core still share microarchitectural state such
+as L1 cache, branch predictor tables, and Translation Lookaside Buffers (TLBs).
+Full mitigation requires hardware-level isolation; see
+[Hardware-Level Isolation Against Spectre/Meltdown-Class Attacks](#hardware-level-isolation-against-spectremeltdown-class-attacks)
+later in this document.
 #### 3. JVM internals access
 Despite module encapsulation and permission checks, the JVM exposes internal
 state that can be exploited to escape the security model entirely:
@@ -585,124 +616,6 @@ The `NativeAccessPermission` class and its integration into `Module.ensureNative
 are already implemented.  The following tasks remain for a complete, policy-auditable
 native isolation story.
 
-### Task N-1 — ~~Add `NativeAccessPermission` to the Default Deny Policy~~ ✅ Already Complete
-
-**Priority:** High — **No action required: already implemented.**  
-**Files:**
-- `src/java.base/share/lib/security/default.policy`
-- `src/java.base/windows/lib/security/default.policy`
-
-**Status:** Complete.  `NativeAccessPermission "*", "*"` has been added to every
-platform-loader module in the default policy that loads or uses native libraries:
-
-| Module | Policy file | Grant |
-|--------|-------------|-------|
-| `jrt:/java.smartcardio` | `share/lib/security/default.policy` | `NativeAccessPermission "*", "*"` |
-| `jrt:/jdk.crypto.cryptoki` | `share/lib/security/default.policy` | `NativeAccessPermission "*", "*"` |
-| `jrt:/java.desktop` | `share/lib/security/default.policy` | `NativeAccessPermission "*", "*"` |
-| `jrt:/jdk.crypto.mscapi` | `windows/lib/security/default.policy` | `NativeAccessPermission "*", "*"` |
-
-Modules that already hold `AllPermission` (e.g., `java.sql`, `jdk.dynalink`,
-`jdk.security.auth`) implicitly satisfy any `NativeAccessPermission` check
-because `AllPermission.implies()` returns `true` for all permissions — no
-explicit entry is needed for those modules.
-
-> **Note:** No explicit grant is needed for `jrt:/java.base/*`.  Classes in the
-> `java.base` module are loaded by the bootstrap class loader.  When only
-> bootstrap-loaded code is present on the call stack,
-> `AccessController.getStackAccessControlContext()` returns `null`, and
-> `AccessController.checkPermission()` returns immediately without consulting the
-> policy — bootstrap code is effectively always fully privileged.  Adding a
-> `grant codeBase "jrt:/java.base/*"` block has no runtime effect and should be
-> omitted to avoid misleading policy authors.
-
-**Policy pattern applied:**
-
-```
-// Deny by default; grant only to trusted platform modules that require native access.
-// Note: java.base does NOT need an explicit grant — bootstrap code bypasses the
-// policy engine entirely (getStackAccessControlContext() returns null).
-grant codeBase "jrt:/java.desktop" {
-    permission au.zeus.jdk.authorization.guards.NativeAccessPermission "*", "*";
-};
-
-// Do NOT grant NativeAccessPermission to application classpath or untrusted jars
-```
-
----
-
-### Task N-2 — ~~Add `RuntimePermission("loadLibrary.*")` to the Default Deny Policy~~ ✅ Already Complete
-
-**Priority:** High — **No action required: already implemented.**  
-**Files:** Same as N-1.
-
-**Status:** Complete.  The existing default policy already closes the
-`loadLibrary.*` gate via omission.  The generic `grant {}` block (which all
-protection domains receive) contains no `loadLibrary.*` entry.  Only the
-specific named-module blocks carry targeted `loadLibrary.<libname>` grants:
-
-| Module | Permitted library |
-|--------|-------------------|
-| `jrt:/java.smartcardio` | `loadLibrary.j2pcsc` |
-| `jrt:/jdk.crypto.cryptoki` | `loadLibrary.j2pkcs11` |
-| `jrt:/jdk.crypto.mscapi` (Windows) | `loadLibrary.sunmscapi` |
-
-Application-classpath code and unnamed-module code receive none of these grants,
-so `SecurityManager.checkLink()` will throw `SecurityException` when untrusted
-code attempts to call `System.loadLibrary()`.
-
-**Policy structure (deny by omission):**
-
-```
-// Untrusted application-classpath code gets only the minimal generic grant.
-// No loadLibrary.* appears here, so System.loadLibrary() is denied.
-grant {
-    permission java.net.SocketPermission "localhost:0", "listen";
-    // ... standard read-only property permissions only ...
-};
-
-// Named trusted modules receive only the specific library they require:
-grant codeBase "jrt:/java.smartcardio" {
-    permission java.lang.RuntimePermission "loadLibrary.j2pcsc";
-    // ... other smartcardio-specific permissions ...
-};
-```
-
----
-
-### Task N-3 — ~~Extend `SecurityPolicyWriter` to Report `NativeAccessPermission` Grants~~ ✅ Already Complete
-
-**Priority:** Medium — **No action required: already implemented.**  
-**Files:** `src/java.base/share/classes/au/zeus/jdk/authorization/tool/SecurityPolicyWriter.java`
-
-**Status:** Complete.  `SecurityPolicyWriter` already records every
-`NativeAccessPermission` checked during a test run without any modification.
-
-**Explanation:**  
-`SecurityPolicyWriter.checkPermission(ProtectionDomain, Permission)` records
-*every* `Permission` instance generically (the only exclusion is
-`AllPermission`):
-
-```java
-// SecurityPolicyWriter.java — line 353
-if (!(p instanceof AllPermission)) perms.add(p);
-```
-
-`NativeAccessPermission.checkGuard(null)` delegates to
-`SecurityManager.checkPermission(this)` (inherited from
-`java.security.Permission`), which flows through
-`CombinerSecurityManager` and reaches `SecurityPolicyWriter.checkPermission`.
-The permission is therefore captured and written to the policy file at JVM
-shutdown alongside every other permission observed during the run.
-
-No distinction is made between `LoadClassPermission`,
-`SerialObjectPermission`, `NativeAccessPermission`, or any other type: the
-tool records all of them through the same generic path.  Policy authors who
-run their test suite under `SecurityPolicyWriter` will see all
-`NativeAccessPermission` grants in the generated policy file automatically.
-
----
-
 ### Task N-4 — Document `NativeAccessPermission` in `RuntimePermission.java`'s Permission Table
 
 **Priority:** Medium  
@@ -880,7 +793,7 @@ This is a human implementation task (policy file changes and test additions).
 
 > **Footnote — Recommended Policy Authoring Workflow**
 >
-> The wildcard grants (`"*", "*"`) used in Tasks N-1 and N-2 above are a safe
+> The wildcard grants (`"*", "*"`) used for trusted platform-loader modules are a safe
 > starting point for trusted platform-loader modules, but they are deliberately
 > broad.  For application code and any module whose actual permission requirements
 > are not yet known, the recommended workflow is:
@@ -888,7 +801,7 @@ This is a human implementation task (policy file changes and test additions).
 > 1. **Generate first with polpAudit.**  Run the application (or its test suite)
 >    under [`polpAudit`](https://github.com/pfirmstone/JGDMS/tree/trunk/tools/polpAudit)
 >    (or the equivalent `SecurityPolicyWriter` instrumentation built into
->    DirtyChai — see Task N-3 above).  polpAudit observes every
+>    DirtyChai).  polpAudit observes every
 >    `SecurityManager.checkPermission()` call that occurs during the run and
 >    emits a least-privilege policy file containing only the permissions that
 >    were actually checked.
@@ -1055,6 +968,94 @@ that Phoenix's policy permits.
    if the SecurityManager is bypassed.
 5. **Outbound firewall per group** — use per-user or per-cgroup firewall rules to
    restrict which remote hosts each group JVM may contact.
+
+### Hardware-Level Isolation Against Spectre/Meltdown-Class Attacks
+
+#### Why These Attacks Are Different
+
+Spectre and Meltdown exploit **CPU microarchitectural behaviour** — speculative
+execution, out-of-order execution, and shared cache structures — not software bugs.
+They leak information through timing rather than direct memory reads.  This means:
+
+- OS-level process isolation (separate address spaces, ASLR) **does not prevent
+  them** on its own.
+- The attack works across OS process boundaries as long as two processes share the
+  same physical CPU core or sibling hyper-thread, because they share the L1 cache,
+  branch predictor tables, and TLBs.
+
+#### OS-Level Software Mitigations
+
+The following mitigations are available today on Linux, Windows, and macOS and
+are what the table in [What Activation Isolation Does and Does Not Provide](#what-activation-isolation-does-and-does-not-provide)
+references:
+
+| Mitigation | What it does | OS / hardware support |
+|---|---|---|
+| **KPTI** (Kernel Page-Table Isolation) | Separates kernel and user-space page tables so kernel memory is not mapped while user code runs. Defeats Meltdown (CVE-2017-5754). | Linux ≥ 4.15 (default on); Windows 10; macOS 10.13.2+ |
+| **Retpoline** | Replaces indirect branches with a non-speculative trampoline; defeats most Spectre v2 (CVE-2017-5715) variants. | Linux (GCC/Clang, default); Windows (MSVC); requires recompiled kernel and JVM |
+| **IBRS / IBPB / STIBP** | CPU microcode patches from Intel/AMD that flush branch-predictor state on context switches. | Requires microcode update + OS support (Linux, Windows) |
+| **SSB Disable** (Spectre v4, CVE-2018-3639) | Disables speculative store bypass. Performance cost: 10–30 %. | Linux (`prctl(PR_SET_SPECULATION_CTRL, ...)`); Windows registry policy |
+| **SMT / Hyper-Threading disabled** | Completely removes cross-thread cache sharing on the same physical core. Most effective physical isolation short of a separate machine. | Linux (`echo off > /sys/devices/system/cpu/smt/control`); BIOS setting; OpenBSD (default) |
+
+**OpenBSD** is the most aggressive general-purpose OS in this space: it disables
+hyper-threading by default across the entire system and has applied KPTI, retpoline,
+and IBPB mitigations as kernel defaults since 2018.  For deployments where the
+threat model includes Spectre-class cross-process leakage, OpenBSD provides the
+strongest out-of-the-box posture among mainstream OSes.
+
+#### Physical Core Separation
+
+For a Phoenix host classified as a high-value target, software mitigations alone are
+not sufficient: an adversary with kernel access on the same physical host can disable
+or bypass them.  The definitive countermeasure is to remove the shared microarchitectural
+resource entirely:
+
+1. **Dedicated physical host for Phoenix** — bare metal or a dedicated-tenancy cloud
+   instance.  If no other process runs on the same physical CPUs, cross-process
+   speculative-execution leakage has no channel to exploit.
+
+2. **Disable SMT (hyper-threading)** — two hyper-threads on the same physical core
+   share the L1 cache and branch predictor.  Disabling SMT at the BIOS level (or via
+   the kernel interface above) eliminates this sharing for all processes on the host.
+
+3. **Hypervisor with strict CPU affinity** — when VMs are in use, pin Phoenix's VM
+   to physical cores that are never shared with untrusted VMs.  Xen supports this
+   via `cpupool`; VMware via vCPU affinity; KVM via `vcpupin` in the domain XML.
+   AWS Nitro dedicated instances provide physical-core exclusivity as a product
+   guarantee.
+
+4. **Apply all microcode + OS mitigations on the untrusted-code host** — KPTI, IBPB,
+   and retpoline on the host running group JVMs ensure that even if an untrusted
+   process can speculate, the kernel's view of Phoenix memory is not in scope.
+
+#### Platforms and Deployment Topologies
+
+| Platform / topology | Spectre/Meltdown posture |
+|---|---|
+| OpenBSD (bare metal or VM) | HT off by default; KPTI + IBPB applied; strongest general-purpose OS default |
+| Linux with `smt=off`, KPTI, IBPB, retpoline | Equivalent to OpenBSD when correctly configured; requires explicit setup |
+| AWS Nitro dedicated instance + SMT disabled | Physical-core exclusivity guaranteed by hypervisor; no neighbour noise |
+| seL4 microkernel | Formally verified isolation; minimal kernel attack surface; does not solve speculative execution but eliminates large classes of kernel-level attack that enable Meltdown exploitation |
+| Genode (on seL4 or Fiasco.OC) | Capability-based compartmentalisation; inherits seL4 isolation properties |
+| Shared multi-tenant cloud VM (default) | **Insufficient** — physical cores and cache shared with unknown neighbours; software mitigations only |
+
+#### Practical Recommendation for Phoenix
+
+For a Phoenix daemon considered a high-value target (see
+[What Activation does not solve](#what-activation-does-not-solve)):
+
+1. Run Phoenix on a **dedicated physical host** (bare metal, or dedicated-tenancy
+   cloud instance with confirmed physical-core exclusivity).
+2. **Disable SMT** at the BIOS or kernel level on the Phoenix host.
+3. **Enable KPTI + IBPB + retpoline** on every host running group JVMs, so those
+   processes cannot read the Phoenix host's kernel-level data even if a Meltdown
+   variant is discovered.
+4. Use **network-only communication** between Phoenix and group JVM hosts — no shared
+   memory segments, no shared IPC namespaces, no shared filesystems.
+
+With this topology, two processes running on the Phoenix host never share a physical
+CPU core with untrusted processes, and microarchitectural side channels have no viable
+path to leak Phoenix secrets.
 
 ---
 
@@ -1282,6 +1283,32 @@ When the client downloads the proxy:
 This is equivalent to the `ProxyTrust` pattern's outer layer (confirming that the proxy
 *class* comes from a trusted source), but it is enforced by the JVM class loader and
 the DirtyChai `ConcurrentPolicyFile` rather than by a `getProxyVerifier()` call.
+
+#### JGDMS JERI ClassLoader Resolution in `AtomicILFactory` (and why it prevents ClassLoader confusion)
+
+`AtomicILFactory` anchors unmarshalling to a deterministic loader rather than ambient
+thread context:
+
+1. `AtomicILFactory` is created with an explicit loader, or derives one from
+   `proxyOrServiceImplClass.getClassLoader()`.
+2. It passes that loader into `AtomicInvocationDispatcher`.
+3. `AtomicInvocationDispatcher.createMarshalInputStream(...)` selects `streamLoader`
+   and passes it as both `defaultLoader` and `verifierLoader` to
+   `AtomicMarshalInputStream.create(...)`.
+4. `AtomicMarshalInputStream` extends `MarshalInputStream`, and
+   `MarshalInputStream.resolveClass/resolveProxyClass` call
+   `ClassLoading.loadClass/loadProxyClass(..., defaultLoader, ...)`.
+
+By default, `AtomicILFactory` does not use stream codebase annotations
+(`useAnnotations = false`), so resolution occurs with a `null` codebase and the selected
+default loader.  Annotation-enabled constructors are deprecated and explicitly described
+as risky for class-loading safety.
+
+This design reduces ClassLoader confusion by forcing remote argument and proxy-interface
+resolution through the service/proxy loader chosen at export time, instead of whichever
+thread context class loader happens to be active at invocation time.  The result is more
+stable class identity, fewer cross-loader type mismatches, and policy decisions that
+remain tied to the expected `CodeSource`/`ProtectionDomain`.
 
 #### Mechanism 2: JERI Endpoint Integrity Constraints (Dynamic Trust)
 

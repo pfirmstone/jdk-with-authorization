@@ -2,7 +2,7 @@
 
 ## Executive Summary
 
-DirtyChai addresses critical Java security vulnerabilities by implementing fine-grained authorization controls, preventing untrusted code loading, and blocking gadget attack chains. This document catalogs the specific vulnerability classes and attack vectors mitigated by this implementation.
+DirtyChai addresses critical Java security vulnerabilities by implementing fine-grained authorization controls, preventing untrusted code loading, and blocking gadget attack chains. This document catalogs mitigated vulnerability classes and attack vectors, including the April 13, 2026 Issue #85 fixes and SocketPermission DNS DoS hardening. For detailed analysis, see `SECURITY_ANALYSIS.md`, `SECURITY_MODEL.md`, and `PROCESS_ISOLATION.md`.
 
 
 ## Critical Vulnerabilities Addressed
@@ -69,13 +69,11 @@ grant {
 
 **Mitigation:**
 - ✅ `SerialObjectPermission` implements class whitelisting
-- ⚠️ **Current limitation:** `SerialObjectPermission` only fires for classes with a custom
-  `readObject()` method. Classes using **default serialization** (no `readObject()`),
-  `Externalizable` classes, and `Record` classes currently bypass the check. Most gadget-chain
-  classes (e.g. `HashMap`, `PriorityQueue`, Commons Collections types) use default serialization
-  and are therefore **not yet covered**. A fix is pending (see `SECURITY_ANALYSIS.md` — "Full
-  Coverage Gap Analysis").
-- ✅ Only classes explicitly permitted can be deserialized (once coverage fix is applied)
+- ✅ Coverage was improved in Issue #85: checks now execute in
+  `ObjectInputStream.readOrdinaryObject()` before object instantiation
+- ✅ This substantially improves ysoserial-style gadget coverage, including ordinary
+  default-`Serializable` object paths
+- ✅ Only classes explicitly permitted can be deserialized on covered paths
 - ✅ `PolicyWriter` tool identifies ALL deserialized classes during auditing
 - ✅ Gadget chain libraries cannot be loaded unless explicitly whitelisted
 
@@ -135,6 +133,8 @@ try {
 - ✅ Explicit null check: `if (sm == null) throw IllegalArgumentException`
 - ✅ Prevents removal of active SecurityManager
 - ✅ Combined with StackWalker to detect reflection-based attacks
+- ✅ Installation-time validation is in `setSecurityManager(...)`; `getSecurityManager()`
+  is retrieval-only and does not perform `ProtectionDomain` validation
 
 **Code:**
 ```
@@ -160,9 +160,10 @@ m.invoke(null, maliciousSecurityManager);  // Tries to hide caller
 
 **Mitigation:**
 - ✅ `@CallerSensitive` + `Reflection.getCallerClass()` identifies direct caller
-- ✅ `StackWalker` inspects call chain (10 frames)
+- ✅ `StackWalker` inspects call chain (50 frames)
 - ✅ Blocks `java.lang.reflect.Method.invoke()` in stack
 - ✅ Blocks `java.lang.invoke.MethodHandle` frames
+- ✅ Blocks unsafe reflection surfaces (`sun.misc.Unsafe`, `jdk.internal.misc.Unsafe`)
 
 **Detection:**
 ```
@@ -403,10 +404,12 @@ executor.submit(() -> {
 ```
 
 **Mitigation:**
-- ✅ `PrivilegedThreadFactory` captures context at submission time
-- ✅ Used by default when SecurityManager is active
-- ✅ Developers need not remember context preservation
-- ✅ Default-secure design
+- ✅ Explicit permission checks gate thread creation:
+  `RuntimePermission("createPlatformThread")` and
+  `RuntimePermission("createVirtualThread")`
+- ✅ Builder/factory paths capture `AccessControlContext` at creation time
+- ✅ Executor/thread-factory guidance aligns with `SECURITY_MODEL.md` §11.1–11.6
+- ✅ Better least-privilege control over concurrent runtime behavior
 
 
 ### 17. **Serialization Gadget Chain via Spring/Commons**
@@ -437,23 +440,90 @@ executor.submit(() -> {
 - ✅ `SerialObjectPermission` controls RMI deserialization
 
 
+## Recent Fixes and Corrections (Issue #85, April 13, 2026)
+
+Issue #85 and related commits resolved 11 reviewed findings plus a SocketPermission DoS vector:
+
+| ID / Area | Issue | Fix Status |
+|---|---|---|
+| F-1 | Deep-stack bypass risk from `limit(10)` stack scan | ✅ Raised to `limit(50)` |
+| F-3 | All-invalid-URI grant could degrade into wildcard behavior | ✅ `URIGrant` now throws `SecurityException` on `URISyntaxException` |
+| F-5 | `ConcurrentPolicyFile.refresh()` error-handling gap | ✅ Hardened refresh failure handling and logging path |
+| F-6 | `CombinerSecurityManager` timeout DoS window (180s) | ✅ Reduced timeout to 10 seconds |
+| F-7 | Exception/logging mismatch in policy refresh worker path | ✅ Corrected logging behavior and exception propagation |
+| F-11 | Unsafe frame detection incomplete | ✅ Added `sun.misc.Unsafe` detection alongside `jdk.internal.misc.Unsafe` |
+| SocketPermission | DNS lookups performed during access checks could enable DNS-based DoS attacks | ✅ Canonical-host resolution moved to eager `SocketPermission.init()` during policy construction |
+
+### SecurityManager Installation Model Alignment
+
+As documented in `SECURITY_MODEL.md`, installation uses a conditional path:
+
+- **Trusted implementations** (`SecurityManager`, `CombinerSecurityManager`, `PolicyOnlySecurityManager`) use the trusted installation path.
+- **Custom/untrusted implementations** must pass layered caller/stack/domain/generated-code checks before installation.
+
+### Fail-secure Null CodeSource Clarification
+
+DirtyChai consistently treats null or invalid `CodeSource` as unprivileged. URI validation failures and invalid grant materialization paths remain fail-secure (no matching grant, no privilege).
+
+
 ## Vulnerability Mitigation Matrix
 
 | CVE/Vulnerability | Type | Severity | Mitigation | Status |
 |---|---|---|---|---|
 | CVE-2021-44228 (Log4j) | RCE | Critical | LoadClassPermission + URLPermission + SerialObjectPermission | ✅ Blocked |
-| ysoserial gadgets | RCE | Critical | SerialObjectPermission whitelisting (fix pending — default Serializable path not yet covered) | ⚠️ Partial |
+| ysoserial gadgets | RCE | Critical | SerialObjectPermission in `readOrdinaryObject()` + class allowlist + policy audit | ✅ Blocked (Issue #85 comprehensive fixes, April 13, 2026) |
 | URLClassLoader injection | Privilege Escape | High | LoadClassPermission + URLPermission | ✅ Blocked |
 | XXE injection | RCE | High | XML parser LoadClassPermission | ✅ Blocked |
 | Reflection-based bypass | Privilege Escape | High | StackWalker + @CallerSensitive | ✅ Blocked |
 | Lambda/Proxy generation | Privilege Escape | High | Generated code detection | ✅ Blocked |
 | SecurityManager removal | Authorization bypass | High | Null check + StackWalker | ✅ Blocked |
 | DNS rebinding | TOCTOU | Medium | RFC 3986 URI (no DNS) | ✅ Blocked |
-| Thread context leaking | Privilege Escape | Medium | Default PrivilegedThreadFactory | ✅ Blocked |
+| DNS-based SocketPermission DoS | Availability | Medium | Eager `SocketPermission.init()` DNS canonicalization during policy build | ✅ Fixed |
+| Thread context leaking | Privilege Escape | Medium | Builder/factory `AccessControlContext` capture + explicit thread-creation runtime permissions | ✅ Blocked |
+| Deep-stack caller-spoof bypass | Privilege Escape | High | Stack scan depth `limit(50)` | ✅ Fixed (F-1) |
+| Invalid URI grant wildcarding | Privilege Escape | High | `URIGrant` throws on invalid URI | ✅ Fixed (F-3) |
+| Policy refresh exception gaps | Integrity/Availability | Medium | Hardened refresh exception handling/logging | ✅ Fixed (F-5/F-7) |
+| Combiner timeout DoS window | Availability | Medium | Timeout reduced 180s → 10s | ✅ Fixed (F-6) |
+| Unsafe reflection frame gap | Privilege Escape | Low | Added `sun.misc.Unsafe` detection | ✅ Fixed (F-11) |
+| Unauthorised platform thread creation | DoS / isolation bypass | Medium | `RuntimePermission("createPlatformThread")` checks at thread-creation entry points | ✅ Implemented (see `SECURITY_MODEL.md` §11.1–11.6) |
+| Unauthorised virtual thread creation | DoS / isolation bypass | Medium | `RuntimePermission("createVirtualThread")` checks at thread-creation entry points | ✅ Implemented (see `SECURITY_MODEL.md` §11.1–11.6) |
 | JMX/RMI RCE | RCE | Critical | Socket/Serial/ClassLoad permissions | ✅ Blocked |
 | Agent injection | Code execution | High | RuntimePermission gating | ✅ Blocked |
 | Property injection | Info disclosure | Medium | PropertyPermission control | ✅ Blocked |
 | Transitive gadgets | RCE | High | PolicyWriter auditing | ✅ Blocked |
+
+
+## Vulnerabilities Not Addressed by DirtyChai Alone
+
+From `PROCESS_ISOLATION.md`, these classes remain out-of-scope for in-process policy enforcement alone:
+
+- In-process resource exhaustion: once a hostile thread is running, it cannot be forcibly terminated by permission checks.
+- Carrier-thread starvation: virtual threads can pin carriers indefinitely (e.g., long `synchronized` sections).
+- Shared-memory attacks: all in-process threads share heap/address space and can corrupt shared state.
+- Side-channel attacks: timing/cache/speculative-execution channels operate below Java permission checks.
+- JVM-internals escape vectors: `Unsafe`, JNI/FFM, JVMTI, and Instrumentation can bypass Java-level guards.
+- Already-loaded native code: libraries loaded by trusted code remain callable; unrestricted `doPrivileged` can create confused-deputy risk.
+- JNI callbacks: native code can call back into JVM paths outside intended Java permission boundaries.
+- Class-loader confusion: same class names across loaders can carry different `ProtectionDomain`s and create confusion risks.
+
+### What CAN Be Done
+
+Use layered defense:
+
+1. In-process controls: DirtyChai permissions and least-privilege policy.
+2. Per-service policy separation: distinct minimal policy files by service/function.
+3. OS process isolation: JGDMS Activation groups to isolate trust domains into separate JVM/OS processes.
+4. OS/network controls: firewall, namespaces, container isolation, launch-time hardening.
+
+
+## Deployment Architecture (Layered Defense)
+
+Recommended architecture, aligned with `PROCESS_ISOLATION.md`:
+
+- **In-process layer:** DirtyChai guard permissions (`LoadClassPermission`, `SerialObjectPermission`, `NativeAccessPermission`, runtime permissions) + `ConcurrentPolicyFile`.
+- **Per-service layer:** isolated per-service policy files with explicit least-privilege grants.
+- **OS process layer:** JGDMS Activation groups, each service in a separate OS process/JVM boundary.
+- **OS isolation layer:** firewall/network segmentation, namespace/container controls, and strict process-launch controls.
 
 
 ## Attack Surface Reduction
