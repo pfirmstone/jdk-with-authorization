@@ -626,6 +626,6 @@ public class RegistryImpl extends java.rmi.server.RemoteServer
         ProtectionDomain pd = new ProtectionDomain(
             new CodeSource(null,
                 (java.security.cert.Certificate[]) null), perms);
-        return AccessControlContext.build(new ProtectionDomain[] { pd });
+        return AccessControlContext.create(new ProtectionDomain[] { pd });
     }
 }

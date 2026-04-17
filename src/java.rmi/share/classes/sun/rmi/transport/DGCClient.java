@@ -132,7 +132,7 @@ final class DGCClient {
         Permissions perms = new Permissions();
         perms.add(new SocketPermission("*", "connect,resolve"));
         ProtectionDomain[] pd = { new ProtectionDomain(null, perms) };
-        return AccessControlContext.build(pd);
+        return AccessControlContext.create(pd);
     }
 
     /*

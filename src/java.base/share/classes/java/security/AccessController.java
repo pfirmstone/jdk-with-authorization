@@ -446,7 +446,7 @@ public final class AccessController {
         CodeSource cs = getResource(caller);
         ProtectionDomain pd = new DomainIdentity(cs, toPermissions(perms), null, null);
         if (context == null){
-            context = AccessControlContext.build(
+            context = AccessControlContext.create(
                     new ProtectionDomain[]{pd}, (AccessControlContext) null, false);
         } else {
             context = context.intersectionPermissions(pd);
@@ -512,7 +512,7 @@ public final class AccessController {
         CodeSource cs = getResource(caller);
         ProtectionDomain pd = new DomainIdentity(cs, toPermissions(perms), null, null);
         if (context == null){
-            context = AccessControlContext.build(new ProtectionDomain[]{pd}, dc, false);
+            context = AccessControlContext.create(new ProtectionDomain[]{pd}, dc, false);
         } else {
             if (dc == null) dc = context.getCombiner();
             context = context.intersectionOfPermsDoWithCombiner(dc, pd);
@@ -620,9 +620,9 @@ public final class AccessController {
         // even if the caller is from the bootclasspath
         ProtectionDomain[] pds = new ProtectionDomain[] {callerPD};
         if (combiner == null) {
-            return AccessControlContext.build(pds, (DomainCombiner) null, true);
+            return AccessControlContext.create(pds, (DomainCombiner) null, true);
         } else {
-            return AccessControlContext.build(combiner.combine(pds, null),
+            return AccessControlContext.create(combiner.combine(pds, null),
                                             combiner, true);
         }
     }
@@ -841,7 +841,7 @@ public final class AccessController {
         CodeSource cs = getResource(caller);
         ProtectionDomain pd = new DomainIdentity(cs, toPermissions(perms), null, null);
         if (context == null){
-            context = AccessControlContext.build(
+            context = AccessControlContext.create(
                     new ProtectionDomain[]{pd}, (AccessControlContext) null, false);
         } else {
             context = context.intersectionPermissions(pd);
@@ -923,7 +923,7 @@ public final class AccessController {
         CodeSource cs = getResource(caller);
         ProtectionDomain pd = new DomainIdentity(cs, toPermissions(perms), null, null);
         if (context == null){
-            context = AccessControlContext.build(
+            context = AccessControlContext.create(
                     new ProtectionDomain[]{pd},
                     dc, false);
         } else {
@@ -983,7 +983,7 @@ public final class AccessController {
             // We can't build an AccessControlContext without causing
             // an Error during initialization of VM, when using StackWalker 
             // getContext implementation.
-            return AccessControlContext.build(null, true);
+            return AccessControlContext.create(null, true);
         } else {
             return acc.optimize();
         }

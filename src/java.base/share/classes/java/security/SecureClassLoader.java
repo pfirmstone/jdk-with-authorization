@@ -248,7 +248,7 @@ public class SecureClassLoader extends ClassLoader {
         SecurityManager sm = System.getSecurityManager();
         if (sm != null){
             sm.checkPermission(LOAD_CLASS_ALLOW,
-                    AccessControlContext.build(new ProtectionDomain []{pd}));
+                    AccessControlContext.create(new ProtectionDomain []{pd}, false));
         }
         if (DebugHolder.debug != null) {
             DebugHolder.debug.println(" getPermissions " + pd);

@@ -1038,7 +1038,7 @@ public final class ObjectStreamClass implements Serializable {
                     }; // Can't use PrivilegedExceptionAction with jsa
                     AccessControlContext context = AccessController.doPrivileged(
                         (PrivilegedAction<AccessControlContext>) 
-                                () -> AccessControlContext.build(domains));
+                                () -> AccessControlContext.create(domains));
                     try {
                         return jsa.doIntersectionPrivilege(pea,
                                    AccessController.getContext(),

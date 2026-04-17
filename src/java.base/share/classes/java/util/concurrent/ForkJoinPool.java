@@ -1242,7 +1242,7 @@ public class ForkJoinPool extends AbstractExecutorService
                 regularACC = acc = AccessController.doPrivileged( 
                     new PrivilegedAction<>() {
                         public AccessControlContext run() {
-                            return AccessControlContext.build(new ProtectionDomain[] {
+                            return AccessControlContext.create(new ProtectionDomain[] {
                                 new ProtectionDomain(null, ps) });
                         }
                     }
@@ -1269,7 +1269,7 @@ public class ForkJoinPool extends AbstractExecutorService
                 commonACC = acc = AccessController.doPrivileged(
                     new PrivilegedAction<>() {
                         public AccessControlContext run() {
-                            return AccessControlContext.build(new ProtectionDomain[] {
+                            return AccessControlContext.create(new ProtectionDomain[] {
                                 new ProtectionDomain(null, ps) });
                         }
                     }

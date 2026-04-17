@@ -1800,7 +1800,7 @@ public class DefaultMBeanServerInterceptor implements MBeanServerInterceptor {
             ProtectionDomain pd = AccessController.doPrivileged(act);
             @SuppressWarnings("removal")
             AccessControlContext acc =
-                AccessControlContext.build(new ProtectionDomain[] { pd });
+                AccessControlContext.create(new ProtectionDomain[] { pd });
             sm.checkPermission(perm, acc);
         }
     }

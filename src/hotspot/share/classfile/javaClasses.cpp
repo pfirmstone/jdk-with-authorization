@@ -4799,8 +4799,8 @@ oop java_security_AccessControlContext::create(objArrayHandle context, bool isPr
       args.push_int(isPrivileged);
       JavaCalls::call_static(&result,
                              klass,
-                             vmSymbols::buildAccessControlContext_name(),
-                             vmSymbols::buildAccessControlContext_signature(),
+                             vmSymbols::createAccessControlContext_name(),
+                             vmSymbols::createAccessControlContext_signature(),
                              &args, CHECK_NULL);
       return result.get_oop();
   } else { // Create a unique AccessControlContext instance.

@@ -26,11 +26,9 @@
 package java.security;
 
 
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashSet;
-import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ConcurrentMap;
@@ -78,7 +76,7 @@ import sun.security.util.SecurityConstants;
  * </pre>
  * 
  * <p>
- * Deprecated since 17, removed or disabled since 24,
+ * Deprecated since 17, disabled since 24, 
  * retained and maintained operational for Authorization.
  *
  * @see AccessController
@@ -86,14 +84,6 @@ import sun.security.util.SecurityConstants;
  * @author Roland Schemers
  * @since 1.2
  */ 
- /* Removed from Java 24
- *      @deprecated This class is only useful in conjunction with
- *       {@linkplain SecurityManager the Security Manager}, which is deprecated
- *       and subject to removal in a future release. Consequently, this class
- *       is also deprecated and subject to removal. There is no replacement for
- *       the Security Manager or this class.
- */
-//@Deprecated(since="17", forRemoval=true)
 public final class AccessControlContext {
 
     private final ProtectionDomain[] context;
@@ -137,11 +127,11 @@ public final class AccessControlContext {
     }
 
     /* Called by the virtual machine native codes. Don't touch */
-    static AccessControlContext build(ProtectionDomain [] context,
+    static AccessControlContext create(ProtectionDomain [] context,
             AccessControlContext privileged_context,
             boolean isPrivileged)
     {
-        return build(context, privileged_context, null, isPrivileged);
+        return create(context, privileged_context, null, isPrivileged);
     } 
 
     /**
@@ -163,7 +153,7 @@ public final class AccessControlContext {
      * @throws NullPointerException if {@code context} is {@code null}
      * @since 25
      */
-    public static AccessControlContext build(ProtectionDomain[] context)
+    public static AccessControlContext create(ProtectionDomain[] context)
     {
         notNull(context);
         AccessControlContext unAuthorizedContext = checkAuthorized(false, false);
@@ -202,7 +192,7 @@ public final class AccessControlContext {
                 context = null;
             }
         }
-        return build(context, null, null, false);
+        return create(context, null, null, false);
     }
 
     /**
@@ -230,11 +220,11 @@ public final class AccessControlContext {
      * a new AccessControlContext if one doesn't already exist.
      * @since 25
      */    
-    public static AccessControlContext build(AccessControlContext acc,
+    public static AccessControlContext create(AccessControlContext acc,
                                              DomainCombiner combiner) 
     {
         checkAuthorized(false, true);
-        return build(notNull(acc).context, null, combiner, false);
+        return create(notNull(acc).context, null, combiner, false);
     }
 
     /**
@@ -242,62 +232,62 @@ public final class AccessControlContext {
      * performing the security check for
      * {@linkplain SecurityConstants#CREATE_ACC_PERMISSION} permission
      */
-    static AccessControlContext build(AccessControlContext acc,
+    static AccessControlContext create(AccessControlContext acc,
                                       DomainCombiner combiner,
                                       boolean isAuthorized)
     {
         checkAuthorized(isAuthorized, true);
-        return build(notNull(acc).context, null, combiner, false);
+        return create(notNull(acc).context, null, combiner, false);
     }
 
     /**
      * package private to allow calls for {@code JavaSecurityAccess.doIntersectionPrivilege()}
      */
-    static AccessControlContext build(ProtectionDomain[] context,
+    static AccessControlContext create(ProtectionDomain[] context,
                                       AccessControlContext privilegedContext)
     {
-        return build(context, privilegedContext, null, true);
+        return create(context, privilegedContext, null, true);
     }
     
     /**
      * package private for {@code AccessController} doPrivileged methods
      * with permission argument and null context argument.
      */
-    static AccessControlContext build(ProtectionDomain[] context,
+    static AccessControlContext create(ProtectionDomain[] context,
                                       DomainCombiner combiner,
                                       boolean isAuthorized)
     {
         checkAuthorized(isAuthorized, true);
-        return build(context, null, combiner, false);
+        return create(context, null, combiner, false);
     }
     
     /**
      * package private for {@code AccessController.getContext()}
      * to return a privileged domain without security check.
      */
-    static AccessControlContext build(ProtectionDomain[] context,
+    static AccessControlContext create(ProtectionDomain[] context,
                                       boolean isPrivileged)
     {
-        return build(context, null, null, isPrivileged);
+        return create(context, null, null, isPrivileged);
     }
     
 
     /**
      * For AccessController new Java stack walk.
      */
-    static AccessControlContext build(ProtectionDomain[] context,
+    static AccessControlContext create(ProtectionDomain[] context,
                                       boolean privileged,
                                       AccessControlContext privilegedContext)
     {
-        return build(context, privilegedContext, null, privileged);
+        return create(context, privilegedContext, null, privileged);
     }
 
     /**
-     * This builder determines whether the cache has been initialized and 
+     * This creator determines whether the cache has been initialized and 
      * if so returns a matching cached AccessControlContext if it exists.
      * Otherwise it creates a new AccessControlContext.
      */
-    static AccessControlContext build(ProtectionDomain[] context,
+    static AccessControlContext create(ProtectionDomain[] context,
                                       AccessControlContext privilegedContext,
                                       DomainCombiner combiner,
                                       boolean isPrivileged)
@@ -329,7 +319,7 @@ public final class AccessControlContext {
      * @return unprivileged AccessControlContext
      */
     public static AccessControlContext unprivileged(){
-        return build(new ProtectionDomain[]{new DomainIdentity(null, null, null, null)}, false);
+        return create(new ProtectionDomain[]{new DomainIdentity(null, null, null, null)}, false);
     }
     
     /**
@@ -341,7 +331,7 @@ public final class AccessControlContext {
      * @return unprivileged AccessControlContext
      */
     public static AccessControlContext neverPrivileged(){
-        return build(new ProtectionDomain[]{new DomainIdentity(null, null)}, false);
+        return create(new ProtectionDomain[]{new DomainIdentity(null, null)}, false);
     }
 
     /**
@@ -486,7 +476,7 @@ public final class AccessControlContext {
         this.hashCode = genHashCode(context, privilegedContext, combiner, isPrivileged);
     }
 
-    /* Constructor used by builder methods. */
+    /* Constructor used by createer methods. */
     private AccessControlContext(ProtectionDomain[] context,
                          AccessControlContext privilegedContext,
                          DomainCombiner combiner,
@@ -535,7 +525,7 @@ public final class AccessControlContext {
             domains[i] = context [i];
         }
         domains[context.length] = permDomain;
-        return build(domains, this.privilegedContext, dc, this.isPrivileged);
+        return create(domains, this.privilegedContext, dc, this.isPrivileged);
     }
 
     /**
@@ -808,7 +798,7 @@ public final class AccessControlContext {
             pd = tmp;
         }
 
-        return AccessControlContext.build(pd, privilegedContext, null, false);
+        return AccessControlContext.create(pd, privilegedContext, null, false);
     }
 
     private AccessControlContext goCombiner(ProtectionDomain[] current, 
@@ -826,7 +816,7 @@ public final class AccessControlContext {
         ProtectionDomain[] combinedPds = assigned.combiner.combine(
             current, assigned.context);
 
-        return AccessControlContext.build(combinedPds, privilegedContext,
+        return AccessControlContext.create(combinedPds, privilegedContext,
                 assigned.combiner, false);
     }
 
@@ -980,7 +970,7 @@ public final class AccessControlContext {
          * @since 25
          */
         public final AccessControlContext build(ProtectionDomain[] context){
-            return AccessControlContext.build(context, false);
+            return AccessControlContext.create(context, false);
         }
     }
 }

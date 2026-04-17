@@ -302,7 +302,7 @@ extends SecurityManager implements CachingSecurityManager {
                     return AccessController.doPrivileged( 
                         new PrivilegedAction<AccessControlContext>(){
                             public AccessControlContext run() {
-                                return AccessControlContext.build(finalExecutionContext, dc);
+                                return AccessControlContext.create(finalExecutionContext, dc);
                             }
                         }
                     );

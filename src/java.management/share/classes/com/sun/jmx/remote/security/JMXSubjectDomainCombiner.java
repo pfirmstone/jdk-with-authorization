@@ -88,7 +88,7 @@ public class JMXSubjectDomainCombiner extends SubjectDomainCombiner {
      * Get the current AccessControlContext combined with the supplied subject.
      */
     public static AccessControlContext getContext(Subject subject) {
-        return AccessControlContext.build(AccessController.getContext(),
+        return AccessControlContext.create(AccessController.getContext(),
                                         new JMXSubjectDomainCombiner(subject));
     }
 
@@ -100,8 +100,8 @@ public class JMXSubjectDomainCombiner extends SubjectDomainCombiner {
      */
     public static AccessControlContext
         getDomainCombinerContext(Subject subject) {
-        return AccessControlContext.build(
-            AccessControlContext.build(new ProtectionDomain[0]),
+        return AccessControlContext.create(
+            AccessControlContext.create(new ProtectionDomain[0]),
             new JMXSubjectDomainCombiner(subject));
     }
 }

@@ -103,9 +103,9 @@ public class ProtectionDomain {
         private static AccessControlContext getCombinedACC(
             AccessControlContext context, AccessControlContext stack) {
             AccessControlContext acc =
-                AccessControlContext.build(context, stack.getCombiner(), true);
+                AccessControlContext.create(context, stack.getCombiner(), true);
 
-            return AccessControlContext.build(stack.getContext(), acc).optimize();
+            return AccessControlContext.create(stack.getContext(), acc).optimize();
         }
         
         // ProtectionDomainCache is only used by the sun PolicyFile implementation.

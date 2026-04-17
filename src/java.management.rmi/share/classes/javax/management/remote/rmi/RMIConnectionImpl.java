@@ -172,7 +172,7 @@ public class RMIConnectionImpl implements RMIConnection, Unreferenced {
         }
 
         final ProtectionDomain pd = new DomainIdentity(null, col, null, null);
-        return AccessControlContext.build( new ProtectionDomain[] { pd });
+        return AccessControlContext.create( new ProtectionDomain[] { pd });
     }
 
     private synchronized ServerNotifForwarder getServerNotifFwd() {
