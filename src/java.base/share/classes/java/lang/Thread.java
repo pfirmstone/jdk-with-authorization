@@ -2966,9 +2966,7 @@ public class Thread implements Runnable {
             ThreadGroup root = AccessController.doPrivileged(getThreadGroup);
             VTHREAD_GROUP = new ThreadGroup(root, "VirtualThreads", MAX_PRIORITY, false);
 
-            NO_PERMISSIONS_ACC = new AccessControlContext(new ProtectionDomain[] {
-                new ProtectionDomain(null, null)
-            });
+            NO_PERMISSIONS_ACC = AccessControlContext.neverPrivileged();
         }
     }
 

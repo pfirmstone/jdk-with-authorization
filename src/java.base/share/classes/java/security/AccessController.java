@@ -921,7 +921,7 @@ public final class AccessController {
         DomainCombiner dc = parent.getCombiner();
         Class<?> caller = Reflection.getCallerClass();
         CodeSource cs = getResource(caller);
-        ProtectionDomain pd = new ProtectionDomain(cs, toPermissions(perms), null, null);
+        ProtectionDomain pd = new DomainIdentity(cs, toPermissions(perms), null, null);
         if (context == null){
             context = AccessControlContext.build(
                     new ProtectionDomain[]{pd},

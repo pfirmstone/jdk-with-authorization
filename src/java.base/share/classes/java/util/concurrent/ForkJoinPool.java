@@ -1238,10 +1238,16 @@ public class ForkJoinPool extends AbstractExecutorService
                 ps.add(new RuntimePermission("getClassLoader"));
                 ps.add(new RuntimePermission("setContextClassLoader"));
                 ps.add(new RuntimePermission("enableContextClassLoaderOverride"));
-                regularACC = acc =
-                    AccessControlContext.build(new ProtectionDomain[] {
-                            new ProtectionDomain(null, ps) });
-    }
+                ps.add(new RuntimePermission("createPlatformThread"));
+                regularACC = acc = AccessController.doPrivileged( 
+                    new PrivilegedAction<>() {
+                        public AccessControlContext run() {
+                            return AccessControlContext.build(new ProtectionDomain[] {
+                                new ProtectionDomain(null, ps) });
+                        }
+                    }
+                );
+            }
             return AccessController.doPrivileged(
                 new PrivilegedAction<>() {
                     public ForkJoinWorkerThread run() {
@@ -1259,9 +1265,15 @@ public class ForkJoinPool extends AbstractExecutorService
                 ps.add(new RuntimePermission("modifyThread"));
                 ps.add(new RuntimePermission("enableContextClassLoaderOverride"));
                 ps.add(new RuntimePermission("modifyThreadGroup"));
-                commonACC = acc =
-                    AccessControlContext.build(new ProtectionDomain[] {
-                            new ProtectionDomain(null, ps) });
+                ps.add(new RuntimePermission("createPlatformThread"));
+                commonACC = acc = AccessController.doPrivileged(
+                    new PrivilegedAction<>() {
+                        public AccessControlContext run() {
+                            return AccessControlContext.build(new ProtectionDomain[] {
+                                new ProtectionDomain(null, ps) });
+                        }
+                    }
+                );
             }
             return AccessController.doPrivileged(
                 new PrivilegedAction<>() {

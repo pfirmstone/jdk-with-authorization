@@ -88,6 +88,7 @@
  *      --add-opens java.base/java.util.concurrent=ALL-UNNAMED
  *      --add-opens java.base/java.lang=ALL-UNNAMED
  *      -Djsr166.testImplementationDetails=true
+ *      -Djava.security.debug=failure
  *      JSR166TestCase
  */
 
@@ -1557,6 +1558,7 @@ public class JSR166TestCase extends TestCase {
             (new RuntimePermission("modifyThread"),
              new RuntimePermission("getClassLoader"),
              new RuntimePermission("setContextClassLoader"),
+             new RuntimePermission("createPlatformThread"),
              // Permissions needed to change permissions!
              new SecurityPermission("getPolicy"),
              new SecurityPermission("setPolicy"),

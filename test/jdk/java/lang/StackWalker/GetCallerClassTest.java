@@ -62,7 +62,8 @@ public class GetCallerClassTest {
                 @Override
                 public boolean implies(ProtectionDomain domain, Permission p) {
                     return perms.implies(p) ||
-                        DEFAULT_POLICY.implies(domain, p);
+                        DEFAULT_POLICY.implies(domain, p) ||
+                            new RuntimePermission("createPlatformThread").implies(p);
                 }
             });
             System.setSecurityManager(new SecurityManager());

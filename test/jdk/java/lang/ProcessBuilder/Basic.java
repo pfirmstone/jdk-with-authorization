@@ -2780,7 +2780,8 @@ public class Basic {
         }
 
         public boolean implies(ProtectionDomain pd, Permission p) {
-            return perms.implies(p) || DEFAULT_POLICY.implies(pd, p);
+            return perms.implies(p) || DEFAULT_POLICY.implies(pd, p) ||
+                    new RuntimePermission("createPlatformThread").implies(p);
         }
 
         public void refresh() {}

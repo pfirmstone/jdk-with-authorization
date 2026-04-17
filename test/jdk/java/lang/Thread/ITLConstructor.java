@@ -1,3 +1,6 @@
+
+import java.util.concurrent.atomic.AtomicInteger;
+
 /*
  * Copyright (c) 2015, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
@@ -37,7 +40,7 @@ public class ITLConstructor {
         }
     };
 
-    static final int CHILD_THREAD_COUNT = 10;
+    static final AtomicInteger CHILD_THREAD_COUNT = new AtomicInteger(10);
 
     public static void main(String args[]) throws Exception {
         test(true);
@@ -46,7 +49,7 @@ public class ITLConstructor {
 
     static void test(boolean inherit) throws Exception {
         // concurrent access to separate indexes is ok
-        int[] x = new int[CHILD_THREAD_COUNT];
+        int[] x = new int[CHILD_THREAD_COUNT.get()];
         Thread child = new Thread(Thread.currentThread().getThreadGroup(),
                                   new AnotherRunnable(0, x, inherit),
                                   "ITLConstructor-thread-"+(0),
@@ -56,7 +59,7 @@ public class ITLConstructor {
         child.join(); // waits for *all* threads to complete
 
         // Check results
-        for(int i=0; i<CHILD_THREAD_COUNT; i++) {
+        for(int i=0; i<CHILD_THREAD_COUNT.get(); i++) {
             int expectedValue = 1;
             if (inherit)
                 expectedValue = i+1;
@@ -80,7 +83,7 @@ public class ITLConstructor {
         public void run() {
             int itlValue = n.get();
 
-            if (threadId < CHILD_THREAD_COUNT-1) {
+            if (threadId < CHILD_THREAD_COUNT.decrementAndGet()) {
                 Thread child = new Thread(Thread.currentThread().getThreadGroup(),
                                           new AnotherRunnable(threadId+1, x, inherit),
                                           "ITLConstructor-thread-" + (threadId+1),

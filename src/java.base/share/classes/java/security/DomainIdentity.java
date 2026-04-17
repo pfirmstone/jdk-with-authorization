@@ -137,7 +137,7 @@ public final class DomainIdentity extends ProtectionDomain {
      * subsequent modification.
      * @see Policy#refresh
      * @see Policy#getPermissions(ProtectionDomain)
-     * @since 1.4
+     * @since 25
      */
     @SuppressWarnings("unchecked")
     public DomainIdentity(CodeSource codesource,
@@ -161,6 +161,35 @@ public final class DomainIdentity extends ProtectionDomain {
         hashcode = hash;
     }
     
+    /**
+     * Creates a new {@code ProtectionDomain} qualified by the given
+     * {@code CodeSource} and permissions. If permissions is not {@code null}, then
+     * {@code setReadOnly()} will be called on the passed in permissions.
+     * <p>
+     * The permissions granted to this domain include both the permissions
+     * passed to this constructor.
+     *
+     * @param codesource the {@code CodeSource} associated with this domain
+     * @param permissions the permissions granted to this domain
+     * 
+     */
+    @SuppressWarnings("unchecked")
+    public DomainIdentity(CodeSource codesource,
+                          PermissionCollection<? extends Permission> permissions) 
+    {
+        super(codesource, permissions);
+        this.principals = null;
+        this.permissions = permissions != null ? permissionsToSet(permissions) : null;
+        this.uriCS = codesource!= null ? new UriCodeSource(codesource) : null;
+        int hash = 5;
+        hash = 5 * hash + (hasAllPerm() ? 1231 : 1237);
+        hash = 5 * hash + getClass().hashCode();
+        hash = 5 * hash + Objects.hashCode(this.uriCS);
+        if (this.uriCS == null && codesource != null) hash = 7 * hash + codesource.hashCode();
+        hash = 5 * hash + permissionsHashCode(permissions);
+        hashcode = hash;
+    }
+    
     @Override
     public int hashCode() {
         return hashcode;
@@ -172,6 +201,7 @@ public final class DomainIdentity extends ProtectionDomain {
         if (obj == null) return false;
         if (obj instanceof DomainIdentity other){
             if (hashcode != other.hashcode) return false;
+            if (staticPermissionsOnly() != other.staticPermissionsOnly()) return false;
             if (!Objects.equals(this.getClassLoader(), other.getClassLoader())) return false;
             if (!Objects.equals(this.uriCS, other.uriCS)) return false;
             if (this.uriCS == null && this.getCodeSource() != null 

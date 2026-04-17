@@ -6,4 +6,5 @@ grant CodeBase "jrt:/jdk.jfr/jdk.jfr.internal.SecuritySupport" {
 
 grant {
     permission au.zeus.jdk.authorization.guards.LoadClassPermission "ALLOW";
+    permission java.lang.RuntimePermission "createPlatformThread";
 };

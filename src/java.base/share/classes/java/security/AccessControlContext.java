@@ -319,6 +319,30 @@ public final class AccessControlContext {
                                         combiner, isPrivileged);
         }
     }
+    
+    /**
+     * Creates or returns an unprivileged AccessControlContext without
+     * checking for "createAccessControlContext" {@link SecurityPermission}
+     * 
+     * This context can gain privileges from Subject, but is otherwise unprivileged.
+     * 
+     * @return unprivileged AccessControlContext
+     */
+    public static AccessControlContext unprivileged(){
+        return build(new ProtectionDomain[]{new DomainIdentity(null, null, null, null)}, false);
+    }
+    
+    /**
+     * Creates or returns a guaranteed never privileged AccessControlContext without
+     * checking for "createAccessControlContext" {@link SecurityPermission}
+     * 
+     * This context cannot gain privileges from a thread's Subject.
+     * 
+     * @return unprivileged AccessControlContext
+     */
+    public static AccessControlContext neverPrivileged(){
+        return build(new ProtectionDomain[]{new DomainIdentity(null, null)}, false);
+    }
 
     /**
      * Convenience methods that checks for null.

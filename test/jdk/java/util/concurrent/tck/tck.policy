@@ -1,5 +1,7 @@
 grant {
     // Permissions j.u.c. needs directly
+    permission java.lang.RuntimePermission "createPlatformThread";
+    permission java.lang.RuntimePermission "createVirtualThread";
     permission java.lang.RuntimePermission "modifyThread";
     permission java.lang.RuntimePermission "modifyThreadGroup";
     permission java.lang.RuntimePermission "getClassLoader";
@@ -47,4 +49,6 @@ grant {
     permission java.lang.RuntimePermission "enableContextClassLoaderOverride";
     permission java.util.logging.LoggingPermission "control";
     permission java.lang.RuntimePermission "loggerFinder";
+    permission java.lang.RuntimePermission "createSecurityManager";
+    permission java.lang.RuntimePermission "setSecurityManager";
 };

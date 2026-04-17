@@ -8,6 +8,7 @@ grant {
 
 	permission java.lang.RuntimePermission "setSecurityManager";
 	permission java.lang.RuntimePermission "createSecurityManager";
+        permission java.lang.RuntimePermission "createPlatformThread";
 
 	// allows anyone to listen on un-privileged ports
 	permission java.net.SocketPermission "localhost:1024-", "listen";
