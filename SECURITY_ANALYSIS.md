@@ -10,8 +10,6 @@
 
 Dirty Chai implements a layered authorization model with strong fail-secure behavior, explicit trust boundaries, and policy-centric permission enforcement. The current implementation is materially stronger than baseline OpenJDK in the analyzed areas.
 
-This update corrects stale claims in the prior document, removes duplication, and captures current residual risks.
-
 **Current assessment:** **Strong security posture with low-to-moderate residual risk, primarily policy/configuration dependent.**
 
 ---
@@ -173,6 +171,52 @@ Security effect:
 - reduces uncontrolled thread-creation abuse risk (resource-exhaustion/DoS vectors)
 - strengthens least-privilege for concurrent runtimes where thread creation is security-sensitive
 
+### 7) ClassLoader Permission Boundary Separation
+
+Dirty Chai enforces two distinct `RuntimePermission` checks for ClassLoader operations:
+
+#### `RuntimePermission("createClassLoader")` — Creation Control
+
+- **Purpose:** Gates the ability to **instantiate** ClassLoader's.
+- **Enforcement point:** `ClassLoader.checkCreateClassLoader(String name)` called from all ClassLoader constructors
+- **Check type:** Unconditional — executed for every ClassLoader instantiation attempt
+- **Implementation:** Delegates to `SecurityManager.checkCreateClassLoader()` which checks `SecurityConstants.CREATE_CLASSLOADER_PERMISSION`
+- **Policy integration:** Administrators can grant `createClassLoader` to allow code to instantiate loaders without granting extension rights
+
+#### `RuntimePermission("extendClassLoader")` — Extension Control
+
+- **Purpose:** Gates the ability to **extend/subclass** ClassLoader itself  
+- **Enforcement point:** Conditionally checked within `ClassLoader.checkCreateClassLoader()` via `checkExtendClassLoader(Class<?>)`
+- **Check type:** Conditional — only executed when caller is creating a ClassLoader subclass (not a built-in loader)
+- **Stack-walk logic:** `checkExtendClassLoader()` performs stack inspection to identify the actual caller class and determine if extension is being attempted
+- **Exemption list:** Built-in/trusted loaders are exempted:
+  - `BuiltinClassLoader` — platform/system class loader
+  - `URLClassLoader` — URL-based class loader
+  - `JrtFileSystemProvider` — module/JRT file system provider
+  - `Module$ModuleInfoLoader` — module metadata loader
+  - `CDS$UnregisteredClassLoader` — CDS unregistered loader
+  - `MethodUtil` — utility class for reflection
+  - `Loader` — internal loader utility
+- **Policy integration:** Administrators can restrict `extendClassLoader` to prevent custom loader implementations while still allowing code to use existing loaders
+
+#### Security Effects
+
+This two-permission split provides:
+
+1. **Granular authorization:** Code can be authorized to use existing loaders without being able to create custom implementations
+2. **Code-injection prevention:** Untrusted code cannot create rogue ClassLoader subclasses that could intercept class resolution
+3. **Attack surface reduction:** Prevents proxy-style attacks where custom loaders masquerade as legitimate ones
+4. **Least-privilege enforcement:** Each permission can be granted independently based on policy requirements
+
+#### Integration with LoadClassPermission
+
+The three-layer defense architecture works as follows:
+
+- **Layer 1 (Creation/Extension):** `RuntimePermission("createClassLoader")` and `RuntimePermission("extendClassLoader")` gate who can create or extend class loaders
+- **Layer 2 (Loading Control):** `LoadClassPermission` guard gates which classes can be loaded by whom
+- **Layer 3 (Policy):** Admin-controlled policy file governs what code gets granted which permissions
+
+This stratified approach ensures that even if code obtains a ClassLoader reference, it cannot load arbitrary code without explicit policy authorization.
 ---
 
 ## Threat Review (Current)
@@ -203,7 +247,7 @@ Security effect:
    Name-pattern detection can produce false positives/negatives in edge cases; it is not a formal proof of provenance.
 
 3. **Trusted-class list governance risk**  
-   Security relies on disciplined maintenance of `trustedSMClass()`; whitelist expansion is a high-impact operation.
+   Security relies on disciplined maintenance of `trustedSMClass()`; whitelist expansion is a high-impact operation.  ClassLoader exemption list maintenance...
 
 4. **Policy quality remains critical**  
    The architecture is strong, but permissive policy files can negate hardening benefits.
