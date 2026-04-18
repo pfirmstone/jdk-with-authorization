@@ -10,8 +10,6 @@
 
 Dirty Chai implements a layered authorization model with strong fail-secure behavior, explicit trust boundaries, and policy-centric permission enforcement. The current implementation is materially stronger than baseline OpenJDK in the analyzed areas.
 
-This update corrects stale claims in the prior document, removes duplication, and captures current residual risks.
-
 **Current assessment:** **Strong security posture with low-to-moderate residual risk, primarily policy/configuration dependent.**
 
 ---
