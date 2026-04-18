@@ -11,7 +11,9 @@ model alive, and the founding of Dirty Chai.
 Java 1.0 introduced a simple **sandbox model** aimed at applets running in web browsers. All
 local code was fully trusted; all remotely loaded code ran in a tightly restricted sandbox with
 no file system or network access beyond the originating host. The model was binary — trusted or
-untrusted — with no middle ground.
+untrusted — with no middle ground. Java 1.0 also introduced **SecurityManager** as the platform
+hook through which security checks were delegated, though at this stage it enforced only the
+binary sandbox boundary.
 
 Java 1.1 extended the sandbox with **signed JAR files**. Signed code from a trusted signer could
 be granted additional permissions. The model was still coarse: a signed JAR was either fully
@@ -35,8 +37,10 @@ The key concepts introduced in Java 1.2:
 - **AccessController / AccessControlContext** — a stack-inspection mechanism to compute the
   effective set of permissions across an entire call chain, preventing privilege escalation
   through untrusted intermediaries.
-- **SecurityManager** — a hook for the platform to call into application-level policy enforcement
-  at security-relevant operations (file access, network access, class loading, etc.).
+- **SecurityManager** — reworked from its Java 1.0 origins into a general-purpose hook for
+  the platform to call into application-level policy enforcement at security-relevant operations
+  (file access, network access, class loading, etc.). Li Gong described it as an
+  *Archimedes fulcrum* — the fixed point on which the entire security architecture pivots.
 - **Principle of Least Privilege (POLP)** — the design philosophy that code should be granted
   only the minimum permissions it requires, documented by Li Gong in *Inside Java 2 Platform
   Security* (ISBN 0201787911).
