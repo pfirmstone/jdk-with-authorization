@@ -86,7 +86,7 @@ public final class X11GraphicsEnvironment extends SunGraphicsEnvironment {
                     boolean xRenderRequested = true;
                     boolean xRenderIgnoreLinuxVersion = false;
                     String xProp = System.getProperty("sun.java2d.xrender");
-                        if (xProp != null) {
+                    if (xProp != null) {
                         if (xProp.equals("false") || xProp.equals("f")) {
                             xRenderRequested = false;
                         } else if (xProp.equals("True") || xProp.equals("T")) {
@@ -94,7 +94,7 @@ public final class X11GraphicsEnvironment extends SunGraphicsEnvironment {
                             xRenderVerbose = true;
                         }
 
-                        if(xProp.equalsIgnoreCase("t") || xProp.equalsIgnoreCase("true")) {
+                        if (xProp.equalsIgnoreCase("t") || xProp.equalsIgnoreCase("true")) {
                             xRenderIgnoreLinuxVersion = true;
                         }
                     }
@@ -117,7 +117,7 @@ public final class X11GraphicsEnvironment extends SunGraphicsEnvironment {
                         xRenderAvailable = initXRender(xRenderVerbose, xRenderIgnoreLinuxVersion);
                         if (xRenderVerbose && !xRenderAvailable) {
                             System.out.println(
-                                         "Could not enable XRender pipeline");
+                                "Could not enable XRender pipeline");
                         }
                     }
 
@@ -128,7 +128,7 @@ public final class X11GraphicsEnvironment extends SunGraphicsEnvironment {
 
                 return null;
             }
-        }
+        });
     }
 
 

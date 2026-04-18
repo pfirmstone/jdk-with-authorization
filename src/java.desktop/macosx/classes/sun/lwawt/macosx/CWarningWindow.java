@@ -278,7 +278,20 @@ public final class CWarningWindow extends CPlatformWindow
         LWWindowPeer peer = ownerPeer.get();
         return peer.getGraphicsConfiguration();
     }
-    
+
+    public Rectangle getBounds() {
+        return CWarningWindow.this.getBounds();
+    }
+
+    public CGLLayer createCGLayer() {
+        LWWindowPeer peer = ownerPeer.get();
+        return new CGLLayer(peer);
+    }
+
+    public MTLLayer createMTLLayer() {
+        LWWindowPeer peer = ownerPeer.get();
+        return new MTLLayer(peer);
+    }
 
     CPlatformView createContentView() {
         return new CPlatformView() {
