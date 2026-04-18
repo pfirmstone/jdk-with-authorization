@@ -57,6 +57,9 @@ model significantly:
 - **DynamicPolicy** (Jini 2.0, Java 1.4) — rather than baking permissions statically into a
   `ProtectionDomain` at class-loading time, policy was consulted live during `implies` calls,
   allowing grants to change after deployment.
+- **GrantPermission** — a permission that allows one piece of code to delegate a restricted
+  subset of its own permissions to another piece of code, enabling controlled delegation to
+  downloaded service proxies without a monolithic administrator grant.
 - **Debug Policy Tool** (2004) — Jini engineers created a tool that logged each permission
   checked at runtime so administrators could construct accurate policy files. This was the
   direct predecessor of PolicyWriter.
@@ -89,9 +92,6 @@ Foundation as [Apache River](https://river.apache.org/). River extended the secu
 
 - **Revocation** — policy grants could be garbage-collected when the granting object became
   unreachable, allowing dynamic revocation of permissions in long-lived service environments.
-- **GrantPermission** — a permission that allows one piece of code to delegate a restricted
-  subset of its own permissions to another piece of code, enabling controlled delegation without
-  a monolithic administrator grant.
 - **ScalableNestedPolicy** and **PermissionGrant** APIs — immutable, safely publishable
   authorization building blocks.
 
