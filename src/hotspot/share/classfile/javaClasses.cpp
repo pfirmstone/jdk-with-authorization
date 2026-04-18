@@ -3717,10 +3717,8 @@ oop java_lang_reflect_RecordComponent::create(InstanceKlass* holder, RecordCompo
   java_lang_reflect_RecordComponent::set_name(element(), component_name);
 
   Symbol* type = holder->constants()->symbol_at(component->descriptor_index());
-  Handle loader(THREAD, holder->class_loader());
-  Handle protection_domain(THREAD, holder->protection_domain());
   Handle component_type_h =
-    SystemDictionary::find_java_mirror_for_type(type, holder, loader, protection_domain, SignatureStream::NCDFError, CHECK_NULL);
+    SystemDictionary::find_java_mirror_for_type(type, holder, Handle(), Handle(), SignatureStream::NCDFError, CHECK_NULL);
   java_lang_reflect_RecordComponent::set_type(element(), component_type_h());
 
   Method* accessor_method = nullptr;
