@@ -252,14 +252,11 @@ This stratified approach ensures that even if code obtains a ClassLoader referen
 4. **Policy quality remains critical**  
    The architecture is strong, but permissive policy files can negate hardening benefits.
 
-5. **Source-file Javadoc drift (one remaining)**  
-   `VULNERABILITIES_ADDRESSED.md`, `SECURITY_MODEL.md`, and `SECURITY_ANALYSIS.md` have been
-   synchronised with the current implementation as of this update. One stale reference remains
-   in a Java source-file Javadoc comment that falls outside the permitted documentation change
-   boundary: `System.java` line 468 still reads "Only the first 10 stack frames are examined"
-   while the implementation at line 2923 uses `limit(50)` and line 424 correctly states
-   "up to 50 frames". This source-file comment requires a human author correction in a future
-   commit.
+5. **Source-file Javadoc drift — resolved**  
+   All repository Markdown documentation and Java source-file Javadoc comments are now
+   consistent with the `limit(50)` implementation. `System.java` line 468 was corrected by
+   the human author to read "50 stack frames", matching `limit(50)` at line 2923 and the
+   "up to 50 frames" statement at line 424. No further drift is known.
 
 ---
 
@@ -274,11 +271,10 @@ This stratified approach ensures that even if code obtains a ClassLoader referen
    - Deep-stack attack simulation beyond typical frame depth
    - Edge-case generated/invoke frame classification
 
-3. **Correct stale Javadoc in `System.java` (source file)**
-   `System.java` line 468 still reads "Only the first 10 stack frames are examined";
-   line 2923 uses `limit(50)` and line 424 already states "up to 50 frames". A human author
-   should align the line-468 comment to match. The repository Markdown documentation has been
-   synchronised as of this update.
+3. ~~**Correct stale Javadoc in `System.java` (source file)**~~  
+   Resolved: `System.java` line 468 has been corrected by the human author to read "50 stack
+   frames", consistent with `limit(50)` at line 2923 and "up to 50 frames" at line 424.
+   All stack-scan-depth references are now consistent across source and documentation.
 
 ### Medium priority
 
