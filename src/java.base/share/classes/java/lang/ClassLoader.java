@@ -385,7 +385,12 @@ public abstract class ClassLoader {
         if (!ClassLoader.class.isAssignableFrom(klass)) return false;
         StackWalk sw = new StackWalk();
         Class<?>[] stack = sw.getClasses();
-        for (int i = 0, l = stack.length; i < l; i++){
+        // Find the first non-ClassLoader frame
+        // stack[0] = checkExtendClassLoader
+        // stack[1] = checkCreateClassLoader  
+        // stack[2] = ClassLoader.<init>
+        // stack[3+] = actual callers
+        for (int i = 3, l = stack.length; i < l; i++){
             if (!ClassLoader.class.isAssignableFrom(stack[i])) { 
                 // We've reached the class that called ClassLoader subclass constructor.
                 // Go back to the last class that was assignable from ClassLoader.
@@ -401,7 +406,7 @@ public abstract class ClassLoader {
         }
         return true;
     }
-
+    
     @CallerSensitive
     private static Void checkCreateClassLoader(String name) {
         Class<?> klass = Reflection.getCallerClass();
