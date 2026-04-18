@@ -444,15 +444,20 @@ executor.submit(() -> {
 
 Issue #85 and related commits resolved 11 reviewed findings plus a SocketPermission DoS vector:
 
-| ID / Area | Issue | Fix Status |
-|---|---|---|
-| F-1 | Deep-stack bypass risk from `limit(10)` stack scan | ✅ Raised to `limit(50)` |
-| F-3 | All-invalid-URI grant could degrade into wildcard behavior | ✅ `URIGrant` now throws `SecurityException` on `URISyntaxException` |
-| F-5 | `ConcurrentPolicyFile.refresh()` error-handling gap | ✅ Hardened refresh failure handling and logging path |
-| F-6 | `CombinerSecurityManager` timeout DoS window (180s) | ✅ Reduced timeout to 10 seconds |
-| F-7 | Exception/logging mismatch in policy refresh worker path | ✅ Corrected logging behavior and exception propagation |
-| F-11 | Unsafe frame detection incomplete | ✅ Added `sun.misc.Unsafe` detection alongside `jdk.internal.misc.Unsafe` |
-| SocketPermission | DNS lookups performed during access checks could enable DNS-based DoS attacks | ✅ Canonical-host resolution moved to eager `SocketPermission.init()` during policy construction |
+| ID / Area | Severity | Issue | Fix Status |
+|---|---|---|---|
+| F-1 | High | Deep-stack bypass risk from `limit(10)` stack scan | ✅ Raised to `limit(50)` |
+| F-2 | High | `Uri.implies(null)` threw NPE; propagated as `RuntimeException` past `SecurityException` catch blocks | ✅ Null guard restored in `Uri.implies()` — returns `false` on null argument |
+| F-3 | High | All-invalid-URI grant could degrade into wildcard behavior | ✅ `URIGrant` constructor now throws `SecurityException` on `URISyntaxException` |
+| F-4 | Medium | `PolicyOnlySecurityManager` (bootstrap-loaded, `java.base`) ran through the full 4-layer custom-SM validation unnecessarily | ✅ Added `PolicyOnlySecurityManager` to `trustedSMClass()` whitelist; `SecurityPolicyWriter` intentionally excluded (audit/staging use only) |
+| F-5 | Medium | `ConcurrentPolicyFile.refresh()` silently swallowed errors and leaked paths to `System.err` | ✅ Now throws `SecurityException("Unable to refresh policy.", ex)` |
+| F-6 | Medium | `CombinerSecurityManager` latch had a 180-second DoS window | ✅ Reduced timeout to 10 seconds |
+| F-7 | Medium | Worker `ExecutionException` was wrapped as `RuntimeException`, escaping `SecurityException` catch blocks; `Level.ERROR` tested but `Level.DEBUG` logged — exception silently dropped in production | ✅ `ExecutionException` cause now wrapped as `SecurityException("Unrecoverable: ", ex.getCause())`; logging corrected so `isLoggable(Level.DEBUG)` guards `log(Level.DEBUG, ...)` |
+| F-8 | Low | Truncated `LAYEAccessController.` comment in `System.java` | ✅ Corrected to `LAYER 3: AccessController.` |
+| F-9 | Low | `Level.ERROR` tested but `Level.DEBUG` used in `InterruptedException` path — exception silently dropped in production | ✅ Fixed: `isLoggable(Level.DEBUG)` now guards `log(Level.DEBUG, ...)` in all affected paths |
+| F-10 | Low | Overly broad `java.lang.invoke.*` filter blocked legitimate JDK-internal linkage-time frames | ✅ Replaced with switch-based whitelist; linkage-time-only classes (`StringConcatFactory`, `LambdaMetafactory`, `MethodHandles`, `MethodType`, etc.) are now excluded from detection |
+| F-11 | Low | `sun.misc.Unsafe` not detected in `isUnsafeReflectionFrame()` | ✅ Added `sun.misc.Unsafe` check alongside `jdk.internal.misc.Unsafe` |
+| SocketPermission | Medium | DNS lookups performed during access checks could enable DNS-based DoS attacks | ✅ Canonical-host resolution moved to eager `SocketPermission.init()` during policy construction |
 
 ### SecurityManager Installation Model Alignment
 

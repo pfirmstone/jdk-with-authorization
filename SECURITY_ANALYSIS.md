@@ -252,12 +252,11 @@ This stratified approach ensures that even if code obtains a ClassLoader referen
 4. **Policy quality remains critical**  
    The architecture is strong, but permissive policy files can negate hardening benefits.
 
-5. **Cross-document consistency drift**  
-   `VULNERABILITIES_ADDRESSED.md`, `SECURITY_MODEL.md`, and `EXECUTIVE_SUMMARY.md`
-   may still describe older deserialization coverage status and should be synchronized:
-   - remove/replace claims that `SerialObjectPermission` only applies to custom `readObject()` paths
-   - align stack-frame scan depth references to current `limit(50)` behavior
-   - remove claims that `getSecurityManager()` performs ProtectionDomain validation
+5. **Source-file Javadoc drift — resolved**  
+   All repository Markdown documentation and Java source-file Javadoc comments are now
+   consistent with the `limit(50)` implementation. `System.java` line 468 was corrected by
+   the human author to read "50 stack frames", matching `limit(50)` at line 2923 and the
+   "up to 50 frames" statement at line 424. No further drift is known.
 
 ---
 
@@ -272,9 +271,10 @@ This stratified approach ensures that even if code obtains a ClassLoader referen
    - Deep-stack attack simulation beyond typical frame depth
    - Edge-case generated/invoke frame classification
 
-3. **Synchronize security docs**
-    Align `VULNERABILITIES_ADDRESSED.md`, `SECURITY_MODEL.md`, and related docs with current deserialization and `getSecurityManager()` facts.
-    Also align thread-creation permission guidance for `createVirtualThread` and `createPlatformThread`.
+3. ~~**Correct stale Javadoc in `System.java` (source file)**~~  
+   Resolved: `System.java` line 468 has been corrected by the human author to read "50 stack
+   frames", consistent with `limit(50)` at line 2923 and "up to 50 frames" at line 424.
+   All stack-scan-depth references are now consistent across source and documentation.
 
 ### Medium priority
 
@@ -344,7 +344,7 @@ All were addressed by pfirmstone in nine commits on April 13, 2026.
 | F-4  | Medium | `SecurityPolicyWriter` and `PolicyOnlySecurityManager` (bootstrap-loaded, `java.base`) ran through the full 4-layer custom-SM validation unnecessarily | Added `PolicyOnlySecurityManager` to `trustedSMClass()` whitelist; rationale for excluding `SecurityPolicyWriter` documented |
 | F-5  | Medium | `ConcurrentPolicyFile.refresh()` silently swallowed errors and leaked paths to `System.err` | Now throws `SecurityException("Unable to refresh policy.", ex)` |
 | F-6  | Medium | `CombinerSecurityManager` latch had a 180-second DoS window | Timeout reduced to 10 seconds |
-| F-7  | Medium | Worker `ExecutionException` wrapped as `RuntimeException`, escaping `SecurityException` catch blocks; logger level mismatch | Log level corrected (`Level.DEBUG` check and call now match); `RuntimeException` re-throw preserved with correct wrapping |
+| F-7  | Medium | Worker `ExecutionException` wrapped as `RuntimeException`, escaping `SecurityException` catch blocks; `Level.ERROR` tested but `Level.DEBUG` logged — exception silently dropped in production | `ExecutionException` cause now wrapped as `SecurityException("Unrecoverable: ", ex.getCause())` (no longer escapes as `RuntimeException`); `isLoggable(Level.DEBUG)` now guards `log(Level.DEBUG, ...)` in all affected paths |
 | F-8  | Low | Truncated `LAYEAccessController.` comment in `System.java` | Corrected to `LAYER 3: AccessController.` |
 | F-9  | Low | `Level.ERROR` tested but `Level.DEBUG` used — exception silently dropped in production | Fixed: `isLoggable(Level.DEBUG)` now guards `log(Level.DEBUG, ...)` |
 | F-10 | Low | Overly broad `java.lang.invoke.*` filter could block legitimate JDK-internal linkage-time frames | Replaced with switch-based whitelist; linkage-time-only classes (`StringConcatFactory`, `LambdaMetafactory`, `MethodHandles`, `MethodType`, etc.) are now excluded |
