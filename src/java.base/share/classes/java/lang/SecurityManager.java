@@ -47,6 +47,7 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 import jdk.internal.module.ModuleLoaderMap;
+import jdk.internal.reflect.CallerSensitive;
 import sun.security.util.SecurityConstants;
 
 /**
@@ -362,6 +363,8 @@ public class SecurityManager {
      * stack. The element at index {@code 0} is the class of the
      * currently executing method, the element at index {@code 1} is
      * the class of that method's caller, and so on.
+     * 
+     * This needs to be native as it's used during bootstrap by ClassLoader.
      *
      * @return  the execution stack.
      */

@@ -58,12 +58,25 @@ import java.lang.module.ModuleFinder;
  * <tr>
  *   <th scope="row">createClassLoader</th>
  *   <td>Creation of a class loader</td>
+ *   <td>Historically this was an extremely dangerous permission to grant, however today
+ * ${link au.zeus.jdk.authorization.guards.LoadClassPermission# LoadClassPermission} 
+ * prevents loading untrusted code and "extendClassLoader" has
+ * been created to distinguish overriding implementations. However this is 
+ * still dangerous because having access to a class loader allows the attacker to
+ * load classes available to that class loader. The attacker
+ * would typically otherwise not have access to those classes.
+ * </td>
+ * </tr>
+ * 
+ * <tr>
+ *   <th scope="row">extendClassLoader</th>
+ *   <td>Subclass a class loader</td>
  *   <td>This is an extremely dangerous permission to grant.
- * Malicious applications that can instantiate their own class
- * loaders could then load their own rogue classes into the system.
+ * Malicious applications that can create their own class
+ * loader implementation could then load their own rogue classes into the system.
  * These newly loaded classes could be placed into any protection
  * domain by the class loader, thereby automatically granting the
- * classes the permissions for that domain.</td>
+ * classes the permissions for that domain, or be granted AllPermission.</td>
  * </tr>
  *
  * <tr>

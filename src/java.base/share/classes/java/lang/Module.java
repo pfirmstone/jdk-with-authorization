@@ -1706,34 +1706,7 @@ public final class Module implements AnnotatedElement {
                 case Attribute<?> a -> {}
                 default -> clb.with(cle);
             }});
-        ClassLoader cl = new ClassLoader(loader) {
-            @Override
-            protected Class<?> findClass(String cn)throws ClassNotFoundException {
-                if (cn.equals(MODULE_INFO)) {
-                    return super.defineClass(cn, bytes, 0, bytes.length);
-                } else {
-                    throw new ClassNotFoundException(cn);
-                }
-            }
-            @Override
-            protected Class<?> loadClass(String cn, boolean resolve)
-                throws ClassNotFoundException
-            {
-                synchronized (getClassLoadingLock(cn)) {
-                    Class<?> c = findLoadedClass(cn);
-                    if (c == null) {
-                        if (cn.equals(MODULE_INFO)) {
-                            c = findClass(cn);
-                        } else {
-                            c = super.loadClass(cn, resolve);
-                        }
-                    }
-                    if (resolve)
-                        resolveClass(c);
-                    return c;
-                }
-            }
-        };
+        ClassLoader cl = new ModuleInfoLoader(loader, MODULE_INFO, bytes);
 
         try {
             return cl.loadClass(MODULE_INFO);
@@ -1887,4 +1860,44 @@ public final class Module implements AnnotatedElement {
 
     // JVM_AddModuleExportsToAllUnnamed
     private static native void addExportsToAllUnnamed0(Module from, String pn);
+
+    private class ModuleInfoLoader extends ClassLoader {
+
+        private final String MODULE_INFO;
+        private final byte[] bytes;
+
+        public ModuleInfoLoader(ClassLoader parent, String MODULE_INFO, byte[] bytes) {
+            super(parent);
+            this.MODULE_INFO = MODULE_INFO;
+            this.bytes = bytes;
+}
+
+        @Override
+        protected Class<?> findClass(String cn)throws ClassNotFoundException {
+            if (cn.equals(MODULE_INFO)) {
+                return super.defineClass(cn, bytes, 0, bytes.length);
+            } else {
+                throw new ClassNotFoundException(cn);
+            }
+        }
+
+        @Override
+        protected Class<?> loadClass(String cn, boolean resolve)
+                throws ClassNotFoundException
+        {
+            synchronized (getClassLoadingLock(cn)) {
+                Class<?> c = findLoadedClass(cn);
+                if (c == null) {
+                    if (cn.equals(MODULE_INFO)) {
+                        c = findClass(cn);
+                    } else {
+                        c = super.loadClass(cn, resolve);
+                    }
+                }
+                if (resolve)
+                    resolveClass(c);
+                return c;
+            }
+        }
+    }
 }

@@ -34,6 +34,7 @@ import java.lang.foreign.Arena;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
 import java.net.URL;
+import java.net.URLClassLoader;
 import java.security.AccessController;
 import java.security.AccessControlContext;
 import java.security.AccessControlContext.ContextBuilder;
@@ -41,6 +42,7 @@ import java.nio.ByteBuffer;
 import java.security.CodeSource;
 import java.security.PrivilegedAction;
 import java.security.ProtectionDomain;
+import java.security.SecureClassLoader;
 import java.security.cert.Certificate;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -59,9 +61,11 @@ import java.util.stream.Stream;
 import java.util.stream.StreamSupport;
 
 import jdk.internal.access.SharedSecrets;
+import jdk.internal.jrtfs.JrtFileSystemProvider;
 import jdk.internal.loader.BootLoader;
 import jdk.internal.loader.BuiltinClassLoader;
 import jdk.internal.loader.ClassLoaders;
+import jdk.internal.loader.Loader;
 import jdk.internal.loader.NativeLibrary;
 import jdk.internal.loader.NativeLibraries;
 import jdk.internal.perf.PerfCounter;
@@ -76,6 +80,7 @@ import sun.reflect.misc.ReflectUtil;
 import sun.security.util.SecurityConstants;
 import jdk.internal.vm.annotation.AOTRuntimeSetup;
 import jdk.internal.vm.annotation.AOTSafeClassInitializer;
+import sun.reflect.misc.MethodUtil;
 
 /**
  * A class loader is an object that is responsible for loading classes. The
@@ -368,12 +373,38 @@ public abstract class ClassLoader {
         }
         return p;
     }
-
-    private static Void checkCreateClassLoader() {
-        return checkCreateClassLoader(null);
+    
+    private static class StackWalk extends SecurityManager {
+        private Class<?>[] getClasses() {
+            return super.getClassContext();
+        }
+    }
+    
+    private static boolean checkExtendClassLoader(Class<?> klass){
+        if (ClassLoader.class.equals(klass)) return false;
+        if (!ClassLoader.class.isAssignableFrom(klass)) return false;
+        StackWalk sw = new StackWalk();
+        Class<?>[] stack = sw.getClasses();
+        for (int i = 0, l = stack.length; i < l; i++){
+            if (!ClassLoader.class.isAssignableFrom(stack[i])) { 
+                // We've reached the class that called ClassLoader subclass constructor.
+                // Go back to the last class that was assignable from ClassLoader.
+                // The following are ok, SecureClassLoader only has protected constructors.
+                if (Loader.class.equals(stack[i-1])) return false;
+                if (JrtFileSystemProvider.class.equals(stack[i-1])) return false;
+                if (BuiltinClassLoader.class.isInstance(stack[i-1])) return false;
+                if (MethodUtil.class.equals(stack[i-1])) return false;
+                if (URLClassLoader.class.equals(stack[i-1])) return false;
+                if ("java.lang.Module$ModuleInfoLoader".equals(stack[i-1].getName())) return false;
+                if ("jdk.internal.misc.CDS$UnregisteredClassLoader".equals(stack[i-1].getName())) return false;
+            }
+        }
+        return true;
     }
 
+    @CallerSensitive
     private static Void checkCreateClassLoader(String name) {
+        Class<?> klass = Reflection.getCallerClass();
         if (name != null && name.isEmpty()) {
             throw new IllegalArgumentException("name must be non-empty or null");
         }
@@ -382,6 +413,8 @@ public abstract class ClassLoader {
         SecurityManager security = System.getSecurityManager();
         if (security != null) {
             security.checkCreateClassLoader();
+            if (checkExtendClassLoader(klass)) 
+                security.checkPermission(new RuntimePermission("extendClassLoader"));
         }
         return null;
     }
@@ -473,7 +506,7 @@ public abstract class ClassLoader {
      */
     @SuppressWarnings("this-escape")
     protected ClassLoader(ClassLoader parent) {
-        this(checkCreateClassLoader(), null, parent);
+        this(checkCreateClassLoader(null), null, parent);
     }
 
     /**
@@ -493,7 +526,7 @@ public abstract class ClassLoader {
      */
     @SuppressWarnings("this-escape")
     protected ClassLoader() {
-        this(checkCreateClassLoader(), null, getSystemClassLoader());
+        this(checkCreateClassLoader(null), null, getSystemClassLoader());
     }
 
     /**

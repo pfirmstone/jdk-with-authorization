@@ -1239,14 +1239,8 @@ public class ForkJoinPool extends AbstractExecutorService
                 ps.add(new RuntimePermission("setContextClassLoader"));
                 ps.add(new RuntimePermission("enableContextClassLoaderOverride"));
                 ps.add(new RuntimePermission("createPlatformThread"));
-                regularACC = acc = AccessController.doPrivileged( 
-                    new PrivilegedAction<>() {
-                        public AccessControlContext run() {
-                            return AccessControlContext.create(new ProtectionDomain[] {
+                regularACC = acc = Context.create(new ProtectionDomain[] {
                                 new ProtectionDomain(null, ps) });
-                        }
-                    }
-                );
             }
             return AccessController.doPrivileged(
                 new PrivilegedAction<>() {
@@ -1266,14 +1260,8 @@ public class ForkJoinPool extends AbstractExecutorService
                 ps.add(new RuntimePermission("enableContextClassLoaderOverride"));
                 ps.add(new RuntimePermission("modifyThreadGroup"));
                 ps.add(new RuntimePermission("createPlatformThread"));
-                commonACC = acc = AccessController.doPrivileged(
-                    new PrivilegedAction<>() {
-                        public AccessControlContext run() {
-                            return AccessControlContext.create(new ProtectionDomain[] {
+                commonACC = acc = Context.create(new ProtectionDomain[] {
                                 new ProtectionDomain(null, ps) });
-                        }
-                    }
-                );
             }
             return AccessController.doPrivileged(
                 new PrivilegedAction<>() {
@@ -1282,6 +1270,23 @@ public class ForkJoinPool extends AbstractExecutorService
                             InnocuousForkJoinWorkerThread(pool);
                     }}, acc);
         }
+    }
+    
+    /**
+     * Builds AccessControlContext instances or obtains from cache, without
+     * permission checks.
+     */
+    public final static class Context extends AccessControlContext.ContextBuilder{
+        
+        Context(){
+        }
+        
+        static final AccessControlContext.ContextBuilder builder = new Context();
+        
+        static AccessControlContext create(ProtectionDomain [] context){
+            return builder.build(context);
+        }
+        
     }
 
     /**
