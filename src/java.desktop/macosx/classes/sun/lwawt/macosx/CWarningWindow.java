@@ -279,10 +279,6 @@ public final class CWarningWindow extends CPlatformWindow
         return peer.getGraphicsConfiguration();
     }
 
-    public Rectangle getBounds() {
-        return CWarningWindow.this.getBounds();
-    }
-
     public CGLLayer createCGLayer() {
         LWWindowPeer peer = ownerPeer.get();
         return new CGLLayer(peer);
@@ -305,10 +301,13 @@ public final class CWarningWindow extends CPlatformWindow
             }
 
             public CGLLayer createCGLayer() {
-                return new CGLLayer(CWarningWindow.this);
+                LWWindowPeer peer = ownerPeer.get();
+                return new CGLLayer(peer);
             }
+
             public MTLLayer createMTLLayer() {
-                return new MTLLayer(CWarningWindow.this);
+                LWWindowPeer peer = ownerPeer.get();
+                return new MTLLayer(peer);
             }
 
         };

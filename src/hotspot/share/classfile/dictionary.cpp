@@ -25,6 +25,7 @@
 #include "cds/cdsConfig.hpp"
 #include "classfile/classLoaderData.inline.hpp"
 #include "classfile/dictionary.hpp"
+#include "classfile/vmSymbols.hpp"
 #include "logging/log.hpp"
 #include "logging/logStream.hpp"
 #include "memory/iterator.hpp"
