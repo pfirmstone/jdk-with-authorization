@@ -465,7 +465,7 @@ public final class System {
      * <p><b>Performance Characteristics:</b>
      * The stack inspection overhead for custom SecurityManagers is minimal because:
      * <ul>
-     *   <li>Only the first 10 stack frames are examined</li>
+     *   <li>Only the first 50 stack frames are examined</li>
      *   <li>Frames belonging to this class are skipped</li>
      *   <li>Validation fails immediately upon detecting suspicious activity</li>
      *   <li>This method typically runs once at JVM startup during {@code initPhase3}</li>

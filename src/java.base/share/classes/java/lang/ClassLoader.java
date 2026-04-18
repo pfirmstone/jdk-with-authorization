@@ -383,8 +383,13 @@ public abstract class ClassLoader {
     private static boolean checkExtendClassLoader(Class<?> klass){
         if (ClassLoader.class.equals(klass)) return false;
         if (!ClassLoader.class.isAssignableFrom(klass)) return false;
-        StackWalk sw = new StackWalk();
-        Class<?>[] stack = sw.getClasses();
+        Class<?>[] stack = AccessController.doPrivileged(
+                new PrivilegedAction<Class<?>[]>(){
+                    public Class<?>[] run(){
+                        StackWalk sw = new StackWalk();
+                        return sw.getClasses();
+                    }
+                });
         // Find the first non-ClassLoader frame
         // stack[0] = checkExtendClassLoader
         // stack[1] = checkCreateClassLoader  
