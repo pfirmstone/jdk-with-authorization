@@ -141,6 +141,28 @@ of Java's security model. Jini's requirements pushed that model significantly:
 Java 1.4 incorporated the dynamic policy requirement by adding live `Policy.implies` consultation
 into `ProtectionDomain.implies`, a change driven specifically by the Jini 2.0 release.
 
+### Practical Obstacles: NAT, IPv6, and Class Loading
+
+Despite its technical elegance, Jini faced significant deployment obstacles in practice.
+
+**IPv4 NAT and the loss of end-to-end connectivity** — Jini's discovery protocol relies on
+IP multicast. IPv4 Network Address Translation (NAT), which became ubiquitous as IPv4 addresses
+became scarce, breaks end-to-end multicast reachability and prevented Jini services from
+discovering one another across NAT boundaries. This effectively confined Jini to private,
+controlled network environments and was a major factor limiting wider adoption. JGDMS has since
+added support for **IPv6 multicast discovery**, which restores genuine end-to-end connectivity
+on networks that support it and removes this long-standing barrier.
+
+**Class loading and resolution complexity** — Dynamic class loading — downloading service proxy
+bytecode at runtime — was central to the Jini model, but introduced subtle and hard-to-diagnose
+failures. The interaction between RMI's codebase annotation mechanism, the standard Java class
+loading hierarchy, and the various class loaders active in a Jini deployment created a class
+of problems that were difficult to understand and even harder to debug. These issues are
+documented in depth by Michael Warres of Sun Microsystems Laboratories in *"Class Loading Issues
+in Java RMI and Jini Network Technology"*. JGDMS resolved the core class resolution problems
+through a revised class loading architecture, making the dynamic proxy model reliable in
+production environments.
+
 ---
 
 ## 4. Java 1.8 — doPrivileged with Permission Scope (2014)
@@ -304,6 +326,7 @@ Dirty Chai (2024–)    — Community fork retaining and advancing Java authoriz
 - Jim Waldo, Ann Wollrath, et al. — *"A Note on Distributed Computing"* (Sun Labs Technical Report, 1994)
 - Jim Waldo (ed.) — *The Jini Specifications, Second Edition* (Addison-Wesley, 2000)
 - Eric Freeman, Susanne Hupfer, Ken Arnold — *JavaSpaces Principles, Patterns, and Practice* (Addison-Wesley, 1999)
+- Michael Warres (Sun Microsystems Laboratories) — *"Class Loading Issues in Java RMI and Jini Network Technology"*
 - [JEP 411 — Deprecate the Security Manager for Removal](https://openjdk.org/jeps/411)
 - [Apache River Project](https://river.apache.org/)
 - [JGDMS Repository](https://github.com/pfirmstone/JGDMS)
