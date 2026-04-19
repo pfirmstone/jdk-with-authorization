@@ -376,7 +376,7 @@ Java 1.1 (1997)       — Signed JARs, coarse-grained trust; Java RMI (Wollrath 
 Java 1.2 (1998)       — Full authorization architecture (Li Gong et al.)
                         ProtectionDomain, Policy, AccessController, SecurityManager
 JavaSpaces (1999)     — Tuple-space coordination model; design by Arnold, Waldo, Wollrath, Scheifler
-Jini 1.x (1999)       — Dynamic class loading, security requirements for distributed services
+Jini 1.x (1998)       — Dynamic class loading, security requirements for distributed services
 Java 1.4 (2002)       — Live Policy.implies consultation (DynamicPolicy driver)
 Jini 2.0 (2004)       — JERI secure transport; DynamicPolicy, GrantPermission; Debug Policy Tool
 Apache River (2006)   — Sun donates Jini to Apache; incubation 2006–2011, graduated 2011, retired 2022
