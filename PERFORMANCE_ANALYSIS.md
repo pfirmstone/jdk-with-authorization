@@ -410,28 +410,3 @@ The `CombinerSecurityManager` Javadoc notes this explicitly:
 > generation heap, since many young objects are created and discarded."_
 
 ---
-
-## 6. Benchmark Microtests Available
-
-The repository includes JMH microbenchmarks covering the core authorization paths.
-These can be run once a JMH bundle is configured (see `doc/testing.md` §Microbenchmarks):
-
-| Benchmark | What it measures |
-|-----------|-----------------|
-| `DoPrivileged` | `AccessController.doPrivileged` round-trip cost |
-| `GetContext` | `AccessController.getContext()` at various stack depths |
-| `PermissionsImplies` | `Permissions.implies()` hot path |
-| `ProtectionDomainBench` | Class loading and domain creation throughput |
-| `ClazzWithSecurityManager` | Reflection benchmark with SM active |
-
-To run:
-
-```bash
-make test TEST="micro:java.security" MICRO="FORK=1"
-```
-
-Comparing results between a stock OpenJDK 21 build and a Dirty Chai build on the
-`DoPrivileged` and `GetContext` benchmarks provides a direct measure of the
-`AccessControlContext` caching benefit. The `ProtectionDomainBench` benchmark
-specifically targets the class-loading path where `LoadClassPermission` is now
-checked.
