@@ -149,19 +149,72 @@ Despite its technical elegance, Jini faced significant deployment obstacles in p
 IP multicast. IPv4 Network Address Translation (NAT), which became ubiquitous as IPv4 addresses
 became scarce, breaks end-to-end multicast reachability and prevented Jini services from
 discovering one another across NAT boundaries. This effectively confined Jini to private,
-controlled network environments and was a major factor limiting wider adoption. JGDMS has since
-added support for **IPv6 multicast discovery**, which restores genuine end-to-end connectivity
-on networks that support it and removes this long-standing barrier.
+controlled network environments and was a major factor limiting wider adoption.
+
+JGDMS added **IPv6 multicast discovery** support to address this. When
+`java.net.preferIPv6Addresses=true` is set, the discovery request group shifts to `FF05::156`
+(site-local IPv6 multicast) and the announcement group to `FF05::155`; an additional
+`net.jini.discovery.GLOBAL_ANNOUNCE=true` property allows the announcement to reach the global
+multicast scope `FF0X::155`. IPv6 multicast is natively routable across subnets and does not
+suffer from NAT breakage, so services deployed on modern dual-stack or IPv6-only networks
+regain genuine end-to-end discovery. As IPv6 deployment has continued to grow, this path
+becomes increasingly viable for real-world use. Dirty Chai, as a JVM that is expected to run
+on current networks, inherits these capabilities and is positioned to benefit from continued
+global IPv6 expansion.
 
 **Class loading and resolution complexity** — Dynamic class loading — downloading service proxy
 bytecode at runtime — was central to the Jini model, but introduced subtle and hard-to-diagnose
-failures. The interaction between RMI's codebase annotation mechanism, the standard Java class
-loading hierarchy, and the various class loaders active in a Jini deployment created a class
-of problems that were difficult to understand and even harder to debug. These issues are
-documented in depth by Michael Warres of Sun Microsystems Laboratories in *"Class Loading Issues
-in Java RMI and Jini Network Technology"*. JGDMS resolved the core class resolution problems
-through a revised class loading architecture, making the dynamic proxy model reliable in
-production environments.
+failures. Michael Warres of Sun Microsystems Laboratories documented these problems in depth in
+*"Class Loading Issues in Java RMI and Jini Network Technology"*. The core issues were:
+
+- **Codebase annotation reachability** — when a serialized object's class was annotated with a
+  codebase URL, the receiver had to be able to fetch the bytecode from that URL. In
+  NAT-constrained or firewalled environments the URL was often unreachable, producing
+  `ClassNotFoundException` with no clear error message.
+- **Loader search-order ambiguity** — three class loaders competed for each class resolution:
+  the thread context class loader (TCCL), the `defaultLoader` (typically the application class
+  loader), and the loader implied by the codebase annotation. The priority and fallback rules
+  between them were poorly specified and implementation-dependent, causing failures that
+  differed between JVM vendors and configurations.
+- **Server-side dispatch visibility** — when a server received an incoming call, argument
+  classes had to be resolved by a loader that could see the service's own dependencies. The
+  original TCCL-based approach frequently produced `ClassNotFoundException` because the TCCL
+  was often `null` or the bootstrap loader in server environments.
+- **Dynamic proxy interface resolution** — assembling a proxy class required that all of its
+  interface types be visible from a single class loader. In multi-loader environments this was
+  often not the case.
+
+JGDMS resolved these problems in its JERI (Jini Extensible Remote Invocation) layer through a
+**design shift: the class loader is bound explicitly to the endpoint, not inferred from the
+wire stream**.
+
+*Server side (`AtomicInvocationDispatcher`).* The `AtomicILFactory` constructor requires a
+non-null `ClassLoader` (or a `Class<?>` from which the loader is obtained). That loader is
+stored at export time and passed as the `defaultLoader` to every `MarshalInputStream` created
+for incoming requests. Class resolution on the server therefore always uses the same loader as
+the service implementation class — all types the service knows about are guaranteed to be
+visible.
+
+*Client side (`AtomicInvocationHandler`).* When the client proxy is first unmarshalled from
+the Jini lookup service, the proxy class is loaded by a class loader that can see all of the
+proxy's interface types. Subsequent `createMarshalInputStream` calls use
+`proxy.getClass().getClassLoader()` (retrieved via a privileged action) as both the
+`defaultLoader` and the `verifierLoader`. This ensures that return values and exceptions
+received over the wire are resolved with the same loader context that was already proven to
+work when the proxy was created.
+
+*Codebase annotations.* Both `AtomicInvocationDispatcher` and `AtomicInvocationHandler` accept
+a `useCodebaseAnnotations` flag, which defaults to `false`. When the flag is `false`, the
+stream always consumes the annotation bytes (for wire-protocol compatibility) but passes a
+`null` codebase value to `ClassLoading.loadClass`. Resolution is performed entirely against
+the endpoint-bound `defaultLoader`, with no network fetch. Codebase annotations can be
+re-enabled for interoperability with older stacks, but the safe default eliminates the
+reachability and search-order problems entirely.
+
+*Atomic deserialization.* `AtomicMarshalInputStream` is a hardened reimplementation of the
+Java serialization parser that validates the incoming object graph structure before
+instantiating any objects, preventing deserialization gadget-chain attacks. This is an
+additional security benefit on top of the class-resolution fix.
 
 ---
 
@@ -310,7 +363,8 @@ Jini 1.x (1999)       — Dynamic class loading, security requirements for distr
 Java 1.4 (2002)       — DynamicPolicy: live Policy.implies consultation (Jini 2.0 driver)
 Apache River (2010)   — Revocation, GrantPermission, ScalableNestedPolicy
 Java 8 (2014)         — doPrivileged with Permission-array scope reduction
-JGDMS (2012–)         — ConcurrentPolicyFile, PolicyWriter, DomainIdentity, OSGi-style proxies
+JGDMS (2012–)         — ConcurrentPolicyFile, PolicyWriter, DomainIdentity, OSGi-style proxies,
+                        IPv6 multicast discovery, endpoint-bound ClassLoader (JERI)
 Java 17 (2021)        — SecurityManager deprecated (JEP 411)
 Log4Shell (2021)      — CVE-2021-44228 validates the authorization model
 Java 21 (2023)        — Last LTS with SecurityManager APIs
