@@ -50,11 +50,81 @@ least-privileged caller in the stack would limit what the exploit could accompli
 
 ---
 
-## 3. The Jini Project and Dynamic Policy (1999–2004)
+## 3. The Jini Ecosystem: Research Origins, RMI, and JavaSpaces (c.1990–2004)
 
-Sun's [Jini Technology](https://river.apache.org/) project, initiated in 1999, built a
-distributed services platform on top of Java's security model. Jini's requirements pushed the
-model significantly:
+### People and Origins
+
+The intellectual lineage of Jini and JavaSpaces begins well before 1999. At Sun Microsystems
+Laboratories, **Jim Waldo** led the Large Scale Distribution research project. Jim Waldo and
+**Ken Arnold** had previously worked together at Hewlett-Packard on the Object Management
+Group's first CORBA specification, bringing that experience and a long background in distributed
+computing to Sun Labs. **Ann Wollrath** later joined Jim's team there.
+
+A pivotal product of this early period was *"A Note on Distributed Computing"*, co-authored by
+Waldo, Wollrath, and colleagues. The paper identified critical distinctions between local and
+distributed design and argued forcefully against the then-popular notion of "local/remote
+transparency" — the idea that distributed and local objects could be made to behave identically
+from the programmer's perspective. It became the most cited Sun Laboratories technical report, and
+its lessons are at the core of the Jini design philosophy.
+
+At that time the team was using **Modula 3 Network Objects** for distributed computing
+experiments. As Modula 3 ceased to be developed, the team looked for a replacement and settled on
+**Oak**, an internal Sun project whose interesting new properties outweighed its commercial
+insignificance. Ken Arnold rejoined Jim's team at this point. Oak was soon renamed **Java**.
+
+### RMI: Java's First Distributed Computing Mechanism
+
+Oak had once included a remote method invocation mechanism, but it was removed when that
+mechanism fell into the same local/remote transparency trap the team had been arguing against.
+When **Bill Joy** and **James Gosling** wanted to build a working distributed computing
+mechanism, they asked Jim Waldo to lead the effort, transitioning the team from Sun Labs into the
+JavaSoft product group. The first result was **Java RMI**, with **Ann Wollrath** as architect.
+RMI took a language-centric approach — in contrast to the language-neutral stacks of most
+distributed computing systems of the era — and shipped as part of the Java platform with
+Java 1.1 (1997).
+
+### JavaSpaces: Tuple Spaces Come to Java
+
+Alongside the core Jini platform, the team developed **JavaSpaces**, a realization of
+*tuple spaces* — a coordination model first described in 1982 by **David Gelernter** in the
+context of a language called **Linda**. Tuple spaces allow processes to communicate without any
+mutual knowledge: one process releases a bundle of heterogeneous values (a "tuple") into a shared
+space; another process reads or consumes it, with neither needing to know the other's name,
+address, or even whether the other exists. **Nick Carriero**'s 1984 implementation at Bell Labs —
+built on a custom multiprocessor — demonstrated that tuple-space communication could match the
+efficiency of low-level message passing, and Linda went on to become one of the most widely used
+vehicles for parallel programming. The JavaSpaces project at Sun originated with Bill Joy;
+**Ken Arnold** led it, with **Jim Waldo**, **Ann Wollrath**, and **Bob Scheifler** responsible for
+the actual design. The design and its rationale were documented in *JavaSpaces Principles,
+Patterns, and Practice* (Freeman, Hupfer, Arnold — 1999).
+
+### The Jini Platform and Team
+
+After RMI became part of the Java platform, Bill Joy asked the team to expand its horizons to
+include a platform for easier distributed computing, coining the name **"Jini"**. He convinced
+Sun management to consolidate the RMI, JavaSpaces, and Jini projects into a separate unit. This
+new unit started with Jim Waldo, Ann Wollrath, Ken Arnold, and **Peter Jones**, and was soon
+joined by **Bob Scheifler**, who brought extensive distributed computing experience from the
+X Windows project that he had run. This assembled the original core architectural team: Jim, Ann,
+Ken, and Bob.
+
+As the project grew, many people shaped different parts of the architecture: **Bryan O'Sullivan**
+designed the lookup discovery protocol; **Mike Clary** gave the project organizational shelter
+while it matured; **Mark Hodapp** managed software development in partnership with the technical
+leadership. **Gary Holness**, **Zane Pan**, **Brian Murphy**, **John McClain**, and
+**Bob Resendes** reviewed the primary architecture documents and took responsibility for tool
+design, implementation design, and the implementations themselves. **Larid Dornin** and
+**Adrian Colley** joined the RMI sub-team to continue and expand its development. **Charlie Lamb**
+joined the architectural team to oversee work with outside companies, starting with printing and
+storage service standards. **Jen McGinn** (later joined by **Susan Snyder**) documented the
+project's work. **Jimmy Torres** began as release engineer and later shifted to building the
+public developer community, with **Frank Barnaby** taking over release engineering duties.
+**Helen Leary** kept the project's infrastructure running throughout.
+
+### Technical Contributions to the Java Security Model
+
+Sun's Jini Technology project, initiated in 1999, built a distributed services platform on top
+of Java's security model. Jini's requirements pushed that model significantly:
 
 - **Dynamic class loading** — service proxies were downloaded over the network at runtime.
   The security model needed to express fine-grained trust for downloaded code.
@@ -210,9 +280,10 @@ library naming convention, reflecting a community-driven, test-grounded engineer
 
 ```
 Java 1.0 (1995)       — Binary sandbox (local trusted / remote sandboxed)
-Java 1.1 (1997)       — Signed JARs, coarse-grained trust
+Java 1.1 (1997)       — Signed JARs, coarse-grained trust; Java RMI (Wollrath et al.)
 Java 1.2 (1998)       — Full authorization architecture (Li Gong et al.)
                         ProtectionDomain, Policy, AccessController, SecurityManager
+JavaSpaces (1999)     — Tuple-space coordination model; design by Arnold, Waldo, Wollrath, Scheifler
 Jini 1.x (1999)       — Dynamic class loading, security requirements for distributed services
 Java 1.4 (2002)       — DynamicPolicy: live Policy.implies consultation (Jini 2.0 driver)
 Apache River (2010)   — Revocation, GrantPermission, ScalableNestedPolicy
@@ -230,6 +301,9 @@ Dirty Chai (2024–)    — Community fork retaining and advancing Java authoriz
 ## References
 
 - Li Gong, Gary Ellison, Mary Dageforde — *Inside Java 2 Platform Security* (ISBN 0201787911)
+- Jim Waldo, Ann Wollrath, et al. — *"A Note on Distributed Computing"* (Sun Labs Technical Report, 1994)
+- Jim Waldo (ed.) — *The Jini Specifications, Second Edition* (Addison-Wesley, 2000)
+- Eric Freeman, Susanne Hupfer, Ken Arnold — *JavaSpaces Principles, Patterns, and Practice* (Addison-Wesley, 1999)
 - [JEP 411 — Deprecate the Security Manager for Removal](https://openjdk.org/jeps/411)
 - [Apache River Project](https://river.apache.org/)
 - [JGDMS Repository](https://github.com/pfirmstone/JGDMS)
