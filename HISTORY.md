@@ -128,9 +128,11 @@ of Java's security model. Jini's requirements pushed that model significantly:
 
 - **Dynamic class loading** — service proxies were downloaded over the network at runtime.
   The security model needed to express fine-grained trust for downloaded code.
-- **DynamicPolicy** (Jini 2.0, Java 1.4) — rather than baking permissions statically into a
-  `ProtectionDomain` at class-loading time, policy was consulted live during `implies` calls,
-  allowing grants to change after deployment.
+- **DynamicPolicy** — rather than baking permissions statically into a `ProtectionDomain` at
+  class-loading time, policy was consulted live during `implies` calls, allowing grants to change
+  after deployment. Java 1.4 (2002) incorporated this requirement by adding live
+  `Policy.implies` consultation into `ProtectionDomain.implies`, a change driven specifically by
+  the Jini platform's needs.
 - **GrantPermission** — a permission that allows one piece of code to delegate a restricted
   subset of its own permissions to another piece of code, enabling controlled delegation to
   downloaded service proxies without a monolithic administrator grant.
@@ -138,8 +140,13 @@ of Java's security model. Jini's requirements pushed that model significantly:
   checked at runtime so administrators could construct accurate policy files. This was the
   direct predecessor of PolicyWriter.
 
-Java 1.4 incorporated the dynamic policy requirement by adding live `Policy.implies` consultation
-into `ProtectionDomain.implies`, a change driven specifically by the Jini 2.0 release.
+**Jini 2.0 (2004) and JERI** — Jini 2.0 was released in 2004. Its most significant architectural
+addition was **JERI** (Jini Extensible Remote Invocation), the secure pluggable transport layer
+that replaced the original RMI stub/skeleton wire protocol. JERI provided a clean separation
+between the invocation semantics (method dispatch, marshalling, constraint enforcement) and the
+transport mechanism (TCP, TLS, Kerberos). It is JERI's `AtomicInvocationDispatcher` and
+`AtomicInvocationHandler` that later carry the endpoint-bound ClassLoader design described above,
+resolving the class-loading problems documented by Warres.
 
 ### Practical Obstacles: NAT, IPv6, and Class Loading
 
@@ -234,23 +241,32 @@ complexity and better debuggability.
 
 ---
 
-## 5. Apache River — Revocation and Grant Permissions (2010–present)
+## 5. Apache River — Revocation and Grant Permissions (2006–2022)
 
-After Sun's acquisition by Oracle, the Jini codebase was donated to the Apache Software
-Foundation as [Apache River](https://river.apache.org/). River extended the security model with:
+Sun Microsystems donated the Jini source code to the Apache Software Foundation in **2006** —
+several years before Oracle's acquisition of Sun — and the project entered the Apache incubator
+as [Apache River](https://river.apache.org/). It graduated from incubation as a fully-fledged
+Apache top-level project in **2011**. Apache River extended the security model with:
 
 - **Revocation** — policy grants could be garbage-collected when the granting object became
   unreachable, allowing dynamic revocation of permissions in long-lived service environments.
 - **ScalableNestedPolicy** and **PermissionGrant** APIs — immutable, safely publishable
   authorization building blocks.
 
+Apache River was retired by the Apache Software Foundation in **2022**.
+
 ---
 
-## 6. JGDMS — PolicyWriter and Modern Hardening (2012–present)
+## 6. JGDMS — PolicyWriter and Modern Hardening (2016–present)
 
 [JGDMS](https://github.com/pfirmstone/JGDMS) (Java Generic Distributed and Mobile Systems) is a
-security-focused fork of Apache River developed by Peter Firmstone. It introduced several
-components that now form the core of Dirty Chai:
+security-focused fork of Apache River started in **2016** by Peter Firmstone. The project began
+by applying build modularization tools created by **Dennis Reedy**, with assistance from
+**Dan Rollo**, to restructure the Apache River codebase using **Maven** multi-module builds.
+The modularization made the codebase significantly easier to understand, navigate, and extend
+and was a prerequisite for the security hardening work that followed. JGDMS also supports
+**OSGi**, enabling the deployment of Jini services in OSGi container environments. It introduced
+several components that now form the core of Dirty Chai:
 
 - **PolicyWriter / SecurityPolicyWriter** — a runtime audit agent that observes permission
   checks and incrementally appends required grants to a policy file. This solved the
@@ -360,11 +376,14 @@ Java 1.2 (1998)       — Full authorization architecture (Li Gong et al.)
                         ProtectionDomain, Policy, AccessController, SecurityManager
 JavaSpaces (1999)     — Tuple-space coordination model; design by Arnold, Waldo, Wollrath, Scheifler
 Jini 1.x (1999)       — Dynamic class loading, security requirements for distributed services
-Java 1.4 (2002)       — DynamicPolicy: live Policy.implies consultation (Jini 2.0 driver)
-Apache River (2010)   — Revocation, GrantPermission, ScalableNestedPolicy
+Java 1.4 (2002)       — Live Policy.implies consultation (DynamicPolicy driver)
+Jini 2.0 (2004)       — JERI secure transport; DynamicPolicy, GrantPermission; Debug Policy Tool
+Apache River (2006)   — Sun donates Jini to Apache; incubation 2006–2011, graduated 2011, retired 2022
+                        Revocation, GrantPermission, ScalableNestedPolicy
 Java 8 (2014)         — doPrivileged with Permission-array scope reduction
-JGDMS (2012–)         — ConcurrentPolicyFile, PolicyWriter, DomainIdentity, OSGi-style proxies,
-                        IPv6 multicast discovery, endpoint-bound ClassLoader (JERI)
+JGDMS (2016–)         — Maven modularisation (Reedy/Rollo), ConcurrentPolicyFile, PolicyWriter,
+                        DomainIdentity, OSGi support, IPv6 multicast discovery,
+                        endpoint-bound ClassLoader (JERI)
 Java 17 (2021)        — SecurityManager deprecated (JEP 411)
 Log4Shell (2021)      — CVE-2021-44228 validates the authorization model
 Java 21 (2023)        — Last LTS with SecurityManager APIs
