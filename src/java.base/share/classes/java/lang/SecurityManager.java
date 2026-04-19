@@ -352,7 +352,13 @@ public class SecurityManager {
         return true;
     }
     
-    private SecurityManager(boolean initialized){
+    /**
+     * Made package private to allow ClassLoader to subclass without a permission
+     * check.
+     * 
+     * @param initialized 
+     */
+    SecurityManager(boolean initialized){
         this.initialized = initialized;
     }
 

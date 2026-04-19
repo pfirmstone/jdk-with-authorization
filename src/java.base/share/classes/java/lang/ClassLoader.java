@@ -374,7 +374,20 @@ public abstract class ClassLoader {
         return p;
     }
     
-    private static class StackWalk extends SecurityManager {
+    /**
+     * Native stack walk to avoid problems during jvm bootstrap.
+     */
+    private static class Stack extends SecurityManager {
+        
+        private static final Stack STACK_WALK = new Stack();
+        
+        private static Class<?>[] walk(){
+            return STACK_WALK.getClasses();
+        }
+        
+        private Stack(){
+            super(false); // Calls package private constructor, avoids permission check.
+        }
         private Class<?>[] getClasses() {
             return super.getClassContext();
         }
@@ -383,13 +396,7 @@ public abstract class ClassLoader {
     private static boolean checkExtendClassLoader(Class<?> klass){
         if (ClassLoader.class.equals(klass)) return false;
         if (!ClassLoader.class.isAssignableFrom(klass)) return false;
-        Class<?>[] stack = AccessController.doPrivileged(
-                new PrivilegedAction<Class<?>[]>(){
-                    public Class<?>[] run(){
-                        StackWalk sw = new StackWalk();
-                        return sw.getClasses();
-                    }
-                });
+        Class<?>[] stack = Stack.walk();
         // Find the first non-ClassLoader frame
         // stack[0] = checkExtendClassLoader
         // stack[1] = checkCreateClassLoader  
