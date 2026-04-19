@@ -219,6 +219,35 @@ the endpoint-bound `defaultLoader`, with no network fetch. Codebase annotations 
 re-enabled for interoperability with older stacks, but the safe default eliminates the
 reachability and search-order problems entirely.
 
+*CodeSource derivation — how JERI obtains the URL and certificates.* Whether or not
+codebase annotations are active, the `CodeSource` that determines a loaded class's
+`ProtectionDomain` — and therefore which policy grants apply to it — is assembled at the
+point where the underlying `URLClassLoader` (or its JERI equivalent) defines the class
+bytecode. It has two components:
+
+- **URL**: The location of the JAR or directory from which the class bytecode was actually
+  read. When codebase annotations are active, this is the annotation URL carried in the wire
+  stream, written by `MarshalOutputStream.annotateClass()` from the sending side's
+  `java.rmi.server.codebase` system property or from the class loader's own URL set. When
+  `useCodebaseAnnotations=false` (the JGDMS default), the URL is the location of the JAR
+  already present in the endpoint-bound loader's classpath — a path the service operator
+  placed there explicitly, not one supplied by the remote peer.
+- **Certificates**: The signing certificates are extracted from the JAR's PKCS#7 signature
+  block files (`META-INF/*.SF` and the matching `META-INF/*.RSA` or `META-INF/*.DSA` block)
+  by `URLClassLoader`'s internal `JarVerifier`. The verifier confirms that the SHA digest of
+  every class entry in the JAR matches the digest recorded in the signature file, and that
+  the signature file itself was produced by the private key whose public certificate is
+  embedded in the signature block. If all checks pass, the `java.security.cert.Certificate[]`
+  chain is attached to the `CodeSource` that `SecureClassLoader.defineClass()` uses to
+  construct the `ProtectionDomain`.
+
+The consequence for policy administration is direct: grants in the policy file can be scoped
+to a specific `CodeSource` URL (the JAR's deployment location) and, optionally, to one or
+more specific code signers. Under the JGDMS default, the `CodeSource` URL always refers to a
+JAR that the service endpoint operator placed on the classpath — an attacker-controlled
+annotation URL on the wire cannot influence it. A remote peer can therefore never force
+downloaded code into a more-privileged `ProtectionDomain` by injecting a crafted annotation.
+
 *Atomic deserialization.* `AtomicMarshalInputStream` is a hardened reimplementation of the
 Java serialization parser that validates the incoming object graph structure before
 instantiating any objects, preventing deserialization gadget-chain attacks. This is an
