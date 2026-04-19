@@ -145,9 +145,9 @@ model significantly:
 addition was **JERI** (Jini Extensible Remote Invocation), the secure pluggable transport layer
 that replaced the original RMI stub/skeleton wire protocol. JERI provided a clean separation
 between the invocation semantics (method dispatch, marshalling, constraint enforcement) and the
-transport mechanism (TCP, TLS, Kerberos). It is JERI's `AtomicInvocationDispatcher` and
-`AtomicInvocationHandler` that later carry the endpoint-bound ClassLoader design described above,
-resolving the class-loading problems documented by Warres.
+transport mechanism (TCP, TLS, Kerberos). JGDMS later extended JERI by adding
+`AtomicInvocationDispatcher` and `AtomicInvocationHandler`, which carry the endpoint-bound
+ClassLoader design described above, resolving the class-loading problems documented by Warres.
 
 ### Practical Obstacles: NAT, IPv6, and Class Loading
 
@@ -384,7 +384,8 @@ Apache River (2006)   — Sun donates Jini to Apache; incubation 2006–2011, gr
 Java 8 (2014)         — doPrivileged with Permission-array scope reduction
 JGDMS (2016–)         — Maven modularisation (Reedy/Rollo), ConcurrentPolicyFile, PolicyWriter,
                         DomainIdentity, OSGi support, IPv6 multicast discovery,
-                        endpoint-bound ClassLoader (JERI)
+                        endpoint-bound ClassLoader (JERI), AtomicInvocationDispatcher,
+                        AtomicInvocationHandler
 Java 17 (2021)        — SecurityManager deprecated (JEP 411)
 Log4Shell (2021)      — CVE-2021-44228 validates the authorization model
 Java 21 (2023)        — Last LTS with SecurityManager APIs
