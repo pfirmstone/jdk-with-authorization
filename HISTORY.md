@@ -314,6 +314,118 @@ several components that now form the core of Dirty Chai:
   enabling `AccessControlContext` caching and deduplication, which is essential for Virtual
   thread scalability.
 
+### Authentication-Conditional Class Loading: The Two Enforcement Gates
+
+The endpoint-bound class-loader design (described in Section 3) eliminates class-loading
+ambiguity. What makes it a *security gate* — not merely an architectural convenience — is a pair
+of JVM-level enforcement points in the JGDMS source that are explicitly conditional on
+`SecurityManager` being present.
+
+**Gate 1: `DownloadPermission` in `PreferredClassLoader.getPermissions(CodeSource)`.**
+When the loader is constructed with `requireDlPerm = true`, each `CodeSource` is wrapped in a
+temporary `ProtectionDomain` and tested against the live policy via `pd.implies(DOWNLOAD_PERMISSION)`
+before the JVM is allowed to define the class bytecode. If the policy does not grant
+`DownloadPermission` to that `CodeSource`, a `SecurityException` is thrown and the bytecode is
+never loaded into the JVM — regardless of what the remote peer claims.
+
+The policy carries `DownloadPermission` for a given service's `CodeSource` only after
+`RevocablePolicy.grant(PermissionGrant)` has been called, and that call is itself guarded by
+`GrantPermission`. In practice, the granting happens inside a `ProxyPreparer` that runs
+*after* the bootstrap proxy has been authenticated by the Jini JERI transport layer. The
+`CodebaseAccessor.getClassAnnotation()` method — which supplies the codebase URL from which
+the smart proxy JAR will be downloaded — is only consulted once that bootstrap handshake has
+succeeded. The sequence is therefore: contact → authenticate → grant `DownloadPermission` →
+download → define class. No authentication means no grant; no grant means no class definition.
+
+The entire check is wrapped in `if (sm != null)`. Without `SecurityManager` it is absent
+entirely, and the gate collapses: any `CodeSource` reaching the class loader is defined without
+policy consultation.
+
+**Gate 2: `DeSerializationPermission` in `AtomicMarshalInputStream`.**
+Before instantiating any object in the incoming serialization graph, `AtomicMarshalInputStream`
+walks the class hierarchy of the object to be constructed and tests each class's
+`ProtectionDomain` for the appropriate `DeSerializationPermission` type (`ATOMIC`,
+`EXTERNALIZABLE`, `MARSHALLED`, or `PROXY`). This is a *data-centric* check: it is about
+whether the *classes being instantiated* are trusted to faithfully validate all invariants
+while reading from an untrusted stream — not about whether the *caller* is trusted. Following
+successful authentication, the `ProxyPreparer` also grants `DeSerializationPermission` to the
+service's `CodeSource`, making the deserialization of the smart proxy conditional on the same
+authentication step as the download.
+
+Like Gate 1, the check is conditioned on `SecurityManager` presence. Without it, object graphs
+are instantiated without consulting the policy.
+
+**The overall invariant.**
+The combination of the two gates means that code from an unrecognised remote peer:
+1. cannot be defined into the JVM (Gate 1 blocks class definition), and
+2. even if it somehow reached a deserialization call path, cannot be instantiated from an
+   untrusted stream (Gate 2 blocks object construction).
+
+Both gates are released together by a single policy mutation that is itself
+permission-guarded, and that mutation is triggered by authentication. This couples the
+class-loading and deserialization security surfaces to the authentication outcome in one
+coherent step.
+
+### Why No Alternative Achieves Equivalent Security
+
+Several alternative mechanisms are available in the modern JVM. Each fails to replicate one
+or more of the three structural properties that make the SecurityManager-based gate meaningful:
+
+| Property | SecurityManager model | User-space alternative |
+|---|---|---|
+| **Protected write path** | `RevocablePolicy.grant()` requires `GrantPermission`; loaded code cannot grant itself permissions | Any code holding a reference to the registry object can call `add()` |
+| **Cross-cutting JVM enforcement** | Gates are called from inside `URLClassLoader.defineClass()` and `ObjectInputStream`; no call site can be missed | Must be threaded through every code path that loads or deserialises |
+| **Inviolable by the gated code** | Malicious code already in the JVM cannot elevate its own `ProtectionDomain` | Malicious code can call the registry's `add()` before the gate checks it |
+
+The third property is the decisive one. The JGDMS gate is adversarial by design: it must hold
+even against code that has already been loaded and is actively running in the same JVM. A gate
+that loaded code can open from the inside is not a gate.
+
+**User-space registry (whitelist `ClassLoader`).** Replacing `pd.implies(DOWNLOAD_PERMISSION)`
+with an in-memory `Set<URL>` populated after authentication has the same observable behaviour
+for cooperative code. Against a malicious smart proxy that obtained a reference to the registry
+before being authenticated, there is no protection: it can add its own `CodeSource` to the
+whitelist. The SecurityManager model prevents this because `RevocablePolicy.grant()` is itself
+a permission-guarded JDK call.
+
+**Java Platform Module System (JPMS).** JPMS enforces module boundary visibility at startup,
+not at runtime authentication time. `ModuleLayer.defineModulesWithOneLoader()` can create new
+module layers after startup, but the "who controls the controller" problem is identical to the
+whitelist case: the code that creates the layer is not protected from the code whose access it
+is supposedly controlling. JPMS is also entirely class-name-based — it knows nothing about
+`CodeSource` URLs, signing certificates, or runtime-discovered service identities.
+
+**`ObjectInputFilter` (JEP 290, Java 9+).** Per-stream deserialization filters can whitelist
+classes by name or by package. They are applied per-stream and are class-name-based, meaning
+that a class named `com.example.ServiceProxy` from an unauthenticated peer passes the same
+filter as one from an authenticated peer. There is no `CodeSource` awareness and no integration
+with policy grants. The filter is also a mutable field on `ObjectInputStream`; any code that
+holds the stream reference can replace it.
+
+**Process isolation / containers.** Separating untrusted services into distinct OS processes
+enforces the boundary with OS-level guarantees. This abandons the fundamental Jini model —
+intra-JVM object passing by reference, low-latency calls, and shared memory. More critically,
+it does not solve the deserialization problem at all: when a proxy object is received over any
+IPC channel and deserialised into the consuming process, the JVM-level gate (Gate 2) is still
+needed. Process isolation moves the download boundary but leaves the deserialization surface
+entirely open.
+
+**Java agents / `Instrumentation`.** A `ClassFileTransformer` intercepts class bytecode before
+definition and can refuse to load specific classes. Agents cannot, however, make decisions
+based on runtime authentication state: by the time the transformer is invoked, the question of
+which network peer supplied the class has already been resolved by the class loader. An agent
+that consults a runtime authentication registry faces the same unprotected-write-path problem
+as the whitelist approach. Agents are also not protected from other agents or from code that
+already holds the `Instrumentation` reference.
+
+**The irreplaceable property.** What none of these alternatives can supply is a write path that
+is *protected by the same permission system that the gate enforces*. In the SecurityManager
+model, granting a permission requires having `GrantPermission`; having `GrantPermission`
+requires a policy grant from an administrator; that policy grant was placed there before the
+untrusted service contacted the system. The chain of custody from administrator intent to
+runtime enforcement is unbroken and closed — there is no handle that untrusted code can reach
+to extend its own trust. Every user-space alternative introduces at least one handle.
+
 JGDMS proved that SecurityManager-based authorization was practical in production: the overhead
 was under 1%, the policy tooling made administration manageable, and the model supported
 high-throughput distributed systems.
