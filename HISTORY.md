@@ -271,7 +271,7 @@ complexity and better debuggability.
 
 ---
 
-## 5. Apache River — Revocation and Grant Permissions (2006–2022)
+## 5. Apache River — Revocation and PermissionGrant (2006–2022)
 
 Sun Microsystems donated the Jini source code to the Apache Software Foundation in **2006** —
 several years before Oracle's acquisition of Sun — and the project entered the Apache incubator
@@ -452,7 +452,7 @@ operational, not architectural.
 
 Java 17 (2021) deprecated `SecurityManager`.  
 Java 21 (2023) was the last Long-Term Support release to include SecurityManager APIs.  
-Java 24 (2025) removed the SecurityManager APIs from the mainline JDK.
+Java 24 (2025) rendered the SecurityManager APIs in the mainline JDK inert.
 
 ---
 
