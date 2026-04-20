@@ -59,6 +59,16 @@ cached `PermissionCollection`. Under high thread counts this became a severe
 serialization bottleneck — scalability was essentially capped at single-threaded
 throughput for the cache look-up phase.
 
+At the VM layer, Dirty Chai also removed the native protection-domain cache in
+commit `20f1c9861a70a357d6f4e316c935a6451f504347` (`#71`), deleting:
+
+- `src/hotspot/share/classfile/protectionDomainCache.hpp`
+- `src/hotspot/share/classfile/protectionDomainCache.cpp`
+
+This aligns VM behavior with the Java-layer design: no global per-domain cache
+on the permission hot path, and no synchronized cache lookup in front of policy
+evaluation.
+
 ### 1.2 Intentional absence of a permission cache
 
 The class-level Javadoc explicitly states:
