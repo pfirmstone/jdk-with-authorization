@@ -1125,7 +1125,7 @@ against the policy loaded by `ConcurrentPolicyFile`.
 | Deserialization gadget chain via `ObjectInputStream` | `SerialObjectPermission` — class must be whitelisted |
 | Arbitrary native library loading | `NativeInvocationPermission` + `RuntimePermission("loadLibrary.*")` |
 | Unauthorized class loader creation | `LoadClassPermission` |
-| Thread bomb DoS | `createPlatformThread` / `createVirtualThread` (proposed) |
+| Thread bomb DoS | `createPlatformThread` / `createVirtualThread` |
 | `System.exit()` | `RuntimePermission("exitVM.*")` |
 | Reflective access to internals | Module encapsulation + SecurityManager |
 | DNS / LDAP lookups (Log4j-style) | `SocketPermission` must be granted |
