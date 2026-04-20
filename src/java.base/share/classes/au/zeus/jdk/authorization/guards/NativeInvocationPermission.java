@@ -27,20 +27,17 @@ package au.zeus.jdk.authorization.guards;
 import java.security.BasicPermission;
 
 /**
- * NativeAccessPermission works similarly to the command line option
- * <code>--enable-native-access</code>
+ * NativeInvocationPermission works guards invocation of native libraries.
  */
-public class NativeAccessPermission extends BasicPermission<NativeAccessPermission> {
+public class NativeInvocationPermission extends BasicPermission<NativeInvocationPermission> {
     
-    private final String methodName;
-    
-    public NativeAccessPermission(String owner, String methodName){
-        super(owner, methodName);
-        this.methodName = methodName;
+    /**
+     * Creates a new NativeInvocationPermission
+     * 
+     * @param name the name of the native library. 
+     */
+    public NativeInvocationPermission(String name){
+        super(name, "invoke");
     }
     
-    @Override
-    public String getActions() {
-        return methodName;
-    }
 }

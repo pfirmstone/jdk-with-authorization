@@ -26,6 +26,7 @@
 
 package java.lang;
 
+import au.zeus.jdk.authorization.guards.NativeInvocationPermission;
 import java.io.InputStream;
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -2565,8 +2566,10 @@ public abstract class ClassLoader {
      */
     static long findNative(ClassLoader loader, Class<?> clazz, String entryName, String javaName) {
         NativeLibraries nativeLibraries = nativeLibrariesFor(loader);
-        long addr = nativeLibraries.find(entryName);
+        Map.Entry<String, Long> libNameAddress = nativeLibraries.findLibraryNameAddress(entryName);
+        long addr = libNameAddress.getValue();
         if (addr != 0 && loader != null) {
+            new NativeInvocationPermission(libNameAddress.getKey()).checkGuard(null);
             Reflection.ensureNativeAccess(clazz, clazz, javaName, true);
         }
         return addr;

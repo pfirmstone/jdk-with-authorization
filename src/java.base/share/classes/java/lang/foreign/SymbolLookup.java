@@ -25,6 +25,7 @@
 
 package java.lang.foreign;
 
+import au.zeus.jdk.authorization.guards.NativeInvocationPermission;
 import jdk.internal.access.JavaLangAccess;
 import jdk.internal.access.SharedSecrets;
 import jdk.internal.foreign.MemorySessionImpl;
@@ -40,6 +41,7 @@ import jdk.internal.reflect.Reflection;
 import java.lang.invoke.MethodHandles;
 import java.nio.file.FileSystems;
 import java.nio.file.Path;
+import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.Objects;
 import java.util.Optional;
@@ -258,11 +260,15 @@ public interface SymbolLookup {
             JavaLangAccess javaLangAccess = SharedSecrets.getJavaLangAccess();
             // note: ClassLoader::findNative supports a null loader
             NativeLibraries nativeLibraries = javaLangAccess.nativeLibrariesFor(loader);
-            long addr = nativeLibraries.find(name);
-            return addr == 0L ?
-                    Optional.empty() :
-                    Optional.of(MemorySegment.ofAddress(addr)
+            Map.Entry<String, Long> libNameAddress = nativeLibraries.findLibraryNameAddress(name);
+            long addr = libNameAddress.getValue();
+            if (addr == 0L){
+                return Optional.empty();
+            } else {
+                new NativeInvocationPermission(libNameAddress.getKey()).checkGuard(null);
+                return Optional.of(MemorySegment.ofAddress(addr)
                                 .reinterpret(loaderArena, null)); // restricted
+            }
         };
     }
 
@@ -364,10 +370,13 @@ public interface SymbolLookup {
             Objects.requireNonNull(name);
             if (Utils.containsNullChars(name)) return Optional.empty();
             long addr = library.find(name);
-            return addr == 0L ?
-                    Optional.empty() :
-                    Optional.of(MemorySegment.ofAddress(addr)
+            if (addr == 0L){
+                return Optional.empty();
+            } else {
+                new NativeInvocationPermission(library.name()).checkGuard(null);
+                return Optional.of(MemorySegment.ofAddress(addr)
                                 .reinterpret(libArena, null));  // restricted
+            }
         };
     }
 }

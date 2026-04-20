@@ -105,6 +105,22 @@ public final class NativeLibraries {
         }
         return 0;
     }
+    
+    /**
+     * Find the tuple of the library name and it's address, given the symbol 
+     * name from the native libraries loaded in this NativeLibraries instance.
+     *
+     * This method has been added for SecurityManager NativeInvocationPermission checks.
+     */
+    public Map.Entry<String, Long> findLibraryNameAddress(String name){
+        if (libraries.isEmpty()) return null;
+        for (Map.Entry<String,? extends NativeLibrary> lib : libraries.entrySet()){
+            long entry = lib.getValue().find(name);
+            if (entry == 0) return null;
+            return Map.entry(lib.getKey(), entry);
+        }
+        return null;
+    }
 
     /*
      * Load a native library from the given file.  Returns null if the given

@@ -25,6 +25,7 @@
 
 package jdk.internal.foreign;
 
+import au.zeus.jdk.authorization.guards.NativeInvocationPermission;
 import jdk.internal.loader.NativeLibraries;
 import jdk.internal.loader.NativeLibrary;
 import jdk.internal.loader.RawNativeLibraries;
@@ -132,9 +133,13 @@ public final class SystemLookup implements SymbolLookup {
             if (Utils.containsNullChars(name)) return Optional.empty();
             try {
                 long addr = lib.lookup(name);
-                return addr == 0 ?
-                        Optional.empty() :
-                        Optional.of(MemorySegment.ofAddress(addr));
+                if (addr == 0) {
+                    return Optional.empty();
+                } else {
+                    new NativeInvocationPermission(lib.name()).checkGuard(null);
+                    return Optional.of(MemorySegment.ofAddress(addr));
+                }
+                        
             } catch (NoSuchMethodException e) {
                 return Optional.empty();
             }
