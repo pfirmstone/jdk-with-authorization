@@ -551,18 +551,34 @@ already thrown a `SecurityException` for untrusted code.  The recommended startu
 configuration adds `--illegal-native-access=deny` as a defence-in-depth measure
 so that the module system also blocks any path not covered by the SM check.
 
-### The Residual Gap — Already-Loaded Native Code
+### Remaining Residual Gaps
 
-The two loading gates fully protect against untrusted jars *loading new* native
-libraries.  They do not protect against the following scenarios:
+The loading gates (Gate 1 + Gate 2) fully protect against untrusted jars *loading
+new* native libraries or *directly binding* their own native method declarations
+to symbols in already-loaded libraries (see "Direct binding" below).  The
+following narrower scenarios remain partially or fully outside Java-side control:
 
-#### 1. Native code loaded before untrusted code runs
+#### 1. Direct binding of untrusted native method declarations to already-loaded symbols
 
-If a trusted class loaded `mylib.so` via `System.loadLibrary("mylib")` earlier
-in the JVM session, that library is permanently registered in the class loader's
-`NativeLibraries` instance.  Unloading a native library is not supported by
-the JVM.  The library's native functions remain callable via JNI or FFM for
-the rest of the JVM's lifetime.
+If a trusted class loaded `mylib.so` earlier in the JVM session, that library's
+symbols are permanently searchable via `ClassLoader.findNative()`.  Untrusted
+code could declare its own `native` methods whose JNI mangled names match symbols
+already present in `mylib.so`.
+
+**Protection provided by DirtyChai:** `ClassLoader.findNative()` checks
+`NativeInvocationPermission("mylib")` against the class whose native method is
+being linked.  Untrusted code holds no such permission, so the binding is blocked
+before the symbol address is returned.  **This attack path is now closed.**
+
+#### 2. Confused-deputy: trusted class calls native on behalf of untrusted caller
+
+If a trusted class has already linked its own native methods (binding cached by
+the JVM), and a trusted class's *public Java API* internally invokes those native
+methods, `ClassLoader.findNative()` does **not** re-fire on each invocation —
+the binding is cached.  The security gate on this path is `SecurityManager`
+stack-intersection: as long as the untrusted caller's `ProtectionDomain` remains
+on the stack, its absence of `NativeInvocationPermission` blocks any
+`checkPermission` call on that execution path.
 
 **Implication:** This confused-deputy attack only succeeds when the trusted
 class uses **unrestricted** `AccessController.doPrivileged` (i.e. without
@@ -586,7 +602,7 @@ automatically.  This is a design obligation for trusted library code; DirtyChai
 cannot detect and prevent a trusted class from using unrestricted `doPrivileged`
 on its own behalf.
 
-#### 2. JNI callbacks from within native code
+#### 3. JNI callbacks from within native code
 
 Native code that has already been loaded by a trusted class can call back into
 the JVM via the JNI `CallXxxMethod` family without any Java-side permission
@@ -598,7 +614,7 @@ combined with explicit input validation before any JNI call.  DirtyChai's
 `SerialObjectPermission` guards the deserialization path; native method wrappers
 must apply analogous input validation.
 
-#### 3. JVMTI and JVM agents
+#### 4. JVMTI and JVM agents
 
 A `-javaagent:` or `-agentlib:` loaded at JVM startup runs as a JVMTI agent
 and can intercept, modify, or bypass any Java-level security check.  There is
@@ -618,8 +634,9 @@ untrusted service processes).
 | Untrusted jar uses FFM `SymbolLookup.loaderLookup()` symbol find | `NativeInvocationPermission("<libname>")` at symbol lookup | **Blocked by DirtyChai** |
 | Untrusted jar uses `MemorySegment.reinterpret()` | Module `enableNativeAccess` flag (no SM permission check) | **Module-system gate only** |
 | Untrusted jar uses FFM `Linker.downcallHandle()` | Module `enableNativeAccess` flag; symbol address sourced via `SymbolLookup` (gated by `NativeInvocationPermission`) | **Blocked by DirtyChai** |
+| Untrusted jar declares `native` methods binding to symbols in already-loaded library | `NativeInvocationPermission("<libname>")` at `ClassLoader.findNative()` binding time | **Blocked by DirtyChai** |
 | Confused-deputy: trusted class calls native on behalf of untrusted caller | Call-stack intersection (SM checks all `ProtectionDomain`s); only fails if trusted code uses unrestricted `doPrivileged` | **Protected by default — trusted code must avoid unrestricted `doPrivileged`** |
-| Native code already loaded by trusted class | No Java-side gate (native code is already at OS level) | **Residual gap — use process isolation** |
+| JNI `CallXxxMethod` callbacks from within native code | No Java-side gate on re-entrant JNI calls | **Residual gap — use process isolation and input validation** |
 | JVMTI / `-agentlib:` attached at startup | OS / JVM launch controls | **Out of scope for DirtyChai** |
 
 ---
