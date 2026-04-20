@@ -103,6 +103,7 @@ public final class NativeLibraries {
      *
      * @param name the symbol name to resolve
      * @return the resolving library name and address, or {@code null} if not found
+     * @since 27
      */
     public Map.Entry<String, Long> findEntry(String name) {
         if (libraries.isEmpty())

@@ -26,7 +26,6 @@
 
 package java.lang;
 
-import au.zeus.jdk.authorization.guards.NativeAccessPermission;
 import java.io.InputStream;
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -61,6 +60,7 @@ import java.util.function.Supplier;
 import java.util.stream.Stream;
 import java.util.stream.StreamSupport;
 
+import au.zeus.jdk.authorization.guards.NativeAccessPermission;
 import jdk.internal.access.SharedSecrets;
 import jdk.internal.jrtfs.JrtFileSystemProvider;
 import jdk.internal.loader.BootLoader;

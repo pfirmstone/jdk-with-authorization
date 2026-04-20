@@ -25,12 +25,12 @@
 
 package jdk.internal.foreign;
 
-import au.zeus.jdk.authorization.guards.NativeAccessPermission;
 import jdk.internal.loader.NativeLibraries;
 import jdk.internal.loader.NativeLibrary;
 import jdk.internal.loader.RawNativeLibraries;
 import jdk.internal.util.OperatingSystem;
 import jdk.internal.util.StaticProperty;
+import au.zeus.jdk.authorization.guards.NativeAccessPermission;
 
 import java.lang.foreign.MemoryLayout;
 import java.lang.foreign.MemorySegment;

@@ -25,7 +25,6 @@
 
 package java.lang.foreign;
 
-import au.zeus.jdk.authorization.guards.NativeAccessPermission;
 import jdk.internal.access.JavaLangAccess;
 import jdk.internal.access.SharedSecrets;
 import jdk.internal.foreign.MemorySessionImpl;
@@ -37,6 +36,7 @@ import jdk.internal.loader.NativeLibrary;
 import jdk.internal.loader.RawNativeLibraries;
 import jdk.internal.reflect.CallerSensitive;
 import jdk.internal.reflect.Reflection;
+import au.zeus.jdk.authorization.guards.NativeAccessPermission;
 
 import java.lang.invoke.MethodHandles;
 import java.nio.file.FileSystems;
