@@ -23,7 +23,7 @@ OpenJDK 21 is the last LTS release line that still includes SecurityManager APIs
 | `System.setSecurityManager()` behavior | Compatibility-focused path with `allow/disallow` gating and no Dirty Chai-style caller-stack hardening | Conditional trust gate plus layered validation for untrusted/custom SecurityManager implementations |
 | Trusted-vs-untrusted SecurityManager distinction | No explicit `trustedSMClass()` gate with exact-class whitelist | Exact-class trust gate (`SecurityManager`, `CombinerSecurityManager`, `PolicyOnlySecurityManager`) |
 | Reflection/generated-caller blocking for custom SM install | Not implemented as a dedicated layered defense at install time | Explicit stack/reflection/method-handle/generated-code blocking for custom SM install |
-| Guard permission model | No `au.zeus.jdk.authorization.guards.*` guard classes | Adds dedicated guard permissions (`LoadClassPermission`, `NativeAccessPermission`, `SerialObjectPermission`) and integrates them into security-critical flows |
+| Guard permission model | No `au.zeus.jdk.authorization.guards.*` guard classes | Adds dedicated guard permissions (`LoadClassPermission`, `NativeInvocationPermission`, `SerialObjectPermission`) and integrates them into security-critical flows |
 | Executors + thread factory behavior | `Executors.defaultThreadFactory()` returns classic `DefaultThreadFactory` | `Executors.defaultThreadFactory()` routes through `Thread.ofPlatform().group(...).factory()` and therefore through Dirty Chai platform-thread permission checks |
 | Virtual thread creation path | `ThreadBuilders` virtual/platform builder paths do not enforce dedicated `createVirtualThread`/`createPlatformThread` checks | Builder `unstarted()` and `factory()` paths enforce explicit runtime permissions and capture `AccessController.getContext()` for inherited security context |
 | `AccessController` / `AccessControlContext` / `Subject` model | OpenJDK 21 `doPrivileged(..., AccessControlContext, Permission...)` uses wrapper/context-validation flow (`checkContext`/`createWrapper`), with `Subject` propagation via ACC/`SubjectDomainCombiner` | Explicit limited-privilege domain intersection via `DomainIdentity`, ACC builder/authorization helpers, and ACC/`SubjectDomainCombiner` subject propagation in active Dirty Chai runtime path |
@@ -34,8 +34,8 @@ Dirty Chai introduces and wires three new guard permissions that are absent in O
 
 - `LoadClassPermission` (`au.zeus.jdk.authorization.guards.LoadClassPermission`)
   - integrated in `SecureClassLoader` (`LOAD_CLASS_ALLOW`) and checked during `ProtectionDomain` creation (`sm.checkPermission(LOAD_CLASS_ALLOW, ...)`)
-- `NativeAccessPermission` (`au.zeus.jdk.authorization.guards.NativeAccessPermission`)
-  - enforced in `Module.ensureNativeAccess(...)` before native/restricted access paths proceed
+- `NativeInvocationPermission` (`au.zeus.jdk.authorization.guards.NativeInvocationPermission`)
+  - enforced in `ClassLoader.findNative()`, `SymbolLookup`, and `SystemLookup` before native symbol addresses are returned
 - `SerialObjectPermission` (`au.zeus.jdk.authorization.guards.SerialObjectPermission`)
   - enforced in `ObjectInputStream.readOrdinaryObject()` before `desc.newInstance()`
 
@@ -317,9 +317,9 @@ The main remaining risks are **operational** (policy configuration and whitelist
 - `src/java.base/share/classes/java/lang/Thread.java` — platform thread-creation security checks and builder security notes
 - `src/java.base/share/classes/java/util/concurrent/Executors.java` — default/privileged thread factory behavior and virtual-thread executor entry points
 - `src/java.base/share/classes/java/security/SecureClassLoader.java` — `LoadClassPermission` integration in class-loading permission path
-- `src/java.base/share/classes/java/lang/Module.java` — `NativeAccessPermission` enforcement in native-access checks
+- `src/java.base/share/classes/java/lang/ClassLoader.java`, `java/lang/foreign/SymbolLookup.java`, `jdk/internal/foreign/SystemLookup.java` — `NativeInvocationPermission` enforcement at native symbol resolution
 - `src/java.base/share/classes/au/zeus/jdk/authorization/guards/LoadClassPermission.java` — guard definition
-- `src/java.base/share/classes/au/zeus/jdk/authorization/guards/NativeAccessPermission.java` — guard definition
+- `src/java.base/share/classes/au/zeus/jdk/authorization/guards/NativeInvocationPermission.java` — guard definition
 - `src/java.base/share/classes/au/zeus/jdk/authorization/guards/SerialObjectPermission.java` — guard definition
 - `src/java.base/share/classes/java/io/ObjectInputStream.java` — `SerialObjectPermission` check placement in `readOrdinaryObject()` before instantiation
 - `src/java.base/share/classes/java/io/SerialCallbackContext.java` — confirms callback context no longer carries the permission check logic

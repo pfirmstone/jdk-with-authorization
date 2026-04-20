@@ -442,44 +442,57 @@ code **collapses the entire DirtyChai security model** for that JVM process.
 DirtyChai closes the *loading* attack surface through two independent permission
 checks that both fire before any native code executes.
 
-#### Gate 1 — `NativeAccessPermission` via `Module.ensureNativeAccess()`
+#### Gate 1 — `NativeInvocationPermission` at native symbol resolution
 
-`Module.java` has been modified to call `NativeAccessPermission.checkGuard(null)`
-at the top of `ensureNativeAccess()`, which is invoked by
-`Reflection.ensureNativeAccess()` before every `@Restricted` method call.
+`ClassLoader.java`, `SymbolLookup.java`, and `SystemLookup.java` have been
+modified to call `NativeInvocationPermission.checkGuard(null)` (or
+`SecurityManager.checkPermission(new NativeInvocationPermission(libName))`) at
+the point where a native symbol address is resolved from a loaded library.  The
+permission name is the name of the native library that contains the symbol.
 
 ```java
-// Module.java — ensureNativeAccess() (DirtyChai modification)
-void ensureNativeAccess(Class<?> owner, String methodName,
-                        Class<?> currentClass, boolean jni) {
-    new NativeAccessPermission(
-            currentClass != null ? currentClass.getName() : "code",
-            methodName).checkGuard(null);      // ← SM policy check fires here
-    // ... module-flag check follows
+// ClassLoader.java — findNative() (DirtyChai modification)
+// Fires when a JNI native method is being linked to its native implementation.
+static long findNative(ClassLoader loader, Class<?> clazz,
+                       String entryName, String javaName) {
+    ...
+    if (addr != 0 && loader != null) {
+        SecurityManager sm = System.getSecurityManager();
+        if (sm != null)
+            sm.checkPermission(new NativeInvocationPermission(libraryName));
+        ...
+    }
+    return addr;
 }
+
+// SymbolLookup.java / SystemLookup.java — symbol-lookup lambdas (DirtyChai modification)
+// Fires when an FFM symbol lookup resolves a symbol address from a named library.
+return name -> {
+    ...
+    if (addr != 0L) {
+        new NativeInvocationPermission(libraryName).checkGuard(null);
+        return Optional.of(MemorySegment.ofAddress(addr)...);
+    }
+};
 ```
 
 `Permission.checkGuard(null)` calls `SecurityManager.checkPermission(this)` when
 a SecurityManager is active.  The calling code's `ProtectionDomain` must have
-`NativeAccessPermission` granted in the policy file, or a `SecurityException` is
-thrown before any native call proceeds.
+`NativeInvocationPermission` granted in the policy file for the specific library
+name, or a `SecurityException` is thrown before the symbol address is returned.
 
-The `@Restricted` / FFM entry points that all flow through this gate include:
+The entry points covered by this gate:
 
-| API | Restricted Method |
-|-----|-------------------|
-| `System.load(String)` | `System::load` |
-| `System.loadLibrary(String)` | `System::loadLibrary` |
-| `Runtime.load(String)` | `Runtime::load` |
-| `Runtime.loadLibrary(String)` | `Runtime::loadLibrary` |
-| `Linker.downcallHandle(...)` | `Linker::downcallHandle` |
-| `Linker.upcallStub(...)` | `Linker::upcallStub` |
-| `SymbolLookup.libraryLookup(...)` | `SymbolLookup::libraryLookup` |
-| `MemorySegment.reinterpret(...)` | `MemorySegment::reinterpret` |
-| `AddressLayout.withTargetLayout(...)` | `AddressLayout::withTargetLayout` |
+| API | Check location |
+|-----|----------------|
+| JNI native method binding | `ClassLoader.findNative()` |
+| `SymbolLookup.loaderLookup()` symbol find | lambda returned by `SymbolLookup.loaderLookup()` |
+| `SymbolLookup.libraryLookup(...)` symbol find | lambda returned by `SymbolLookup.libraryLookup()` |
+| System/platform library symbol find | `SystemLookup.lookup()` lambda |
 
 Every one of these is blocked for untrusted code unless the policy explicitly
-grants `NativeAccessPermission` to that code's `ProtectionDomain`.
+grants `NativeInvocationPermission` for the target library to that code's
+`ProtectionDomain`.
 
 #### Gate 2 — `RuntimePermission("loadLibrary.*")` via `SecurityManager.checkLink()`
 
@@ -500,21 +513,21 @@ grant codeBase "file:/trusted/app/-" {
 
 #### How the Two Gates Compose
 
-For `System.loadLibrary("foo")`:
+For JNI native method access via `System.loadLibrary("foo")`:
 
 ```
-System.loadLibrary("foo")
+System.loadLibrary("foo")                  ← loads the library
     │
-    ├─1─ Reflection.ensureNativeAccess(caller, System.class, "loadLibrary", false)
-    │        └─ Module.ensureNativeAccess(...)
-    │               └─ NativeAccessPermission("callerClass","loadLibrary").checkGuard(null)
-    │                       └─ SecurityManager.checkPermission(NativeAccessPermission)
-    │                               ← GATE 1: SM policy check
-    │
-    └─2─ Runtime.loadLibrary0(fromClass, libname)
+    └─ Runtime.loadLibrary0(fromClass, libname)
              └─ security.checkLink("foo")
                      └─ checkPermission(RuntimePermission("loadLibrary.foo"))
-                             ← GATE 2: SM policy check
+                             ← GATE 2: SM policy check (library loading)
+
+nativeMethod()                             ← later, when native method is first linked
+    │
+    └─ ClassLoader.findNative(loader, clazz, entryName, javaName)
+             └─ SecurityManager.checkPermission(NativeInvocationPermission("foo"))
+                     ← GATE 1: SM policy check (symbol invocation)
 ```
 
 Both gates must pass.  A policy that grants one but not the other still blocks
@@ -556,13 +569,13 @@ class uses **unrestricted** `AccessController.doPrivileged` (i.e. without
 supplying a restricted `AccessControlContext`).  Unrestricted `doPrivileged`
 tells the access-control stack walk to stop at that frame, dropping all caller
 `ProtectionDomain`s above it from the intersection.  Once the caller's domain
-is absent, the trusted class's own `NativeAccessPermission` is sufficient and
+is absent, the trusted class's own `NativeInvocationPermission` is sufficient and
 the check passes even though the ultimate caller holds no such permission.
 
 Without any `doPrivileged`, the untrusted caller's `ProtectionDomain` remains
 on the call stack.  `SecurityManager.checkPermission` computes the intersection
 of every domain on the stack, so the untrusted domain's absence of
-`NativeAccessPermission` blocks the call automatically — no additional pattern
+`NativeInvocationPermission` blocks the call automatically — no additional pattern
 is required from the trusted class.
 
 **Mitigation:** Trusted library code must **not** use unrestricted
@@ -600,10 +613,11 @@ untrusted service processes).
 
 | Attack Path | Guarded By | Status |
 |-------------|-----------|--------|
-| Untrusted jar calls `System.loadLibrary()` | `NativeAccessPermission` + `RuntimePermission("loadLibrary.*")` | **Blocked by DirtyChai** |
-| Untrusted jar uses FFM `Linker.downcallHandle()` | `NativeAccessPermission("callerClass","downcallHandle")` | **Blocked by DirtyChai** |
-| Untrusted jar uses `MemorySegment.reinterpret()` | `NativeAccessPermission("callerClass","reinterpret")` | **Blocked by DirtyChai** |
-| Untrusted jar calls `SymbolLookup.libraryLookup()` | `NativeAccessPermission("callerClass","libraryLookup")` | **Blocked by DirtyChai** |
+| Untrusted jar calls `System.loadLibrary()` | `RuntimePermission("loadLibrary.*")` at load time; `NativeInvocationPermission("<libname>")` at JNI method binding | **Blocked by DirtyChai** |
+| Untrusted jar uses FFM `SymbolLookup.libraryLookup()` symbol find | `NativeInvocationPermission("<libname>")` at symbol lookup | **Blocked by DirtyChai** |
+| Untrusted jar uses FFM `SymbolLookup.loaderLookup()` symbol find | `NativeInvocationPermission("<libname>")` at symbol lookup | **Blocked by DirtyChai** |
+| Untrusted jar uses `MemorySegment.reinterpret()` | Module `enableNativeAccess` flag (no SM permission check) | **Module-system gate only** |
+| Untrusted jar uses FFM `Linker.downcallHandle()` | Module `enableNativeAccess` flag; symbol address sourced via `SymbolLookup` (gated by `NativeInvocationPermission`) | **Blocked by DirtyChai** |
 | Confused-deputy: trusted class calls native on behalf of untrusted caller | Call-stack intersection (SM checks all `ProtectionDomain`s); only fails if trusted code uses unrestricted `doPrivileged` | **Protected by default — trusted code must avoid unrestricted `doPrivileged`** |
 | Native code already loaded by trusted class | No Java-side gate (native code is already at OS level) | **Residual gap — use process isolation** |
 | JVMTI / `-agentlib:` attached at startup | OS / JVM launch controls | **Out of scope for DirtyChai** |
@@ -612,18 +626,18 @@ untrusted service processes).
 
 ## Implementation Plan: Native Code Isolation in DirtyChai
 
-The `NativeAccessPermission` class and its integration into `Module.ensureNativeAccess()`
-are already implemented.  The following tasks remain for a complete, policy-auditable
-native isolation story.
+The `NativeInvocationPermission` class and its integration into `ClassLoader.findNative()`,
+`SymbolLookup`, and `SystemLookup` are already implemented.  The following tasks remain for
+a complete, policy-auditable native isolation story.
 
-### Task N-4 — Document `NativeAccessPermission` in `RuntimePermission.java`'s Permission Table
+### Task N-4 — Document `NativeInvocationPermission` in `RuntimePermission.java`'s Permission Table
 
 **Priority:** Medium  
 **Files:** `src/java.base/share/classes/java/lang/RuntimePermission.java`
 
 **Description:**  
 Add a row to the JavaDoc permission table in `RuntimePermission.java` that
-cross-references `NativeAccessPermission` so that users who look up
+cross-references `NativeInvocationPermission` so that users who look up
 `loadLibrary.*` also discover the companion DirtyChai permission.
 
 This is a human implementation task (JavaDoc in a shipped source file).
@@ -658,14 +672,14 @@ The Java security model protects against the confused-deputy attack
 automatically: `SecurityManager.checkPermission` walks the entire call stack
 and computes the *intersection* of the `PermissionCollection`s held by every
 `ProtectionDomain` on the stack.  As long as the untrusted caller's domain
-remains on the stack, its absence of `NativeAccessPermission` prevents the call
+remains on the stack, its absence of `NativeInvocationPermission` prevents the call
 from succeeding — no special coding pattern is required in the trusted class.
 
 The attack only becomes possible when the trusted class uses **unrestricted**
 `AccessController.doPrivileged` (without supplying a restricted
 `AccessControlContext`).  Unrestricted `doPrivileged` tells the stack walk to
 stop at that frame, removing the untrusted caller's domain from the intersection.
-With the caller's domain gone, the trusted class's own `NativeAccessPermission`
+With the caller's domain gone, the trusted class's own `NativeInvocationPermission`
 is sufficient and the permission check passes incorrectly.
 
 **The obligation for trusted library authors is therefore:**
@@ -767,13 +781,13 @@ more powerful identity.
 
 Failing to avoid unrestricted `doPrivileged` creates a confused-deputy
 vulnerability where untrusted code exploits the trusted class's
-`NativeAccessPermission` to invoke native functionality it could not invoke
+`NativeInvocationPermission` to invoke native functionality it could not invoke
 directly.
 
 This guidance is for documentation files only and is therefore within scope for
 this session.
 
-### Task N-7 — Add `NativeAccessPermission` Grant to `CombinerSecurityManager` Policy
+### Task N-7 — Add `NativeInvocationPermission` Grant to `CombinerSecurityManager` Policy
 
 **Priority:** High  
 **Files:** Policy files used by `CombinerSecurityManager` tests and the
@@ -782,9 +796,9 @@ this session.
 **Description:**  
 `CombinerSecurityManager` intersects permission sets.  If neither the caller's
 policy nor the `CombinerSecurityManager`'s own policy grants
-`NativeAccessPermission`, a `checkPermission` call for that permission will
+`NativeInvocationPermission`, a `checkPermission` call for that permission will
 correctly fail.  Confirm that the test policy files explicitly enumerate which
-trusted modules receive `NativeAccessPermission` so that the intersection logic
+trusted modules receive `NativeInvocationPermission` so that the intersection logic
 is exercised in tests.
 
 This is a human implementation task (policy file changes and test additions).
@@ -887,7 +901,7 @@ This means that every service implementation class running inside the group JVM 
 subject to the full DirtyChai permission model:
 
 - `SerialObjectPermission` controls what classes may be deserialized.
-- `NativeAccessPermission` blocks unauthorized native library loading.
+- `NativeInvocationPermission` blocks unauthorized native library loading.
 - `LoadClassPermission` gates class loader creation.
 - `ConcurrentPolicyFile` evaluates grants without DNS lookups.
 - `createVirtualThread` / `createPlatformThread` (proposed) limit thread creation.
@@ -1092,7 +1106,7 @@ against the policy loaded by `ConcurrentPolicyFile`.
 | Attack | DirtyChai Control |
 |---|---|
 | Deserialization gadget chain via `ObjectInputStream` | `SerialObjectPermission` — class must be whitelisted |
-| Arbitrary native library loading | `NativeAccessPermission` + `RuntimePermission("loadLibrary.*")` |
+| Arbitrary native library loading | `NativeInvocationPermission` + `RuntimePermission("loadLibrary.*")` |
 | Unauthorized class loader creation | `LoadClassPermission` |
 | Thread bomb DoS | `createPlatformThread` / `createVirtualThread` (proposed) |
 | `System.exit()` | `RuntimePermission("exitVM.*")` |
@@ -1187,7 +1201,7 @@ permissions.  The server does not grant its own elevated permissions to arbitrar
 │  ├─────────────────────────────────────────────────────────────────┤   │
 │  │ Service implementation                                          │   │
 │  │  SerialObjectPermission guards any ObjectInputStream use        │   │
-│  │  NativeAccessPermission guards any native API use               │   │
+│  │  NativeInvocationPermission guards any native API use               │   │
 │  └─────────────────────────────────────────────────────────────────┘   │
 └────────────────────────────────────────────────────────────────────────┘
 ```
@@ -1542,7 +1556,7 @@ grant CodeBase "file:/path/to/phoenix/-" {
               "java.util.Properties";
 
     // EXPLICITLY NOT GRANTED:
-    //   NativeAccessPermission — Phoenix has no native library needs
+    //   NativeInvocationPermission — Phoenix has no native library needs
     //   SocketPermission "* connect" — Phoenix only talks to loopback
     //   ActivationPermission "registerGroup" — Phoenix is the registrar, not a caller
     //   AllPermission — Phoenix must not hold AllPermission
@@ -1928,7 +1942,7 @@ grant CodeBase "file:/opt/jgdms/jgdms-phoenix.jar"
     permission java.io.FilePermission "/var/log/phoenix.log", "write";
 };
 
-// NOT GRANTED to Phoenix: NativeAccessPermission, AllPermission,
+// NOT GRANTED to Phoenix: NativeInvocationPermission, AllPermission,
 // SocketPermission "* connect" (only loopback), ActivationPermission "registerGroup"
 ```
 
@@ -1971,7 +1985,7 @@ grant CodeBase "file:/opt/services/service-a.jar"
 
 // NOT GRANTED to group JVM:
 //   ActivationPermission "registerGroup" — groups do not register new groups
-//   NativeAccessPermission — service has no native library needs
+//   NativeInvocationPermission — service has no native library needs
 //   AllPermission — never grant this
 //   SerialObjectPermission for gadget classes (e.g., com.sun.jndi.*)
 ```
@@ -2025,7 +2039,7 @@ blocks native access even if the SecurityManager is bypassed (defence-in-depth).
 | A compromised group JVM cannot register new groups | `ActivationPermission "registerGroup"` not granted to group JVMs |
 | An attacker who reads a service's serialised data cannot inject gadget classes | `SerialObjectPermission` allowlist is per-service, enumerated, non-wildcard |
 | An attacker who controls a codebase URL cannot load classes without policy approval | `LoadClassPermission` must be explicitly granted per-codebase |
-| Native library loading is blocked in all group JVMs | `NativeAccessPermission` not granted; `--illegal-native-access=deny` in effect |
+| Native library loading is blocked in all group JVMs | `NativeInvocationPermission` not granted; `--illegal-native-access=deny` in effect |
 | Phoenix crash does not affect the other groups | OS process isolation; each group is an independent process |
 | A policy-file tampering attack is limited to the process whose file was changed | One policy file per process; file owned by that process's OS user |
 

@@ -493,7 +493,7 @@ OpenJDK chose to discontinue. The project is a community fork of OpenJDK that:
   expansion that occurs when permission checks are removed.
 - **Ports ConcurrentPolicyFile and PolicyWriter from JGDMS** as the default policy provider
   and audit tooling, solving the tooling gap that contributed to the original deprecation.
-- **Adds new guard permissions** (`LoadClassPermission`, `NativeAccessPermission`,
+- **Adds new guard permissions** (`LoadClassPermission`, `NativeInvocationPermission`,
   `SerialObjectPermission`) to close attack surfaces not covered by the original model.
 - **Hardens SecurityManager installation** with conditional validation: trusted implementations
   (from `java.base`) receive a lightweight check; custom implementations are subject to
