@@ -116,7 +116,7 @@ public final class NativeLibraries {
         if (libraries.isEmpty()) return null;
         for (Map.Entry<String,? extends NativeLibrary> lib : libraries.entrySet()){
             long entry = lib.getValue().find(name);
-            if (entry == 0) return null;
+            if (entry == 0) continue;
             String key = lib.getKey();
             if (key == null) key = lib.getValue().name();
             if (key == null) key = name;
