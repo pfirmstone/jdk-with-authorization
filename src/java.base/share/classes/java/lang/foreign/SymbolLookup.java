@@ -25,6 +25,7 @@
 
 package java.lang.foreign;
 
+import au.zeus.jdk.authorization.guards.NativeAccessPermission;
 import jdk.internal.access.JavaLangAccess;
 import jdk.internal.access.SharedSecrets;
 import jdk.internal.foreign.MemorySessionImpl;
@@ -258,12 +259,18 @@ public interface SymbolLookup {
             JavaLangAccess javaLangAccess = SharedSecrets.getJavaLangAccess();
             // note: ClassLoader::findNative supports a null loader
             NativeLibraries nativeLibraries = javaLangAccess.nativeLibrariesFor(loader);
-            long addr = nativeLibraries.find(name);
-            return addr == 0L ?
+            NativeLibraries.NativeEntry nativeEntry = nativeLibraries.findEntry(name);
+            return nativeEntry == null ?
                     Optional.empty() :
-                    Optional.of(MemorySegment.ofAddress(addr)
-                                .reinterpret(loaderArena, null)); // restricted
+                    Optional.of(permissionCheckedAddress(nativeEntry.libraryName(),
+                                    nativeEntry.address())
+                                    .reinterpret(loaderArena, null)); // restricted
         };
+    }
+
+    private static MemorySegment permissionCheckedAddress(String libraryName, long address) {
+        new NativeAccessPermission(libraryName, "invoke").checkGuard(null);
+        return MemorySegment.ofAddress(address);
     }
 
     /**
@@ -366,7 +373,7 @@ public interface SymbolLookup {
             long addr = library.find(name);
             return addr == 0L ?
                     Optional.empty() :
-                    Optional.of(MemorySegment.ofAddress(addr)
+                    Optional.of(permissionCheckedAddress(library.name(), addr)
                                 .reinterpret(libArena, null));  // restricted
         };
     }

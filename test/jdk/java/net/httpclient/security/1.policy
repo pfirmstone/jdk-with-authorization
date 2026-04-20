@@ -81,6 +81,7 @@ grant codebase "jrt:/jdk.security.jgss" {
 
 grant codebase "jrt:/jdk.crypto.mscapi" {
     permission au.zeus.jdk.authorization.guards.NativeAccessPermission "sun.security.mscapi.SunMSCAPI$1", "loadLibrary";
+    permission au.zeus.jdk.authorization.guards.NativeAccessPermission "*", "invoke";
     permission java.lang.RuntimePermission "accessClassInPackage.sun.security.util";
     permission java.lang.RuntimePermission "loadLibrary.sunmscapi";
     permission java.security.SecurityPermission "putProviderProperty.SunMSCAPI";

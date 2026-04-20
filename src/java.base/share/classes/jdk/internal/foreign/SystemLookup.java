@@ -25,6 +25,7 @@
 
 package jdk.internal.foreign;
 
+import au.zeus.jdk.authorization.guards.NativeAccessPermission;
 import jdk.internal.loader.NativeLibraries;
 import jdk.internal.loader.NativeLibrary;
 import jdk.internal.loader.RawNativeLibraries;
@@ -43,8 +44,6 @@ import java.security.PrivilegedAction;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.function.Function;
-import jdk.internal.loader.NativeLibrary;
-import jdk.internal.loader.RawNativeLibraries;
 import sun.security.action.GetPropertyAction;
 import static java.lang.foreign.ValueLayout.ADDRESS;
 
@@ -134,11 +133,16 @@ public final class SystemLookup implements SymbolLookup {
                 long addr = lib.lookup(name);
                 return addr == 0 ?
                         Optional.empty() :
-                        Optional.of(MemorySegment.ofAddress(addr));
+                        Optional.of(permissionCheckedAddress(lib.name(), addr));
             } catch (NoSuchMethodException e) {
                 return Optional.empty();
             }
         };
+    }
+
+    private static MemorySegment permissionCheckedAddress(String libraryName, long address) {
+        new NativeAccessPermission(libraryName, "invoke").checkGuard(null);
+        return MemorySegment.ofAddress(address);
     }
 
     private static SymbolLookup stdLibLookup(Function<RawNativeLibraries, NativeLibrary> loader) {

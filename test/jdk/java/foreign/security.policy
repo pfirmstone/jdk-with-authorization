@@ -15,4 +15,5 @@ grant
     permission au.zeus.jdk.authorization.guards.NativeAccessPermission "jdk.internal.foreign.abi.AbstractLinker", "withTargetLayout";
     permission au.zeus.jdk.authorization.guards.NativeAccessPermission "TestLinker", "withTargetLayout";
     permission au.zeus.jdk.authorization.guards.NativeAccessPermission "TestLinker", "downcallHandle";
+    permission au.zeus.jdk.authorization.guards.NativeAccessPermission "*", "invoke";
 };

@@ -30,6 +30,10 @@ import java.lang.foreign.Arena;
 import java.lang.foreign.MemorySegment;
 import java.lang.foreign.SymbolLookup;
 import java.nio.ByteOrder;
+import java.security.Permission;
+import java.util.ArrayList;
+import java.util.List;
+import au.zeus.jdk.authorization.guards.NativeAccessPermission;
 import org.testng.annotations.Test;
 
 import static java.lang.foreign.ValueLayout.JAVA_INT;
@@ -64,5 +68,30 @@ public class TestClassLoaderFindNative {
     @Test
     void testLoadLibraryBadLookupName() {
         assertTrue(SymbolLookup.loaderLookup().find("f\u0000foobar").isEmpty());
+    }
+
+    @Test
+    public void testLoaderLookupChecksInvokePermission() {
+        RecordingSecurityManager sm = new RecordingSecurityManager();
+        SecurityManager previous = System.getSecurityManager();
+        try {
+            System.setSecurityManager(sm);
+            assertFalse(SymbolLookup.loaderLookup().find("f").isEmpty());
+            assertTrue(sm.invokePermissions.stream()
+                    .anyMatch(p -> "invoke".equals(p.getActions()) && !p.getName().isEmpty()));
+        } finally {
+            System.setSecurityManager(previous);
+        }
+    }
+
+    static class RecordingSecurityManager extends SecurityManager {
+        final List<NativeAccessPermission> invokePermissions = new ArrayList<>();
+
+        @Override
+        public void checkPermission(Permission perm) {
+            if (perm instanceof NativeAccessPermission nap && "invoke".equals(nap.getActions())) {
+                invokePermissions.add(nap);
+            }
+        }
     }
 }
