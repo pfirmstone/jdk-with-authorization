@@ -200,8 +200,8 @@ wire stream**.
 non-null `ClassLoader` (or a `Class<?>` from which the loader is obtained). That loader is
 stored at export time and passed as the `defaultLoader` to every `MarshalInputStream` created
 for incoming requests. Class resolution on the server therefore always uses the same loader as
-the service implementation class — all types the service knows about are guaranteed to be
-visible.
+the service implementation class for its parent loader — all types the service knows about are
+guaranteed to be visible.
 
 *Client side (`AtomicInvocationHandler`).* When the client proxy is first unmarshalled from
 the Jini lookup service, the proxy class is loaded by a class loader that can see all of the
@@ -209,7 +209,7 @@ proxy's interface types. Subsequent `createMarshalInputStream` calls use
 `proxy.getClass().getClassLoader()` (retrieved via a privileged action) as both the
 `defaultLoader` and the `verifierLoader`. This ensures that return values and exceptions
 received over the wire are resolved with the same loader context that was already proven to
-work when the proxy was created.
+work when the proxy was created as the parent loader.
 
 *Codebase annotations.* Both `AtomicInvocationDispatcher` and `AtomicInvocationHandler` accept
 a `useCodebaseAnnotations` flag, which defaults to `false`. When the flag is `false`, the
