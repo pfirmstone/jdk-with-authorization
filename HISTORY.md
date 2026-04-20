@@ -124,8 +124,8 @@ public developer community, with **Frank Barnaby** taking over release engineeri
 ### Technical Contributions to the Java Security Model
 
 Sun's Jini Technology project culminated with the release of Jini 1.0 in November 1998, building
-a distributed services platform on top of Java's security model. Jini's requirements pushed that
-model significantly:
+a distributed services platform on top of Java's security model. Jini 2.0's pending requirements
+pushed that model significantly:
 
 - **Dynamic class loading** — service proxies were downloaded over the network at runtime.
   The security model needed to express fine-grained trust for downloaded code.
@@ -200,8 +200,8 @@ wire stream**.
 non-null `ClassLoader` (or a `Class<?>` from which the loader is obtained). That loader is
 stored at export time and passed as the `defaultLoader` to every `MarshalInputStream` created
 for incoming requests. Class resolution on the server therefore always uses the same loader as
-the service implementation class — all types the service knows about are guaranteed to be
-visible.
+the service implementation class for its parent loader — all types the service knows about are
+guaranteed to be visible.
 
 *Client side (`AtomicInvocationHandler`).* When the client proxy is first unmarshalled from
 the Jini lookup service, the proxy class is loaded by a class loader that can see all of the
@@ -209,7 +209,7 @@ proxy's interface types. Subsequent `createMarshalInputStream` calls use
 `proxy.getClass().getClassLoader()` (retrieved via a privileged action) as both the
 `defaultLoader` and the `verifierLoader`. This ensures that return values and exceptions
 received over the wire are resolved with the same loader context that was already proven to
-work when the proxy was created.
+work when the proxy was created as the parent loader.
 
 *Codebase annotations.* Both `AtomicInvocationDispatcher` and `AtomicInvocationHandler` accept
 a `useCodebaseAnnotations` flag, which defaults to `false`. When the flag is `false`, the
@@ -271,7 +271,7 @@ complexity and better debuggability.
 
 ---
 
-## 5. Apache River — Revocation and Grant Permissions (2006–2022)
+## 5. Apache River — Revocation and PermissionGrant (2006–2022)
 
 Sun Microsystems donated the Jini source code to the Apache Software Foundation in **2006** —
 several years before Oracle's acquisition of Sun — and the project entered the Apache incubator
@@ -452,7 +452,7 @@ operational, not architectural.
 
 Java 17 (2021) deprecated `SecurityManager`.  
 Java 21 (2023) was the last Long-Term Support release to include SecurityManager APIs.  
-Java 24 (2025) removed the SecurityManager APIs from the mainline JDK.
+Java 24 (2025) rendered the SecurityManager APIs in the mainline JDK inert.
 
 ---
 
