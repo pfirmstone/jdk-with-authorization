@@ -179,6 +179,8 @@ failures. Michael Warres of Sun Microsystems Laboratories documented these probl
   codebase URL, the receiver had to be able to fetch the bytecode from that URL. In
   NAT-constrained or firewalled environments the URL was often unreachable, producing
   `ClassNotFoundException` with no clear error message.
+- **Codebase annotation loss** - codebase annotation loss, when a class was resolved
+  in a parent ClassLoader and was reserialized without its original codebase annotation.
 - **Loader search-order ambiguity** — three class loaders competed for each class resolution:
   the thread context class loader (TCCL), the `defaultLoader` (typically the application class
   loader), and the loader implied by the codebase annotation. The priority and fallback rules
