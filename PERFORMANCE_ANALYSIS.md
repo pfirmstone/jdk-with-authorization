@@ -394,7 +394,7 @@ active):
 | `LoadClassPermission` | `SecureClassLoader.defineClass()` | One `checkPermission` call per class definition |
 | `SerialObjectPermission` | `ObjectInputStream.readOrdinaryObject()` | One `checkPermission` call per deserialized object |
 | `NativeAccessPermission` | `Module.implAddOpensToAllUnnamed()` | One `checkPermission` call per native access |
-| `setSecurityManager` stack validation | Custom SM installation | One-time StackWalker scan (≤10 frames); trusted SMs skip entirely |
+| `setSecurityManager` stack validation | Custom SM installation | One-time StackWalker scan (≤50 frames); trusted SMs skip entirely |
 
 For class loading and deserialization these checks are dominated by the I/O and
 class resolution work that already occurs on those paths. The marginal cost is
