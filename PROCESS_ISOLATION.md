@@ -442,13 +442,15 @@ code **collapses the entire DirtyChai security model** for that JVM process.
 DirtyChai closes the *loading* attack surface through two independent permission
 checks that both fire before any native code executes.
 
-#### Gate 1 — `NativeInvocationPermission` at native symbol resolution
+#### Gate 1 — `NativeInvocationPermission` at native entry points
 
-`ClassLoader.java`, `SymbolLookup.java`, and `SystemLookup.java` have been
+`ClassLoader.java`, `SymbolLookup.java`, `SystemLookup.java`, and
+`AbstractMemorySegmentImpl.java` have been
 modified to call `NativeInvocationPermission.checkGuard(null)` (or
 `SecurityManager.checkPermission(new NativeInvocationPermission(libName))`) at
-the point where a native symbol address is resolved from a loaded library.  The
-permission name is the name of the native library that contains the symbol.
+native entry points. For symbol resolution, the permission name is the name of
+the native library that contains the symbol. For FFM reinterpretation, the
+permission name is `"reinterpret"`.
 
 ```java
 // ClassLoader.java — findNative() (DirtyChai modification)
@@ -489,6 +491,7 @@ The entry points covered by this gate:
 | `SymbolLookup.loaderLookup()` symbol find | lambda returned by `SymbolLookup.loaderLookup()` |
 | `SymbolLookup.libraryLookup(...)` symbol find | lambda returned by `SymbolLookup.libraryLookup()` |
 | System/platform library symbol find | `SystemLookup.lookup()` lambda |
+| `MemorySegment.reinterpret(...)` | `AbstractMemorySegmentImpl.reinterpretInternal()` |
 
 Every one of these is blocked for untrusted code unless the policy explicitly
 grants `NativeInvocationPermission` for the target library to that code's
@@ -632,7 +635,7 @@ untrusted service processes).
 | Untrusted jar calls `System.loadLibrary()` | `RuntimePermission("loadLibrary.*")` at load time; `NativeInvocationPermission("<libname>")` at JNI method binding | **Blocked by DirtyChai** |
 | Untrusted jar uses FFM `SymbolLookup.libraryLookup()` symbol find | `NativeInvocationPermission("<libname>")` at symbol lookup | **Blocked by DirtyChai** |
 | Untrusted jar uses FFM `SymbolLookup.loaderLookup()` symbol find | `NativeInvocationPermission("<libname>")` at symbol lookup | **Blocked by DirtyChai** |
-| Untrusted jar uses `MemorySegment.reinterpret()` | Module `enableNativeAccess` flag (no SM permission check) | **Module-system gate only** |
+| Untrusted jar uses `MemorySegment.reinterpret()` | `NativeInvocationPermission("reinterpret")` at `AbstractMemorySegmentImpl.reinterpretInternal()` + Module `enableNativeAccess` flag | **Blocked by DirtyChai** |
 | Untrusted jar uses FFM `Linker.downcallHandle()` | Module `enableNativeAccess` flag; symbol address sourced via `SymbolLookup` (gated by `NativeInvocationPermission`) | **Blocked by DirtyChai** |
 | Untrusted jar declares `native` methods binding to symbols in already-loaded library | `NativeInvocationPermission("<libname>")` at `ClassLoader.findNative()` binding time | **Blocked by DirtyChai** |
 | Confused-deputy: trusted class calls native on behalf of untrusted caller | Call-stack intersection (SM checks all `ProtectionDomain`s); only fails if trusted code uses unrestricted `doPrivileged` | **Protected by default — trusted code must avoid unrestricted `doPrivileged`** |
