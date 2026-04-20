@@ -525,7 +525,7 @@ Use layered defense:
 
 Recommended architecture, aligned with `PROCESS_ISOLATION.md`:
 
-- **In-process layer:** DirtyChai guard permissions (`LoadClassPermission`, `SerialObjectPermission`, `NativeAccessPermission`, runtime permissions) + `ConcurrentPolicyFile`.
+- **In-process layer:** DirtyChai guard permissions (`LoadClassPermission`, `SerialObjectPermission`, `NativeInvocationPermission`, runtime permissions) + `ConcurrentPolicyFile`.
 - **Per-service layer:** isolated per-service policy files with explicit least-privilege grants.
 - **OS process layer:** JGDMS Activation groups, each service in a separate OS process/JVM boundary.
 - **OS isolation layer:** firewall/network segmentation, namespace/container controls, and strict process-launch controls.

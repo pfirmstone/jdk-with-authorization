@@ -353,7 +353,7 @@ Before writing any code, an AI agent MUST verify the following:
 | `Uri.java` | RFC 3986 URI validation | HIGH |
 | `CombinerSecurityManager.java` | Permission intersection enforcement | HIGH |
 | `LoadClassPermission.java` | Class loading authorization | HIGH |
-| `NativeAccessPermission.java` | Native code access control | HIGH |
+| `NativeInvocationPermission.java` | Native code invocation control | HIGH |
 | `SerialObjectPermission.java` | Object serialization authorization | MEDIUM |
 
 ### Critical Security Constraints
@@ -395,7 +395,7 @@ src/
 │   │       │   │   └── ConcurrentPolicyFile.java
 │   │       │   ├── guards/
 │   │       │   │   ├── LoadClassPermission.java
-│   │       │   │   ├── NativeAccessPermission.java
+│   │       │   │   ├── NativeInvocationPermission.java
 │   │       │   │   └── SerialObjectPermission.java
 │   │       │   └── tool/
 │   │       │       └── SecurityPolicyWriter.java
@@ -448,7 +448,7 @@ src/
         ┌─────────▼──────────────────────────┐
         │ Permission Classes                 │
         │ ├─ LoadClassPermission             │
-        │ ├─ NativeAccessPermission          │
+        │ ├─ NativeInvocationPermission       │
         │ ├─ SerialObjectPermission          │
         │ └─ Standard Permissions            │
         └────────────────────────────────────┘
