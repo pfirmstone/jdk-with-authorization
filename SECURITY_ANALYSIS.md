@@ -258,6 +258,37 @@ This stratified approach ensures that even if code obtains a ClassLoader referen
    the human author to read "50 stack frames", matching `limit(50)` at line 2923 and the
    "up to 50 frames" statement at line 424. No further drift is known.
 
+6. **Reflection and MethodHandle invocation paths (N-8)**  
+   `Method.invoke()` and `MethodHandle.invoke*()` do **not** remove the untrusted
+   caller's `ProtectionDomain` from the permission-check stack walk.  DirtyChai's
+   `validateCallerStackWithStackWalker()` already blocks custom `SecurityManager`
+   installation via both reflection and non-whitelisted `java.lang.invoke.*` frames.
+   The residual is the same as the general confused-deputy rule: trusted code that
+   uses unrestricted `doPrivileged` inside a method reachable via reflection can still
+   drop the untrusted caller's domain from the intersection.  See `PROCESS_ISOLATION.md`
+   ("Analysis: Reflection and MethodHandle Invocation in the Permission-Check Path").
+
+7. **Finalizer and Cleaner thread context escape (N-9)**  
+   Untrusted code in a finalizer or `Cleaner` callback is guarded by stack-intersection
+   because the untrusted class's `ProtectionDomain` is present on the finalizer thread's
+   stack at the time of any permission check.  The residual gap is context escape:
+   the creator thread's limited `AccessControlContext` is **not** propagated to the
+   finalizer thread.  Trusted objects whose finalizers perform sensitive operations are
+   therefore not constrained by the context the creating code was running under.
+   Mitigation: avoid sensitive operations in finalizers; use explicit `close()` patterns
+   and process isolation for strong context-confinement.  See `PROCESS_ISOLATION.md`
+   ("Analysis: Finalizer and Cleaner Thread Execution Contexts").
+
+8. **Constant-pool and class-initialization leakage (N-10)**  
+   `<clinit>`, `invokedynamic` bootstrap methods, and `CONSTANT_Dynamic` all execute on
+   the triggering thread's call stack, so the untrusted caller's `ProtectionDomain` is
+   present and the stack-intersection guard applies.  The `LoadClassPermission` gate
+   prevents untrusted code from loading new classes.  The residual is the same
+   confused-deputy rule: trusted `<clinit>` or bootstrap methods that use unrestricted
+   `doPrivileged` can drop the untrusted triggering caller's domain from the intersection.
+   See `PROCESS_ISOLATION.md`
+   ("Analysis: Constant-Pool and Class-Initialization Security").
+
 ---
 
 ## Recommendations
@@ -270,6 +301,9 @@ This stratified approach ensures that even if code obtains a ClassLoader referen
 2. **Add targeted regression tests for residual-risk boundaries**
    - Deep-stack attack simulation beyond typical frame depth
    - Edge-case generated/invoke frame classification
+   - Reflection and MethodHandle paths through trusted native wrappers (N-12 test plan)
+   - Finalizer / Cleaner thread permission enforcement (N-12 test plan)
+   - Class-initialization stack-intersection enforcement (N-12 test plan)
 
 3. ~~**Correct stale Javadoc in `System.java` (source file)**~~  
    Resolved: `System.java` line 468 has been corrected by the human author to read "50 stack

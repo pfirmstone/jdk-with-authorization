@@ -247,6 +247,14 @@ This section mirrors the thread-creation analysis for adjacent APIs that define 
 ## 12) Threats Addressed
 
 - Reflection/proxy/generated-code attempts to bypass SecurityManager installation controls
+- `Method.invoke()` and `MethodHandle.invoke*()` attempts to install a custom
+  `SecurityManager` (blocked by `validateCallerStackWithStackWalker()`)
+- Reflective or MethodHandle calls that traverse a trusted native wrapper without
+  `doPrivileged` (untrusted caller `ProtectionDomain` remains on stack)
+- Untrusted finalizer or `Cleaner` callbacks attempting sensitive operations (untrusted
+  class `ProtectionDomain` is present on finalizer/Cleaner thread stack)
+- Untrusted code triggering `<clinit>`, `invokedynamic` bootstrap methods, or
+  `CONSTANT_Dynamic` bootstrap methods of trusted classes (untrusted PD on stack)
 - Privilege escalation via overly broad or inherited permission assumptions
 - Policy bypass through malformed/ambiguous code source handling
 - Unauthorized execution through missing grant constraints
@@ -258,6 +266,15 @@ This section mirrors the thread-creation analysis for adjacent APIs that define 
 - Dirty Chai is an authorization and policy-enforcement model, not a complete malware sandbox by itself.
 - Misconfigured policy can still over-grant privileges.
 - Operational security still requires key management, signer governance, secure build pipelines, and review discipline.
+- **Trusted-code confused-deputy:** Dirty Chai cannot prevent a trusted class from using
+  unrestricted `AccessController.doPrivileged(...)` on paths reachable from untrusted code.
+  This is a design obligation for trusted library authors (see `CONTRIBUTING.md` and
+  `PROCESS_ISOLATION.md`, "Task N-6 / Confused-Deputy Guidance").
+- **Finalizer/Cleaner context escape:** The creator thread's `AccessControlContext` is not
+  propagated to finalizer or `Cleaner` threads.  If a trusted object's finalization
+  behavior must be restricted by the creator's context, that constraint must be enforced
+  at construction time or through an explicit `close()` pattern.  Process isolation is
+  the mitigation for this residual gap (see `PROCESS_ISOLATION.md`, N-9 analysis).
 
 ---
 
@@ -286,3 +303,4 @@ This section mirrors the thread-creation analysis for adjacent APIs that define 
 - `STACK_VALIDATION_ANALYSIS.md` (stack-validation trade-offs)
 - `VULNERABILITIES_ADDRESSED.md` (resolved issues)
 - `SECURITY.md` (security policy and reporting)
+- `PROCESS_ISOLATION.md` (reflection/MethodHandle N-8, finalizer/Cleaner N-9, class-init N-10, consolidated gaps N-11, test plan N-12)
