@@ -27,8 +27,8 @@ package au.zeus.jdk.authorization.guards;
 import java.security.BasicPermission;
 
 /**
- * Permission required to read an object from ObjectInputStream or write an
- * object to ObjectOutputStream using the default java Serialization mechanism.
+ * Permission required to read an object from ObjectInputStream
+ * using the default java Serialization mechanism.
  * 
  * @author Peter Firmstone.
  */

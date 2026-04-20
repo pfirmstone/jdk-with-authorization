@@ -2567,9 +2567,15 @@ public abstract class ClassLoader {
     static long findNative(ClassLoader loader, Class<?> clazz, String entryName, String javaName) {
         NativeLibraries nativeLibraries = nativeLibrariesFor(loader);
         Map.Entry<String, Long> libNameAddress = nativeLibraries.findLibraryNameAddress(entryName);
-        long addr = libNameAddress.getValue();
+        long addr = 0;
+        if (libNameAddress != null){
+            Long val = libNameAddress.getValue();
+            if (val != null) addr = val;
+        }   
         if (addr != 0 && loader != null) {
-            new NativeInvocationPermission(libNameAddress.getKey()).checkGuard(null);
+            SecurityManager sm = System.getSecurityManager();
+            if (sm != null)
+                sm.checkPermission(new NativeInvocationPermission(libNameAddress.getKey()));
             Reflection.ensureNativeAccess(clazz, clazz, javaName, true);
         }
         return addr;

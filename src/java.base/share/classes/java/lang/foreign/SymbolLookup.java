@@ -261,7 +261,11 @@ public interface SymbolLookup {
             // note: ClassLoader::findNative supports a null loader
             NativeLibraries nativeLibraries = javaLangAccess.nativeLibrariesFor(loader);
             Map.Entry<String, Long> libNameAddress = nativeLibraries.findLibraryNameAddress(name);
-            long addr = libNameAddress.getValue();
+            long addr = 0;
+            if (libNameAddress != null){
+                Long val = libNameAddress.getValue();
+                if (val != null) addr = val;
+            } 
             if (addr == 0L){
                 return Optional.empty();
             } else {
