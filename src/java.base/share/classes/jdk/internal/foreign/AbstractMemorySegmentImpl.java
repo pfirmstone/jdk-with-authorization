@@ -25,6 +25,7 @@
 
 package jdk.internal.foreign;
 
+import au.zeus.jdk.authorization.guards.NativeInvocationPermission;
 import jdk.internal.access.JavaNioAccess;
 import jdk.internal.access.SharedSecrets;
 import jdk.internal.access.foreign.UnmapperProxy;
