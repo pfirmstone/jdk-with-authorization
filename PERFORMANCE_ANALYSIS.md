@@ -59,6 +59,16 @@ cached `PermissionCollection`. Under high thread counts this became a severe
 serialization bottleneck — scalability was essentially capped at single-threaded
 throughput for the cache look-up phase.
 
+At the VM layer, Dirty Chai also removed the native protection-domain cache in
+commit `20f1c9861a70a357d6f4e316c935a6451f504347` (`#71`), deleting:
+
+- `src/hotspot/share/classfile/protectionDomainCache.hpp`
+- `src/hotspot/share/classfile/protectionDomainCache.cpp`
+
+This aligns VM behavior with the Java-layer design: no global per-domain cache
+on the permission hot path, and no synchronized cache lookup in front of policy
+evaluation.
+
 ### 1.2 Intentional absence of a permission cache
 
 The class-level Javadoc explicitly states:
@@ -384,7 +394,7 @@ active):
 | `LoadClassPermission` | `SecureClassLoader.defineClass()` | One `checkPermission` call per class definition |
 | `SerialObjectPermission` | `ObjectInputStream.readOrdinaryObject()` | One `checkPermission` call per deserialized object |
 | `NativeAccessPermission` | `Module.implAddOpensToAllUnnamed()` | One `checkPermission` call per native access |
-| `setSecurityManager` stack validation | Custom SM installation | One-time StackWalker scan (≤10 frames); trusted SMs skip entirely |
+| `setSecurityManager` stack validation | Custom SM installation | One-time StackWalker scan (≤50 frames); trusted SMs skip entirely |
 
 For class loading and deserialization these checks are dominated by the I/O and
 class resolution work that already occurs on those paths. The marginal cost is
