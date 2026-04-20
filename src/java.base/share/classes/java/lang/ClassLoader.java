@@ -2566,11 +2566,11 @@ public abstract class ClassLoader {
      */
     static long findNative(ClassLoader loader, Class<?> clazz, String entryName, String javaName) {
         NativeLibraries nativeLibraries = nativeLibrariesFor(loader);
-        NativeLibraries.NativeEntry nativeEntry = nativeLibraries.findEntry(entryName);
-        long addr = nativeEntry != null ? nativeEntry.address() : 0;
+        Map.Entry<String, Long> nativeEntry = nativeLibraries.findEntry(entryName);
+        long addr = nativeEntry != null ? nativeEntry.getValue() : 0;
         if (addr != 0 && loader != null) {
             Reflection.ensureNativeAccess(clazz, clazz, javaName, true);
-            new NativeAccessPermission(nativeEntry.libraryName(), "invoke").checkGuard(null);
+            new NativeAccessPermission(nativeEntry.getKey(), "invoke").checkGuard(null);
         }
         return addr;
     }

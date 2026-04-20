@@ -41,6 +41,7 @@ import jdk.internal.reflect.Reflection;
 import java.lang.invoke.MethodHandles;
 import java.nio.file.FileSystems;
 import java.nio.file.Path;
+import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.Objects;
 import java.util.Optional;
@@ -259,15 +260,23 @@ public interface SymbolLookup {
             JavaLangAccess javaLangAccess = SharedSecrets.getJavaLangAccess();
             // note: ClassLoader::findNative supports a null loader
             NativeLibraries nativeLibraries = javaLangAccess.nativeLibrariesFor(loader);
-            NativeLibraries.NativeEntry nativeEntry = nativeLibraries.findEntry(name);
+            Map.Entry<String, Long> nativeEntry = nativeLibraries.findEntry(name);
             return nativeEntry == null ?
                     Optional.empty() :
-                    Optional.of(permissionCheckedAddress(nativeEntry.libraryName(),
-                                    nativeEntry.address())
+                    Optional.of(permissionCheckedAddress(nativeEntry.getKey(),
+                                    nativeEntry.getValue())
                                     .reinterpret(loaderArena, null)); // restricted
         };
     }
 
+    /**
+     * Checks invocation permission for a resolved native symbol and returns a segment
+     * for the symbol address if access is permitted.
+     *
+     * @param libraryName the native library that resolved the symbol
+     * @param address the resolved symbol address
+     * @return a memory segment for the symbol address
+     */
     private static MemorySegment permissionCheckedAddress(String libraryName, long address) {
         new NativeAccessPermission(libraryName, "invoke").checkGuard(null);
         return MemorySegment.ofAddress(address);

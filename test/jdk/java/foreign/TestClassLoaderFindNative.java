@@ -78,7 +78,7 @@ public class TestClassLoaderFindNative {
             System.setSecurityManager(sm);
             assertFalse(SymbolLookup.loaderLookup().find("f").isEmpty());
             assertTrue(sm.invokePermissions.stream()
-                    .anyMatch(p -> "invoke".equals(p.getActions()) && !p.getName().isEmpty()));
+                    .anyMatch(p -> "invoke".equals(p.getActions()) && p.getName().contains("LookupTest")));
         } finally {
             System.setSecurityManager(previous);
         }

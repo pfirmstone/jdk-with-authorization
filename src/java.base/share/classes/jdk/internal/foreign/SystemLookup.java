@@ -140,6 +140,14 @@ public final class SystemLookup implements SymbolLookup {
         };
     }
 
+    /**
+     * Checks invocation permission for a resolved native symbol and returns a segment
+     * for the symbol address if access is permitted.
+     *
+     * @param libraryName the native library that resolved the symbol
+     * @param address the resolved symbol address
+     * @return a memory segment for the symbol address
+     */
     private static MemorySegment permissionCheckedAddress(String libraryName, long address) {
         new NativeAccessPermission(libraryName, "invoke").checkGuard(null);
         return MemorySegment.ofAddress(address);

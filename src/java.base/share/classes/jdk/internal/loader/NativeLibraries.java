@@ -62,8 +62,6 @@ public final class NativeLibraries {
     private final Class<?> caller;      // may be null
     private final boolean searchJavaLibraryPath;
 
-    public record NativeEntry(String libraryName, long address) {}
-
     /**
      * Creates a NativeLibraries instance for loading JNI native libraries
      * via for System::loadLibrary use.
@@ -95,15 +93,18 @@ public final class NativeLibraries {
      * loaded in this NativeLibraries instance.
      */
     public long find(String name) {
-        NativeEntry entry = findEntry(name);
-        return entry != null ? entry.address() : 0;
+        Map.Entry<String, Long> entry = findEntry(name);
+        return entry != null ? entry.getValue() : 0;
     }
 
-    /*
+    /**
      * Find the address of the given symbol name together with the
      * library name that resolved it.
+     *
+     * @param name the symbol name to resolve
+     * @return the resolving library name and address, or {@code null} if not found
      */
-    public NativeEntry findEntry(String name) {
+    public Map.Entry<String, Long> findEntry(String name) {
         if (libraries.isEmpty())
             return null;
 
@@ -113,7 +114,7 @@ public final class NativeLibraries {
         for (NativeLibrary lib : libraries.values()) {
             long entry = lib.find(name);
             if (entry != 0) {
-                return new NativeEntry(lib.name(), entry);
+                return Map.entry(lib.name(), entry);
             }
         }
         return null;
