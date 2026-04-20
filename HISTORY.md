@@ -124,8 +124,8 @@ public developer community, with **Frank Barnaby** taking over release engineeri
 ### Technical Contributions to the Java Security Model
 
 Sun's Jini Technology project culminated with the release of Jini 1.0 in November 1998, building
-a distributed services platform on top of Java's security model. Jini's requirements pushed that
-model significantly:
+a distributed services platform on top of Java's security model. Jini 2.0's pending requirements
+pushed that model significantly:
 
 - **Dynamic class loading** — service proxies were downloaded over the network at runtime.
   The security model needed to express fine-grained trust for downloaded code.
