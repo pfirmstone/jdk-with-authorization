@@ -36,6 +36,7 @@ Dirty Chai introduces and wires three new guard permissions that are absent in O
   - integrated in `SecureClassLoader` (`LOAD_CLASS_ALLOW`) and checked during `ProtectionDomain` creation (`sm.checkPermission(LOAD_CLASS_ALLOW, ...)`)
 - `NativeInvocationPermission` (`au.zeus.jdk.authorization.guards.NativeInvocationPermission`)
   - enforced in `ClassLoader.findNative()`, `SymbolLookup`, and `SystemLookup` before native symbol addresses are returned
+  - also enforced in `AbstractMemorySegmentImpl.reinterpretInternal()` as `NativeInvocationPermission("reinterpret")` before `MemorySegment.reinterpret()` is permitted
 - `SerialObjectPermission` (`au.zeus.jdk.authorization.guards.SerialObjectPermission`)
   - enforced in `ObjectInputStream.readOrdinaryObject()` before `desc.newInstance()`
 
@@ -269,13 +270,13 @@ See residual N-15 and the medium-priority recommendation for a `LoadModulePermis
 
 ### 8) Foreign Function & Memory API (FFM) Trust Boundaries
 
-DirtyChai currently treats FFM access as binary: the `jdk.foreign` module is either opened to a code base or it is not. Granular per-operation gating does not yet exist within the SecurityManager framework. Several specific risks exist within this coarse model:
+DirtyChai adds SecurityManager permission gating on several FFM entry points.  Several residual risks remain:
 
-- **`MemorySegment.reinterpret()`** — any code that holds a reference to a `MemorySegment` can call `reinterpret()` to obtain a segment with an arbitrary layout and lifetime, bypassing the original segment's bounds and lifetime contract. Once trusted code constructs a segment and passes it to untrusted code (e.g., via a method argument or a shared data structure), module-system gating no longer protects the segment's layout or memory region. This is an object-capability transfer risk that is not blocked by any current DirtyChai permission.
+- **`MemorySegment.reinterpret()`** — DirtyChai gates all three `reinterpret()` overloads with `NativeInvocationPermission("reinterpret")` (checked in `AbstractMemorySegmentImpl.reinterpretInternal()`). Code that does not hold this permission will receive a `SecurityException`. However, an object-capability transfer risk remains: once trusted code constructs a segment and hands it to untrusted code, the untrusted code can attempt to call `reinterpret()` directly; the permission check is the enforcement boundary.
 - **`Arena.global()`** — the global arena is accessible without any SecurityManager permission check. Untrusted code can use it to hold references to native memory that are never released, creating memory-retention abuse (a form of resource-exhaustion / DoS). Unlike `Arena.ofConfined()` or `Arena.ofShared()`, the global arena has no lifecycle that can be closed or revoked.
-- **Binary module-open grants** — opening `jdk.foreign` to untrusted code implicitly authorizes all FFM operations including `reinterpret()` and `Arena.global()` access. These grants must be treated as high-sensitivity policy decisions, equivalent in impact to granting `AllPermission` over native memory.
+- **Binary module-open grants** — opening `jdk.foreign` to untrusted code implicitly enables `Arena.global()` access (ungated) and enables `reinterpret()` calls (gated by `NativeInvocationPermission("reinterpret")`). Such module-open grants must still be treated as high-sensitivity policy decisions.
 
-See the FFM bullet under the Conditional / policy-dependent section and the medium-priority recommendation for a `ForeignMemoryPermission` guard evaluation.
+See the FFM bullet under the Conditional / policy-dependent section and the medium-priority recommendation for a `ForeignMemoryPermission` guard evaluation of the remaining `Arena.global()` gap.
 
 ### 9) Network Permission Granularity
 
@@ -304,7 +305,7 @@ See residual N-14.
 - Trusted SecurityManager installation bypasses deep stack checks by design; safety depends on policy and runtime permission model.
 - Mis-scoped policy grants can still over-authorize trusted code.
 - Over-broad grants of `createVirtualThread` / `createPlatformThread` can expand DoS blast radius.
-- Opening `jdk.foreign` to untrusted code implicitly authorizes `MemorySegment.reinterpret()` and `Arena.global()` abuse; such module-open grants must be treated as high-sensitivity policy decisions.
+- Opening `jdk.foreign` to untrusted code enables `MemorySegment.reinterpret()` calls (gated by `NativeInvocationPermission("reinterpret")`) and `Arena.global()` access (currently ungated); such module-open grants must be treated as high-sensitivity policy decisions.
 - Principal name-keyed policy grants are vulnerable to cross-realm name collision; administrators must use fully-qualified principal types in grants (e.g., `KerberosPrincipal` with realm embedded) and avoid name-only matching across authentication domains.
 - Module export grants to untrusted code may introduce indirect access paths via trusted code's public APIs; every export decision must be reviewed as a security-relevant policy choice.
 
@@ -409,8 +410,8 @@ See residual N-14.
 6. **Add optional security telemetry for denied installation attempts**
    Useful for attack detection and policy-tuning feedback loops.
 
-7. **Evaluate `ForeignMemoryPermission` guard for FFM operations (§8)**  
-   Evaluate whether a new `ForeignMemoryPermission` (or similar guard integrated into `NativeInvocationPermission`) should be introduced to gate `MemorySegment.reinterpret()` calls and `Arena.global()` access. Until such a guard exists, policy must not open `jdk.foreign` to any code base that is not fully trusted, and any such grant must be documented with an explicit security rationale.
+7. **Evaluate `ForeignMemoryPermission` guard for remaining FFM gaps (§8)**  
+   `MemorySegment.reinterpret()` is already gated by `NativeInvocationPermission("reinterpret")` in `AbstractMemorySegmentImpl.reinterpretInternal()`. The remaining unguarded FFM surface is `Arena.global()`, which has no SecurityManager permission check. Evaluate whether a new `ForeignMemoryPermission` (or an extension of `NativeInvocationPermission`) should be introduced to gate `Arena.global()` access. Until such a guard exists, policy must not open `jdk.foreign` to any code base that is not fully trusted, and any such grant must be documented with an explicit security rationale.
 
 8. **Evaluate `MethodHandles.Lookup.defineClass()` permission gate (N-15 / §7)**  
    `MethodHandles.Lookup.defineClass()` and related dynamic class-definition APIs bypass `LoadClassPermission` entirely. Evaluate whether an extension of `LoadClassPermission` or a new `DefineClassPermission` is warranted to gate dynamic class injection into existing modules. Until such a gate exists, access to privileged `Lookup` objects must be treated as equivalent to `LoadClassPermission` for the target module.
@@ -455,6 +456,7 @@ The main remaining risks are **operational** (policy configuration and whitelist
 - `src/java.base/share/classes/java/util/concurrent/Executors.java` — default/privileged thread factory behavior and virtual-thread executor entry points
 - `src/java.base/share/classes/java/security/SecureClassLoader.java` — `LoadClassPermission` integration in class-loading permission path
 - `src/java.base/share/classes/java/lang/ClassLoader.java`, `java/lang/foreign/SymbolLookup.java`, `jdk/internal/foreign/SystemLookup.java` — `NativeInvocationPermission` enforcement at native symbol resolution
+- `src/java.base/share/classes/jdk/internal/foreign/AbstractMemorySegmentImpl.java` — `NativeInvocationPermission("reinterpret")` enforcement in `reinterpretInternal()` before `MemorySegment.reinterpret()` proceeds
 - `src/java.base/share/classes/au/zeus/jdk/authorization/guards/LoadClassPermission.java` — guard definition
 - `src/java.base/share/classes/au/zeus/jdk/authorization/guards/NativeInvocationPermission.java` — guard definition
 - `src/java.base/share/classes/au/zeus/jdk/authorization/guards/SerialObjectPermission.java` — guard definition
