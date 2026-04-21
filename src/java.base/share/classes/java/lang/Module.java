@@ -959,6 +959,8 @@ public final class Module implements AnnotatedElement {
         Objects.requireNonNull(other);
 
         if (isNamed()) {
+            SecurityManager sm = System.getSecurityManager();
+            if (sm != null) sm.checkPermission(new RuntimePermission("mutateModuleTopology"));
             Module caller = getCallerModule(Reflection.getCallerClass());
             if (caller != this) {
                 throw new IllegalCallerException(caller + " != " + this);
@@ -1019,6 +1021,8 @@ public final class Module implements AnnotatedElement {
         Objects.requireNonNull(other);
 
         if (isNamed()) {
+            SecurityManager sm = System.getSecurityManager();
+            if (sm != null) sm.checkPermission(new RuntimePermission("mutateModuleTopology"));
             Module caller = getCallerModule(Reflection.getCallerClass());
             if (caller != this && (caller == null || !isOpen(pn, caller)))
                 throw new IllegalCallerException(pn + " is not open to " + caller);
