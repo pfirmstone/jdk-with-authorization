@@ -2574,8 +2574,11 @@ public abstract class ClassLoader {
         }   
         if (addr != 0 && loader != null) {
             SecurityManager sm = System.getSecurityManager();
-            if (sm != null)
-                sm.checkPermission(new NativeInvocationPermission(libNameAddress.getKey()));
+            if (sm != null){
+                String libName = libNameAddress.getKey();
+                if (libName == null) libName = entryName;
+                sm.checkPermission(new NativeInvocationPermission(libName));
+            }
             Reflection.ensureNativeAccess(clazz, clazz, javaName, true);
         }
         return addr;

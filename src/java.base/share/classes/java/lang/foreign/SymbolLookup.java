@@ -269,7 +269,9 @@ public interface SymbolLookup {
             if (addr == 0L){
                 return Optional.empty();
             } else {
-                new NativeInvocationPermission(libNameAddress.getKey()).checkGuard(null);
+                String libName = libNameAddress.getKey();
+                if (libName == null) libName = name;
+                new NativeInvocationPermission(libName).checkGuard(null);
                 return Optional.of(MemorySegment.ofAddress(addr)
                                 .reinterpret(loaderArena, null)); // restricted
             }
