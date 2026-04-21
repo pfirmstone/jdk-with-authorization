@@ -157,7 +157,7 @@ public abstract sealed class AbstractMemorySegmentImpl
     private NativeMemorySegmentImpl reinterpretInternal(Class<?> callerClass, long newSize, MemorySessionImpl scope, Consumer<MemorySegment> cleanup) {
         SecurityManager sm = System.getSecurityManager();
         if (sm != null) {
-            sm.checkPermission(new NativeMemoryPermission("MemorySegment","reinterpret"));
+            sm.checkPermission(new NativeMemoryPermission("reinterpret-memory-segment"));
         }
         Reflection.ensureNativeAccess(callerClass, MemorySegment.class, "reinterpret", false);
         Utils.checkNonNegativeArgument(newSize, "newSize");
