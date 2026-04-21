@@ -449,6 +449,13 @@ modified to call `NativeInvocationPermission.checkGuard(null)` (or
 the point where a native symbol address is resolved from a loaded library.  The
 permission name is the name of the native library that contains the symbol.
 
+Library name resolution is performed by `NativeLibraries.findLibraryNameAddress()`,
+which applies a three-level null-safe fallback: (1) the map key for the native library
+entry, (2) `NativeLibrary.name()`, (3) the symbol name itself.  This ensures that
+`NativeInvocationPermission` is always constructed with a non-null name even when a
+loaded library's path metadata is incomplete, avoiding any possibility of an
+unintended `NullPointerException` reaching the caller before the security check fires.
+
 ```java
 // ClassLoader.java — findNative() (DirtyChai modification)
 // Fires when a JNI native method is being linked to its native implementation.

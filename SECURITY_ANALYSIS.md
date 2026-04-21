@@ -35,7 +35,8 @@ Dirty Chai introduces and wires three new guard permissions that are absent in O
 - `LoadClassPermission` (`au.zeus.jdk.authorization.guards.LoadClassPermission`)
   - integrated in `SecureClassLoader` (`LOAD_CLASS_ALLOW`) and checked during `ProtectionDomain` creation (`sm.checkPermission(LOAD_CLASS_ALLOW, ...)`)
 - `NativeInvocationPermission` (`au.zeus.jdk.authorization.guards.NativeInvocationPermission`)
-  - enforced in `ClassLoader.findNative()`, `SymbolLookup`, and `SystemLookup` before native symbol addresses are returned
+  - enforced in `ClassLoader.findNative()`, `SymbolLookup.loaderLookup()`, `SymbolLookup.libraryLookup()`, and `SystemLookup` before native symbol addresses are returned; the permission name is the **resolved library name** (library-scoped), so each native library requires a separate, explicit policy grant
+  - library name resolution is performed by `NativeLibraries.findLibraryNameAddress()`, which applies a three-level null-safe fallback: (1) the map key of the native library entry, (2) `NativeLibrary.name()`, (3) the symbol name itself — guaranteeing that `NativeInvocationPermission` is always constructed with a non-null name even when library path metadata is incomplete
   - also enforced in `AbstractMemorySegmentImpl.reinterpretInternal()` as `NativeInvocationPermission("reinterpret")` before `MemorySegment.reinterpret()` is permitted
 - `SerialObjectPermission` (`au.zeus.jdk.authorization.guards.SerialObjectPermission`)
   - enforced in `ObjectInputStream.readOrdinaryObject()` before `desc.newInstance()`
@@ -455,7 +456,7 @@ The main remaining risks are **operational** (policy configuration and whitelist
 - `src/java.base/share/classes/java/lang/Thread.java` — platform thread-creation security checks and builder security notes
 - `src/java.base/share/classes/java/util/concurrent/Executors.java` — default/privileged thread factory behavior and virtual-thread executor entry points
 - `src/java.base/share/classes/java/security/SecureClassLoader.java` — `LoadClassPermission` integration in class-loading permission path
-- `src/java.base/share/classes/java/lang/ClassLoader.java`, `java/lang/foreign/SymbolLookup.java`, `jdk/internal/foreign/SystemLookup.java` — `NativeInvocationPermission` enforcement at native symbol resolution
+- `src/java.base/share/classes/java/lang/ClassLoader.java`, `java/lang/foreign/SymbolLookup.java`, `jdk/internal/foreign/SystemLookup.java`, `jdk/internal/loader/NativeLibraries.java` — `NativeInvocationPermission` enforcement at native symbol resolution; `NativeLibraries.findLibraryNameAddress()` provides null-safe library name resolution for permission construction
 - `src/java.base/share/classes/jdk/internal/foreign/AbstractMemorySegmentImpl.java` — `NativeInvocationPermission("reinterpret")` enforcement in `reinterpretInternal()` before `MemorySegment.reinterpret()` proceeds
 - `src/java.base/share/classes/au/zeus/jdk/authorization/guards/LoadClassPermission.java` — guard definition
 - `src/java.base/share/classes/au/zeus/jdk/authorization/guards/NativeInvocationPermission.java` — guard definition
