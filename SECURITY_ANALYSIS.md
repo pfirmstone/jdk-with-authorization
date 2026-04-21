@@ -38,7 +38,7 @@ Dirty Chai introduces and wires four new guard permissions that are absent in Op
   - enforced in `ClassLoader.findNative()`, `SymbolLookup.loaderLookup()`, `SymbolLookup.libraryLookup()`, and `SystemLookup` before native symbol addresses are returned; the permission name is the **resolved library name** (library-scoped), so each native library requires a separate, explicit policy grant
   - library name resolution is performed by `NativeLibraries.findLibraryNameAddress()`, which applies a three-level null-safe fallback: (1) the map key of the native library entry, (2) `NativeLibrary.name()`, (3) the symbol name itself — guaranteeing that `NativeInvocationPermission` is always constructed with a non-null name even when library path metadata is incomplete
 - `NativeMemoryPermission` (`au.zeus.jdk.authorization.guards.NativeMemoryPermission`)
-  - enforced at FFM native-memory boundaries in `Arena.global()` (`NativeMemoryPermission("global-arena")`) and `AbstractMemorySegmentImpl.reinterpretInternal()` (`NativeMemoryPermission("reinterpret-memory-segment")`)
+  - enforced at FFM native-memory boundaries: `Arena.global()` requires `NativeMemoryPermission("global-arena")`, and `AbstractMemorySegmentImpl.reinterpretInternal()` requires `NativeMemoryPermission("reinterpret-memory-segment")`
   - purpose: separate native-memory authority from native-symbol/native-library authority, so policy can independently control off-heap lifecycle/capability expansion operations
   - security effect: reduces memory-corruption and resource-exhaustion attack surface by requiring explicit permission before global-arena access or segment reinterpretation is allowed
 - `SerialObjectPermission` (`au.zeus.jdk.authorization.guards.SerialObjectPermission`)
@@ -280,13 +280,14 @@ DirtyChai adds SecurityManager permission gating on several FFM entry points.  S
 - **`Arena.global()`** — DirtyChai gates global arena access with `NativeMemoryPermission("global-arena")` (checked in `Arena.global()`). This protects the process-wide native-memory arena from direct use by untrusted code unless explicitly authorized by policy.
 - **Security impact of `NativeMemoryPermission`** — by requiring explicit grants at both reinterpret and global-arena boundaries, DirtyChai reduces the attack surface for memory-corruption and memory-retention abuse patterns (for example, unchecked reinterpretation and unbounded process-lifetime off-heap retention).
 - **Binary module-open grants** — opening `jdk.foreign` to untrusted code still increases exposure to FFM APIs. Module opens do not replace SecurityManager checks; they only make API reachability easier. `NativeMemoryPermission` remains the enforcement gate for `reinterpret()` and `Arena.global()` calls.
-- **Residual gaps / limitations** — `NativeMemoryPermission` currently does not gate all native-memory allocation surfaces (for example, `Arena.ofConfined()`, `Arena.ofShared()`, and `Arena.ofAuto()` creation paths, and subsequent allocation through those arenas). Object-capability transfer risk also remains: if trusted code creates/returns memory capabilities to untrusted code, the permission checks at guarded methods are the final boundary.
+- **Residual gaps / limitations (known hardening backlog)** — `NativeMemoryPermission` currently does not gate all native-memory allocation surfaces (for example, `Arena.ofConfined()`, `Arena.ofShared()`, and `Arena.ofAuto()` creation paths, and subsequent allocation through those arenas). This is a known, not-yet-finalized hardening area rather than a fully closed boundary. Object-capability transfer risk also remains: if trusted code creates/returns memory capabilities to untrusted code, the permission checks at guarded methods are the final boundary.
 
 Policy guidance for administrators:
 
 - Grant `NativeMemoryPermission` only to fully trusted code bases.
 - Prefer explicit target names (`"global-arena"` and/or `"reinterpret-memory-segment"`) instead of wildcard grants.
 - Treat any grant to code with broad `jdk.foreign` access as high sensitivity and document the operational rationale.
+- Until broader FFM native-memory coverage decisions are finalized, treat grants that expose general arena-creation APIs as high risk and constrain them to trusted code only.
 
 See the FFM bullet under the Conditional / policy-dependent section and the medium-priority recommendation for broader FFM guard-coverage evaluation.
 
