@@ -360,8 +360,9 @@ state that can be exploited to escape the security model entirely:
   redefine any class before the SecurityManager is installed.
 - **`java.lang.instrument.Instrumentation`** — a `-javaagent:` can redefine
   classes at runtime, including security-critical classes, after the JVM is
-  running.  Unlike JVMTI, an `Instrumentation` agent can be loaded post-startup
-  via the `VirtualMachine.attach()` API if the JVM is not locked down.
+  running. Runtime attach (`VirtualMachine.attach()`) is gated by
+  `AttachPermission` when the SecurityManager is active; `-XX:+DisableAttachMechanism`
+  remains a VM-level defense-in-depth option.
 #### 4. Resource exhaustion
 As analysed above, a running thread cannot be forcibly terminated.  Even if all
 creation guards are in place, code that has been granted `createVirtualThread`
@@ -448,6 +449,13 @@ modified to call `NativeInvocationPermission.checkGuard(null)` (or
 `SecurityManager.checkPermission(new NativeInvocationPermission(libName))`) at
 the point where a native symbol address is resolved from a loaded library.  The
 permission name is the name of the native library that contains the symbol.
+
+Library name resolution is performed by `NativeLibraries.findLibraryNameAddress()`,
+which applies a three-level null-safe fallback: (1) the map key for the native library
+entry, (2) `NativeLibrary.name()`, (3) the symbol name itself.  This ensures that
+`NativeInvocationPermission` is always constructed with a non-null name even when a
+loaded library's path metadata is incomplete, avoiding any possibility of an
+unintended `NullPointerException` reaching the caller before the security check fires.
 
 ```java
 // ClassLoader.java — findNative() (DirtyChai modification)
@@ -1201,7 +1209,7 @@ the namespace in the first place.
 
 ---
 
-## Analysis: Consolidated Invocation and Lifecycle Residual Gaps (N-11)
+## Analysis: Consolidated Invocation and Lifecycle Security Posture (N-11)
 
 This section ties together the analyses in N-8, N-9, N-10, and the earlier
 "Remaining Residual Gaps" section to give operators a single reference for what
@@ -1215,6 +1223,7 @@ is blocked, what is residual, and what requires process isolation.
 | `MethodHandle.invoke*()` used to install custom `SecurityManager` | Non-whitelisted `java.lang.invoke.*` frame detection | **Blocked** |
 | `Method.invoke()` calling trusted class native method (no `doPrivileged`) | Untrusted caller PD on stack; intersection enforced | **Blocked** |
 | `MethodHandle.invoke()` calling trusted class native method (no `doPrivileged`) | Untrusted caller PD on stack; intersection enforced | **Blocked** |
+| Runtime attach via `VirtualMachine.attach()` from untrusted code | `AttachPermission("attachVirtualMachine")` check in attach provider path | **Blocked** (when SecurityManager policy denies attach) |
 | Untrusted class finalizer calling native method | Untrusted finalizer class PD on stack; intersection enforced | **Blocked** |
 | Untrusted Cleaner callback calling native method | Untrusted Runnable class PD on stack; intersection enforced | **Blocked** |
 | Untrusted code loading a class (which would trigger `<clinit>`) | `LoadClassPermission` gate at class loading | **Blocked** |
@@ -1263,6 +1272,9 @@ For deployments that handle untrusted code in the same JVM:
 - [ ] Use process isolation (Phoenix activation groups or containers) for
       code whose trust level is not fully established.
 - [ ] Apply `--illegal-native-access=deny` (N-5) as a defence-in-depth measure.
+- [ ] Deny `AttachPermission("attachVirtualMachine")` (and where needed
+      `AttachPermission("createAttachProvider")`) to untrusted code; optionally
+      add `-XX:+DisableAttachMechanism` for defense in depth.
 
 ---
 
