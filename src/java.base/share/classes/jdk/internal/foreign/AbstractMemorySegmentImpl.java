@@ -25,7 +25,7 @@
 
 package jdk.internal.foreign;
 
-import au.zeus.jdk.authorization.guards.NativeInvocationPermission;
+import au.zeus.jdk.authorization.guards.NativeMemoryPermission;
 import jdk.internal.access.JavaNioAccess;
 import jdk.internal.access.SharedSecrets;
 import jdk.internal.access.foreign.UnmapperProxy;
@@ -157,7 +157,7 @@ public abstract sealed class AbstractMemorySegmentImpl
     private NativeMemorySegmentImpl reinterpretInternal(Class<?> callerClass, long newSize, MemorySessionImpl scope, Consumer<MemorySegment> cleanup) {
         SecurityManager sm = System.getSecurityManager();
         if (sm != null) {
-            sm.checkPermission(new NativeInvocationPermission("reinterpret"));
+            sm.checkPermission(new NativeMemoryPermission("MemorySegment","reinterpret"));
         }
         Reflection.ensureNativeAccess(callerClass, MemorySegment.class, "reinterpret", false);
         Utils.checkNonNegativeArgument(newSize, "newSize");

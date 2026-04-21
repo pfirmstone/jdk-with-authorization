@@ -25,6 +25,7 @@
 
 package java.lang.foreign;
 
+import au.zeus.jdk.authorization.guards.NativeMemoryPermission;
 import jdk.internal.foreign.MemorySessionImpl;
 import jdk.internal.ref.CleanerFactory;
 
@@ -239,6 +240,10 @@ public interface Arena extends SegmentAllocator, AutoCloseable {
      * are zero-initialized.
      */
     static Arena global() {
+        SecurityManager sm = System.getSecurityManager();
+        if (sm != null){
+            sm.checkPermission(new NativeMemoryPermission("Arena","global"));
+        }
         class Holder {
             static final Arena GLOBAL = MemorySessionImpl.GLOBAL_SESSION.asArena();
         }

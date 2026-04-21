@@ -27,17 +27,18 @@ package au.zeus.jdk.authorization.guards;
 import java.security.BasicPermission;
 
 /**
- * NativeInvocationPermission works guards invocation of native libraries.
+ * Guards access to MemorySegment.reinterpret and Arena.global
+ * @author peter
  */
-public class NativeInvocationPermission extends BasicPermission<NativeInvocationPermission> {
+public class NativeMemoryPermission extends BasicPermission<NativeMemoryPermission> {
     
     /**
-     * Creates a new NativeInvocationPermission
-     * 
-     * @param name the name of the native library. 
+     * Creates a new NativeMemoryPermission
+     * @param action either reinterpret or global.
+     * @param name either MemorySegment or Arena
      */
-    public NativeInvocationPermission(String name){
-        super(name, "invoke");
+    public NativeMemoryPermission(String name, String action){
+        super(name, action);
     }
     
 }
