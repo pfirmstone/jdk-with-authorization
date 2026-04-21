@@ -242,7 +242,7 @@ public interface Arena extends SegmentAllocator, AutoCloseable {
     static Arena global() {
         SecurityManager sm = System.getSecurityManager();
         if (sm != null){
-            sm.checkPermission(new NativeMemoryPermission("Arena","global"));
+            sm.checkPermission(new NativeMemoryPermission("global-arena"));
         }
         class Holder {
             static final Arena GLOBAL = MemorySessionImpl.GLOBAL_SESSION.asArena();
