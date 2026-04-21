@@ -252,7 +252,9 @@ This section mirrors the thread-creation analysis for adjacent APIs that define 
 - Reflective or MethodHandle calls that traverse a trusted native wrapper without
   `doPrivileged` (untrusted caller `ProtectionDomain` remains on stack)
 - Untrusted finalizer or `Cleaner` callbacks attempting sensitive operations (untrusted
-  class `ProtectionDomain` is present on finalizer/Cleaner thread stack)
+  class `ProtectionDomain` is present on finalizer/Cleaner thread stack; finalizer
+  threads now run with `AccessControlContext.neverPrivileged()`, and `Cleaner`
+  callbacks run on `InnocuousThread` with no permissions)
 - Untrusted code triggering `<clinit>`, `invokedynamic` bootstrap methods, or
   `CONSTANT_Dynamic` bootstrap methods of trusted classes (untrusted PD on stack)
 - Privilege escalation via overly broad or inherited permission assumptions
@@ -271,10 +273,12 @@ This section mirrors the thread-creation analysis for adjacent APIs that define 
   This is a design obligation for trusted library authors (see `CONTRIBUTING.md` and
   `PROCESS_ISOLATION.md`, "Task N-6 / Confused-Deputy Guidance").
 - **Finalizer/Cleaner context escape:** The creator thread's `AccessControlContext` is not
-  propagated to finalizer or `Cleaner` threads.  If a trusted object's finalization
-  behavior must be restricted by the creator's context, that constraint must be enforced
-  at construction time or through an explicit `close()` pattern.  Process isolation is
-  the mitigation for this residual gap (see `PROCESS_ISOLATION.md`, N-9 analysis).
+  propagated to finalizer or `Cleaner` threads. Finalizer threads are now unprivileged,
+  reducing the residual gap surface, but trusted-object context loss remains. If a trusted
+  object's finalization behavior must be restricted by the creator's context, that
+  constraint must be enforced at construction time or through an explicit `close()`
+  pattern.  Process isolation is the mitigation for this residual gap (see
+  `PROCESS_ISOLATION.md`, N-9 analysis).
 
 ---
 

@@ -358,10 +358,13 @@ See residual N-14.
 7. **Finalizer and Cleaner thread context escape (N-9)**  
    Untrusted code in a finalizer or `Cleaner` callback is guarded by stack-intersection
    because the untrusted class's `ProtectionDomain` is present on the finalizer thread's
-   stack at the time of any permission check.  The residual gap is context escape:
-   the creator thread's limited `AccessControlContext` is **not** propagated to the
-   finalizer thread.  Trusted objects whose finalizers perform sensitive operations are
-   therefore not constrained by the context the creating code was running under.
+   stack at the time of any permission check.  Finalizer threads are now created with
+   `AccessControlContext.neverPrivileged()` (matching `Cleaner` daemon behavior via
+   `InnocuousThread`), so this residual is narrower than before.  The remaining gap is
+   context escape: the creator thread's limited `AccessControlContext` is **not**
+   propagated to finalizer/Cleaner callback threads.  Trusted objects whose finalizers
+   perform sensitive operations are therefore not constrained by the context the creating
+   code was running under.
    Mitigation: avoid sensitive operations in finalizers; use explicit `close()` patterns
    and process isolation for strong context-confinement.  See `PROCESS_ISOLATION.md`
    ("Analysis: Finalizer and Cleaner Thread Execution Contexts").
