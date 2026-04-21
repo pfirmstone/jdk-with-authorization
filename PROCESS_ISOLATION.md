@@ -631,7 +631,7 @@ untrusted service processes).
 | Untrusted jar calls `System.loadLibrary()` | `RuntimePermission("loadLibrary.*")` at load time; `NativeInvocationPermission("<libname>")` at JNI method binding | **Blocked by DirtyChai** |
 | Untrusted jar uses FFM `SymbolLookup.libraryLookup()` symbol find | `NativeInvocationPermission("<libname>")` at symbol lookup | **Blocked by DirtyChai** |
 | Untrusted jar uses FFM `SymbolLookup.loaderLookup()` symbol find | `NativeInvocationPermission("<libname>")` at symbol lookup | **Blocked by DirtyChai** |
-| Untrusted jar uses `MemorySegment.reinterpret()` | Module `enableNativeAccess` flag (no SM permission check) | **Module-system gate only** |
+| Untrusted jar uses `MemorySegment.reinterpret()` | `NativeInvocationPermission("reinterpret")` in `AbstractMemorySegmentImpl.reinterpretInternal()` + module `enableNativeAccess` flag | **Blocked by DirtyChai** (when SM active) |
 | Untrusted jar uses FFM `Linker.downcallHandle()` | Module `enableNativeAccess` flag; symbol address sourced via `SymbolLookup` (gated by `NativeInvocationPermission`) | **Blocked by DirtyChai** |
 | Untrusted jar declares `native` methods binding to symbols in already-loaded library | `NativeInvocationPermission("<libname>")` at `ClassLoader.findNative()` binding time | **Blocked by DirtyChai** |
 | Confused-deputy: trusted class calls native on behalf of untrusted caller | Call-stack intersection (SM checks all `ProtectionDomain`s); only fails if trusted code uses unrestricted `doPrivileged` | **Protected by default — trusted code must avoid unrestricted `doPrivileged`** |
@@ -643,7 +643,8 @@ untrusted service processes).
 ## Implementation Plan: Native Code Isolation in DirtyChai
 
 The `NativeInvocationPermission` class and its integration into `ClassLoader.findNative()`,
-`SymbolLookup`, and `SystemLookup` are already implemented.  The following tasks remain for
+`SymbolLookup`, `SystemLookup`, and `AbstractMemorySegmentImpl` (`MemorySegment.reinterpret()`)
+are already implemented.  The following tasks remain for
 a complete, policy-auditable native isolation story.
 
 ### Task N-4 — Document `NativeInvocationPermission` in `RuntimePermission.java`'s Permission Table
