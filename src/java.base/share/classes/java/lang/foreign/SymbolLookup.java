@@ -260,19 +260,10 @@ public interface SymbolLookup {
             JavaLangAccess javaLangAccess = SharedSecrets.getJavaLangAccess();
             // note: ClassLoader::findNative supports a null loader
             NativeLibraries nativeLibraries = javaLangAccess.nativeLibrariesFor(loader);
-            Map.Entry<String, Long> libNameAddress = nativeLibraries.findLibraryNameAddress(name);
-            long addr = 0;
-            if (libNameAddress != null){
-                Long val = libNameAddress.getValue();
-                if (val != null) addr = val;
-            } 
-            if (addr == 0L){
-                return Optional.empty();
-            } else {
-                new NativeInvocationPermission(libNameAddress.getKey()).checkGuard(null);
-                return Optional.of(MemorySegment.ofAddress(addr)
+            long addr = nativeLibraries.find(name);
+            return addr == 0L ? Optional.empty():
+                Optional.of(MemorySegment.ofAddress(addr)
                                 .reinterpret(loaderArena, null)); // restricted
-            }
         };
     }
 
@@ -374,13 +365,9 @@ public interface SymbolLookup {
             Objects.requireNonNull(name);
             if (Utils.containsNullChars(name)) return Optional.empty();
             long addr = library.find(name);
-            if (addr == 0L){
-                return Optional.empty();
-            } else {
-                new NativeInvocationPermission(library.name()).checkGuard(null);
-                return Optional.of(MemorySegment.ofAddress(addr)
+            return addr == 0L ? Optional.empty():
+                Optional.of(MemorySegment.ofAddress(addr)
                                 .reinterpret(libArena, null));  // restricted
-            }
         };
     }
 }

@@ -37,7 +37,7 @@ public class NativeInvocationPermission extends BasicPermission<NativeInvocation
      * @param name the name of the native library. 
      */
     public NativeInvocationPermission(String name){
-        super(name, "invoke");
+        super(name);
     }
     
 }
