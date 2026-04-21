@@ -32,13 +32,25 @@ import java.security.BasicPermission;
  */
 public class NativeMemoryPermission extends BasicPermission<NativeMemoryPermission> {
     
+    private final String action;
+    
     /**
      * Creates a new NativeMemoryPermission
      * @param action either reinterpret or global.
      * @param name either MemorySegment or Arena
      */
     public NativeMemoryPermission(String name, String action){
-        super(name, action);
+        super(name);
+        this.action = action;
     }
     
+    /**
+     * Returns the canonical string representation of the action.
+     *
+     * @return the action.
+     */
+    @Override
+    public String getActions() {
+        return action;
+    }
 }
