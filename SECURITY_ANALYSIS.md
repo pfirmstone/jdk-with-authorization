@@ -389,9 +389,9 @@ See residual N-14.
 2. **Add targeted regression tests for residual-risk boundaries**
    - Deep-stack attack simulation beyond typical frame depth
    - Edge-case generated/invoke frame classification
-   - Reflection and MethodHandle paths through trusted native wrappers (N-12 test plan)
-   - Finalizer / Cleaner thread permission enforcement (N-12 test plan)
-   - Class-initialization stack-intersection enforcement (N-12 test plan)
+   - Reflection and MethodHandle paths through trusted native wrappers (N-8 test plan)
+   - Finalizer / Cleaner thread permission enforcement (N-9 test plan)
+   - Class-initialization stack-intersection enforcement (N-10 test plan)
 
 3. ~~**Correct stale Javadoc in `System.java` (source file)**~~  
    Resolved: `System.java` line 468 has been corrected by the human author to read "50 stack
@@ -409,7 +409,7 @@ See residual N-14.
 6. **Add optional security telemetry for denied installation attempts**
    Useful for attack detection and policy-tuning feedback loops.
 
-7. **Evaluate `ForeignMemoryPermission` guard for FFM operations (N-11 / §8)**  
+7. **Evaluate `ForeignMemoryPermission` guard for FFM operations (§8)**  
    Evaluate whether a new `ForeignMemoryPermission` (or similar guard integrated into `NativeInvocationPermission`) should be introduced to gate `MemorySegment.reinterpret()` calls and `Arena.global()` access. Until such a guard exists, policy must not open `jdk.foreign` to any code base that is not fully trusted, and any such grant must be documented with an explicit security rationale.
 
 8. **Evaluate `MethodHandles.Lookup.defineClass()` permission gate (N-15 / §7)**  

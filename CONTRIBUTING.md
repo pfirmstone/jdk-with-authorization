@@ -10,10 +10,10 @@ https://openjdk.org/legal/ai
 
 ## Overview
 
-This document provides guidance for AI assistants (Claude) working on the JDK with Authorization project. It documents the project structure, security model, coding standards, and best practices.
+This document provides guidance for AI assistants (Claude) working on the Dirty Chai project. It documents the project structure, security model, coding standards, and best practices.
 
-**Project:** JDK with Authorization  
-**Repository:** https://github.com/pfirmstone/jdk-with-authorization  
+**Project:** Dirty Chai  
+**Repository:** https://github.com/pfirmstone/DirtyChai  
 **Upstream:** https://github.com/openjdk/jdk  
 **Branch:** trunk
 
@@ -93,6 +93,12 @@ src/
 │ Application Code                            │
 └─────────────────┬───────────────────────────┘
                   │
+        ┌─────────▼──────────────────────┐
+        │ System.java                    │
+        │ ├─ setSecurityManager()        │
+        │ └─ getSecurityManager()        │
+        └─────────┬──────────────────────┘
+                  │
         ┌─────────▼──────────┐
         │ SecurityManager    │
         │ (CombinerSM or     │
@@ -101,7 +107,6 @@ src/
                   │
         ┌─────────▼──────────────────────┐
         │ AccessController               │
-        │ ├─ setSecurityManager()        │
         │ ├─ doPrivileged()              │
         │ └─ checkPermission()           │
         └─────────┬──────────────────────┘
@@ -132,7 +137,7 @@ The system implements **conditional validation** for SecurityManager installatio
 
 #### For Trusted SecurityManager Classes
 
-**Classes:** `SecurityManager`, `CombinerSecurityManager`
+**Classes:** `SecurityManager`, `CombinerSecurityManager`, `PolicyOnlySecurityManager`
 
 **Rationale:**
 - Loaded from bootstrap classloader (java.base module)
@@ -177,7 +182,7 @@ private static boolean trustedSMClass(SecurityManager sm){
     // Exact class matching (prevents subclass bypass)
     if (SecurityManager.class.equals(sm.getClass())) return true;
     if (CombinerSecurityManager.class.equals(sm.getClass())) return true;
-    return false;
+    return (PolicyOnlySecurityManager.class.equals(sm.getClass()));
 }
 ```
 
@@ -194,7 +199,7 @@ private static boolean trustedSMClass(SecurityManager sm){
 - Null caller results in immediate `SecurityException`
 
 **Layer 2: Stack Inspection**
-- `StackWalker` inspects call chain (limit: 10 frames)
+- `StackWalker` inspects call chain (limit: 50 frames)
 - Detects reflection API usage
 - Blocks generated code (Lambda, Proxy, accessors)
 - Fails immediately on suspicious frames
@@ -273,7 +278,7 @@ java
  * Sets the system-wide security manager.
  *
  * <p><b>Validation Strategy (Conditional):</b>
- * For trusted implementations (SecurityManager, CombinerSecurityManager):
+ * For trusted implementations (SecurityManager, CombinerSecurityManager, PolicyOnlySecurityManager):
  * Only null parameter validation is performed.
  * 
  * For custom implementations: Full defense-in-depth validation:
@@ -350,7 +355,7 @@ java
  * This method implements a conditional validation strategy that balances 
  * security with usability:
  * 
- * <h3>For Trusted SecurityManager Classes (SecurityManager, CombinerSecurityManager):</h3>
+ * <h3>For Trusted SecurityManager Classes (SecurityManager, CombinerSecurityManager, PolicyOnlySecurityManager):</h3>
  * <ul>
  *   <li><b>Rationale:</b> These classes are part of the trusted codebase 
  *     (java.base module). Their permissions are controlled through the policy file, 
@@ -415,6 +420,7 @@ java
 private static boolean trustedSMClass(SecurityManager sm){
     if (SecurityManager.class.equals(sm.getClass())) return true;
     if (CombinerSecurityManager.class.equals(sm.getClass())) return true;
+    if (PolicyOnlySecurityManager.class.equals(sm.getClass())) return true;
     // NEW: Only add after thorough security review!
     // if (NewTrustedSM.class.equals(sm.getClass())) return true;
     return false;
@@ -566,7 +572,7 @@ private static boolean trustedSMClass(SecurityManager sm) {
     // Use exact class matching (prevents subclass bypass)
     if (SecurityManager.class.equals(sm.getClass())) return true;
     if (CombinerSecurityManager.class.equals(sm.getClass())) return true;
-    return false;
+    return (PolicyOnlySecurityManager.class.equals(sm.getClass()));
 }
 
 if (!trustedSMClass(sm)) {
@@ -693,7 +699,7 @@ java -Djava.security.debug=access,domain,provider -jar app.jar
 
 ### StackWalker Overhead
 
-- Inspects up to 10 frames (not entire stack)
+- Inspects up to 50 frames (not entire stack)
 - Used only for custom SecurityManager implementations
 - Trusted implementations skip entirely
 - Negligible impact on runtime performance
@@ -772,11 +778,12 @@ Modifying setSecurityManager()?
 
 | Version | Date | Changes |
 |---------|------|---------|
+| 1.2 | 2026-04-21 | Updated project name/URL to DirtyChai; fixed architecture diagram (System.java layer); corrected stack depth 10→50 frames; added PolicyOnlySecurityManager to trusted whitelist |
 | 1.1 | 2026-04-09 | Added conditional validation strategy documentation |
 | 1.0 | 2026-04-09 | Initial Claude development guide |
 
 ---
 
-**Last Updated:** April 9, 2026  
+**Last Updated:** April 21, 2026  
 **Maintained By:** Project Security Team  
 **Status:** Active

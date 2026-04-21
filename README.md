@@ -207,7 +207,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for contribution guidelines. Issues are t
 | Replace default policy provider with `ConcurrentPolicyFile` from JGDMS | ✔ Done |
 | Reduce the size of the trusted platform | ✔ Done |
 | Add PolicyWriter tool from JGDMS for least-privilege deployment | ✔ Done |
-| `System.setSecurityManager(null)` throws `NullPointerException`, preventing privileged-context injection attacks from disabling the SecurityManager | ✔ Done |
+| `System.setSecurityManager(null)` throws `IllegalArgumentException`, preventing privileged-context injection attacks from disabling the SecurityManager | ✔ Done |
 | Add strict RFC 3986, RFC 6874, and RFC 5952 URI support; remove DNS lookups from `CodeSource` | In Progress |
 | Add support for Virtual threads when SecurityManager is enabled | ✔ Done |
 | Make `AccessControlContext` immutable; add static builder methods for reuse; update VM call sites | ✔ Done |

@@ -265,8 +265,7 @@ It is checked at the entry to standard Java serialization and deserialization.
 **What it does:**
 - Forces policy authors to explicitly whitelist every class that may be
   serialized or deserialized via `ObjectInputStream` / `ObjectOutputStream`.
-  After the planned fix described in the Background section below, this covers
-  all `Serializable` classes — not just those with a custom `readObject`.
+  This covers all `Serializable` classes — not just those with a custom `readObject`.
 - Prevents gadget-chain attacks by default: a class not in the policy cannot be
   deserialized even if it appears in the stream.
 - Works as a policy-file declaration, making the serialization surface auditable
@@ -380,7 +379,7 @@ OS-level process isolation:
 |---|---|---|
 | Class whitelist | `SerialObjectPermission` | DirtyChai |
 | Deserialization safety | `@AtomicSerial` constructors | JGDMS |
-| Thread creation control | `createPlatformThread` / `createVirtualThread` | DirtyChai (proposed) |
+| Thread creation control | `createPlatformThread` / `createVirtualThread` | DirtyChai (implemented) |
 | Permission enforcement | `SecurityManager` + `ConcurrentPolicyFile` | DirtyChai |
 | Blast-radius containment | Isolated `ForkJoinPool` + deadline | JGDMS service layer |
 | Memory isolation | Separate OS process | OS / GraalVM Espresso / container |
@@ -1400,7 +1399,7 @@ subject to the full DirtyChai permission model:
 - `NativeInvocationPermission` blocks unauthorized native library loading.
 - `LoadClassPermission` gates class loader creation.
 - `ConcurrentPolicyFile` evaluates grants without DNS lookups.
-- `createVirtualThread` / `createPlatformThread` (proposed) limit thread creation.
+- `createVirtualThread` / `createPlatformThread` (implemented) limit thread creation.
 
 The combination of an OS process boundary **and** a DirtyChai SecurityManager means
 that even if an attacker successfully exploits a deserialization bug or logic flaw
@@ -1604,7 +1603,7 @@ against the policy loaded by `ConcurrentPolicyFile`.
 | Deserialization gadget chain via `ObjectInputStream` | `SerialObjectPermission` — class must be whitelisted |
 | Arbitrary native library loading | `NativeInvocationPermission` + `RuntimePermission("loadLibrary.*")` |
 | Unauthorized class loader creation | `LoadClassPermission` |
-| Thread bomb DoS | `createPlatformThread` / `createVirtualThread` (proposed) |
+| Thread bomb DoS | `createPlatformThread` / `createVirtualThread` (implemented) |
 | `System.exit()` | `RuntimePermission("exitVM.*")` |
 | Reflective access to internals | Module encapsulation + SecurityManager |
 | DNS / LDAP lookups (Log4j-style) | `SocketPermission` must be granted |
@@ -2074,36 +2073,36 @@ DirtyChai's `SerialObjectPermission` is checked during `ObjectInputStream`
 deserialisation.  The permission name is the fully-qualified class name of the
 class being deserialised.
 
-**Planned scope (full coverage):** The check is being extended to fire for
-every class resolved by `ObjectInputStream`, not only those that have a custom
-`readObject` method.  When this fix lands, holding `SerialObjectPermission` for
-a class will be required before that class can be reconstructed from any Java
-serialization stream, regardless of whether it uses default or custom
+**Implemented scope (full coverage):** The check fires for every class resolved by
+`ObjectInputStream`, not only those that have a custom `readObject` method.  Holding
+`SerialObjectPermission` for a class is required before that class can be reconstructed
+from any Java serialization stream, regardless of whether it uses default or custom
 serialization.
 
-The current implementation fires in `SerialCallbackContext`, which is invoked
-immediately before a class's custom `readObject`/`readFields` method:
+The check is placed in `ObjectInputStream.readOrdinaryObject()`, immediately after the
+class descriptor is resolved and before any object construction begins:
 
 ```java
-// SerialCallbackContext.java (DirtyChai modification — current)
-SerialCallbackContext(Object obj, ObjectStreamClass desc) {
-    this(obj, desc, check(getGuard(desc.getName())), Thread.currentThread());
-    //                    ^^^^^^^^^^^^^^^^^^^^^^^^^^
-    //                    SerialObjectPermission(className).checkGuard(null)
-    //                    fires here, before readObject is called
+// ObjectInputStream.java (DirtyChai modification — current)
+private Object readOrdinaryObject(boolean unshared) throws IOException {
+    ...
+    new SerialObjectPermission(cl.getName()).checkGuard(null);
+    //  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    //  SerialObjectPermission(className).checkGuard(null)
+    //  fires here, before any readObject or default deserialization
+    ...
 }
 ```
 
-After the planned fix, the check will additionally fire at the point where
-`ObjectInputStream` resolves each class descriptor, covering classes that rely
-on default serialization and have no custom `readObject`.
+This covers all `Serializable` classes — those relying on default serialization and those
+with a custom `readObject` — because the check runs before any deserialization path
+diverges.
 
 ### Activation Classes That Require SerialObjectPermission
 
 The following classes are part of the JGDMS activation serialisation path.
 All of them have custom `readObject` implementations and therefore require
-`SerialObjectPermission` under both the current and the planned
-implementations:
+`SerialObjectPermission` under the current implementation:
 
 | Class | Why it needs SerialObjectPermission |
 |-------|-------------------------------------|
@@ -2114,9 +2113,9 @@ implementations:
 | `java.rmi.activation.ActivationGroupID` | Custom `readObject` validates UID and system ref |
 | `java.rmi.MarshalledObject` | Custom `readObject` reads serialised byte array |
 
-Once the full-coverage fix lands, all other `Serializable` classes that cross a
-standard `ObjectInputStream` path will also need explicit grants — including
-classes that previously relied on default serialization.  Use
+With full-coverage enforcement now in place, all other `Serializable` classes that cross a
+standard `ObjectInputStream` path also need explicit grants — including classes that
+rely on default serialization.  Use
 `SecurityPolicyWriter` to scan service JARs and generate the required grants.
 
 ### Where SerialObjectPermission Must Be Granted
