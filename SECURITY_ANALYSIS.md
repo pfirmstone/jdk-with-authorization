@@ -108,6 +108,13 @@ Dirty Chai runtime `Subject` behavior is single-path because `allowSecurityManag
 
 Security impact in Dirty Chai runtime: legacy authorization checks remain consistently active for subject propagation paths.
 
+**Principal identity model and cross-realm risk:**
+
+DirtyChai does not currently define a canonical principal identity model beyond what the JDK provides (`Principal.getName()`). Policy grants keyed on principal class and name are compared by exact type and name string. This creates two residual risks:
+
+1. **Cross-realm name collision** — two `Subject` instances from different authentication realms (e.g., `user@REALM-A` and `user@REALM-B`) share the same principal name if realm is not encoded in the `getName()` return value or if separate `Principal` subtypes are not used. A policy grant matching by name alone would apply to both subjects, enabling privilege escalation by a principal from an unintended realm. Administrators must use fully-qualified `Principal` types (e.g., `KerberosPrincipal` where the realm is embedded in the name) and avoid name-only matching across authentication domains.
+2. **Trusted-service principal injection** — a trusted service that calls `subject.getPrincipals().add(...)` during or after authentication may unintentionally match an existing policy grant. If untrusted code can observe or trigger the principal set of a shared `Subject`, it can exploit the expanded grant. `Subject.getPrincipals()` returns the live mutable set; callers that modify it after the Subject is in use are subject to this risk. See residual N-12.
+
 ## Security Model (Current State)
 
 ### 1) SecurityManager Installation Gate (`System.setSecurityManager`)
@@ -136,6 +143,12 @@ Custom SecurityManager installation path blocks:
 - Non-whitelisted `java.lang.invoke` call paths
 - Common generated class patterns (`$$Lambda$`, generated accessor classes, proxy indicators)
 
+**Additional attack surfaces not directly blocked by `validateCallerStackWithStackWalker()` (documented residuals):**
+
+- `MethodHandles.Lookup.in(Class<?> requestedLookupClass)` — a `Lookup` object obtained by trusted code and passed to untrusted code can be used to perform private/package-private field and method access across trust-domain boundaries. The stack walk blocks generation of a new `Lookup` via reflection, but does not revoke an already-transferred `Lookup` object's capabilities. This is an object-capability transfer risk rather than a stack-spoofing risk.
+- `Instrumentation.getAllLoadedClasses()` / `Instrumentation.redefineClasses()` — reachable only when a `-javaagent` is active at startup. However, runtime dynamic agent injection via `VirtualMachine.attach()` (JVMTI attach API) is a separate threat that bypasses the startup-time agent restriction entirely and can inject code after the SecurityManager is installed. See residual N-11.
+- JVM startup flags `--add-opens`, `--add-exports`, `--add-modules` — these bypass module encapsulation before the SecurityManager is installed and cannot be revoked at runtime. They must be treated as part of the trusted deployment perimeter, not as runtime security controls subject to SecurityManager enforcement.
+
 ### 3) Policy Enforcement / Fail-Secure Behavior
 
 `ConcurrentPolicyFile` and related grant handling preserve fail-secure design:
@@ -151,6 +164,16 @@ URI validation is consistently RFC-3986-oriented (via URI parsing paths), reduci
 ### 5) Deserialization Permission Boundary
 
 `SerialObjectPermission` now executes at `ObjectInputStream.readOrdinaryObject()` before `desc.newInstance()`, which is the right boundary for ordinary object instantiation control.
+
+**Activation-group deserialization scope (undocumented boundary):**
+
+The `SerialObjectPermission` enforcement described above applies to the calling JVM. It is not currently documented whether a group JVM (in an RMI activation scenario) re-enforces this permission when it reconstructs activatable objects from `ActivationDesc` descriptors passed by the activation daemon. Three specific gaps exist:
+
+- **Descriptor integrity** — DirtyChai does not document whether activation-daemon-stored `ActivationDesc` objects are integrity-protected (e.g., with a signature or HMAC). A compromised or malicious activation daemon could inject arbitrary descriptors, causing the group JVM to deserialize objects that would have been blocked by `SerialObjectPermission` in the originating JVM.
+- **Policy authority on re-activation** — it is undefined whether the group JVM applies its own policy file or the registering administrator's policy when evaluating `SerialObjectPermission` during activation reconstruction. If the group's policy is weaker, the permission check may be ineffective.
+- **`AccessControlContext` freshness on restart** — when a group JVM crashes and restarts, it is unspecified whether it receives a fresh `AccessControlContext` or inherits state from the previous run. Stale context could carry permissions that were valid before a policy change, enabling escalation after a policy tightening event.
+
+See residual N-13.
 
 ### 6) RuntimePermission Thread-Creation Controls
 
@@ -217,6 +240,53 @@ The three-layer defense architecture works as follows:
 - **Layer 3 (Policy):** Admin-controlled policy file governs what code gets granted which permissions
 
 This stratified approach ensures that even if code obtains a ClassLoader reference, it cannot load arbitrary code without explicit policy authorization.
+
+#### Delegation Attack Residuals
+
+The three-layer defense model assumes binary loader trust (a loader is either trusted or untrusted). Several residual gaps exist at the boundaries:
+
+- **Parent-delegation bypass** — a custom `ClassLoader` that overrides `loadClass(String)` and refuses parent delegation can introduce class name collisions (shadow classes). `RuntimePermission("extendClassLoader")` partially mitigates this by requiring explicit policy authorization to subclass `ClassLoader`. However, the exemption list (see above) means several built-in loader types can still exhibit delegation variation without triggering the extension check.
+- **Resource lookup** — `ClassLoader.findResource()` and `getResource()` are not subject to `LoadClassPermission`. A hostile loader that passes the `extendClassLoader` gate can intercept and redirect resource lookups (property files, service descriptors, configuration files) without triggering any DirtyChai permission check.
+- **Partial trust** — code that holds both `createClassLoader` and `LoadClassPermission` with selective delegation is not modeled by the three-layer architecture. The current design does not define the security properties of partially-trusted loaders that legitimately create ClassLoader instances but apply non-standard delegation policies.
+- **Dynamic class definition via `MethodHandles.Lookup.defineClass()`** — classes defined through `MethodHandles.Lookup.defineClass()` bypass the `ClassLoader.loadClass()` path entirely and therefore bypass the `LoadClassPermission` gate. DirtyChai does not currently document whether a separate permission check guards `Lookup.defineClass()`. If unguarded, untrusted code with access to a sufficiently privileged `Lookup` object can inject new classes into an existing module without `LoadClassPermission`. See residual N-15 for the broader module interaction and the medium-priority recommendation below.
+
+#### Module System and LoadClassPermission Interaction
+
+`LoadClassPermission` and module-system encapsulation are independent, non-redundant gates operating at different layers:
+
+- **Module enforcement layer** — the JVM enforces module access control at the bytecode level (reads, exports, opens). This applies to already-loaded classes and does not involve the SecurityManager.
+- **SecurityManager enforcement layer** — `LoadClassPermission` is checked at class-load time by `SecureClassLoader`. It applies to classes being loaded, not to classes already present in the module layer.
+
+These layers are not redundant. Untrusted code that is granted module `reads` access via an `--add-opens` or `--add-exports` JVM flag bypasses `LoadClassPermission` because the target class is already loaded; the SecurityManager check is never triggered for pre-loaded classes.
+
+Additional module-specific risks:
+
+- **Export cycle bridging** — if trusted module A exports a package to untrusted module B, and A's exported package contains a class with internal access to module C (a third module, not exported to B), then B gains indirect access to C's internals through A's public API surface. This indirect bridge is not blocked by either `LoadClassPermission` or module-system encapsulation as long as A's exported class remains reachable.
+- **Module topology disclosure** — `Module.getDescriptor()`, `ModuleLayer.modules()`, and related reflection APIs are available to untrusted code without a permission check. These calls reveal the full module graph (names, packages, dependencies). DirtyChai currently accepts this as an information-disclosure risk; administrators should be aware that module topology is observable.
+- **Hidden module pre-population** — the `--add-modules` JVM flag can force-load hidden modules before the SecurityManager is installed. Code in those modules is then available as a trusted bridge for untrusted access at runtime. This flag must be treated as part of the trusted deployment perimeter.
+
+See residual N-15 and the medium-priority recommendation for a `LoadModulePermission` gate evaluation.
+
+### 8) Foreign Function & Memory API (FFM) Trust Boundaries
+
+DirtyChai currently treats FFM access as binary: the `jdk.foreign` module is either opened to a code base or it is not. Granular per-operation gating does not yet exist within the SecurityManager framework. Several specific risks exist within this coarse model:
+
+- **`MemorySegment.reinterpret()`** — any code that holds a reference to a `MemorySegment` can call `reinterpret()` to obtain a segment with an arbitrary layout and lifetime, bypassing the original segment's bounds and lifetime contract. Once trusted code constructs a segment and passes it to untrusted code (e.g., via a method argument or a shared data structure), module-system gating no longer protects the segment's layout or memory region. This is an object-capability transfer risk that is not blocked by any current DirtyChai permission.
+- **`Arena.global()`** — the global arena is accessible without any SecurityManager permission check. Untrusted code can use it to hold references to native memory that are never released, creating memory-retention abuse (a form of resource-exhaustion / DoS). Unlike `Arena.ofConfined()` or `Arena.ofShared()`, the global arena has no lifecycle that can be closed or revoked.
+- **Binary module-open grants** — opening `jdk.foreign` to untrusted code implicitly authorizes all FFM operations including `reinterpret()` and `Arena.global()` access. These grants must be treated as high-sensitivity policy decisions, equivalent in impact to granting `AllPermission` over native memory.
+
+See the FFM bullet under the Conditional / policy-dependent section and the medium-priority recommendation for a `ForeignMemoryPermission` guard evaluation.
+
+### 9) Network Permission Granularity
+
+DirtyChai enforces network access through standard `SocketPermission` grants and the DNS pre-fetch hardening described at the end of this document. However, the current policy model has structural coarseness risks:
+
+- **Wildcard `connect` grants** — a `SocketPermission("*", "connect")` grant authorizes connections to any host. DirtyChai policy guidance recommends avoiding wildcards entirely. Hardened policy should specify separate grants at minimum for loopback (`localhost`), LAN/subnet (e.g., `192.168.0.0/16`), multicast address ranges (e.g., `224.0.0.0/4`), and external addresses.
+- **Unconnected `DatagramSocket` discovery** — an unconnected `DatagramSocket` can be used by untrusted code to perform local-network peer discovery (UDP broadcast/multicast enumeration). This requires `SocketPermission` with `accept` or `connect` to the relevant address range, but policy grants that are intended only for application traffic may inadvertently authorize discovery. This is not blocked by the module system alone and requires explicit policy governance.
+- **`MulticastSocket.getInterface()` topology disclosure** — calling `getInterface()` or `getNetworkInterface()` on a `MulticastSocket` leaks local network interface topology (interface names, addresses, subnet membership). Policy should explicitly separate multicast permissions from unicast permissions to limit information disclosure to code that legitimately requires multicast capability.
+
+See residual N-14.
+
 ---
 
 ## Threat Review (Current)
@@ -234,6 +304,9 @@ This stratified approach ensures that even if code obtains a ClassLoader referen
 - Trusted SecurityManager installation bypasses deep stack checks by design; safety depends on policy and runtime permission model.
 - Mis-scoped policy grants can still over-authorize trusted code.
 - Over-broad grants of `createVirtualThread` / `createPlatformThread` can expand DoS blast radius.
+- Opening `jdk.foreign` to untrusted code implicitly authorizes `MemorySegment.reinterpret()` and `Arena.global()` abuse; such module-open grants must be treated as high-sensitivity policy decisions.
+- Principal name-keyed policy grants are vulnerable to cross-realm name collision; administrators must use fully-qualified principal types in grants (e.g., `KerberosPrincipal` with realm embedded) and avoid name-only matching across authentication domains.
+- Module export grants to untrusted code may introduce indirect access paths via trusted code's public APIs; every export decision must be reviewed as a security-relevant policy choice.
 
 ---
 
@@ -289,6 +362,21 @@ This stratified approach ensures that even if code obtains a ClassLoader referen
    See `PROCESS_ISOLATION.md`
    ("Analysis: Constant-Pool and Class-Initialization Security").
 
+9. **Runtime instrumentation attach (N-11)**  
+   `VirtualMachine.attach()` (JVMTI attach API) can inject a Java agent into a running JVM at any time after startup. DirtyChai does not currently document that hardened deployments must launch with `-XX:+DisableAttachMechanism`. This is an operational configuration risk, not a code defect: if attach is not disabled, an attacker with OS-level access to the JVM process can inject arbitrary bytecode even after the SecurityManager is installed. See the high-priority recommendation below.
+
+10. **Principal scope and isolation (N-12)**  
+    DirtyChai does not currently define whether principals are globally unique or scoped to an authentication domain. Policy grants keyed on principal class and name are vulnerable to cross-realm name collision (two subjects from different realms sharing the same `getName()` value) and to trusted-service principal injection (a trusted service mutating a shared `Subject`'s principal set after policy evaluation). Recommendation: define a canonical principal identity model; consider adding a permission check on `Subject.getPrincipals()` mutating calls when the subject is in use by untrusted code.
+
+11. **Activation deserialization authority (N-13)**  
+    The `SerialObjectPermission` check documented in §5 applies to the calling JVM at `ObjectInputStream.readOrdinaryObject()`. It is not documented whether this check is re-enforced inside a group JVM at activation reconstruction time, nor whether the group's own policy file or the registering administrator's policy takes precedence. Crash-recovery `AccessControlContext` freshness is also undefined. A compromised activation daemon could inject arbitrary `ActivationDesc` descriptors, bypassing the permission boundary documented here.
+
+12. **Coarse network permission granularity (N-14)**  
+    Current `SocketPermission` grants do not distinguish multicast from unicast, local loopback from LAN ranges, or connected sockets from unconnected discovery sockets. Over-broad grants (e.g., wildcard `connect`) expose local network topology and enable peer discovery attacks via unconnected `DatagramSocket`. DirtyChai documentation does not yet provide guidance on the recommended grant structure for hardened deployments. See §9 and the medium-priority recommendation.
+
+13. **Module export cycles and hidden module visibility (N-15)**  
+    DirtyChai does not define the interaction between module-system access control and `LoadClassPermission`. These are independent, non-redundant gates: `--add-opens`/`--add-exports` JVM flags bypass `LoadClassPermission` for already-loaded classes. Export cycles can create indirect access bridges to non-exported module internals. `--add-modules` pre-populates the module layer before the SecurityManager is installed. `MethodHandles.Lookup.defineClass()` bypasses `LoadClassPermission` entirely for dynamically defined classes. A `LoadModulePermission` gate for runtime `Module.addOpens()`/`Module.addExports()` reflective calls may be warranted. See §7 (Module System and LoadClassPermission Interaction) and the medium-priority recommendations.
+
 ---
 
 ## Recommendations
@@ -310,13 +398,28 @@ This stratified approach ensures that even if code obtains a ClassLoader referen
    frames", consistent with `limit(50)` at line 2923 and "up to 50 frames" at line 424.
    All stack-scan-depth references are now consistent across source and documentation.
 
+4. **Document hardened-deployment JVM flag requirements (N-11)**  
+   Hardened deployments MUST launch with `-XX:+DisableAttachMechanism` to prevent runtime agent injection via `VirtualMachine.attach()`. Deployments MUST NOT use `--add-opens`, `--add-exports`, or `--add-modules` JVM flags unless each flag has been explicitly reviewed as a security-relevant policy decision. These flags bypass module encapsulation before the SecurityManager is installed and cannot be revoked at runtime; they must be treated as part of the trusted deployment perimeter.
+
 ### Medium priority
 
-4. **Consider making stack scan depth configurable (safe defaults retained)**
+5. **Consider making stack scan depth configurable (safe defaults retained)**
    This would support hardening in high-risk deployments while preserving compatibility defaults.
 
-5. **Add optional security telemetry for denied installation attempts**
+6. **Add optional security telemetry for denied installation attempts**
    Useful for attack detection and policy-tuning feedback loops.
+
+7. **Evaluate `ForeignMemoryPermission` guard for FFM operations (N-11 / §8)**  
+   Evaluate whether a new `ForeignMemoryPermission` (or similar guard integrated into `NativeInvocationPermission`) should be introduced to gate `MemorySegment.reinterpret()` calls and `Arena.global()` access. Until such a guard exists, policy must not open `jdk.foreign` to any code base that is not fully trusted, and any such grant must be documented with an explicit security rationale.
+
+8. **Evaluate `MethodHandles.Lookup.defineClass()` permission gate (N-15 / §7)**  
+   `MethodHandles.Lookup.defineClass()` and related dynamic class-definition APIs bypass `LoadClassPermission` entirely. Evaluate whether an extension of `LoadClassPermission` or a new `DefineClassPermission` is warranted to gate dynamic class injection into existing modules. Until such a gate exists, access to privileged `Lookup` objects must be treated as equivalent to `LoadClassPermission` for the target module.
+
+9. **Document recommended `SocketPermission` policy structure for hardened deployments (N-14 / §9)**  
+   DirtyChai documentation should provide a reference policy template that separates loopback, LAN, multicast, and external address grants rather than using wildcard `connect` grants. The template should also restrict `DatagramSocket`-based discovery and separate multicast permissions from unicast permissions to reduce topology disclosure risk.
+
+10. **Evaluate `LoadModulePermission` gate for runtime module mutation (N-15 / §7)**  
+    Evaluate whether dynamic `Module.addOpens()` and `Module.addExports()` calls via the `java.lang.reflect` module API require a dedicated DirtyChai permission gate. Until such a gate exists, runtime module mutation must be restricted to bootstrap-loaded trusted code, and all production deployments must review every `--add-opens`/`--add-exports`/`--add-modules` JVM flag as a security-relevant policy decision.
 
 ---
 
@@ -361,6 +464,13 @@ The main remaining risks are **operational** (policy configuration and whitelist
 - `src/java.base/share/classes/au/zeus/jdk/net/Uri.java` — URI validation behavior used in CodeSource/policy matching rationale
 - Issue #85 (repository issue tracker) — remediation baseline for hardened exception and validation handling
 - OpenJDK 21 reference (`jdk-21+35`): `java/lang/System.java`, `java/security/AccessController.java`, `java/security/AccessControlContext.java`, `javax/security/auth/Subject.java`, `java/lang/ThreadBuilders.java`, `java/lang/Thread.java`, `java/util/concurrent/Executors.java`, `java/security/SecureClassLoader.java`, `java/lang/Module.java`, `java/io/ObjectInputStream.java`
+- `java.lang.foreign.MemorySegment` / `java.lang.foreign.Arena` — FFM capability transfer; `reinterpret()` and `Arena.global()` object-capability risks documented in §8
+- `java.lang.instrument.Instrumentation` — agent attachment threat surface; `getAllLoadedClasses()` / `redefineClasses()` only reachable with an active `-javaagent`, but see N-11 for the runtime-attach path
+- `com.sun.tools.attach.VirtualMachine` — runtime JVMTI attach threat; can inject agents after SecurityManager is installed unless `-XX:+DisableAttachMechanism` is set (N-11)
+- `javax.security.auth.Subject.getPrincipals()` — principal mutation boundary; live mutable set; cross-realm collision and injection risks documented in §E and N-12
+- `java.lang.invoke.MethodHandles.Lookup.defineClass()` — dynamic class definition gate; bypasses `LoadClassPermission`; residual documented in §7 (Delegation Attack Residuals) and N-15
+- `java.net.DatagramSocket` / `java.net.MulticastSocket` — network isolation surface; unconnected discovery and topology-disclosure risks documented in §9 and N-14
+- `java.lang.Module.addOpens()` / `java.lang.Module.addExports()` — runtime module mutation gate; interaction with `LoadClassPermission` documented in §7 (Module System and LoadClassPermission Interaction) and N-15
 
 ---
 
