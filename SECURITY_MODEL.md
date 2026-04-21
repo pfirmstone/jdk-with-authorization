@@ -303,4 +303,4 @@ This section mirrors the thread-creation analysis for adjacent APIs that define 
 - `STACK_VALIDATION_ANALYSIS.md` (stack-validation trade-offs)
 - `VULNERABILITIES_ADDRESSED.md` (resolved issues)
 - `SECURITY.md` (security policy and reporting)
-- `PROCESS_ISOLATION.md` (reflection/MethodHandle N-8, finalizer/Cleaner N-9, class-init N-10, consolidated gaps N-11, test plan N-12)
+- `PROCESS_ISOLATION.md` (reflection/MethodHandle N-8, finalizer/Cleaner N-9, class-init N-10, consolidated lifecycle analysis with attach gating N-11, test plan N-12)

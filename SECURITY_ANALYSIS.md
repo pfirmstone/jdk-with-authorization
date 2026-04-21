@@ -148,7 +148,7 @@ Custom SecurityManager installation path blocks:
 **Additional attack surfaces not directly blocked by `validateCallerStackWithStackWalker()` (documented residuals):**
 
 - `MethodHandles.Lookup.in(Class<?> requestedLookupClass)` — a `Lookup` object obtained by trusted code and passed to untrusted code can be used to perform private/package-private field and method access across trust-domain boundaries. The stack walk blocks generation of a new `Lookup` via reflection, but does not revoke an already-transferred `Lookup` object's capabilities. This is an object-capability transfer risk rather than a stack-spoofing risk.
-- `Instrumentation.getAllLoadedClasses()` / `Instrumentation.redefineClasses()` — reachable only when a `-javaagent` is active at startup. However, runtime dynamic agent injection via `VirtualMachine.attach()` (JVMTI attach API) is a separate threat that bypasses the startup-time agent restriction entirely and can inject code after the SecurityManager is installed. See residual N-11.
+- `Instrumentation.getAllLoadedClasses()` / `Instrumentation.redefineClasses()` — reachable only when a `-javaagent` is active at startup. Runtime dynamic agent injection via `VirtualMachine.attach()` is gated by `AttachPermission` when the `SecurityManager` is active; hardened deployments should deny `AttachPermission("attachVirtualMachine")` to untrusted code and may also set `-XX:+DisableAttachMechanism` as defense in depth. See N-11.
 - JVM startup flags `--add-opens`, `--add-exports`, `--add-modules` — these bypass module encapsulation before the SecurityManager is installed and cannot be revoked at runtime. They must be treated as part of the trusted deployment perimeter, not as runtime security controls subject to SecurityManager enforcement.
 
 ### 3) Policy Enforcement / Fail-Secure Behavior
@@ -365,7 +365,7 @@ See residual N-14.
    ("Analysis: Constant-Pool and Class-Initialization Security").
 
 9. **Runtime instrumentation attach (N-11)**  
-   `VirtualMachine.attach()` (JVMTI attach API) can inject a Java agent into a running JVM at any time after startup. DirtyChai does not currently document that hardened deployments must launch with `-XX:+DisableAttachMechanism`. This is an operational configuration risk, not a code defect: if attach is not disabled, an attacker with OS-level access to the JVM process can inject arbitrary bytecode even after the SecurityManager is installed. See the high-priority recommendation below.
+   `VirtualMachine.attach()` is policy-gated when the `SecurityManager` is active. The attach path enforces `AttachPermission("attachVirtualMachine")`, and attach-provider construction enforces `AttachPermission("createAttachProvider")`, so runtime attach is not an ungated surface inside DirtyChai's Java security model. Residual risk remains if policy over-grants these permissions, if the `SecurityManager` is inactive, or for hostile OS-level control of the JVM process. `-XX:+DisableAttachMechanism` remains recommended as an optional VM-level defense-in-depth layer.
 
 10. **Principal scope and isolation (N-12)**  
     DirtyChai does not currently define whether principals are globally unique or scoped to an authentication domain. Policy grants keyed on principal class and name are vulnerable to cross-realm name collision (two subjects from different realms sharing the same `getName()` value) and to trusted-service principal injection (a trusted service mutating a shared `Subject`'s principal set after policy evaluation). Recommendation: define a canonical principal identity model; consider adding a permission check on `Subject.getPrincipals()` mutating calls when the subject is in use by untrusted code.
@@ -400,8 +400,8 @@ See residual N-14.
    frames", consistent with `limit(50)` at line 2923 and "up to 50 frames" at line 424.
    All stack-scan-depth references are now consistent across source and documentation.
 
-4. **Document hardened-deployment JVM flag requirements (N-11)**  
-   Hardened deployments MUST launch with `-XX:+DisableAttachMechanism` to prevent runtime agent injection via `VirtualMachine.attach()`. Deployments MUST NOT use `--add-opens`, `--add-exports`, or `--add-modules` JVM flags unless each flag has been explicitly reviewed as a security-relevant policy decision. These flags bypass module encapsulation before the SecurityManager is installed and cannot be revoked at runtime; they must be treated as part of the trusted deployment perimeter.
+4. **Document hardened-deployment attach controls and JVM flag requirements (N-11)**  
+   Hardened deployments MUST deny `AttachPermission("attachVirtualMachine")` (and, where appropriate, `AttachPermission("createAttachProvider")`) to untrusted code. Deployments SHOULD also launch with `-XX:+DisableAttachMechanism` as VM-level defense in depth. Deployments MUST NOT use `--add-opens`, `--add-exports`, or `--add-modules` JVM flags unless each flag has been explicitly reviewed as a security-relevant policy decision. These flags bypass module encapsulation before the SecurityManager is installed and cannot be revoked at runtime; they must be treated as part of the trusted deployment perimeter.
 
 ### Medium priority
 
@@ -469,7 +469,7 @@ The main remaining risks are **operational** (policy configuration and whitelist
 - OpenJDK 21 reference (`jdk-21+35`): `java/lang/System.java`, `java/security/AccessController.java`, `java/security/AccessControlContext.java`, `javax/security/auth/Subject.java`, `java/lang/ThreadBuilders.java`, `java/lang/Thread.java`, `java/util/concurrent/Executors.java`, `java/security/SecureClassLoader.java`, `java/lang/Module.java`, `java/io/ObjectInputStream.java`
 - `java.lang.foreign.MemorySegment` / `java.lang.foreign.Arena` — FFM capability transfer; `reinterpret()` and `Arena.global()` object-capability risks documented in §8
 - `java.lang.instrument.Instrumentation` — agent attachment threat surface; `getAllLoadedClasses()` / `redefineClasses()` only reachable with an active `-javaagent`, but see N-11 for the runtime-attach path
-- `com.sun.tools.attach.VirtualMachine` — runtime JVMTI attach threat; can inject agents after SecurityManager is installed unless `-XX:+DisableAttachMechanism` is set (N-11)
+- `com.sun.tools.attach.VirtualMachine`, `com.sun.tools.attach.AttachPermission`, `com.sun.tools.attach.spi.AttachProvider`, `sun.tools.attach.HotSpotAttachProvider` — runtime attach path and enforced permission gates (`attachVirtualMachine`, `createAttachProvider`) discussed in N-11
 - `javax.security.auth.Subject.getPrincipals()` — principal mutation boundary; live mutable set; cross-realm collision and injection risks documented in §E and N-12
 - `java.lang.invoke.MethodHandles.Lookup.defineClass()` — dynamic class definition gate; bypasses `LoadClassPermission`; residual documented in §7 (Delegation Attack Residuals) and N-15
 - `java.net.DatagramSocket` / `java.net.MulticastSocket` — network isolation surface; unconnected discovery and topology-disclosure risks documented in §9 and N-14

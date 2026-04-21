@@ -350,6 +350,9 @@ java -javaagent:attacker.jar  // Agent runs with full JVM access
 - ✅ `RuntimePermission("createClassLoader")` gates agent loading
 - ✅ Agent must be loaded by authenticated, authorized code
 - ✅ Policy restricts which agents can be loaded
+- ✅ Runtime attach is policy-gated by `AttachPermission("attachVirtualMachine")`
+  and attach-provider creation by `AttachPermission("createAttachProvider")`
+- ✅ `-XX:+DisableAttachMechanism` can be enabled as VM-level defense in depth
 
 ### 14. **Exception Swallowing & Silent Failures**
 
