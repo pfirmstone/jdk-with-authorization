@@ -25,6 +25,7 @@
 
 package java.lang.ref;
 
+import java.security.AccessControlContext;
 import java.security.PrivilegedAction;
 import java.security.AccessController;
 import jdk.internal.access.JavaLangAccess;
@@ -184,7 +185,10 @@ final class Finalizer extends FinalReference<Object> { /* Package-private; must 
      */
     static void startFinalizerThread(ThreadGroup tg) {
         if (ENABLED) {
-            Thread finalizer = new FinalizerThread(tg);
+            Thread finalizer = AccessController.doPrivileged(
+                (PrivilegedAction<Thread>)()->{ 
+                    return new FinalizerThread(tg);
+                    }, AccessControlContext.neverPrivileged());
             finalizer.setPriority(Thread.MAX_PRIORITY - 2);
             finalizer.setDaemon(true);
             finalizer.start();
