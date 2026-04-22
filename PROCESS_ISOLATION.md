@@ -1186,7 +1186,6 @@ focused trust-boundary analysis for DirtyChai + JGDMS + Phoenix activation flows
 | SerialObjectPermission reinforcement ambiguity | Can register or influence activatable descriptors | Admin-side checks are strict, but group JVM policy is more permissive; re-activation deserializes a class denied in the origin JVM | Cross-JVM deserialization policy bypass |
 | ActivationDesc integrity gap | Can modify Phoenix persistence store (filesystem compromise or daemon compromise) | Stored descriptor/init data is altered, then loaded after crash/restart | Tampered descriptor injection during activation |
 | Policy authority ambiguity | Can cause re-activation under different policy state | Service re-activates under policy scope that does not match operator expectation | Silent weakening of deserialization authority |
-| ACC freshness gap | Can trigger restart after policy/state drift | Previously captured context survives restart semantics and is reused | Privilege persistence/escalation after policy change |
 | TLS subject propagation gap | Has valid TLS credentials but should have constrained identity scope | Transport auth succeeds, but deserialization path lacks caller principal binding | Confused identity / coarse-grained authorization decisions |
 
 #### Existing mitigations vs residual risk
@@ -1208,9 +1207,7 @@ focused trust-boundary analysis for DirtyChai + JGDMS + Phoenix activation flows
 2. Make group JVM deserialization authority explicit and enforceable: document and
    verify `SerialObjectPermission` reinforcement semantics during activation
    reconstruction.
-3. Bind re-activation authority to fresh security context materialization at group JVM
-   bootstrap (no stale context reuse across restart boundaries).
-
+   
 **Medium priority**
 
 1. Specify policy precedence rules for activation replays/restarts (registrar policy vs
@@ -1224,7 +1221,6 @@ focused trust-boundary analysis for DirtyChai + JGDMS + Phoenix activation flows
 
 - [ ] ACTIVATION-DESC-INTEGRITY (high): Prototype `ActivationDesc` integrity envelope (sign/verify) for Phoenix persistence.
 - [ ] GROUP-DESERIALIZATION-AUTHORITY (high): Instrument group JVM reconstruction path to assert/document `SerialObjectPermission` authority source.
-- [ ] ACC-RESTART-FRESHNESS (high): Define and test `AccessControlContext` refresh semantics on activation group restart.
 - [ ] POLICY-PRECEDENCE-REACTIVATION (medium): Specify and validate policy-authority precedence for re-activation.
 - [ ] TLS-SUBJECT-PROPAGATION (medium): Define TLS subject propagation contract into service deserialization context.
 
