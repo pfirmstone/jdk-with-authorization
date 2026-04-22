@@ -261,9 +261,9 @@ by the `SerialObjectPermission` check.
 
 **Activation-group deserialization scope (undocumented boundary):**
 
-The `SerialObjectPermission` enforcement described above applies to the calling JVM. It is not currently documented whether a group JVM (in an RMI activation scenario) re-enforces this permission when it reconstructs activatable objects from `ActivationDesc` descriptors passed by the activation daemon. Three specific gaps exist:
+The `SerialObjectPermission` enforcement described above applies to the calling JVM. It is not currently documented whether a group JVM (in an RMI activation scenario) re-enforces this permission when it reconstructs activatable objects from `ActivationDesc` descriptors passed by the JGDMS Phoenix activation daemon. Three specific gaps exist:
 
-- **Descriptor integrity** — DirtyChai does not document whether activation-daemon-stored `ActivationDesc` objects are integrity-protected (e.g., with a signature or HMAC). A compromised or malicious activation daemon could inject arbitrary descriptors, causing the group JVM to deserialize objects that would have been blocked by `SerialObjectPermission` in the originating JVM.
+- **Descriptor integrity** — Current JGDMS/Phoenix documentation does not state whether activation-daemon-stored `ActivationDesc` objects are integrity-protected (e.g., with a signature or HMAC). A compromised or malicious JGDMS Phoenix activation daemon could inject arbitrary descriptors, causing the group JVM to deserialize objects that would have been blocked by `SerialObjectPermission` in the originating JVM.
 - **Policy authority on re-activation** — it is undefined whether the group JVM applies its own policy file or the registering administrator's policy when evaluating `SerialObjectPermission` during activation reconstruction. If the group's policy is weaker, the permission check may be ineffective.
 - **`AccessControlContext` freshness on restart** — when a group JVM crashes and restarts, it is unspecified whether it receives a fresh `AccessControlContext` or inherits state from the previous run. Stale context could carry permissions that were valid before a policy change, enabling escalation after a policy tightening event.
 
