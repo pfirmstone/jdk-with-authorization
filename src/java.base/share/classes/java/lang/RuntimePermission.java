@@ -253,11 +253,18 @@ import java.lang.module.ModuleFinder;
  * <tr>
  *   <th scope="row">loadLibrary.{library name}</th>
  *   <td>Dynamic linking of the specified library</td>
- *   <td>It is dangerous to allow an applet permission to load native code
+ *   <td>It is dangerous to allow permission to load native code
  * libraries, because the Java security architecture is not designed to and
  * does not prevent malicious behavior at the level of native code.</td>
  * </tr>
- *
+ * 
+ * <tr>
+ *   <th scope="row">mutateModuleTopology</th>
+ *   <td>Access to Module {@code addOpens} and {@code addExports} methods.</td>
+ *   <td>It is dangerous to allow relaxation of module encapsulation, only
+ * trusted code should be allowed to do so.</td>
+ * </tr>
+ * 
  * <tr>
  *   <th scope="row">accessClassInPackage.{package name}</th>
  *   <td>Access to the specified package via a class loader's
@@ -266,7 +273,7 @@ import java.lang.module.ModuleFinder;
  *   <td>This gives code access to classes in packages
  * to which it normally does not have access. Malicious code
  * may use these classes to help in its attempt to compromise
- * security in the system.</td>
+ * security in the system.  This is only checked for Unnamed Modules.</td>
  * </tr>
  *
  * <tr>
@@ -278,7 +285,7 @@ import java.lang.module.ModuleFinder;
  * in a particular package. This is dangerous because malicious
  * code with this permission may define rogue classes in
  * trusted packages like {@code java.security} or {@code java.lang},
- * for example.</td>
+ * for example. This is only checked for Unnamed Modules.</td>
  * </tr>
  *
  * <tr>
