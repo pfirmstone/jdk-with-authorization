@@ -2674,8 +2674,8 @@ Two `RMIServerSocketFactory` implementations are relevant to DirtyChai + JGDMS d
 | Mutual TLS enforcement | Optional (`needClientAuth` parameter) | Always on (hardcoded `needClientAuth=true`) |
 | TLS credential rotation | Static singleton `SSLSocketFactory`; no session invalidation | Per-`Subject` `SSLContext` cached in a weak/soft map; sessions invalidated when credentials are removed or expire |
 | TLS version | Configurable at construction time | `TLSv1.3` by default (system-property override) |
-| `equals()` / `hashCode()` | Implemented correctly (required by RMI spec for stub comparison) | **Missing** — correctness gap |
-| `Serializable` | Implicitly yes | **Missing** — correctness gap |
+| `equals()` / `hashCode()` | Implemented correctly (recommended by RMI spec for stub comparison) | Uses `Object` identity semantics; appropriate for a stateless factory with no comparison-relevant instance state (custom methods become relevant only if configurable state is added) |
+| `Serializable` | Implicitly yes | Not identified as a specification requirement for the current local RMI Registry socket-factory usage |
 
 **Architectural verdict:** For DirtyChai + JGDMS deployments, the JGDMS
 `TlsRMIServerSocketFactory` is the architecturally superior choice because it
@@ -2685,20 +2685,17 @@ that Subject, to principal-keyed policy grants enforced by the DirtyChai
 no awareness of principals and produces no identity context that policy can
 reason about.
 
-The JGDMS factory has two correctness gaps that must be remedied by a human
-implementor before it can be used reliably in production:
+For `TlsRMIServerSocketFactory` as currently designed (stateless, no
+comparison-relevant instance fields), `Object` default identity-based
+`equals()` / `hashCode()` behavior is an appropriate design choice rather than
+a correctness gap.  If the factory later gains configurable state (for example,
+explicit `SSLContext`, cipher-suite policy, or protocol preferences), then
+value-based `equals()` / `hashCode()` should be implemented at that point.
 
-1. **Missing `equals()` / `hashCode()`** — Per the RMI specification, socket
-   factories embedded in `RemoteRef` objects are compared by value during stub
-   lookup and transport sharing.  Without these methods, two
-   `TlsRMIServerSocketFactory` references that represent the same logical factory
-   will not compare as equal, causing unnecessary transport channel multiplication
-   or `SecurityException` during stub validation.
-2. **Missing `Serializable`** — `RMIServerSocketFactory` instances are distributed
-   to clients as part of the stub's `RemoteRef`.  A non-serializable factory
-   prevents correct stub distribution and deserialization on the client side.
-
-These gaps must be addressed before a production deployment.
+Likewise, this analysis does not treat `Serializable` as a missing requirement:
+no cited specification language mandates that a registry-oriented
+`RMIServerSocketFactory` implementation be serializable for the local usage
+discussed here.
 
 ### DirtyChai API Status: `Subject.getSubject` and `AccessController.getContext`
 
@@ -2896,7 +2893,7 @@ The two subjects serve different roles:
 |---|---|
 | `src/java.rmi/share/classes/sun/rmi/transport/tcp/TCPTransport.java` | `ConnectionHandler.run()` — detect `SSLSocket`, extract peer certs, call `Subject.doAsPrivileged` |
 | `src/java.rmi/share/classes/sun/rmi/transport/tcp/TCPTransport.java` | New private helper `extractPeerSubject(Socket)` — null-safe, returns null for non-TLS sockets |
-| JGDMS `TlsRMIServerSocketFactory` | Add `equals()`, `hashCode()`, and `Serializable` to satisfy the `RMIServerSocketFactory` contract (see gaps above) |
+| JGDMS `TlsRMIServerSocketFactory` | No mandatory contract change identified for current stateless/local-registry usage; revisit `equals()` / `hashCode()` only if configurable state is introduced |
 
 #### Investigation Task Backlog
 
@@ -2906,5 +2903,5 @@ The two subjects serve different roles:
   - Handles `SSLPeerUnverifiedException` with graceful fallback to unauthenticated dispatch
   - Dispatches under `Subject.doAsPrivileged(..., null)` to enable principal-keyed policy grants
   - Verified behavior target: `Subject.getSubject(AccessController.getContext())` inside service methods returns the authenticated peer `Subject`
-- [ ] **TLS-FACTORY-RMI-CONTRACT (high):** Add `equals()`, `hashCode()`, and `implements Serializable` to JGDMS `TlsRMIServerSocketFactory` to satisfy RMI stub-comparison and stub-distribution requirements.
+- [ ] **TLS-FACTORY-RMI-CONTRACT (conditional):** Re-evaluate whether JGDMS `TlsRMIServerSocketFactory` needs value-based `equals()` / `hashCode()` only if the class gains comparison-relevant configurable state (for example, explicit TLS context or cipher-suite settings).
 - [ ] **TLS-FACTORY-TEST (medium):** Add a test that exports a remote object with `TlsRMIServerSocketFactory`, connects with `TlsRMIClientSocketFactory`, and asserts that the service method's calling `Subject` matches the client's X.509 certificate principal.
