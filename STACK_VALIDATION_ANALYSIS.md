@@ -4,6 +4,7 @@
 **Date:** April 9, 2026  
 **Issue:** `validateCallerStackWithStackWalker()` - Defense-in-Depth vs. Practical Usability  
 **Status:** RESOLVED — April 13, 2026 (Issue #85)
+**Last Reviewed:** 2026-04-22
 
 ---
 
@@ -72,7 +73,7 @@ Answer Depends On: What SecurityManager subclasses are allowed?
 
 ### Current Implementation
 
-You have **TWO pathways** for SecurityManager installation:
+You have **three common pathways** for SecurityManager installation:
 
 #### Pathway 1: `java.security.manager=default`
 
@@ -81,9 +82,18 @@ case "default":
     break;
 
 
-**Status:** ✅ TRUSTED - Only CombinerSecurityManager from java.base
+**Status:** ✅ TRUSTED - `CombinerSecurityManager` (bootstrap-loaded, java.base)
 
-#### Pathway 2: `java.security.manager=<custom-class>`
+#### Pathway 2: `java.security.manager=""` (empty string)
+
+case "":
+    setSecurityManager(new SecurityManager());
+    break;
+
+
+**Status:** ✅ TRUSTED - `SecurityManager` (bootstrap-loaded, java.base)
+
+#### Pathway 3: `java.security.manager=<custom-class>`
 
 try {
     ClassLoader cl = ClassLoader.getBuiltinAppClassLoader();
@@ -102,7 +112,7 @@ try {
 
 ## Analysis: Is Generated Code Check Necessary?
 
-### If SecurityManager is ONLY CombinerSecurityManager
+### If SecurityManager is a trusted built-in implementation
 
 
 Attack Vector 1: Generated Code Bypass
@@ -111,12 +121,12 @@ Attack Vector 1: Generated Code Bypass
 ├─ Generated code check: BLOCKS Lambda
 └─ Overall: BLOCKED ✅
 
-But if only CombinerSecurityManager is allowed:
-├─ No custom SecurityManager can be installed anyway
+But if only trusted built-in implementations are installed:
+├─ No untrusted custom SecurityManager can be installed
 ├─ Generated code check is: DEFENSE-IN-DEPTH ONLY
 
 
-**Verdict:** Generated code check adds security margin but isn't strictly necessary for CombinerSecurityManager-only systems.
+**Verdict:** Generated code check adds security margin but isn't strictly necessary for trusted built-in SecurityManager deployments.
 
 ---
 
@@ -320,17 +330,17 @@ Step 4: WITH generated code check
 Conclusion: Generated code check DOES prevent attack
 
 
-### But What About CombinerSecurityManager?
+### But What About trusted built-in SecurityManagers?
 
 
 Step 1: Attacker attempts MaliciousSM via Lambda
-        └─ Doesn't matter - only CombinerSecurityManager allowed
+        └─ Doesn't matter - trusted built-in classes are explicitly whitelisted
 
-Step 2: Only CombinerSecurityManager is instantiated
+Step 2: A trusted built-in implementation is instantiated
         └─ NOT attacker's choice
         └─ Attack vector DOESN'T EXIST
 
-Conclusion: For CombinerSecurityManager-only deployment,
+Conclusion: For trusted built-in deployments,
            generated code check is defense-in-depth
 
 
@@ -406,4 +416,3 @@ if (!isTrustedSecurityManagerClass(sm.getClass())) {
 3. ✅ Remains defense-in-depth for untrusted classes
 4. ✅ Pragmatic balance of security and usability
 5. ✅ Follows principle: "Strict where it matters, flexible where possible"
-

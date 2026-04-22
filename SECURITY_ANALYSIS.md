@@ -1,6 +1,6 @@
 # Dirty Chai Security Analysis
 
-**Date:** 2026-04-21  
+**Date:** 2026-04-22  
 **Project:** Dirty Chai  
 **Scope:** `System.setSecurityManager()`, `AccessController`, `ConcurrentPolicyFile`, URI handling, guard permissions, Executors, and virtual-thread/security-manager interaction paths
 

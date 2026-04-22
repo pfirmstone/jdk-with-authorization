@@ -1,5 +1,7 @@
 # History of Java Authorization and the Origins of Dirty Chai
 
+**Last Reviewed:** 2026-04-22
+
 This document traces the history of Java's authorization and security architecture from its
 origins through its deprecation and removal upstream, the ecosystem of projects that kept the
 model alive, and the founding of Dirty Chai.

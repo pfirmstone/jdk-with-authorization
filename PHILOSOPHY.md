@@ -1,5 +1,7 @@
 # Philosophy & Design Decisions
 
+**Last Reviewed:** 2026-04-22
+
 ## Complexity and Maintenance
 
 Concurrency is a complex topic — yet programmers are motivated to learn it because of the significant performance benefits. Much investment has gone into the Java memory model and concurrency libraries. Authorization is also complex, but unlike concurrency, there are few frameworks available to assist programmers.

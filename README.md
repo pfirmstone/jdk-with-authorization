@@ -1,6 +1,7 @@
 # Dirty Chai
 
 **A community fork of OpenJDK that retains and advances Authorization (SecurityManager) functionality.**
+**Last Reviewed:** 2026-04-22
 
 > ⚠️ **Security Notice**: Dirty Chai is a specialized implementation targeting enterprise, regulated-industry, and high-security deployments. It is not a drop-in replacement recommended for all use cases. Evaluate carefully for your specific requirements before adopting in production.
 
@@ -208,7 +209,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for contribution guidelines. Issues are t
 | Reduce the size of the trusted platform | ✔ Done |
 | Add PolicyWriter tool from JGDMS for least-privilege deployment | ✔ Done |
 | `System.setSecurityManager(null)` throws `IllegalArgumentException`, preventing privileged-context injection attacks from disabling the SecurityManager | ✔ Done |
-| Add strict RFC 3986, RFC 6874, and RFC 5952 URI support; remove DNS lookups from `CodeSource` | In Progress |
+| Add strict RFC 3986, RFC 6874, and RFC 5952 URI support; remove DNS lookups from `CodeSource` | ✔ Done |
 | Add support for Virtual threads when SecurityManager is enabled | ✔ Done |
 | Make `AccessControlContext` immutable; add static builder methods for reuse; update VM call sites | ✔ Done |
 | Simplify `AccessControlContext` to align with its original design intent | ✔ Done |
