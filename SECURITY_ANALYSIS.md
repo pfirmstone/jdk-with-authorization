@@ -476,7 +476,6 @@ No changes were needed in `CombinerSecurityManager`. The principal context is in
 
 ### Remaining Work
 
-- **TLS-FACTORY-RMI-CONTRACT:** add `equals()`, `hashCode()`, and `Serializable` to JGDMS `TlsRMIServerSocketFactory`
 - **TLS-FACTORY-TEST:** add integration test asserting service-side `Subject.getSubject(...)` maps to authenticated client certificate principal
 
 ---
