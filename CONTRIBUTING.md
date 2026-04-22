@@ -2,7 +2,7 @@
 
 Please see the [OpenJDK Developers' Guide](https://openjdk.org/guide/).
 
-Dirty Chai follows the OpenJDK Interim Policy on Generative AI. AI tools may be used for analysis and review support, but source-code, test, and shipped-documentation contributions must be human-written. Repository-root developer Markdown files may be AI-assisted where project policy explicitly allows it.
+Dirty Chai follows the OpenJDK Interim Policy on Generative AI. AI tools may be used for analysis and review support, but source-code, test, and shipped-documentation contributions must be human-written. Repository-root developer Markdown files may be AI-assisted only as documented in `openjdk_ai_policy.md` (Repository Documentation Exception).
 
 https://openjdk.org/legal/ai
 
