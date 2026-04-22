@@ -2,7 +2,7 @@
 
 Please see the [OpenJDK Developers' Guide](https://openjdk.org/guide/).
 
-There may be legal ramifications of using AI Generated code and generated documents, at this time, we're trialling using AI to generate markdown text documents in the root directory to help describe changes.  You can use AI agents to assist in understanding how the JVM works, assistance identifying bugs and adding markdown text documents that aren't part of the final product, and are either stored in the root of the project or a directory named AI.
+Dirty Chai follows the OpenJDK Interim Policy on Generative AI. AI tools may be used for analysis and review support, but source-code, test, and shipped-documentation contributions must be human-written. Repository-root developer Markdown files may be AI-assisted only as documented in `openjdk_ai_policy.md` (Repository Documentation Exception).
 
 https://openjdk.org/legal/ai
 
@@ -778,12 +778,13 @@ Modifying setSecurityManager()?
 
 | Version | Date | Changes |
 |---------|------|---------|
+| 1.3 | 2026-04-22 | Refreshed policy wording at the top of the file and updated document freshness metadata |
 | 1.2 | 2026-04-21 | Updated project name/URL to DirtyChai; fixed architecture diagram (System.java layer); corrected stack depth 10→50 frames; added PolicyOnlySecurityManager to trusted whitelist |
 | 1.1 | 2026-04-09 | Added conditional validation strategy documentation |
 | 1.0 | 2026-04-09 | Initial Claude development guide |
 
 ---
 
-**Last Updated:** April 21, 2026  
+**Last Updated:** April 22, 2026  
 **Maintained By:** Project Security Team  
 **Status:** Active

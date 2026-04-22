@@ -1,5 +1,7 @@
 # Performance Analysis: Dirty Chai vs OpenJDK 21
 
+**Last Reviewed:** 2026-04-22
+
 ## Overview
 
 This document provides an in-depth analysis of the performance and scalability

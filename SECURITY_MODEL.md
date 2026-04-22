@@ -1,7 +1,8 @@
 # Dirty Chai Security Model
 
-**Version:** 2.0  
-**Date:** 2026-04-16  
+**Version:** 2.1  
+**Date:** 2026-04-22  
+**Last Reviewed:** 2026-04-22  
 **Project:** Dirty Chai  
 **Repository:** https://github.com/pfirmstone/DirtyChai
 
