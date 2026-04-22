@@ -1001,19 +1001,21 @@ no longer strongly reachable, it enqueues the object onto an internal finalizer
 queue.  A dedicated daemon thread (typically named `Finalizer`) dequeues objects
 and calls their `finalize()` method.
 
-The finalizer thread is created during JVM bootstrapping.  Its inherited
-`AccessControlContext` is the JVM bootstrap context — effectively
-`AllPermission` (no application-defined restrictions apply to it).  The
-*creator thread's* `AccessControlContext` is **not** inherited by the finalizer
-thread and is **not** available when `finalize()` runs.
+The finalizer thread is created during JVM bootstrapping via:
+`AccessController.doPrivileged(..., AccessControlContext.neverPrivileged())`.
+This preserves the privileged thread-creation step while ensuring the resulting
+`Finalizer` thread executes with a never-privileged context (parity with
+`Cleaner` daemon behavior).  The *creator thread's* `AccessControlContext` is
+still **not** inherited by the finalizer thread and is **not** available when
+`finalize()` runs.
 
 ### Stack Composition During Finalization
 
 When `finalize()` executes, the call stack looks like:
 
 ```
-java.lang.ref.Finalizer$FinalizerThread.run()  ← java.base, AllPermission
-  java.lang.ref.Finalizer.runFinalizer()        ← java.base, AllPermission
+java.lang.ref.Finalizer$FinalizerThread.run()  ← java.base, neverPrivileged context
+  java.lang.ref.Finalizer.runFinalizer()        ← java.base, neverPrivileged context
     UntrustedClass.finalize()                   ← untrusted ProtectionDomain
       [any permission check triggered here]
 ```
@@ -1055,18 +1057,19 @@ not protect against this because the constraint was encoded in the thread's
 for `finalize()`.  A `Cleaner.Cleanable` is registered by supplying a
 `Runnable` that is invoked when the registered object becomes phantom-reachable.
 
-The `Cleaner` creates its own daemon thread.  The `Runnable` implementation
-class **is** on the stack when the callback fires, so its `ProtectionDomain` is
-included in the permission-intersection.  The execution-context-escape property
-is the same as for finalizers: the context of the code that called
-`Cleaner.register(...)` is not preserved for the callback thread.
+The `Cleaner` creates its own daemon thread using `InnocuousThread` (no
+permissions).  The `Runnable` implementation class **is** on the stack when the
+callback fires, so its `ProtectionDomain` is included in the
+permission-intersection.  The execution-context-escape property is the same as
+for finalizers: the context of the code that called `Cleaner.register(...)` is
+not preserved for the callback thread.
 
 ### Policy Decision
 
 | Scenario | In-Process Guard (DirtyChai) | Process Isolation Required? |
 |----------|------------------------------|-----------------------------|
 | Untrusted class finalizer calls native method | Stack intersection blocks it — untrusted PD on stack | No (in-process guard sufficient) |
-| Trusted class finalizer / Cleaner callback calls native method | Allowed — trusted class holds NativeInvocationPermission | No (this is intended behavior) |
+| Trusted class finalizer / Cleaner callback calls native method | Allowed only if trusted class policy grants `NativeInvocationPermission`; finalizer/Cleaner threads themselves are unprivileged | No (this is intended behavior) |
 | Trusted class finalizer bypasses a creator's limited context | **Not blocked** — limited context is not part of policy grant | **Yes — use process isolation** |
 | Attacker triggers GC of a trusted object whose finalizer does privileged work | Allowed if trusted class has the permission | Mitigate by avoiding sensitive ops in finalizers |
 

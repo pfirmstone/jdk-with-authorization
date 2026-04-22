@@ -24,6 +24,7 @@ OpenJDK 21 is the last LTS release line that still includes SecurityManager APIs
 | Trusted-vs-untrusted SecurityManager distinction | No explicit `trustedSMClass()` gate with exact-class whitelist | Exact-class trust gate (`SecurityManager`, `CombinerSecurityManager`, `PolicyOnlySecurityManager`) |
 | Reflection/generated-caller blocking for custom SM install | Not implemented as a dedicated layered defense at install time | Explicit stack/reflection/method-handle/generated-code blocking for custom SM install |
 | Guard permission model | No `au.zeus.jdk.authorization.guards.*` guard classes | Adds dedicated guard permissions (`LoadClassPermission`, `NativeInvocationPermission`, `NativeMemoryPermission`, `SerialObjectPermission`) and integrates them into security-critical flows |
+| Runtime module-topology mutation API gate (`Module.addExports()` / `Module.addOpens()`) | No dedicated `RuntimePermission("mutateModuleTopology")` gate at these API entry points | `SecurityManager.checkPermission(new RuntimePermission("mutateModuleTopology"))` gate at runtime mutation entry points before caller-identity validation |
 | Executors + thread factory behavior | `Executors.defaultThreadFactory()` returns classic `DefaultThreadFactory` | `Executors.defaultThreadFactory()` routes through `Thread.ofPlatform().group(...).factory()` and therefore through Dirty Chai platform-thread permission checks |
 | Virtual thread creation path | `ThreadBuilders` virtual/platform builder paths do not enforce dedicated `createVirtualThread`/`createPlatformThread` checks | Builder `unstarted()` and `factory()` paths enforce explicit runtime permissions and capture `AccessController.getContext()` for inherited security context |
 | `AccessController` / `AccessControlContext` / `Subject` model | OpenJDK 21 `doPrivileged(..., AccessControlContext, Permission...)` uses wrapper/context-validation flow (`checkContext`/`createWrapper`), with `Subject` propagation via ACC/`SubjectDomainCombiner` | Explicit limited-privilege domain intersection via `DomainIdentity`, ACC builder/authorization helpers, and ACC/`SubjectDomainCombiner` subject propagation in active Dirty Chai runtime path |
@@ -301,6 +302,33 @@ DirtyChai enforces network access through standard `SocketPermission` grants and
 
 See residual N-14.
 
+### 10) Module Topology Mutation Permission
+
+DirtyChai now gates runtime module-topology mutation APIs with
+`RuntimePermission("mutateModuleTopology")`.
+
+- **Enforcement points** — `Module.addExports(String, Module)` and
+  `Module.addOpens(String, Module)` perform
+  `SecurityManager.checkPermission(new RuntimePermission("mutateModuleTopology"))`
+  at API entry before caller-identity validation.
+- **Security effect** — untrusted code can no longer mutate module export/open
+  topology at runtime unless explicitly granted policy authority.
+- **Threat-model effect (N-15)** — runtime reflective module mutation now has an
+  explicit policy gate; this closes the previously documented ungated mutation
+  surface for these APIs.
+- **Static vs runtime mutation boundary** — this gate applies to runtime API
+  calls only. JVM bootstrap flags (`--add-opens`, `--add-exports`,
+  `--add-modules`) remain startup-time trust-boundary decisions and are not
+  retroactively constrained by this runtime permission.
+
+Policy guidance for administrators:
+
+- Default deny `RuntimePermission("mutateModuleTopology")` to untrusted code.
+- Grant only to narrowly scoped, fully trusted code that must perform runtime
+  reflective integration.
+- Continue treating all module-altering JVM flags as explicit deployment-time
+  security decisions.
+
 ---
 
 ## Threat Review (Current)
@@ -358,10 +386,13 @@ See residual N-14.
 7. **Finalizer and Cleaner thread context escape (N-9)**  
    Untrusted code in a finalizer or `Cleaner` callback is guarded by stack-intersection
    because the untrusted class's `ProtectionDomain` is present on the finalizer thread's
-   stack at the time of any permission check.  The residual gap is context escape:
-   the creator thread's limited `AccessControlContext` is **not** propagated to the
-   finalizer thread.  Trusted objects whose finalizers perform sensitive operations are
-   therefore not constrained by the context the creating code was running under.
+   stack at the time of any permission check.  Finalizer threads are now created with
+   `AccessControlContext.neverPrivileged()` (matching `Cleaner` daemon behavior via
+   `InnocuousThread`), so this residual is narrower than before.  The remaining gap is
+   context escape: the creator thread's limited `AccessControlContext` is **not**
+   propagated to finalizer/Cleaner callback threads.  Trusted objects whose finalizers
+   perform sensitive operations are therefore not constrained by the context the creating
+   code was running under.
    Mitigation: avoid sensitive operations in finalizers; use explicit `close()` patterns
    and process isolation for strong context-confinement.  See `PROCESS_ISOLATION.md`
    ("Analysis: Finalizer and Cleaner Thread Execution Contexts").
@@ -389,7 +420,17 @@ See residual N-14.
     Current `SocketPermission` grants do not distinguish multicast from unicast, local loopback from LAN ranges, or connected sockets from unconnected discovery sockets. Over-broad grants (e.g., wildcard `connect`) expose local network topology and enable peer discovery attacks via unconnected `DatagramSocket`. DirtyChai documentation does not yet provide guidance on the recommended grant structure for hardened deployments. See §9 and the medium-priority recommendation.
 
 13. **Module export cycles and hidden module visibility (N-15)**  
-    DirtyChai does not define the interaction between module-system access control and `LoadClassPermission`. These are independent, non-redundant gates: `--add-opens`/`--add-exports` JVM flags bypass `LoadClassPermission` for already-loaded classes. Export cycles can create indirect access bridges to non-exported module internals. `--add-modules` pre-populates the module layer before the SecurityManager is installed. `MethodHandles.Lookup.defineClass()` bypasses `LoadClassPermission` entirely for dynamically defined classes. A `LoadModulePermission` gate for runtime `Module.addOpens()`/`Module.addExports()` reflective calls may be warranted. See §7 (Module System and LoadClassPermission Interaction) and the medium-priority recommendations.
+    DirtyChai now gates runtime `Module.addOpens()` and `Module.addExports()`
+    mutations with `RuntimePermission("mutateModuleTopology")`, closing the
+    previously ungated runtime mutation surface. Residual N-15 risk remains for
+    independent module-system behavior outside this runtime API gate:
+    `--add-opens`/`--add-exports` JVM flags can still bypass
+    `LoadClassPermission` for already-loaded classes; `--add-modules` still
+    pre-populates the module layer before the SecurityManager is installed; and
+    `MethodHandles.Lookup.defineClass()` still bypasses `LoadClassPermission`
+    for dynamically defined classes. Export cycles can still create indirect
+    access bridges via trusted public API surfaces. See §7, §10, and the
+    remaining medium-priority recommendations.
 
 ---
 
@@ -432,8 +473,14 @@ See residual N-14.
 9. **Document recommended `SocketPermission` policy structure for hardened deployments (N-14 / §9)**  
    DirtyChai documentation should provide a reference policy template that separates loopback, LAN, multicast, and external address grants rather than using wildcard `connect` grants. The template should also restrict `DatagramSocket`-based discovery and separate multicast permissions from unicast permissions to reduce topology disclosure risk.
 
-10. **Evaluate `LoadModulePermission` gate for runtime module mutation (N-15 / §7)**  
-    Evaluate whether dynamic `Module.addOpens()` and `Module.addExports()` calls via the `java.lang.reflect` module API require a dedicated DirtyChai permission gate. Until such a gate exists, runtime module mutation must be restricted to bootstrap-loaded trusted code, and all production deployments must review every `--add-opens`/`--add-exports`/`--add-modules` JVM flag as a security-relevant policy decision.
+10. ~~**Evaluate `LoadModulePermission` gate for runtime module mutation (N-15 / §7)**~~  
+    Resolved: runtime `Module.addExports()` and `Module.addOpens()` now enforce
+    `RuntimePermission("mutateModuleTopology")` via
+    `SecurityManager.checkPermission()` before caller-identity validation.
+    Runtime reflective topology mutations are now policy-gated. Residual risk
+    for startup-time topology changes from `--add-opens`/`--add-exports`/
+    `--add-modules` remains and must still be handled as a trusted deployment
+    perimeter decision.
 
 ---
 
@@ -450,6 +497,7 @@ The main remaining risks are **operational** (policy configuration and whitelist
 ## References
 
 - `src/java.base/share/classes/java/lang/System.java` — conditional SecurityManager validation, stack-walk depth (`limit(50)`), trusted-class gate
+- `src/java.base/share/classes/java/lang/Module.java` — `RuntimePermission("mutateModuleTopology")` enforcement in `addExports(String, Module)` and `addOpens(String, Module)` runtime mutation entry points
 - `src/java.base/share/classes/java/security/AccessController.java` — privileged execution and limited-privilege intersection behavior
 - `src/java.base/share/classes/java/security/AccessControlContext.java` — ACC construction/authorization and intersection helpers
 - `src/java.base/share/classes/java/security/DomainIdentity.java` — caller-linked protection-domain type used in limited-privilege intersection paths
@@ -487,7 +535,7 @@ The main remaining risks are **operational** (policy configuration and whitelist
 - `javax.security.auth.Subject.getPrincipals()` — principal mutation boundary; live mutable set; cross-realm collision and injection risks documented in §E and N-12
 - `java.lang.invoke.MethodHandles.Lookup.defineClass()` — dynamic class definition gate; bypasses `LoadClassPermission`; residual documented in §7 (Delegation Attack Residuals) and N-15
 - `java.net.DatagramSocket` / `java.net.MulticastSocket` — network isolation surface; unconnected discovery and topology-disclosure risks documented in §9 and N-14
-- `java.lang.Module.addOpens()` / `java.lang.Module.addExports()` — runtime module mutation gate; interaction with `LoadClassPermission` documented in §7 (Module System and LoadClassPermission Interaction) and N-15
+- `java.lang.Module.addOpens()` / `java.lang.Module.addExports()` — runtime module mutation APIs; `RuntimePermission("mutateModuleTopology")` gate and interaction with `LoadClassPermission` documented in §7, §10, and N-15
 
 ---
 
