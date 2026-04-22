@@ -885,6 +885,19 @@ This security-model analysis has moved to `SECURITY_ANALYSIS.md`:
 **"Analysis: Finalizer and Cleaner Thread Execution Contexts (N-9)"**.
 See that section for full details.
 
+Key clarification for current DirtyChai behavior:
+- Finalizer threads are created with
+  `AccessControlContext.neverPrivileged()` (`Finalizer.java`, line 191), so they
+  run with zero permissions.
+- Cleaner daemon threads run on `InnocuousThread` (`CleanerImpl.java`) and are
+  likewise unprivileged.
+- `AccessController.doPrivileged(...)` should be avoided in both `finalize()`
+  and `Cleaner` callbacks: using it in either callback attempts to escalate from
+  an intentionally zero-permission cleanup context.
+- If sensitive cleanup is required, authorization must be established at object
+  creation time (or explicit close/release time), not during finalizer/Cleaner
+  execution.
+
 ---
 
 ## Analysis: Constant-Pool and Class-Initialization Security (N-10)
