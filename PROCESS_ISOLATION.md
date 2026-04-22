@@ -237,8 +237,7 @@ reconstructed through an `@AtomicSerial` constructor.  Gadget chains that depend
 on `readObject` callbacks cannot fire because `readObject` is never called.
 ### Integration with DirtyChai
 DirtyChai adds `SerialObjectPermission` as a JDK-level backstop check that fires
-at the entry to `ObjectInputStream.readObject()` and
-`ObjectOutputStream.writeObject()`.  When a `SecurityManager` is active, the
+at the entry to `ObjectInputStream.readObject()`.  When a `SecurityManager` is active, the
 calling code must hold:
 ```
 permission au.zeus.jdk.authorization.guards.SerialObjectPermission
