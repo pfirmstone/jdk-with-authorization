@@ -425,13 +425,13 @@ Policy guidance for administrators:
     └──────────────────────────────────────────────┘
     ```
 
-    Residual gaps:
+    #### Residual gaps
     - **Gap 1 (high): ActivationDesc integrity** — no descriptor-level HMAC/signature on persisted security-relevant fields, so Phoenix/filesystem compromise can tamper activation payloads.
     - **Gap 2 (medium): Policy authority separation** — group policy may be broader than admin policy (no enforced subset relation), permitting classes denied by admin constraints.
 
     Representative scenario: admin policy restricts deserialization (`permission DeSerializationPermission "ATOMIC";`), group policy allows wildcard (`permission DeSerializationPermission "*";`), attacker alters persisted `ActivationDesc` to include a gadget class such as `com.sun.org.apache.xalan.internal.xsltc.trax.TemplatesImpl`, and group activation accepts it under group policy.
 
-    Code evidence (JGDMS):
+    #### Code evidence (JGDMS)
     - `service-starter/.../SharedActivationGroupDescriptor.java` (group policy passed separately at startup; lines 127-170)
     - `jgdms-platform/.../ObjectStreamClassContainer.java` (`deSerializationPermitted()` DeSerializationPermission checks; lines 90-146)
     - `phoenix-activation/phoenix-init/.../ActivationGroupInit.java` (group JVM deserialization path; lines 70-71)

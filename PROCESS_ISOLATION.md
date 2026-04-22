@@ -1177,6 +1177,11 @@ Cross-reference: [JGDMS #182 comment #4296131653](https://github.com/pfirmstone/
 - Phoenix/admin JVM and each group JVM are different OS processes with independent policy files.
 - Policy authority is not hierarchical: group JVM enforcement is based on the group JVM's configured policy, not inherited admin policy.
 
+This distinction matters because activation reconstruction in the group JVM follows
+AtomicSerial enforcement points (`DeSerializationPermission` at class-construction
+time), so assuming `SerialObjectPermission`/originating-JVM semantics can hide where
+policy authority is actually decided.
+
 ```
 ┌─ Admin JVM (Phoenix daemon) ──────────────────┐
 │ Policy File: admin-policy.config              │
