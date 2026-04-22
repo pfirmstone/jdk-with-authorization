@@ -1,4 +1,6 @@
 # Process Isolation in DirtyChai and JGDMS
+**Last Reviewed:** 2026-04-22
+
 This document consolidates the analyses produced during the investigation into
 runtime permission checks for thread creation, atomic serialization, and the
 inherent limits of in-process isolation in a Java security manager environment.

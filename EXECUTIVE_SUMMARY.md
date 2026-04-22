@@ -1,13 +1,15 @@
 
 # Dirty Chai - Executive Summary
 
+**Last Reviewed:** 2026-04-22
+
 ## What This Project Does (In Plain English)
 
 **The Problem:**
 
 Java once had the solution: In Java 1.2, Sun Microsystems' security team—Li Gong, Gary Ellison, and Mary Dageforde—rearchitected Java's SecurityManager specifically for enterprise servers, not just applets. With input from IBM, this system could enforce the **principle of least privilege** (documented by Li Gong in *Inside Java 2 Platform Security*, ISBN 0201787911), preventing malicious or compromised code from accessing unauthorized resources (files, network, databases, etc.).
 
-However, SecurityManager was **deprecated in Java 17** and removed—not because the security model was flawed, but due to three operational challenges:
+However, SecurityManager was **deprecated in Java 17** and removed from upstream mainline JDK releases—not because the security model was flawed, but due to three operational challenges:
 
 1. **Maintenance burden:** The original implementation accumulated technical debt over decades as the JVM evolved
 2. **Performance concerns:** Authorization checks added overhead that was difficult to optimize without modern tooling
@@ -39,7 +41,7 @@ In short: Dirty Chai restores a proven enterprise security architecture with 25 
 **Real Attacks Now Prevented:**
 
 - 🛡️ **Deserialization gadgets:** Restrict what classes can be deserialized, blocking gadget chain exploits even when attackers find new gadgets
-- 🛡️ **Untrusted code:** Plugins or dynamically loaded trusted code run in a confined sandbox with only the permissions they need, untrusted code is prevented from loading.
+- 🛡️ **Untrusted code:** Untrusted plugins can be prevented from loading; dynamically loaded third-party code can be constrained to least-privilege policy grants.
 - 🛡️ **Supply chain attacks:** Third-party library compromise is contained to its granted permissions
 - 🛡️ **Zero-day exploits:** Even unknown vulnerabilities can't reach unauthorized resources
 
@@ -200,4 +202,3 @@ It allows organizations to:
 
 ### **For Investors:**
 > "Addressing $50B+ cybersecurity market gap. Java used by 90% of enterprises but lacks fine-grained access control. First-mover advantage in Java authorization space."
-

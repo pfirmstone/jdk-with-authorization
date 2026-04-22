@@ -1,5 +1,7 @@
 # Vulnerabilities Addressed by DirtyChai
 
+**Last Reviewed:** 2026-04-22
+
 ## Executive Summary
 
 DirtyChai addresses critical Java security vulnerabilities by implementing fine-grained authorization controls, preventing untrusted code loading, and blocking gadget attack chains. This document catalogs mitigated vulnerability classes and attack vectors, including the April 13, 2026 Issue #85 fixes and SocketPermission DNS DoS hardening. For detailed analysis, see `SECURITY_ANALYSIS.md`, `SECURITY_MODEL.md`, and `PROCESS_ISOLATION.md`.
