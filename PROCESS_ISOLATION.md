@@ -1477,11 +1477,11 @@ focused trust-boundary analysis for DirtyChai + JGDMS + Phoenix activation flows
 
 | Boundary | Documented gap | Exploitation consequence |
 |---|---|---|
-| 1. Calling JVM → group JVM deserialization boundary | `SerialObjectPermission` is enforced in the active deserializing JVM; activation reconstruction currently has no verified cross-JVM carry-over contract from registrar JVM decisions. | Policy bypass if group JVM allowlist differs from caller allowlist. |
+| 1. Calling JVM → group JVM deserialization boundary | `SerialObjectPermission` is enforced in the active deserializing JVM; activation reconstruction currently has no verified cross-JVM carry-over contract from service-registrar JVM (the JVM that registers the activatable descriptor) decisions. | Policy bypass if group JVM allowlist differs from caller allowlist. |
 | 2. Phoenix persistent store integrity boundary | No documented descriptor-level integrity mechanism (HMAC/signature) for stored `ActivationDesc` state. | Descriptor tampering can inject altered activation payloads before restart/re-activation. |
 | 3. Re-activation policy authority boundary | Reconstruction-time policy authority is implementation-defined for restart/replay flows and must be treated as requiring explicit operator verification. | Effective authority may drift to the weaker policy surface, reducing intended deserialization controls. |
 | 4. AccessControlContext lifecycle boundary | Restart/replay flows do not define a guaranteed fresh `AccessControlContext` rebind contract unless bootstrap logic explicitly rebuilds context from current policy state. | Stale context reuse can preserve broader historical privilege after policy tightening. |
-| 5. TLS-authenticated identity propagation boundary | TLS peer authentication is transport-level; authenticated peer identity is not automatically bound into service deserialization authority context. | Identity confusion: authenticated client identity may not participate in per-call deserialization decisions. |
+| 5. TLS-authenticated identity propagation boundary | TLS peer authentication is transport-level; authenticated peer identity requires explicit context propagation/binding to participate in service deserialization authority decisions. | Identity confusion: authenticated client identity may not participate in per-call deserialization decisions. |
 
 #### Threat model and exploitation scenarios
 
@@ -1507,7 +1507,8 @@ focused trust-boundary analysis for DirtyChai + JGDMS + Phoenix activation flows
 **High priority**
 
 1. Define and implement descriptor integrity protection for persisted activation state
-   (signature or HMAC over `ActivationDesc` and security-relevant fields).
+   (signature or HMAC over `ActivationDesc` and security-relevant fields such as
+   implementation class, codebase, policy path, restart flag, and init data).
 2. Make group JVM deserialization authority explicit and enforceable: document and
    verify `SerialObjectPermission` reinforcement semantics during activation
    reconstruction.
