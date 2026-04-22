@@ -265,7 +265,7 @@ The `SerialObjectPermission` enforcement described above applies to the calling 
 
 - **Descriptor integrity** — Current JGDMS/Phoenix documentation does not state whether activation-daemon-stored `ActivationDesc` objects are integrity-protected (e.g., with a signature or HMAC). A compromised or malicious JGDMS Phoenix activation daemon could inject arbitrary descriptors, causing the group JVM to deserialize objects that would have been blocked by `SerialObjectPermission` in the originating JVM.
 - **Policy authority on re-activation** — it is undefined whether the group JVM applies its own policy file or the registering administrator's policy when evaluating `SerialObjectPermission` during activation reconstruction. If the group's policy is weaker, the permission check may be ineffective.
-- **`AccessControlContext` freshness on restart** — when a group JVM crashes and restarts, it is unspecified whether it receives a fresh `AccessControlContext` or inherits state from the previous run. Stale context could carry permissions that were valid before a policy change, enabling escalation after a policy tightening event.
+- **`AccessControlContext` freshness on restart** — when a group JVM crashes and restarts, ACC cannot be inherited from a previous run because it is not serializable and is never persisted. The concern is instead whether group JVM bootstrap code builds a fresh ACC from current policy vs. captures a context before policy is fully loaded.
 
 See residual N-13 under "Residual N-13: Activation Deserialization Authority Trust Boundaries" in this document.
 ---
@@ -1176,7 +1176,7 @@ focused trust-boundary analysis for DirtyChai + JGDMS + Phoenix activation flows
 | 1. Calling JVM → group JVM deserialization boundary | `SerialObjectPermission` is enforced in the active deserializing JVM; activation reconstruction currently has no verified cross-JVM carry-over contract from service-registrar JVM (the JVM that registers the activatable descriptor) decisions. | Policy bypass if group JVM allowlist differs from caller allowlist. |
 | 2. Phoenix persistent store integrity boundary | No documented descriptor-level integrity mechanism (HMAC/signature) for stored `ActivationDesc` state. | Descriptor tampering can inject altered activation payloads before restart/re-activation. |
 | 3. Re-activation policy authority boundary | Reconstruction-time policy authority is implementation-defined for restart/replay flows and must be treated as requiring explicit operator verification. | Effective authority may drift to the weaker policy surface, reducing intended deserialization controls. |
-| 4. AccessControlContext lifecycle boundary | AccessControlContext is not persisted. | Policy always determines permissions. |
+| 4. AccessControlContext lifecycle boundary | AccessControlContext is not persisted. | The persistence path is not the issue; the question is whether group JVM bootstrap explicitly rebuilds context from current policy before use. |
 | 5. TLS-authenticated identity propagation boundary | TLS peer authentication is transport-level; authenticated peer identity requires explicit context propagation/binding to participate in service deserialization authority decisions. | Identity confusion: authenticated client identity may not participate in per-call deserialization decisions. |
 
 #### Threat model and exploitation scenarios
