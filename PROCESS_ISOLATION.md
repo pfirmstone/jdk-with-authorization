@@ -2634,3 +2634,249 @@ The environment-variable injection fix (`environment().clear()` + targeted `remo
 calls) is the highest-priority item because it is the only attack vector that
 bypasses all of the existing `ActivationGroupDesc` whitelist validation layers
 described earlier in this document.
+
+---
+
+## Analysis: JGDMS TlsRMIServerSocketFactory vs DirtyChai SslRMIServerSocketFactory
+
+### Summary of Comparison
+
+Two `RMIServerSocketFactory` implementations are relevant to DirtyChai + JGDMS deployments:
+
+| Property | DirtyChai `SslRMIServerSocketFactory` (`javax.rmi.ssl`) | JGDMS `TlsRMIServerSocketFactory` (`au.net.zeus.rmi.tls`) |
+|---|---|---|
+| Origin | JDK standard class (Oracle, Java 1.5) | JGDMS custom class (Apache 2.0) |
+| JAAS `Subject` integration | None | Full: credentials sourced from `Subject` via `Subject.getSubject(AccessController.getContext())` |
+| `AuthenticationPermission` enforcement | None | Yes, via `ServerSubjectKeyManager.getPrivateCredential()` checked against the calling `Subject` |
+| Mutual TLS enforcement | Optional (`needClientAuth` parameter) | Always on (hardcoded `needClientAuth=true`) |
+| TLS credential rotation | Static singleton `SSLSocketFactory`; no session invalidation | Per-`Subject` `SSLContext` cached in a weak/soft map; sessions invalidated when credentials are removed or expire |
+| TLS version | Configurable at construction time | `TLSv1.3` by default (system-property override) |
+| `equals()` / `hashCode()` | Implemented correctly (required by RMI spec for stub comparison) | **Missing** — correctness gap |
+| `Serializable` | Implicitly yes | **Missing** — correctness gap |
+
+**Architectural verdict:** For DirtyChai + JGDMS deployments, the JGDMS
+`TlsRMIServerSocketFactory` is the architecturally superior choice because it
+is the only factory that connects TLS identity to a JAAS `Subject` and, through
+that Subject, to principal-keyed policy grants enforced by the DirtyChai
+`ConcurrentPolicyFile`.  The DirtyChai in-tree `SslRMIServerSocketFactory` has
+no awareness of principals and produces no identity context that policy can
+reason about.
+
+The JGDMS factory has two correctness gaps that must be remedied by a human
+implementor before it can be used reliably in production:
+
+1. **Missing `equals()` / `hashCode()`** — Per the RMI specification, socket
+   factories embedded in `RemoteRef` objects are compared by value during stub
+   lookup and transport sharing.  Without these methods, two
+   `TlsRMIServerSocketFactory` references that represent the same logical factory
+   will not compare as equal, causing unnecessary transport channel multiplication
+   or `SecurityException` during stub validation.
+2. **Missing `Serializable`** — `RMIServerSocketFactory` instances are distributed
+   to clients as part of the stub's `RemoteRef`.  A non-serializable factory
+   prevents correct stub distribution and deserialization on the client side.
+
+These gaps must be addressed before a production deployment.
+
+### DirtyChai API Status: `Subject.getSubject` and `AccessController.getContext`
+
+In standard OpenJDK 17+, both `Subject.getSubject(AccessControlContext)` and
+`AccessController.getContext()` are marked deprecated-for-removal because their
+semantics depend on the `SecurityManager` infrastructure that OpenJDK is
+removing.
+
+**In DirtyChai these methods are fully supported and are the preferred API.**
+DirtyChai preserves and maintains the `SecurityManager`, `AccessController`, and
+`Subject` infrastructure.  The `@SuppressWarnings("removal")` annotations
+present in DirtyChai source files indicate intentional preservation, not
+deprecated usage.
+
+The DirtyChai `Subject.current()` method is implemented as:
+
+```java
+public static Subject current() {
+    if (!SharedSecrets.getJavaLangAccess().allowSecurityManager()) {
+        return SCOPED_SUBJECT.isBound() ? SCOPED_SUBJECT.get() : null;
+    } else {
+        return getSubject(AccessController.getContext());  // preferred path in DirtyChai
+    }
+}
+```
+
+When a `SecurityManager` is active (the DirtyChai deployment model),
+`Subject.current()` is exactly equivalent to
+`Subject.getSubject(AccessController.getContext())`.  Both idioms are correct
+and supported.  JGDMS uses `Subject.getSubject(acc)` with an explicitly captured
+`AccessControlContext`; this is the correct pattern when the context must be
+captured at one point in time and consulted at another (e.g., capturing the
+context at socket-creation time to identify which server Subject owns the socket).
+
+### How DirtyChai Can Support Subject Propagation from JGDMS TlsRMIServerSocketFactory
+
+#### The Propagation Problem
+
+The JGDMS `TlsRMIServerSocketFactory` uses the server's `Subject` (captured at
+`createServerSocket()` time) to select the private key used during the TLS
+handshake.  After the handshake completes, the accepted `SSLSocket` has an
+established `SSLSession` that holds the **peer's** (client's) authenticated
+X.509 certificate chain.
+
+Standard RMI's `TCPTransport.ConnectionHandler.run()` dispatches each incoming
+connection with:
+
+```java
+AccessController.doPrivileged((PrivilegedAction<Void>)() -> {
+    run0();
+    return null;
+}, NOPERMS_ACC);
+```
+
+`NOPERMS_ACC` is a no-permissions `AccessControlContext`.  This means the
+connection handler thread — and therefore the service method invocation thread —
+starts with an empty context that contains **no `Subject`** and **no
+`SubjectDomainCombiner`**.  Consequently:
+
+- `Subject.getSubject(AccessController.getContext())` returns `null` inside the
+  service method.
+- Policy grants keyed on `Principal "X500Principal CN=..."` never fire, even
+  though the TLS handshake has already authenticated the client.
+
+This is the "TLS subject propagation gap" identified as boundary 5 in the N-13
+trust-boundary analysis earlier in this document.
+
+#### The Propagation Mechanism
+
+DirtyChai can close this gap by having `TCPTransport.ConnectionHandler` extract
+the authenticated peer identity from the `SSLSession` and wrap the service
+dispatch inside `Subject.doAsPrivileged`.  The required steps are:
+
+**Step 1 — Extract the peer `Subject` after `accept()`.**
+
+When `TlsRMIServerSocketFactory` is in use, `serverSocket.accept()` returns an
+`SSLSocket` (the factory's `createServerSocket()` returns an `SSLServerSocket`
+that wraps accepted sockets via `SSLSocketFactory.createSocket(..., autoClose=true)`
+or directly returns `SSLServerSocket` sockets).  After `accept()` completes and
+the TLS handshake has been performed, the peer's certificate chain is available:
+
+```java
+// Inside AcceptLoop.executeAcceptLoop() after socket = serverSocket.accept()
+if (socket instanceof SSLSocket) {
+    SSLSocket sslSocket = (SSLSocket) socket;
+    SSLSession session = sslSocket.getSession();
+    java.security.cert.Certificate[] peerCerts = session.getPeerCertificates();
+    // peerCerts[0] is the peer's end-entity certificate
+    // Build a read-only Subject containing the peer's X500Principal
+    // and public credential CertPath for policy grant matching
+}
+```
+
+The accepted socket can be tested with `instanceof SSLSocket` to detect
+TLS-authenticated connections without any coupling to a specific factory
+implementation.
+
+**Step 2 — Construct a read-only `Subject` for the peer.**
+
+A minimal peer `Subject` for policy-grant matching contains:
+
+- The peer's `X500Principal` (from `peerCerts[0].getSubjectX500Principal()`),
+  placed in the `Subject`'s principal set.
+- Optionally the full `CertPath` as a public credential, matching the contract
+  expected by JGDMS `FilterX509TrustManager` and JERI authentication logic.
+
+The `Subject` must be made read-only before passing to `doAs`/`doAsPrivileged`
+so that downstream code cannot extend it with additional principals.
+
+**Step 3 — Dispatch the connection handler under the peer Subject.**
+
+Replace the existing `NOPERMS_ACC` dispatch in `ConnectionHandler.run()` with a
+`Subject.doAsPrivileged` call that installs a `SubjectDomainCombiner`:
+
+```java
+// Conceptual pattern — human implementation required
+Subject peerSubject = extractPeerSubject(socket);
+if (peerSubject != null) {
+    Subject.doAsPrivileged(peerSubject,
+        (PrivilegedAction<Void>) () -> { run0(); return null; },
+        NOPERMS_ACC);
+} else {
+    // Non-TLS or anonymous connection — use existing path
+    AccessController.doPrivileged(
+        (PrivilegedAction<Void>) () -> { run0(); return null; },
+        NOPERMS_ACC);
+}
+```
+
+`Subject.doAsPrivileged` creates a new `AccessControlContext` that wraps
+`NOPERMS_ACC` with a `SubjectDomainCombiner(peerSubject)`.  Throughout the
+execution of `run0()` (and therefore throughout every `UnicastServerRef.dispatch()`
+invocation on that connection), the peer Subject is retrievable via:
+
+```java
+Subject caller = Subject.getSubject(AccessController.getContext());
+// caller.getPrincipals() contains the peer's X500Principal
+```
+
+And any policy grant of the form:
+
+```
+grant Principal javax.security.auth.x500.X500Principal "CN=MyClient, O=Example" {
+    permission java.io.FilePermission "/data/myservice/-" "read";
+};
+```
+
+will correctly apply to the service method invocation because the
+`SubjectDomainCombiner` injects the principal into the `AccessControlContext`
+intersection that `CombinerSecurityManager.checkPermission()` evaluates.
+
+#### Integration with `CombinerSecurityManager`
+
+`CombinerSecurityManager` intersects the `ProtectionDomain` permissions from
+every frame on the call stack.  When the `SubjectDomainCombiner` is active, it
+augments the `ProtectionDomain` array with domains seeded from the Subject's
+principal set.  The combiner is applied by `AccessControlContext.optimize()` at
+each `checkPermission()` call, so the security manager sees the full principal
+context without any change to its own implementation.
+
+No modification to `CombinerSecurityManager` is required.  The entire
+propagation is accomplished by the `SubjectDomainCombiner` installed by
+`Subject.doAsPrivileged` in the transport layer.
+
+#### Integration with JGDMS `TlsRMIServerSocketFactory.createServerSocket()`
+
+The JGDMS factory's `createServerSocket()` already calls:
+
+```java
+AccessControlContext acc = AccessController.getContext();
+Subject subject = AccessController.doPrivileged(
+    new PrivilegedAction<Subject>() {
+        public Subject run() { return Subject.getSubject(acc); }
+    }
+);
+SSLContext sslContext = Utilities.getServerSSLContextInfo(subject);
+```
+
+This pattern captures the **server's** Subject (the identity of the code that
+called `exportObject`) and uses it for key selection during the TLS handshake.
+The DirtyChai extension described above complements this by extracting the
+**client's** Subject from the completed handshake result and binding it to the
+dispatch thread.
+
+The two subjects serve different roles:
+
+| Subject | Source | Role |
+|---|---|---|
+| Server Subject | `Subject.getSubject(acc)` at `createServerSocket()` | Selects the server's private key for the TLS handshake |
+| Peer (client) Subject | `SSLSession.getPeerCertificates()` after `accept()` | Bound to the dispatch thread via `SubjectDomainCombiner`; governs policy grants for the service method call |
+
+#### Files Requiring Human Implementation
+
+| File | Change |
+|---|---|
+| `src/java.rmi/share/classes/sun/rmi/transport/tcp/TCPTransport.java` | `ConnectionHandler.run()` — detect `SSLSocket`, extract peer certs, call `Subject.doAsPrivileged` |
+| `src/java.rmi/share/classes/sun/rmi/transport/tcp/TCPTransport.java` | New private helper `extractPeerSubject(Socket)` — null-safe, returns null for non-TLS sockets |
+| JGDMS `TlsRMIServerSocketFactory` | Add `equals()`, `hashCode()`, and `Serializable` to satisfy the `RMIServerSocketFactory` contract (see gaps above) |
+
+#### Investigation Task Backlog
+
+- [ ] **TLS-SUBJECT-PROPAGATION (medium):** Implement `extractPeerSubject(Socket)` in `TCPTransport.ConnectionHandler` and wrap dispatch in `Subject.doAsPrivileged`.  Verify with a test that `Subject.getSubject(AccessController.getContext())` inside a service method returns the authenticated TLS peer's `Subject`.
+- [ ] **TLS-FACTORY-RMI-CONTRACT (high):** Add `equals()`, `hashCode()`, and `implements Serializable` to JGDMS `TlsRMIServerSocketFactory` to satisfy RMI stub-comparison and stub-distribution requirements.
+- [ ] **TLS-FACTORY-TEST (medium):** Add a test that exports a remote object with `TlsRMIServerSocketFactory`, connects with `TlsRMIClientSocketFactory`, and asserts that the service method's calling `Subject` matches the client's X.509 certificate principal.
