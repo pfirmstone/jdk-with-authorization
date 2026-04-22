@@ -73,7 +73,7 @@ Answer Depends On: What SecurityManager subclasses are allowed?
 
 ### Current Implementation
 
-You have **three common pathways** for SecurityManager installation:
+You have **three supported pathways** for SecurityManager installation (Pathways 1 and 3 are the typical deployment patterns; Pathway 2 is included for completeness):
 
 #### Pathway 1: `java.security.manager=default`
 

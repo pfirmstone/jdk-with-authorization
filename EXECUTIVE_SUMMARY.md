@@ -41,7 +41,7 @@ In short: Dirty Chai restores a proven enterprise security architecture with 25 
 **Real Attacks Now Prevented:**
 
 - 🛡️ **Deserialization gadgets:** Restrict what classes can be deserialized, blocking gadget chain exploits even when attackers find new gadgets
-- 🛡️ **Untrusted code:** Untrusted plugins or dynamically sourced code can be prevented from loading; trusted third-party code can be constrained to least-privilege policy grants.
+- 🛡️ **Untrusted code:** Untrusted plugins can be prevented from loading; dynamically loaded third-party code can be constrained to least-privilege policy grants.
 - 🛡️ **Supply chain attacks:** Third-party library compromise is contained to its granted permissions
 - 🛡️ **Zero-day exploits:** Even unknown vulnerabilities can't reach unauthorized resources
 
