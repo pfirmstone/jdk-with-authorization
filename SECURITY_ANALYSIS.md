@@ -407,7 +407,34 @@ Policy guidance for administrators:
     DirtyChai does not currently define whether principals are globally unique or scoped to an authentication domain. Policy grants keyed on principal class and name are vulnerable to cross-realm name collision (two subjects from different realms sharing the same `getName()` value) and to trusted-service principal injection (a trusted service mutating a shared `Subject`'s principal set after policy evaluation). Recommendation: define a canonical principal identity model; consider adding a permission check on `Subject.getPrincipals()` mutating calls when the subject is in use by untrusted code.
 
 11. **Activation deserialization authority (N-13)**  
-    The `SerialObjectPermission` check documented in §5 applies to the calling JVM at `ObjectInputStream.readOrdinaryObject()`. It is not documented whether this check is re-enforced inside a group JVM at activation reconstruction time, nor whether the group's own policy file or the registering administrator's policy takes precedence. A compromised JGDMS Phoenix activation daemon could inject arbitrary `ActivationDesc` descriptors, bypassing the permission boundary documented here.
+    Updated from JGDMS issue [#182 comment #4296131653](https://github.com/pfirmstone/JGDMS/issues/182#issuecomment-4296131653): activation flows in JGDMS `AtomicSerial` enforce `DeSerializationPermission` (not `SerialObjectPermission`) per class protection domain during `AtomicMarshalInputStream.readObject()`. Phoenix (admin JVM) and activation group JVMs are separate OS processes with independent `java.security.policy` files, independent `SecurityManager` state, and independent `ProtectionDomain` evaluation; policy authority is not inherited.
+
+    ```
+    ┌─ Admin JVM (Phoenix daemon) ────────────────┐
+    │ Policy: admin-policy.config                 │
+    │ Registers ActivationDesc / group parameters │
+    └─────────────────────┬───────────────────────┘
+                          │
+                          │ (ActivationGroupDesc + policy path)
+                          ▼
+    ┌─ Group JVM (ActivationGroupInit) ───────────┐
+    │ Policy: group-policy.config (separate file) │
+    │ Deserializes with AtomicMarshalInputStream  │
+    │ Enforces DeSerializationPermission in GROUP │
+    │ policy context, not admin policy            │
+    └──────────────────────────────────────────────┘
+    ```
+
+    Residual gaps:
+    - **Gap 1 (high): ActivationDesc integrity** — no descriptor-level HMAC/signature on persisted security-relevant fields, so Phoenix/filesystem compromise can tamper activation payloads.
+    - **Gap 2 (medium): Policy authority separation** — group policy may be broader than admin policy (no enforced subset relation), permitting classes denied by admin constraints.
+
+    Representative scenario: admin policy restricts deserialization (`permission DeSerializationPermission "ATOMIC";`), group policy allows wildcard (`permission DeSerializationPermission "*";`), attacker alters persisted `ActivationDesc` to include a gadget class such as `com.sun.org.apache.xalan.internal.xsltc.trax.TemplatesImpl`, and group activation accepts it under group policy.
+
+    Code evidence (JGDMS):
+    - `service-starter/.../SharedActivationGroupDescriptor.java` (group policy passed separately at startup; lines 127-170)
+    - `jgdms-platform/.../ObjectStreamClassContainer.java` (`deSerializationPermitted()` DeSerializationPermission checks; lines 90-146)
+    - `phoenix-activation/phoenix-init/.../ActivationGroupInit.java` (group JVM deserialization path; lines 70-71)
 
 12. **Coarse network permission granularity (N-14)**  
     Current `SocketPermission` grants do not distinguish multicast from unicast, local loopback from LAN ranges, or connected sockets from unconnected discovery sockets. Over-broad grants (e.g., wildcard `connect`) expose local network topology and enable peer discovery attacks via unconnected `DatagramSocket`. DirtyChai documentation does not yet provide guidance on the recommended grant structure for hardened deployments. See §9 and the medium-priority recommendation.
