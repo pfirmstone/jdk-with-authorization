@@ -380,8 +380,8 @@ Policy guidance for administrators:
    installation via both reflection and non-whitelisted `java.lang.invoke.*` frames.
    The residual is the same as the general confused-deputy rule: trusted code that
    uses unrestricted `doPrivileged` inside a method reachable via reflection can still
-   drop the untrusted caller's domain from the intersection.  See `PROCESS_ISOLATION.md`
-   ("Analysis: Reflection and MethodHandle Invocation in the Permission-Check Path").
+   drop the untrusted caller's domain from the intersection.  See detailed analysis
+   **N-8** below.
 
 7. **Finalizer and Cleaner thread context escape (N-9)**  
    Untrusted code in a finalizer or `Cleaner` callback is guarded by stack-intersection
@@ -394,8 +394,8 @@ Policy guidance for administrators:
    perform sensitive operations are therefore not constrained by the context the creating
    code was running under.
    Mitigation: avoid sensitive operations in finalizers; use explicit `close()` patterns
-   and process isolation for strong context-confinement.  See `PROCESS_ISOLATION.md`
-   ("Analysis: Finalizer and Cleaner Thread Execution Contexts").
+   and process isolation for strong context-confinement.  See detailed analysis
+   **N-9** below.
 
 8. **Constant-pool and class-initialization leakage (N-10)**  
    `<clinit>`, `invokedynamic` bootstrap methods, and `CONSTANT_Dynamic` all execute on
@@ -404,8 +404,7 @@ Policy guidance for administrators:
    prevents untrusted code from loading new classes.  The residual is the same
    confused-deputy rule: trusted `<clinit>` or bootstrap methods that use unrestricted
    `doPrivileged` can drop the untrusted triggering caller's domain from the intersection.
-   See `PROCESS_ISOLATION.md`
-   ("Analysis: Constant-Pool and Class-Initialization Security").
+   See detailed analysis **N-10** below.
 
 9. **Runtime instrumentation attach (N-11)**  
    `VirtualMachine.attach()` is policy-gated when the `SecurityManager` is active. The attach path enforces `AttachPermission("attachVirtualMachine")`, and attach-provider construction enforces `AttachPermission("createAttachProvider")`, so runtime attach is not an ungated surface inside DirtyChai's Java security model. Residual risk remains if policy over-grants these permissions, if the `SecurityManager` is inactive, or for hostile OS-level control of the JVM process. `-XX:+DisableAttachMechanism` remains recommended as an optional VM-level defense-in-depth layer.
@@ -431,6 +430,359 @@ Policy guidance for administrators:
     for dynamically defined classes. Export cycles can still create indirect
     access bridges via trusted public API surfaces. See §7, §10, and the
     remaining medium-priority recommendations.
+
+---
+
+## Analysis: Reflection and MethodHandle Invocation in the Permission-Check Path (N-8)
+
+### The Question
+
+Does `Method.invoke()` or `MethodHandle.invoke*()` allow untrusted code to bypass
+`SecurityManager.checkPermission` and the stack-intersection semantics that protect
+confused-deputy native-call scenarios?  Specifically:
+
+1. Does the reflective frame remove the untrusted caller's `ProtectionDomain` from
+   the permission-check stack walk?
+2. Can an attacker install a custom `SecurityManager` via a reflected call?
+3. Does a `MethodHandle` invocation create frames that evade the confused-deputy
+   guard?
+
+### How Stack Intersection Works
+
+`AccessController.getContext()` (called inside `SecurityManager.checkPermission`)
+walks the live call stack and computes the *intersection* of every
+`ProtectionDomain` present on the stack.  It stops only at an
+`AccessController.doPrivileged(...)` frame.
+
+A reflective call inserts frames from `java.lang.reflect` (or
+`sun.reflect.GeneratedMethodAccessor*`) between the untrusted caller frame and
+the target method.  Those intermediate frames belong to `java.base`, which holds
+`AllPermission`.  However, the untrusted caller's frame is **still on the stack
+below the reflection frames**.  The stack walk reaches it and includes its
+`ProtectionDomain` in the intersection.
+
+**Consequence:** `Method.invoke()` does **not** remove the untrusted caller from
+the permission-intersection.  If the untrusted caller lacks
+`NativeInvocationPermission`, a permission check for that permission anywhere in
+the reflective call chain will still fail.
+
+```
+Stack (innermost first)
+─────────────────────────────────────────────────
+TrustedClass.nativeWrapper()        ← checks NativeInvocationPermission
+  ↑ called via reflection ↓
+java.lang.reflect.Method.invoke()   ← java.base, AllPermission
+  ↑ called by ↓
+UntrustedClass.attack()             ← no NativeInvocationPermission
+  ↑ called by ↓
+Thread.run()
+─────────────────────────────────────────────────
+Intersection: AllPermission ∩ AllPermission ∩ {no NativeInvocationPermission} = DENY
+```
+
+### Installing a Custom SecurityManager via Reflection
+
+DirtyChai's `System.setSecurityManager()` is `@CallerSensitive`.  After the direct
+caller check, it invokes `validateCallerStackWithStackWalker()`, which walks the
+call stack and throws `SecurityException` if any frame belongs to:
+
+- `java.lang.reflect.*` or `sun.reflect.*`
+- `jdk.internal.misc.Unsafe` / `sun.misc.Unsafe`
+- Non-whitelisted `java.lang.invoke.*` call paths
+- Common generated-class patterns (`$$Lambda$`, proxy indicators, generated accessors)
+
+A call of the form `setSecurityManagerMethod.invoke(null, myCustomSM)` inserts a
+`java.lang.reflect.Method` frame into the stack.  The stack walker detects this
+reflection frame and throws `SecurityException` before the custom
+`SecurityManager` is installed.  **This attack path is blocked by DirtyChai.**
+
+### MethodHandle Invocation Frames
+
+`MethodHandle.invoke()` / `MethodHandle.invokeExact()` produce frames in the
+`java.lang.invoke` package.  DirtyChai's stack-walk inspection uses a
+switch-based whitelist (added as part of the F-10 remediation) that allows only
+linkage-time-only `java.lang.invoke` classes to pass:
+
+| Class | Status in whitelist | Reason |
+|-------|---------------------|--------|
+| `java.lang.invoke.LambdaMetafactory` | Allowed | Linkage-time only |
+| `java.lang.invoke.StringConcatFactory` | Allowed | Linkage-time only |
+| `java.lang.invoke.MethodHandles` | Allowed | Lookup utility, linkage-time |
+| `java.lang.invoke.MethodType` | Allowed | Type descriptor, linkage-time |
+| `java.lang.invoke.MethodHandle` (invocation frames) | **Blocked** | Runtime invocation frame |
+| `java.lang.invoke.MethodHandles$Lookup` (runtime invoke) | **Blocked** | Runtime invocation frame |
+
+A `MethodHandle` that targets `System.setSecurityManager` would leave a
+`java.lang.invoke.MethodHandle` invocation frame on the stack.  That frame is
+**not** in the linkage-time whitelist, so the stack walk blocks installation of a
+custom `SecurityManager` via this path.  **This attack path is blocked by DirtyChai.**
+
+### MethodHandle Lookup and Caller Context
+
+`MethodHandles.Lookup` captures the *lookup class* at creation time, not an
+`AccessControlContext`.  The lookup class governs which members are accessible
+via the lookup (access-control semantics at *lookup creation* time).
+
+However, when a `MethodHandle` is invoked at runtime, the *live call stack* is
+used for any subsequent `SecurityManager.checkPermission()` calls triggered by
+the target method.  The lookup class context does not replace the calling thread's
+live stack.  The same stack-intersection logic described above applies: the
+untrusted caller's `ProtectionDomain` is present on the stack at the point of
+any permission check inside the target.
+
+### Residual Considerations
+
+**Unrestricted `doPrivileged` inside the target:** The confused-deputy protection
+described in the "Remaining Residual Gaps" section above applies equally to
+reflective and `MethodHandle` call paths.  If the *target* method uses unrestricted
+`AccessController.doPrivileged(...)`, the stack walk stops at that frame, removing
+the untrusted caller's domain from the intersection.  This is a design obligation
+for trusted library authors — see Task N-6 guidance.
+
+**`Lookup.in(otherClass):`** Allows creating a lookup in another class's namespace.
+`SecurityManager.checkPackageAccess()` is called during lookup construction for
+non-accessible packages, gating cross-package access.
+
+**`MethodHandle` adapters (`asType`, `bindTo`, `asSpreader`):** These create
+wrapper method handles.  Invocation still places frames from the calling code on
+the live stack; the adapter frames belong to `java.base`.  No bypass is introduced.
+
+### Summary — Reflection and MethodHandle Path Status
+
+| Attack Scenario | Stack Walk Result | DirtyChai Status |
+|-----------------|-------------------|-----------------|
+| `Method.invoke(target, args)` used to trigger a native permission check | Untrusted caller PD remains on stack; intersection enforced | **Protected by default** |
+| `Method.invoke(null, customSM)` to install custom `SecurityManager` | Reflect frame detected by `validateCallerStackWithStackWalker()` | **Blocked by DirtyChai** |
+| `MethodHandle.invoke` to install custom `SecurityManager` | Non-whitelisted `java.lang.invoke.*` frame detected | **Blocked by DirtyChai** |
+| `MethodHandle.invoke` to call trusted class native method | Untrusted caller PD remains on stack; intersection enforced | **Protected by default** |
+| Trusted target uses unrestricted `doPrivileged` inside reflective call | Stack walk stops at `doPrivileged`; untrusted caller PD dropped | **Residual gap — trusted code must not use unrestricted `doPrivileged`** |
+
+---
+
+## Analysis: Finalizer and Cleaner Thread Execution Contexts (N-9)
+
+### The Question
+
+Finalizer threads and `java.lang.ref.Cleaner` daemon threads execute callback
+code in a different thread than the one that created the object.  Does this
+mean the original creator's restricted `AccessControlContext` is lost, and can
+this loss be exploited to run sensitive operations with escalated permissions?
+
+### Finalizer Thread Execution Model
+
+When the JVM determines that an object with a non-trivial `finalize()` method is
+no longer strongly reachable, it enqueues the object onto an internal finalizer
+queue.  A dedicated daemon thread (typically named `Finalizer`) dequeues objects
+and calls their `finalize()` method.
+
+The finalizer thread is created during JVM bootstrapping via:
+`AccessController.doPrivileged(..., AccessControlContext.neverPrivileged())`.
+This preserves the privileged thread-creation step while ensuring the resulting
+`Finalizer` thread executes with a never-privileged context (parity with
+`Cleaner` daemon behavior).  The *creator thread's* `AccessControlContext` is
+still **not** inherited by the finalizer thread and is **not** available when
+`finalize()` runs.
+
+### Stack Composition During Finalization
+
+When `finalize()` executes, the call stack looks like:
+
+```
+java.lang.ref.Finalizer$FinalizerThread.run()  ← java.base, neverPrivileged context
+  java.lang.ref.Finalizer.runFinalizer()        ← java.base, neverPrivileged context
+    UntrustedClass.finalize()                   ← untrusted ProtectionDomain
+      [any permission check triggered here]
+```
+
+When `SecurityManager.checkPermission()` is called from within `finalize()`,
+`AccessController.getContext()` walks this stack.  The `UntrustedClass`
+frame **is on the stack** and its `ProtectionDomain` is included in the
+intersection.
+
+If `UntrustedClass` lacks `NativeInvocationPermission`, any permission check
+for that permission during `finalize()` will fail.  **DirtyChai's
+stack-intersection guard therefore applies to untrusted finalizer code.**
+
+### The Execution-Context Escape
+
+The genuine threat is subtler: the **creator's restricted context is lost**, not
+that the finalizer gains extra permission beyond what the class is granted by
+policy.  Concretely:
+
+1. Trusted code runs a restricted operation under a limited
+   `AccessControlContext` (e.g., `doPrivileged(action, limitedContext)`).
+2. Inside that limited scope, a trusted object is created whose `finalize()`
+   performs a sensitive native call.
+3. The creator's limited context was deliberately preventing that native call.
+4. When the object is GC'd, the finalizer runs on the finalizer thread where
+   the limited context **does not apply**.
+5. The trusted class holds `NativeInvocationPermission` in its policy grant.
+6. `SecurityManager.checkPermission()` succeeds because only the trusted class's
+   domain and the `java.base` finalizer frames are on the stack.
+
+**In this scenario, the finalizer thread performs an action that the creating
+thread's limited context was intended to prevent.**  The in-process guard does
+not protect against this because the constraint was encoded in the thread's
+`AccessControlContext`, not in the class's policy grant.
+
+### Cleaner Callbacks (java.lang.ref.Cleaner)
+
+`java.lang.ref.Cleaner` (introduced in Java 9) is the recommended replacement
+for `finalize()`.  A `Cleaner.Cleanable` is registered by supplying a
+`Runnable` that is invoked when the registered object becomes phantom-reachable.
+
+The `Cleaner` creates its own daemon thread using `InnocuousThread` (no
+permissions).  The `Runnable` implementation class **is** on the stack when the
+callback fires, so its `ProtectionDomain` is included in the
+permission-intersection.  The execution-context-escape property is the same as
+for finalizers: the context of the code that called `Cleaner.register(...)` is
+not preserved for the callback thread.
+
+### Policy Decision
+
+| Scenario | In-Process Guard (DirtyChai) | Process Isolation Required? |
+|----------|------------------------------|-----------------------------|
+| Untrusted class finalizer calls native method | Stack intersection blocks it — untrusted PD on stack | No (in-process guard sufficient) |
+| Trusted class finalizer / Cleaner callback calls native method | Allowed only if trusted class policy grants `NativeInvocationPermission`; finalizer/Cleaner threads themselves are unprivileged | No (this is intended behavior) |
+| Trusted class finalizer bypasses a creator's limited context | **Not blocked** — limited context is not part of policy grant | **Yes — use process isolation** |
+| Attacker triggers GC of a trusted object whose finalizer does privileged work | Allowed if trusted class has the permission | Mitigate by avoiding sensitive ops in finalizers |
+
+### Guidance for Trusted Library Authors
+
+Trusted classes whose finalizers or `Cleaner` callbacks perform sensitive
+operations (native calls, file I/O, network access) should:
+
+1. **Prefer `Cleaner` over `finalize()`** — `Cleaner` avoids JVM finalizer
+   thread contention and is more predictable in timing.
+2. **Use `doPrivileged` with a minimal limited context** inside the callback if
+   the operation must succeed regardless of the invoking (finalizer) thread's
+   inherited context, and document explicitly why the bypass of the caller
+   context is safe.
+3. **Avoid encoding application-level security constraints in finalizers.**
+   If a security constraint must survive GC, enforce it at the time of object
+   construction or through an explicit `close()` / `release()` pattern, not via
+   finalization.
+4. **Process isolation is the ultimate backstop:** an attacker that exploits a
+   finalizer-context escape is still confined to the OS process boundary.
+
+---
+
+## Analysis: Constant-Pool and Class-Initialization Security (N-10)
+
+### The Question
+
+Java class initialization (`<clinit>`) and the constant-pool resolution mechanisms
+(`invokedynamic`, `CONSTANT_Dynamic`) trigger executable code lazily — at the point
+of first use, which may be on any thread and in any calling context.  Does this
+lazy execution model allow privileged effects to occur outside the security
+assumptions of the calling code?
+
+### Class Initialization (`<clinit>`) and the Call Stack
+
+Class initialization runs when a class is first *actively used*: `new`, `getstatic`,
+`putstatic`, `invokestatic`, `Class.forName()` with `initialize=true`, etc.  The
+JVM guarantees class initialization is thread-safe: the initializing thread holds
+the class's initialization lock while `<clinit>` executes, and other threads block
+until initialization completes.
+
+The critical security property is **stack membership**: the thread that triggers
+class initialization has its complete call stack present when `<clinit>` runs.  If
+untrusted code triggers initialization of a trusted class, the untrusted caller's
+frame **is on the stack** when `<clinit>` executes.
+
+```
+UntrustedClass.doSomething()          ← triggers TrustedClass static field access
+  ↑ triggers initialization ↓
+TrustedClass.<clinit>()               ← trusted ProtectionDomain
+  [SecurityManager.checkPermission called here]
+```
+
+`SecurityManager.checkPermission()` during `<clinit>` intersects:
+- `TrustedClass`'s `ProtectionDomain` (has `NativeInvocationPermission`), AND
+- `UntrustedClass`'s `ProtectionDomain` (does **not** have `NativeInvocationPermission`)
+
+**Result:** permission check fails.  **DirtyChai's stack-intersection guard
+applies during class initialization triggered by untrusted code.**
+
+### The `LoadClassPermission` Gate
+
+Before a class can be triggered for initialization by untrusted code, it must first
+be *loaded* into the untrusted class's namespace.  DirtyChai gates class loading
+with `LoadClassPermission`.  Untrusted code that is not granted
+`LoadClassPermission("some.trusted.Class")` cannot cause that class to be loaded
+into its classloader's namespace, and therefore cannot trigger its `<clinit>`.
+
+Once a class has been loaded (e.g., because the system loaded it at startup),
+further references from untrusted code to already-loaded classes in its namespace
+can trigger initialization without re-checking `LoadClassPermission`.  The
+`LoadClassPermission` gate applies to the *loading* step, not to the
+*initialization* step.
+
+**Residual:** If a class was previously loaded (e.g., by platform startup code)
+into a classloader namespace that untrusted code can reach, untrusted code may
+trigger initialization of that class without holding `LoadClassPermission`.  The
+stack-intersection guard still applies at any permission check inside `<clinit>`.
+
+### Unrestricted `doPrivileged` Inside `<clinit>`
+
+The same confused-deputy risk applies here as in normal method calls.  If
+`<clinit>` uses **unrestricted** `AccessController.doPrivileged(...)`, the stack
+walk stops at that frame, removing the untrusted triggering caller's domain from
+the intersection.  This gives `<clinit>` a privilege elevation path reachable by
+untrusted code.
+
+**Obligation for trusted library authors:** Do **not** use unrestricted
+`doPrivileged` inside `<clinit>` (or any static initializer block) on code paths
+that access security-sensitive resources.  Use `doPrivileged` with a
+restricted `AccessControlContext` or with an explicit `Permission` list.
+
+### `invokedynamic` Bootstrap Methods
+
+An `invokedynamic` call site is resolved lazily: the first time the JVM executes
+the `invokedynamic` bytecode, it calls the designated *bootstrap method* to
+produce a `CallSite`.  Subsequent invocations use the cached `CallSite` directly.
+
+Bootstrap methods run on the *calling thread* at the point of first invocation.
+The calling thread's stack is fully present during bootstrap resolution.  Standard
+JDK bootstrap methods (`LambdaMetafactory`, `StringConcatFactory`) are trusted
+`java.base` code.  Custom bootstrap methods defined in application code run in the
+context of whatever thread first executes the call site.
+
+**Security impact:**
+- If untrusted code has an `invokedynamic` call site targeting a custom bootstrap
+  method that performs a sensitive operation, the untrusted class's frame **is on
+  the stack** during resolution, so permission checks inside the bootstrap method
+  are intersection-enforced.
+- If the bootstrap method uses unrestricted `doPrivileged`, the same confused-deputy
+  risk applies.
+
+### `CONSTANT_Dynamic` (JEP 309)
+
+`CONSTANT_Dynamic` (Java 11+) allows constant-pool entries whose values are
+computed at runtime by bootstrap methods, lazily on first `ldc`.  The security
+model is identical to `invokedynamic`: the calling thread's stack is present, and
+any permission check during bootstrap execution is intersection-enforced.
+
+### Class Initialization Deadlock (Security Dimension)
+
+Two classes whose `<clinit>` blocks hold initialization locks in a circular
+dependency can deadlock (JVMS §5.5).  In a security context, an attacker
+controlling one class in the dependency cycle could induce a DoS by triggering
+initialization in two threads simultaneously.  DirtyChai's `LoadClassPermission`
+gate reduces this risk by preventing untrusted code from loading new classes into
+the namespace in the first place.
+
+### Summary — Class-Init and Constant-Pool Path Status
+
+| Scenario | Stack Walk Result | DirtyChai Status |
+|----------|-------------------|-----------------|
+| Untrusted code triggers `<clinit>` of trusted class | Untrusted PD on stack; intersection enforced | **Protected by default** |
+| Trusted `<clinit>` uses unrestricted `doPrivileged` | Stack walk stops; untrusted PD dropped | **Residual gap — trusted code must not use unrestricted `doPrivileged`** |
+| Untrusted code loads new class (which would trigger `<clinit>`) | `LoadClassPermission` blocks loading | **Blocked by DirtyChai** |
+| Untrusted code triggers `<clinit>` of already-loaded trusted class | Untrusted PD on stack; intersection enforced | **Protected by default** |
+| `invokedynamic` bootstrap method invoked from untrusted code | Untrusted PD on stack; intersection enforced | **Protected by default** |
+| Bootstrap method uses unrestricted `doPrivileged` | Stack walk stops; untrusted PD dropped | **Residual gap — same as confused-deputy rule** |
+| `CONSTANT_Dynamic` ldc from untrusted code | Untrusted PD on stack; intersection enforced | **Protected by default** |
 
 ---
 
