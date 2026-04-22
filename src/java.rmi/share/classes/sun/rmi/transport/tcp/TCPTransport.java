@@ -50,12 +50,16 @@ import java.rmi.server.UID;
 import java.security.AccessControlContext;
 import java.security.AccessController;
 import java.security.Permissions;
+import java.security.Principal;
 import java.security.PrivilegedAction;
 import java.security.ProtectionDomain;
+import java.security.cert.Certificate;
+import java.security.cert.X509Certificate;
 import java.util.ArrayList;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.WeakHashMap;
 import java.util.logging.Level;
 import java.util.concurrent.ExecutorService;
@@ -65,6 +69,10 @@ import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import javax.net.ssl.SSLSession;
+import javax.net.ssl.SSLSocket;
+import javax.security.auth.Subject;
+import javax.security.auth.x500.X500Principal;
 import sun.rmi.runtime.Log;
 import sun.rmi.runtime.NewThreadAction;
 import sun.rmi.transport.Channel;
@@ -125,16 +133,11 @@ public class TCPTransport extends Transport {
     private static final ThreadLocal<ConnectionHandler>
         threadConnectionHandler = new ThreadLocal<>();
 
-    /** an AccessControlContext with no permissions */
+    /** an AccessControlContext with no permissions, but one that can gain 
+     * permissions from Subject */
     @SuppressWarnings("removal")
-    private static final AccessControlContext NOPERMS_ACC = createNopermsAcc();
-
-    @SuppressWarnings("removal")
-    private static AccessControlContext createNopermsAcc() {
-        Permissions perms = new Permissions();
-        ProtectionDomain[] pd = { new ProtectionDomain(null, perms) };
-        return AccessControlContext.create(pd);
-    }
+    private static final AccessControlContext NOPERMS_ACC = 
+                                            AccessControlContext.neverPrivileged();
 
     /** endpoints for this transport */
     private final LinkedList<TCPEndpoint> epList;
@@ -422,6 +425,17 @@ public class TCPTransport extends Transport {
                 Socket socket = null;
                 try {
                     socket = serverSocket.accept();
+                    Subject subject = null;
+                    if (socket instanceof SSLSocket sslSocket){
+                        SSLSession session = sslSocket.getSession();
+                        Certificate[] peerCerts = session.getPeerCertificates();
+                        if (peerCerts != null && peerCerts.length > 0){
+                            if (peerCerts[0] instanceof X509Certificate endEntityCert){
+                                X500Principal principal = endEntityCert.getSubjectX500Principal();
+                                subject = new Subject(true, Set.of(principal), Set.of(), Set.of());
+                            }
+                        }
+                    }
 
                     /*
                      * Find client host name (or "0.0.0.0" if unknown)
@@ -437,7 +451,7 @@ public class TCPTransport extends Transport {
                      */
                     try {
                         connectionThreadPool.execute(
-                            new ConnectionHandler(socket, clientHost));
+                            new ConnectionHandler(socket, clientHost, subject));
                     } catch (RejectedExecutionException e) {
                         closeSocket(socket);
                         tcpLog.log(Log.BRIEF,
@@ -669,10 +683,12 @@ public class TCPTransport extends Transport {
 
         private Socket socket;
         private String remoteHost;
+        private final Subject subject;
 
-        ConnectionHandler(Socket socket, String remoteHost) {
+        ConnectionHandler(Socket socket, String remoteHost, Subject subject) {
             this.socket = socket;
             this.remoteHost = remoteHost;
+            this.subject = subject;
         }
 
         String getClientHost() {
@@ -717,10 +733,21 @@ public class TCPTransport extends Transport {
                 t.setName("RMI TCP Connection(" +
                           connectionCount.incrementAndGet() +
                           ")-" + remoteHost);
-                AccessController.doPrivileged((PrivilegedAction<Void>)() -> {
-                    run0();
-                    return null;
-                }, NOPERMS_ACC);
+                if (subject != null){
+                    Subject.doAsPrivileged(
+                        subject, 
+                        (PrivilegedAction<Void>)() -> {
+                            run0();
+                            return null;
+                        }, null // creates ACC with no perms.
+                    );
+                    
+                } else {
+                    AccessController.doPrivileged((PrivilegedAction<Void>)() -> {
+                        run0();
+                        return null;
+                    }, NOPERMS_ACC);
+                }
             } finally {
                 t.setName(name);
             }
