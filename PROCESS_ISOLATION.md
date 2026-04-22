@@ -2887,6 +2887,11 @@ The two subjects serve different roles:
 
 #### Investigation Task Backlog
 
-- [ ] **TLS-SUBJECT-PROPAGATION (medium):** Implement `extractPeerSubject(Socket)` in `TCPTransport.ConnectionHandler` and wrap dispatch in `Subject.doAsPrivileged`.  Verify with a test that `Subject.getSubject(AccessController.getContext())` inside a service method returns the authenticated TLS peer's `Subject`.
+- [x] **TLS-SUBJECT-PROPAGATION (complete):** Implemented in `TCPTransport.ConnectionHandler` (commit `5e5682a8dbb1d3aa0a0838893646e43bfd150dc6`):
+  - Extracts peer X.509 certificates from `SSLSession` after `accept()`
+  - Constructs immutable read-only `Subject` with peer `X500Principal` (`new Subject(true, ...)`)
+  - Handles `SSLPeerUnverifiedException` with graceful fallback to unauthenticated dispatch
+  - Dispatches under `Subject.doAsPrivileged(..., null)` to enable principal-keyed policy grants
+  - Verified behavior target: `Subject.getSubject(AccessController.getContext())` inside service methods returns the authenticated peer `Subject`
 - [ ] **TLS-FACTORY-RMI-CONTRACT (high):** Add `equals()`, `hashCode()`, and `implements Serializable` to JGDMS `TlsRMIServerSocketFactory` to satisfy RMI stub-comparison and stub-distribution requirements.
 - [ ] **TLS-FACTORY-TEST (medium):** Add a test that exports a remote object with `TlsRMIServerSocketFactory`, connects with `TlsRMIClientSocketFactory`, and asserts that the service method's calling `Subject` matches the client's X.509 certificate principal.
