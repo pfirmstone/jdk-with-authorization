@@ -69,6 +69,7 @@ import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import javax.net.ssl.SSLPeerUnverifiedException;
 import javax.net.ssl.SSLSession;
 import javax.net.ssl.SSLSocket;
 import javax.security.auth.Subject;
@@ -428,12 +429,19 @@ public class TCPTransport extends Transport {
                     Subject subject = null;
                     if (socket instanceof SSLSocket sslSocket){
                         SSLSession session = sslSocket.getSession();
-                        Certificate[] peerCerts = session.getPeerCertificates();
-                        if (peerCerts != null && peerCerts.length > 0){
-                            if (peerCerts[0] instanceof X509Certificate endEntityCert){
-                                X500Principal principal = endEntityCert.getSubjectX500Principal();
-                                subject = new Subject(true, Set.of(principal), Set.of(), Set.of());
+                        try{
+                            Certificate[] peerCerts = session.getPeerCertificates();
+                            if (peerCerts != null && peerCerts.length > 0){
+                                if (peerCerts[0] instanceof X509Certificate endEntityCert){
+                                    X500Principal principal = endEntityCert.getSubjectX500Principal();
+                                    subject = new Subject(true, Set.of(principal), Set.of(), Set.of());
+                                }
                             }
+                        } catch (SSLPeerUnverifiedException e){
+                            if (tcpLog.isLoggable(Log.BRIEF)){
+                                tcpLog.log(Log.BRIEF, "TLS Peer unverified");
+                            }
+                            // Call will be made with no permission instead.
                         }
                     }
 
