@@ -4,6 +4,10 @@
 This document consolidates the analyses produced during the investigation into
 runtime permission checks for thread creation, atomic serialization, and the
 inherent limits of in-process isolation in a Java security manager environment.
+
+> This document is focused on cross-JVM trust boundaries, JGDMS activation, and
+> multi-process isolation concerns. For DirtyChai's in-process security model,
+> see `SECURITY_ANALYSIS.md`.
 ---
 ## Analysis: RuntimePermission("createPlatformThread") and RuntimePermission("createVirtualThread")
 ### The Gap
@@ -258,15 +262,118 @@ This layering ensures that even code running inside a JGDMS service that falls
 back to standard Java serialization (e.g., for legacy data formats) is covered
 by the `SerialObjectPermission` check.
 
-**Activation-group deserialization scope (undocumented boundary):**
+**Activation-group deserialization scope (trust-boundary note):**
 
-The `SerialObjectPermission` enforcement described above applies to the calling JVM. It is not currently documented whether a group JVM (in an RMI activation scenario) re-enforces this permission when it reconstructs activatable objects from `ActivationDesc` descriptors passed by the JGDMS Phoenix activation daemon. Three specific gaps exist:
+The `SerialObjectPermission` enforcement described above is a **calling-JVM**
+DirtyChai control. Activation reconstruction in JGDMS group JVMs is a separate
+boundary and is evaluated in that process' own policy/authority context.
 
-- **Descriptor integrity** — Current JGDMS/Phoenix documentation does not state whether activation-daemon-stored `ActivationDesc` objects are integrity-protected (e.g., with a signature or HMAC). A compromised or malicious JGDMS Phoenix activation daemon could inject arbitrary descriptors, causing the group JVM to deserialize objects that would have been blocked by `SerialObjectPermission` in the originating JVM.
-- **Policy authority on re-activation** — it is undefined whether the group JVM applies its own policy file or the registering administrator's policy when evaluating `SerialObjectPermission` during activation reconstruction. If the group's policy is weaker, the permission check may be ineffective.
-- **`AccessControlContext` freshness on restart** — when a group JVM crashes and restarts, ACC cannot be inherited from a previous run because it is not serializable and is never persisted. The concern is instead whether group JVM bootstrap code builds a fresh ACC from current policy vs. captures a context before policy is fully loaded.
+In particular:
 
-See residual N-13 under "Residual N-13: Activation Deserialization Authority Trust Boundaries" in this document.
+- **Descriptor integrity boundary** — `ActivationDesc` persistence/restore is an
+  activation-daemon trust boundary. If persisted descriptors are tampered, group
+  JVM reconstruction can be redirected to attacker-chosen classes/data unless
+  descriptor integrity is independently protected.
+- **Policy authority boundary** — admin JVM and group JVM policy files are
+  independent. During activation reconstruction, deserialization authority is
+  evaluated under group-JVM policy, not by inheriting admin-JVM policy intent.
+- **Restart-context boundary** — group JVM restart always creates fresh
+  runtime/ACC state from current bootstrap and policy inputs, not from prior
+  in-memory context. Misordered bootstrap/policy loading can therefore affect
+  effective deserialization authority at startup.
+
+See the detailed analysis below.
+
+### Residual N-13: Activation Deserialization Authority Trust Boundaries
+
+This section consolidates activation-specific residual N-13 analysis previously
+recorded in `SECURITY_ANALYSIS.md`, and keeps the full cross-JVM trust-boundary
+analysis with the rest of the process-isolation material.
+
+Cross-reference: [JGDMS #182 comment #4296131653](https://github.com/pfirmstone/JGDMS/issues/182#issuecomment-4296131653).
+
+- Activation deserialization in JGDMS `AtomicSerial` is governed by `DeSerializationPermission` (not `SerialObjectPermission`).
+- The check is enforced during `AtomicMarshalInputStream.readObject()` against each class protection domain.
+- Phoenix/admin JVM and each group JVM are separate OS processes with independent policy files.
+- Policy authority is not hierarchical: group JVM enforcement is based on the group JVM's configured policy, not inherited admin policy.
+
+This distinction matters because activation reconstruction in the group JVM follows
+AtomicSerial enforcement points (`DeSerializationPermission` at class-construction
+time), so assuming `SerialObjectPermission`/originating-JVM semantics can hide where
+policy authority is actually decided.
+
+```
+┌─ Admin JVM (Phoenix daemon) ──────────────────┐
+│ Policy File: admin-policy.config              │
+│ SecurityManager: admin process scope          │
+└──────────────────┬────────────────────────────┘
+                   │ (ActivationGroupDesc + policy file path)
+                   ▼
+┌─ Group JVM (ActivationGroupInit) ─────────────┐
+│ Policy File: group-policy.config (SEPARATE)   │
+│ -Djava.security.policy=group-policy.config    │
+│ DeSerializationPermission: GROUP policy scope │
+└───────────────────────────────────────────────┘
+```
+
+#### Two critical N-13 gaps
+
+| Gap | Root cause | Consequence | Severity |
+|---|---|---|---|
+| 1. ActivationDesc integrity protection | No descriptor-level HMAC/signature over persisted security-relevant fields | Phoenix/filesystem compromise can tamper descriptor content and inject unauthorized activation payloads | High |
+| 2. Policy authority separation | Group policy is configured independently and not validated as subset/equivalent to admin policy | Group can allow deserialization classes denied by admin policy | Medium |
+
+#### Representative attack scenario
+
+1. Admin policy is restrictive (example): `permission DeSerializationPermission "ATOMIC";`
+2. Group policy is permissive (example): `permission DeSerializationPermission "*";`
+3. Attacker modifies persisted `ActivationDesc` if Phoenix/filesystem is compromised.
+4. Tampered descriptor references gadget class (example: `com.sun.org.apache.xalan.internal.xsltc.trax.TemplatesImpl`).
+5. Group JVM starts with permissive group policy and deserializes via `AtomicMarshalInputStream`.
+6. `DeSerializationPermission` is evaluated in group-policy context; admin boundary is bypassed.
+
+#### Existing mitigations vs residual risk
+
+| Area | Existing mitigation | Residual risk |
+|---|---|---|
+| AtomicSerial deserialization in activation path | `DeSerializationPermission` checks during class construction in the active deserializing JVM | Checks are only as strict as the currently active process policy (group policy can be broader than admin policy) |
+| JGDMS transport | TLS socket factories and JERI constraints for channel auth/integrity/confidentiality | Transport identity is not equivalent to deserialization-authority identity inside re-activation context |
+| Process isolation | Phoenix and each group JVM run in separate OS processes with separate policies | Isolation does not guarantee descriptor integrity or authority continuity across restart/replay |
+| Policy controls | Per-process policy files and least-privilege guidance in this document | No built-in enforcement that group policy is a subset of admin policy |
+
+#### Hardening recommendations
+
+**High priority**
+
+1. Add descriptor integrity protection for persisted activation state:
+   HMAC-SHA256 or signature over security-relevant `ActivationDesc` fields
+   (implementation class, location/codebase, init data, restart flag, policy path).
+2. Enforce group policy discipline:
+   require operator review/approval of group policy and enforce/document subset
+   constraints so group `DeSerializationPermission` grants cannot exceed admin intent.
+3. Add operator/deployment checks to diff admin vs group policy with warnings on broader group grants.
+    
+**Medium priority**
+
+1. Add defense-in-depth validation at group bootstrap:
+   verify activation classes were also permitted by admin policy at registration time
+   (requires carrying signed admin policy context or whitelist).
+2. Add activation-lifecycle audit events (descriptor write/read/verify/replay) and trace which policy granted deserialization.
+3. Define principal propagation semantics for TLS-authenticated calls so service-side deserialization/authorization logic can consume authenticated identity explicitly.
+
+#### Investigation task backlog (for issue tracking)
+
+- [ ] ACTIVATION-DESC-INTEGRITY (high): Prototype `ActivationDesc` integrity envelope (sign/verify) for Phoenix persistence.
+- [ ] GROUP-POLICY-DISCIPLINE (high): Validate/deploy policy subset checks between admin and group JVM policies.
+- [ ] GROUP-DESERIALIZATION-AUTHORITY (high): Instrument group JVM reconstruction path to assert/document `DeSerializationPermission` authority source.
+- [ ] POLICY-PRECEDENCE-REACTIVATION (medium): Specify and validate policy-authority precedence for re-activation and mismatch diagnostics.
+- [ ] TLS-SUBJECT-PROPAGATION (medium): Define TLS subject propagation contract into service deserialization context.
+
+#### JGDMS code evidence
+
+- `service-starter/src/main/java/org/apache/river/start/SharedActivationGroupDescriptor.java` (lines 127-170): separate group policy parameter passed as `-Djava.security.policy=...`
+- `jgdms-platform/src/main/java/org/apache/river/api/io/ObjectStreamClassContainer.java` (lines 90-146): `deSerializationPermitted()` checks `DeSerializationPermission` against class protection domain
+- `phoenix-activation/phoenix-init/src/main/java/org/apache/river/phoenix/init/ActivationGroupInit.java` (lines 70-71): activation group bootstrap deserializes group descriptors through `AtomicMarshalInputStream.readObject(...)`
 ---
 ## DirtyChai: SerialObjectPermission as the JDK-level Backstop for JGDMS Atomic Serialization — and Why Process Isolation Remains Essential
 ### SerialObjectPermission as Backstop
@@ -319,6 +426,12 @@ All of the controls described above — `SerialObjectPermission`, `@AtomicSerial
 `createVirtualThread`, `SecurityManager` — operate *inside a single JVM
 process*.  In-process isolation has fundamental limits that no permission check
 or deserialization framework can overcome:
+
+Residual N-13 is a concrete activation example: even with strong in-process
+checks, cross-process policy-authority drift and descriptor-integrity gaps can
+re-open deserialization risk unless process boundaries and deployment controls
+are treated as first-class security controls.
+
 #### 1. Shared memory
 All threads and objects in a JVM process share a heap.  A hostile thread that
 has already been scheduled can read or corrupt shared data structures without
@@ -1152,108 +1265,6 @@ ends must present credentials accepted by the other's SecurityManager policy.  B
 Phoenix runs under its own DirtyChai policy (separate from the group's policy), a
 compromised group JVM cannot escalate privileges into Phoenix — it can only make calls
 that Phoenix's policy permits.
-
-### Residual N-13: Activation Deserialization Authority Trust Boundaries
-
-This section expands the residual N-13 entry in `SECURITY_ANALYSIS.md` with a
-focused trust-boundary analysis for DirtyChai + JGDMS + Phoenix activation flows.
-
-**Cross-reference:** `SECURITY_ANALYSIS.md` → Residual risk 11 (**N-13**),
-**"Activation deserialization authority (N-13)"**.
-
-#### Integration points in scope
-
-- `SharedActivationGroupDescriptor` / service-starter registration path (`ActivationDesc` and group policy argument construction)
-- `TlsRMIClientSocketFactory` / `TlsRMIServerSocketFactory` (JGDMS TLS transport/authentication path)
-- Phoenix activation daemon persistence and re-activation path
-- Group JVM bootstrap and `ActivationDesc` deserialization/reconstruction path
-
-#### Trust model correction (JGDMS issue #182 analysis)
-
-Cross-reference: [JGDMS #182 comment #4296131653](https://github.com/pfirmstone/JGDMS/issues/182#issuecomment-4296131653).
-
-- Activation deserialization in JGDMS `AtomicSerial` is governed by `DeSerializationPermission` (not `SerialObjectPermission`).
-- The check is enforced during `AtomicMarshalInputStream.readObject()` against each class protection domain.
-- Phoenix/admin JVM and each group JVM are different OS processes with independent policy files.
-- Policy authority is not hierarchical: group JVM enforcement is based on the group JVM's configured policy, not inherited admin policy.
-
-This distinction matters because activation reconstruction in the group JVM follows
-AtomicSerial enforcement points (`DeSerializationPermission` at class-construction
-time), so assuming `SerialObjectPermission`/originating-JVM semantics can hide where
-policy authority is actually decided.
-
-```
-┌─ Admin JVM (Phoenix daemon) ──────────────────┐
-│ Policy File: admin-policy.config              │
-│ SecurityManager: admin process scope          │
-└──────────────────┬────────────────────────────┘
-                   │ (ActivationGroupDesc + policy file path)
-                   ▼
-┌─ Group JVM (ActivationGroupInit) ─────────────┐
-│ Policy File: group-policy.config (SEPARATE)   │
-│ -Djava.security.policy=group-policy.config    │
-│ DeSerializationPermission: GROUP policy scope │
-└───────────────────────────────────────────────┘
-```
-
-#### Two critical N-13 gaps
-
-| Gap | Root cause | Consequence | Severity |
-|---|---|---|---|
-| 1. ActivationDesc integrity protection | No descriptor-level HMAC/signature over persisted security-relevant fields | Phoenix/filesystem compromise can tamper descriptor content and inject unauthorized activation payloads | High |
-| 2. Policy authority separation | Group policy is configured independently and not validated as subset/equivalent to admin policy | Group can allow deserialization classes denied by admin policy | Medium |
-
-#### Representative attack scenario
-
-1. Admin policy is restrictive (example): `permission DeSerializationPermission "ATOMIC";`
-2. Group policy is permissive (example): `permission DeSerializationPermission "*";`
-3. Attacker modifies persisted `ActivationDesc` if Phoenix/filesystem is compromised.
-4. Tampered descriptor references gadget class (example: `com.sun.org.apache.xalan.internal.xsltc.trax.TemplatesImpl`).
-5. Group JVM starts with permissive group policy and deserializes via `AtomicMarshalInputStream`.
-6. `DeSerializationPermission` is evaluated in group-policy context; admin boundary is bypassed.
-
-#### Existing mitigations vs residual risk
-
-| Area | Existing mitigation | Residual risk |
-|---|---|---|
-| AtomicSerial deserialization in activation path | `DeSerializationPermission` checks during class construction in the active deserializing JVM | Checks are only as strict as the currently active process policy (group policy can be broader than admin policy) |
-| JGDMS transport | TLS socket factories and JERI constraints for channel auth/integrity/confidentiality | Transport identity is not equivalent to deserialization-authority identity inside re-activation context |
-| Process isolation | Phoenix and each group JVM run in separate OS processes with separate policies | Isolation does not guarantee descriptor integrity or authority continuity across restart/replay |
-| Policy controls | Per-process policy files and least-privilege guidance in this document | No built-in enforcement that group policy is a subset of admin policy |
-
-#### Hardening recommendations
-
-**High priority**
-
-1. Add descriptor integrity protection for persisted activation state:
-   HMAC-SHA256 or signature over security-relevant `ActivationDesc` fields
-   (implementation class, location/codebase, init data, restart flag, policy path).
-2. Enforce group policy discipline:
-   require operator review/approval of group policy and enforce/document subset
-   constraints so group `DeSerializationPermission` grants cannot exceed admin intent.
-3. Add operator/deployment checks to diff admin vs group policy with warnings on broader group grants.
-    
-**Medium priority**
-
-1. Add defense-in-depth validation at group bootstrap:
-   verify activation classes were also permitted by admin policy at registration time
-   (requires carrying signed admin policy context or whitelist).
-2. Add activation-lifecycle audit events (descriptor write/read/verify/replay) and trace which policy granted deserialization.
-3. Define principal propagation semantics for TLS-authenticated calls so service-side deserialization/authorization logic can consume authenticated identity explicitly.
-
-#### Investigation task backlog (for issue tracking)
-
-- [ ] ACTIVATION-DESC-INTEGRITY (high): Prototype `ActivationDesc` integrity envelope (sign/verify) for Phoenix persistence.
-- [ ] GROUP-POLICY-DISCIPLINE (high): Validate/deploy policy subset checks between admin and group JVM policies.
-- [ ] GROUP-DESERIALIZATION-AUTHORITY (high): Instrument group JVM reconstruction path to assert/document `DeSerializationPermission` authority source.
-- [ ] POLICY-PRECEDENCE-REACTIVATION (medium): Specify and validate policy-authority precedence for re-activation and mismatch diagnostics.
-- [ ] TLS-SUBJECT-PROPAGATION (medium): Define TLS subject propagation contract into service deserialization context.
-
-#### JGDMS code evidence
-
-- `service-starter/src/main/java/org/apache/river/start/SharedActivationGroupDescriptor.java` (lines 127-170): separate group policy parameter passed as `-Djava.security.policy=...`
-- `jgdms-platform/src/main/java/org/apache/river/api/io/ObjectStreamClassContainer.java` (lines 90-146): `deSerializationPermitted()` checks `DeSerializationPermission` against class protection domain
-- `phoenix-activation/phoenix-init/src/main/java/org/apache/river/phoenix/init/ActivationGroupInit.java` (lines 70-71): activation group bootstrap deserializes group descriptors through `AtomicMarshalInputStream.readObject(...)`
 
 ### What Activation Isolation Does and Does Not Provide
 
