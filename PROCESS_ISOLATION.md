@@ -872,7 +872,7 @@ acquire permissions it does not already possess.
 Note that while *using* these methods requires no special permission,
 *constructing* an `AccessControlContext` to pass to them may require
 `SecurityPermission("createAccessControlContext")`.  If the caller does not
-hold that permission, `AccessControlContext.build()` automatically adds the
+hold that permission, `AccessControlContext.create()` automatically adds the
 calling context's own domains to the supplied array to prevent privilege
 escalation.  The context passed by `AccessController.getContext()` is always
 safe to re-use without that permission.
@@ -2022,7 +2022,7 @@ DirtyChai modifies `SecureClassLoader.getProtectionDomain()` to check
 SecurityManager sm = System.getSecurityManager();
 if (sm != null) {
     sm.checkPermission(LOAD_CLASS_ALLOW,
-            AccessControlContext.build(new ProtectionDomain[]{pd}));
+            AccessControlContext.create(new ProtectionDomain[]{pd}));
     //                                 ^^
     //                                 AccessControlContext contains ONLY the
     //                                 new class's own ProtectionDomain

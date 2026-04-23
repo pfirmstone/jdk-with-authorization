@@ -100,7 +100,7 @@ Security impact: tighter binding of limited-privilege execution to caller proven
 
 #### `AccessControlContext`
 
-Dirty Chai introduces builder APIs not present in OpenJDK 21, plus authorization checks around ACC construction (`AccessControlContext.build(...)`, `checkAuthorized(...)`, permission intersection helpers).
+Dirty Chai introduces builder APIs not present in OpenJDK 21, plus authorization checks around ACC construction (`AccessControlContext.create(...)`, `checkAuthorized(...)`, permission intersection helpers).
 
 Notable security effect versus OpenJDK 21:
 
@@ -349,79 +349,19 @@ Policy guidance for administrators:
 
 ## Residual Risks and Omissions (Now Explicit)
 
-1. **Finite stack scan depth (`limit(50)`)**  
-   Deep-stack evasions are harder than before but still a theoretical residual if malicious frames fall outside scanned depth (see
-   `src/java.base/share/classes/java/lang/System.java`, `validateCallerStackWithStackWalker()`, line ~2923).
-
-2. **Heuristic generated-class detection**  
-   Name-pattern detection can produce false positives/negatives in edge cases; it is not a formal proof of provenance.
-
-3. **Trusted-class list governance risk**  
-   Security relies on disciplined maintenance of `trustedSMClass()`; whitelist expansion is a high-impact operation.  ClassLoader exemption list maintenance...
-
-4. **Policy quality remains critical**  
-   The architecture is strong, but permissive policy files can negate hardening benefits.
-
-5. **Source-file Javadoc drift — resolved**  
-   All repository Markdown documentation and Java source-file Javadoc comments are now
-   consistent with the `limit(50)` implementation. `System.java` line 468 was corrected by
-   the human author to read "50 stack frames", matching `limit(50)` at line 2923 and the
-   "up to 50 frames" statement at line 424. No further drift is known.
-
-6. **Reflection and MethodHandle invocation paths (N-8)**  
-   `Method.invoke()` and `MethodHandle.invoke*()` do **not** remove the untrusted
-   caller's `ProtectionDomain` from the permission-check stack walk.  DirtyChai's
-   `validateCallerStackWithStackWalker()` already blocks custom `SecurityManager`
-   installation via both reflection and non-whitelisted `java.lang.invoke.*` frames.
-   The residual is the same as the general confused-deputy rule: trusted code that
-   uses unrestricted `doPrivileged` inside a method reachable via reflection can still
-   drop the untrusted caller's domain from the intersection.  See detailed analysis
-   **N-8** below.
-
-7. **Finalizer and Cleaner thread context escape (N-9)**  
-   Untrusted code in a finalizer or `Cleaner` callback is guarded by stack-intersection
-   because the untrusted class's `ProtectionDomain` is present on the finalizer thread's
-   stack at the time of any permission check.  Finalizer threads are now created with
-   `AccessControlContext.neverPrivileged()` (matching `Cleaner` daemon behavior via
-   `InnocuousThread`), so this residual is narrower than before.  The remaining gap is
-   context escape: the creator thread's limited `AccessControlContext` is **not**
-   propagated to finalizer/Cleaner callback threads.  Trusted objects whose finalizers
-   perform sensitive operations are therefore not constrained by the context the creating
-   code was running under.
-   Mitigation: avoid sensitive operations in finalizers; use explicit `close()` patterns
-   and process isolation for strong context-confinement.  See detailed analysis
-   **N-9** below.
-
-8. **Constant-pool and class-initialization leakage (N-10)**  
-   `<clinit>`, `invokedynamic` bootstrap methods, and `CONSTANT_Dynamic` all execute on
-   the triggering thread's call stack, so the untrusted caller's `ProtectionDomain` is
-   present and the stack-intersection guard applies.  The `LoadClassPermission` gate
-   prevents untrusted code from loading new classes.  The residual is the same
-   confused-deputy rule: trusted `<clinit>` or bootstrap methods that use unrestricted
-   `doPrivileged` can drop the untrusted triggering caller's domain from the intersection.
-   See detailed analysis **N-10** below.
-
-9. **Runtime instrumentation attach (N-11)**  
-   `VirtualMachine.attach()` is policy-gated when the `SecurityManager` is active. The attach path enforces `AttachPermission("attachVirtualMachine")`, and attach-provider construction enforces `AttachPermission("createAttachProvider")`, so runtime attach is not an ungated surface inside DirtyChai's Java security model. Residual risk remains if policy over-grants these permissions, if the `SecurityManager` is inactive, or for hostile OS-level control of the JVM process. `-XX:+DisableAttachMechanism` remains recommended as an optional VM-level defense-in-depth layer.
-
-10. **Principal scope and isolation (N-12)**  
-    DirtyChai does not currently define whether principals are globally unique or scoped to an authentication domain. Policy grants keyed on principal class and name are vulnerable to cross-realm name collision (two subjects from different realms sharing the same `getName()` value) and to trusted-service principal injection (a trusted service mutating a shared `Subject`'s principal set after policy evaluation). Recommendation: define a canonical principal identity model; consider adding a permission check on `Subject.getPrincipals()` mutating calls when the subject is in use by untrusted code.
-
-11. **Coarse network permission granularity (N-14)**  
-    Current `SocketPermission` grants do not distinguish multicast from unicast, local loopback from LAN ranges, or connected sockets from unconnected discovery sockets. Over-broad grants (e.g., wildcard `connect`) expose local network topology and enable peer discovery attacks via unconnected `DatagramSocket`. DirtyChai documentation does not yet provide guidance on the recommended grant structure for hardened deployments. See §9 and the medium-priority recommendation.
-
-12. **Module export cycles and hidden module visibility (N-15)**  
-    DirtyChai now gates runtime `Module.addOpens()` and `Module.addExports()`
-    mutations with `RuntimePermission("mutateModuleTopology")`, closing the
-    previously ungated runtime mutation surface. Residual N-15 risk remains for
-    independent module-system behavior outside this runtime API gate:
-    `--add-opens`/`--add-exports` JVM flags can still bypass
-    `LoadClassPermission` for already-loaded classes; `--add-modules` still
-    pre-populates the module layer before the SecurityManager is installed; and
-    `MethodHandles.Lookup.defineClass()` still bypasses `LoadClassPermission`
-    for dynamically defined classes. Export cycles can still create indirect
-    access bridges via trusted public API surfaces. See §7, §10, and the
-    remaining medium-priority recommendations.
+| ID | Residual risk | Root cause | Mitigation |
+|---|---|---|---|
+| 1 | Finite stack scan depth (`limit(50)`) | Bounded scan can miss deep malicious frames | Keep checks near entry points; fail secure on detection within scanned depth; treat out-of-range evasion as bounded residual |
+| 2 | Generated-class detection is heuristic | Name patterns are probabilistic (false +/−) | Keep layered caller/stack/CodeSource/policy checks |
+| 3 | Trusted-list and exemption governance | `trustedSMClass()` / ClassLoader exemptions are trust boundaries | Keep lists minimal; require explicit security review for additions |
+| 4 | Policy quality remains critical | Over-broad grants negate hardening | Enforce least privilege with audited policy generation/review |
+| 5 | Documentation drift (resolved) | Prior wording drifted from implementation | Keep docs/Javadoc synced with `limit(50)`; no open drift known |
+| 6 | Confused-deputy in trusted paths (N-8, N-10; consolidated) | Reflection/MethodHandle and `<clinit>`/bootstrap can reach trusted code that uses unrestricted `doPrivileged` | Disallow unrestricted `doPrivileged` on security-sensitive trusted paths; keep stack-intersection guard |
+| 7 | Finalizer/Cleaner context escape (N-9) | Finalizer/Cleaner threads run `neverPrivileged`/innocuous by default, but creator-thread limited `AccessControlContext` is not propagated to callbacks | Avoid sensitive finalizer/cleaner work; prefer explicit `close()` and process isolation |
+| 8 | Runtime attach still policy/OS dependent (N-11) | Attach is permission-gated, but over-grants, inactive SM, or OS compromise remain | Keep attach grants narrow; use `-XX:+DisableAttachMechanism` where feasible |
+| 9 | Principal scope ambiguity (N-12) | Class+name grants can collide across realms; trusted-service mutation can abuse shared `Subject` | Use realm-qualified canonical principal identity; consider gating principal-set mutation |
+| 10 | Coarse network permission granularity (N-14) | `SocketPermission` lacks granular distinction across network operation types and scope boundaries | Avoid wildcard network grants; publish hardened grant templates |
+| 11 | Module/dynamic-define residuals (N-15) | Runtime topology mutation is gated, but startup flags, `Lookup.defineClass()`, and export cycles can still expose access paths | Treat startup flags as trust-boundary controls; tightly review module exports and dynamic class-definition exposure |
 
 ## Analysis: N-13 TLS Subject Authentication Context Propagation (COMPLETED)
 
