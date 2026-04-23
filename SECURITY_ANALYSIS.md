@@ -260,6 +260,30 @@ The three-layer defense model assumes binary loader trust (a loader is either tr
 
 These layers are not redundant. Untrusted code that is granted module `reads` access via an `--add-opens` or `--add-exports` JVM flag bypasses `LoadClassPermission` because the target class is already loaded; the SecurityManager check is never triggered for pre-loaded classes.
 
+#### `checkPackageAccess`, `checkPackageDefinition`, and the `nonExportedPkgs` Split-Package Guard
+
+The JVM (`systemDictionary.cpp`) skips the `check_package_access` callback entirely when the class being loaded belongs to a **named** module (JEP 403 enforcement):
+
+```
+ModuleEntry* mod_entry = loaded_class->module();
+if (mod_entry != nullptr && mod_entry->is_named()) {
+    should_check_package_access = false;  // named module — JVM handles encapsulation
+}
+```
+
+`SecurityManager.checkPackageAccess()` (and `checkPackageDefinition()`) are therefore **only ever invoked for unnamed-module classes**. This is also documented in `RuntimePermission.java` for `accessClassInPackage.*` and `defineClassInPackage.*`: *"This is only checked for Unnamed Modules."*
+
+Within `checkPackageAccess()`, the `nonExportedPkgs` check is **not** redundant with the module system. It guards a distinct threat surface — the split-package scenario:
+
+> Unnamed-module code places a class in a package namespace that matches a non-exported boot/platform package (e.g., `sun.security.util.Exploit` on the classpath). Because the class is in the unnamed module, `is_named()` = false and the JVM invokes `checkPackageAccess`. The `nonExportedPkgs` map contains `sun.security.util` (a non-unqualified-exported package from `java.base`). The check requires `RuntimePermission("accessClassInPackage.sun.security.util")` before load is allowed.
+
+| Guard | Threat surface |
+|-------|---------------|
+| Module system (JVM) | Unnamed-module code cannot *access* non-exported packages of **named**-module classes |
+| `nonExportedPkgs` in `checkPackageAccess` | Unnamed-module code cannot *load its own classes* in package namespaces matching non-exported platform packages without an explicit policy grant |
+
+These guards are complementary, not redundant. The module system skips `checkPackageAccess` precisely in the case where named-module encapsulation applies; the `nonExportedPkgs` check covers the remaining unnamed-module split-package surface that the module system leaves ungated.
+
 Additional module-specific risks:
 
 - **Export cycle bridging** — if trusted module A exports a package to untrusted module B, and A's exported package contains a class with internal access to module C (a third module, not exported to B), then B gains indirect access to C's internals through A's public API surface. This indirect bridge is not blocked by either `LoadClassPermission` or module-system encapsulation as long as A's exported class remains reachable.
@@ -460,7 +484,7 @@ Result: for permission checks inside a target method, the untrusted caller's
 `ProtectionDomain` remains part of the intersection. **Protected by default.**
 ### Residual Considerations
 - **Unrestricted `doPrivileged` inside target code:** if trusted code executes unrestricted `AccessController.doPrivileged(...)`, stack intersection stops there and can drop the untrusted caller domain (same residual confused-deputy obligation as Task N-6).
-- **`Lookup.in(otherClass)` context changes:** still gated by `SecurityManager.checkPackageAccess()` during lookup construction.
+- **`Lookup.in(otherClass)` context changes:** still gated by `SecurityManager.checkPackageAccess()` during lookup construction (unnamed-module callers only; the JVM skips `checkPackageAccess` entirely when the class being loaded is in a named module — named-module encapsulation is enforced at the JVM level before this call is reached).
 - **`MethodHandle` adapters (`asType`, `bindTo`, `asSpreader`):** wrappers do not remove calling-code frames from the live stack; no new bypass is introduced.
 ### Summary — Reflection and MethodHandle Path Status
 | Attack Scenario | Stack Walk Result | DirtyChai Status |
