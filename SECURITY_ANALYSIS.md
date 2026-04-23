@@ -399,19 +399,10 @@ Implementation is contained in `src/java.rmi/share/classes/sun/rmi/transport/tcp
 ---
 
 ## Analysis: Reflection and MethodHandle Invocation in the Permission-Check Path (N-8)
-
 ### The Question
-
 Does `Method.invoke()` or `MethodHandle.invoke*()` allow untrusted code to bypass
 `SecurityManager.checkPermission` and the stack-intersection semantics that protect
-confused-deputy native-call scenarios?  Specifically:
-
-1. Does the reflective frame remove the untrusted caller's `ProtectionDomain` from
-   the permission-check stack walk?
-2. Can an attacker install a custom `SecurityManager` via a reflected call?
-3. Does a `MethodHandle` invocation create frames that evade the confused-deputy
-   guard?
-
+confused-deputy native-call scenarios? This analysis checks reflective stack retention, reflected custom `SecurityManager` installation, and `MethodHandle` invocation/lookup context effects.
 ### How Stack Intersection Works
 
 `AccessController.getContext()` (called inside `SecurityManager.checkPermission`)
@@ -444,76 +435,34 @@ Thread.run()
 ─────────────────────────────────────────────────
 Intersection: AllPermission ∩ AllPermission ∩ {no NativeInvocationPermission} = DENY
 ```
-
 ### Installing a Custom SecurityManager via Reflection
-
-DirtyChai's `System.setSecurityManager()` is `@CallerSensitive`.  After the direct
-caller check, it invokes `validateCallerStackWithStackWalker()`, which walks the
-call stack and throws `SecurityException` if any frame belongs to:
-
-- `java.lang.reflect.*` or `sun.reflect.*`
-- `jdk.internal.misc.Unsafe` / `sun.misc.Unsafe`
-- Non-whitelisted `java.lang.invoke.*` call paths
-- Common generated-class patterns (`$$Lambda$`, proxy indicators, generated accessors)
-
-A call of the form `setSecurityManagerMethod.invoke(null, myCustomSM)` inserts a
-`java.lang.reflect.Method` frame into the stack.  The stack walker detects this
-reflection frame and throws `SecurityException` before the custom
-`SecurityManager` is installed.  **This attack path is blocked by DirtyChai.**
-
+DirtyChai's `System.setSecurityManager()` is `@CallerSensitive` and runs
+`validateCallerStackWithStackWalker()` after direct-caller validation.
+That stack walk rejects reflection (`java.lang.reflect.*`, `sun.reflect.*`),
+unsafe paths, non-whitelisted `java.lang.invoke.*` runtime frames, and common
+generated-code patterns.
+`setSecurityManagerMethod.invoke(null, myCustomSM)` necessarily introduces a
+reflection frame, so the validation throws `SecurityException` before install.
+**This attack path is blocked by DirtyChai.**
 ### MethodHandle Invocation Frames
-
-`MethodHandle.invoke()` / `MethodHandle.invokeExact()` produce frames in the
-`java.lang.invoke` package.  DirtyChai's stack-walk inspection uses a
-switch-based whitelist (added as part of the F-10 remediation) that allows only
-linkage-time-only `java.lang.invoke` classes to pass:
-
-| Class | Status in whitelist | Reason |
-|-------|---------------------|--------|
-| `java.lang.invoke.LambdaMetafactory` | Allowed | Linkage-time only |
-| `java.lang.invoke.StringConcatFactory` | Allowed | Linkage-time only |
-| `java.lang.invoke.MethodHandles` | Allowed | Lookup utility, linkage-time |
-| `java.lang.invoke.MethodType` | Allowed | Type descriptor, linkage-time |
-| `java.lang.invoke.MethodHandle` (invocation frames) | **Blocked** | Runtime invocation frame |
-| `java.lang.invoke.MethodHandles$Lookup` (runtime invoke) | **Blocked** | Runtime invocation frame |
-
-A `MethodHandle` that targets `System.setSecurityManager` would leave a
-`java.lang.invoke.MethodHandle` invocation frame on the stack.  That frame is
-**not** in the linkage-time whitelist, so the stack walk blocks installation of a
-custom `SecurityManager` via this path.  **This attack path is blocked by DirtyChai.**
-
+A runtime `MethodHandle.invoke()` / `invokeExact()` call contributes
+`java.lang.invoke` invocation frames. DirtyChai allows only linkage-time classes
+(`LambdaMetafactory`, `StringConcatFactory`, `MethodHandles`, `MethodType`) and
+blocks runtime invocation frames (`MethodHandle`, runtime `MethodHandles$Lookup`).
+A `MethodHandle` targeting `System.setSecurityManager` therefore leaves a
+non-whitelisted invocation frame and is rejected by stack validation.
+**This attack path is blocked by DirtyChai.**
 ### MethodHandle Lookup and Caller Context
-
-`MethodHandles.Lookup` captures the *lookup class* at creation time, not an
-`AccessControlContext`.  The lookup class governs which members are accessible
-via the lookup (access-control semantics at *lookup creation* time).
-
-However, when a `MethodHandle` is invoked at runtime, the *live call stack* is
-used for any subsequent `SecurityManager.checkPermission()` calls triggered by
-the target method.  The lookup class context does not replace the calling thread's
-live stack.  The same stack-intersection logic described above applies: the
-untrusted caller's `ProtectionDomain` is present on the stack at the point of
-any permission check inside the target.
-
+`MethodHandles.Lookup` captures lookup-time member-access context, not an
+`AccessControlContext`. At invocation time, permission checks still evaluate the
+*live* thread stack. The lookup class does not replace runtime stack context.
+Result: for permission checks inside a target method, the untrusted caller's
+`ProtectionDomain` remains part of the intersection. **Protected by default.**
 ### Residual Considerations
-
-**Unrestricted `doPrivileged` inside the target:** The confused-deputy protection
-described in the "Remaining Residual Gaps" section above applies equally to
-reflective and `MethodHandle` call paths.  If the *target* method uses unrestricted
-`AccessController.doPrivileged(...)`, the stack walk stops at that frame, removing
-the untrusted caller's domain from the intersection.  This is a design obligation
-for trusted library authors — see Task N-6 guidance.
-
-**`Lookup.in(otherClass):`** Allows creating a lookup in another class's namespace.
-`SecurityManager.checkPackageAccess()` is called during lookup construction for
-non-accessible packages, gating cross-package access.
-
-**`MethodHandle` adapters (`asType`, `bindTo`, `asSpreader`):** These create
-wrapper method handles.  Invocation still places frames from the calling code on
-the live stack; the adapter frames belong to `java.base`.  No bypass is introduced.
-
+- **Unrestricted `doPrivileged` inside target code:** if trusted code executes unrestricted `AccessController.doPrivileged(...)`, stack intersection stops there and can drop the untrusted caller domain (same residual confused-deputy obligation as Task N-6).
+- **`Lookup.in(otherClass)` context changes:** still gated by `SecurityManager.checkPackageAccess()` during lookup construction.
+- **`MethodHandle` adapters (`asType`, `bindTo`, `asSpreader`):** wrappers do not remove calling-code frames from the live stack; no new bypass is introduced.
 ### Summary — Reflection and MethodHandle Path Status
-
 | Attack Scenario | Stack Walk Result | DirtyChai Status |
 |-----------------|-------------------|-----------------|
 | `Method.invoke(target, args)` used to trigger a native permission check | Untrusted caller PD remains on stack; intersection enforced | **Protected by default** |
