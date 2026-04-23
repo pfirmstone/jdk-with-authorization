@@ -2811,22 +2811,52 @@ is sufficient and the permission check passes incorrectly.
 > security policy enforce the restriction through stack-intersection automatically.
 
 If a trusted class genuinely needs to perform privileged pre-processing while
-still honouring the caller's restrictions, it must reduce privileges to the
-minimum scope and preserve any active `DomainCombiner` (for example,
-authenticated-principal context) while parsing and sanitizing caller input:
+still honouring the caller's restrictions, use one of these restricted-context
+patterns instead of unrestricted `doPrivileged`:
+
+1. Preserve active combiner/caller context with
+   `doPrivilegedWithCombiner(..., callerContext, new Permission[0])` (existing
+   pattern).
+2. Use `AccessControlContext.unprivileged()` as a simpler default restricted
+   context when Subject/principal-based grants should still be allowed.
+3. Use `AccessControlContext.neverPrivileged()` when execution must remain
+   strictly non-privileged even in the presence of a thread `Subject` (for
+   example finalizer/cleaner style contexts; this is already used in
+   `Finalizer.java` line 191).
 
 ```java
-// Preserve DomainCombiner and run with the smallest scope.
+// Pattern A: preserve DomainCombiner and caller context.
 AccessControlContext callerContext = AccessController.getContext();
-SanitizedInput sanitized = AccessController.doPrivilegedWithCombiner(
+SanitizedInput sanitizedA = AccessController.doPrivilegedWithCombiner(
     () -> parseAndSanitize(callerSuppliedInput),
     callerContext,
     new Permission[0]   // policy decides; no explicit extra permissions added
 );
 
+// Pattern B: simpler restricted context; allows Subject principal grants.
+AccessControlContext unpriv = AccessControlContext.unprivileged();
+SanitizedInput sanitizedB = AccessController.doPrivileged(
+    () -> parseAndSanitize(callerSuppliedInput),
+    unpriv
+);
+
+// Pattern C: strictly never privileged (even with thread Subject).
+AccessControlContext neverPriv = AccessControlContext.neverPrivileged();
+AccessController.doPrivileged(
+    (PrivilegedAction<Void>) () -> { performCleanup(); return null; },
+    neverPriv
+);
+
 // For confused-deputy-sensitive native calls, do not use unrestricted doPrivileged.
-nativeMethod(sanitized);
+nativeMethod(sanitizedA);
 ```
+
+`unprivileged()` and `neverPrivileged()` avoid manual
+`ProtectionDomain[]`/`DomainIdentity` construction and can be created without a
+privileged call. This removes common context-construction mistakes that can
+accidentally widen privilege scope. For implementation details, see
+`AccessControlContext.java` (factory methods and constructor logic around lines
+~350-375).
 
 Methods that support explicit privilege restriction, grouped by whether a special
 permission is required to invoke them:
@@ -2841,17 +2871,25 @@ an explicit `Permission` list is always a *subset* of what the caller already
 holds.  A less-privileged domain therefore cannot exploit these methods to
 acquire permissions it does not already possess.
 
-Note that while *using* these methods requires no special permission,
-*constructing* an `AccessControlContext` to pass to them may require
+Note that while *using* these methods requires no special permission, some
+manual `AccessControlContext` construction paths may require
 `SecurityPermission("createAccessControlContext")`.  If the caller does not
 hold that permission, `AccessControlContext.create()` automatically adds the
 calling context's own domains to the supplied array to prevent privilege
 escalation.  The context passed by `AccessController.getContext()` is always
-safe to re-use without that permission.
+safe to re-use without that permission, and the static factories
+`AccessControlContext.unprivileged()` / `AccessControlContext.neverPrivileged()`
+are the preferred simpler alternatives when they fit the use case.
 
 - `AccessController.getContext()` — takes a read-only snapshot of the current
   calling context; it does not alter any privilege and cannot be used to
   escalate.
+- `AccessControlContext.unprivileged()` — creates an unprivileged context
+  without requiring a privileged call; this context may still gain
+  Subject/principal-based permissions.
+- `AccessControlContext.neverPrivileged()` — creates a guaranteed never
+  privileged context without requiring a privileged call; this context cannot
+  gain Subject/principal-based permissions.
 - `AccessController.doPrivileged(PrivilegedAction<T>, AccessControlContext)` —
   runs the action with the *intersection* of the caller's domain and the
   supplied context.
