@@ -46,6 +46,8 @@ import javax.security.auth.Subject;
  * @see PermissionGrant
  */
 public abstract class PermissionGrantBuilder {
+    
+    PermissionGrantBuilder(){}
    
     /**
      * The PermissionGrant generated will apply to all classes loaded by
