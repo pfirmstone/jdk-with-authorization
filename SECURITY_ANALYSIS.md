@@ -366,7 +366,9 @@ Policy guidance for administrators:
 ## Analysis: N-13 TLS Subject Authentication Context Propagation (COMPLETED)
 
 ### Issue Resolution
-**Issue:** [#134](https://github.com/pfirmstone/DirtyChai/issues/134) • **Implementation commit:** [`5e5682a8dbb1d3aa0a0838893646e43bfd150dc6`](https://github.com/pfirmstone/DirtyChai/commit/5e5682a8dbb1d3aa0a0838893646e43bfd150dc6) • **Status:** Completed in `src/java.rmi/share/classes/sun/rmi/transport/tcp/TCPTransport.java`
+- **Issue:** [#134](https://github.com/pfirmstone/DirtyChai/issues/134)
+- **Implementation commit:** [`5e5682a8dbb1d3aa0a0838893646e43bfd150dc6`](https://github.com/pfirmstone/DirtyChai/commit/5e5682a8dbb1d3aa0a0838893646e43bfd150dc6)
+- **Status:** Completed in `src/java.rmi/share/classes/sun/rmi/transport/tcp/TCPTransport.java`
 
 ### Implementation Flow
 1. `executeAcceptLoop()` checks accepted sockets for `SSLSocket`.
@@ -388,7 +390,7 @@ Passing `null` ACC to `Subject.doAsPrivileged` intentionally uses an empty conte
 - `SSLPeerUnverifiedException` fallback is graceful (unauthenticated path) and does not leak principal context across requests (peer Subject remains handler-scoped).
 
 ### Files Modified (Implementation Reference)
-Implementation is contained in `src/java.rmi/share/classes/sun/rmi/transport/tcp/TCPTransport.java` (peer extraction/Subject construction and Subject-bound dispatch updates in the N-13 implementation commit).
+Implementation is contained in `src/java.rmi/share/classes/sun/rmi/transport/tcp/TCPTransport.java` (peer extraction/Subject construction in lines `430-446`, Subject-bound dispatch in lines `745-758`, as captured by the N-13 implementation commit).
 
 ### Remaining Work
 - **TLS-FACTORY-TEST:** add integration test asserting service-side `Subject.getSubject(...)` maps to authenticated client certificate principal
