@@ -620,49 +620,19 @@ Residual risk is identical: a bootstrap method that uses unrestricted
 
 ### High priority
 
-1. **Keep `trustedSMClass()` under strict review control**  
-   Any additions should require explicit security review and rationale.
-
-2. **Add targeted regression tests for residual-risk boundaries**
-   - Deep-stack attack simulation beyond typical frame depth
-   - Edge-case generated/invoke frame classification
-   - Reflection and MethodHandle paths through trusted native wrappers (N-8 test plan)
-   - Finalizer / Cleaner thread permission enforcement (N-9 test plan)
-   - Class-initialization stack-intersection enforcement (N-10 test plan)
-
-3. ~~**Correct stale Javadoc in `System.java` (source file)**~~  
-   Resolved: `System.java` line 468 has been corrected by the human author to read "50 stack
-   frames", consistent with `limit(50)` at line 2923 and "up to 50 frames" at line 424.
-   All stack-scan-depth references are now consistent across source and documentation.
-
-4. **Document hardened-deployment attach controls and JVM flag requirements (N-11)**  
-   Hardened deployments MUST deny `AttachPermission("attachVirtualMachine")` (and, where appropriate, `AttachPermission("createAttachProvider")`) to untrusted code. Deployments SHOULD also launch with `-XX:+DisableAttachMechanism` as VM-level defense in depth. Deployments MUST NOT use `--add-opens`, `--add-exports`, or `--add-modules` JVM flags unless each flag has been explicitly reviewed as a security-relevant policy decision. These flags bypass module encapsulation before the SecurityManager is installed and cannot be revoked at runtime; they must be treated as part of the trusted deployment perimeter.
+1. **Keep `trustedSMClass()` under strict review control** — require explicit security review and written rationale for every addition.
+2. **Add targeted regression tests for residual-risk boundaries** — cover deep-stack and generated/invoke-frame classification, reflection/MethodHandle native-wrapper paths (N-8), Finalizer/Cleaner permission enforcement (N-9), and class-initialization stack-intersection enforcement (N-10).
+3. ~~**Correct stale Javadoc in `System.java` (source file)**~~ — Resolved: stack-scan-depth wording now consistently matches `limit(50)` across source and documentation.
+4. **Document hardened-deployment attach controls and JVM flag requirements (N-11)** — deny `AttachPermission("attachVirtualMachine")` (and where applicable `AttachPermission("createAttachProvider")`) to untrusted code, use `-XX:+DisableAttachMechanism` for defense in depth, and treat `--add-opens`/`--add-exports`/`--add-modules` as trusted-perimeter decisions.
 
 ### Medium priority
 
-5. **Consider making stack scan depth configurable (safe defaults retained)**
-   This would support hardening in high-risk deployments while preserving compatibility defaults.
-
-6. **Add optional security telemetry for denied installation attempts**
-   Useful for attack detection and policy-tuning feedback loops.
-
-7. **Evaluate broader FFM native-memory guard coverage (§8)**  
-   `MemorySegment.reinterpret()` and `Arena.global()` are now gated by `NativeMemoryPermission` (`"reinterpret-memory-segment"` and `"global-arena"`). Evaluate whether additional native-memory allocation/lifecycle paths (e.g., `Arena.ofConfined()`, `Arena.ofShared()`, `Arena.ofAuto()`) require equivalent permission checks. Until coverage decisions are finalized, policy must not open `jdk.foreign` to any code base that is not fully trusted, and any such grant must be documented with an explicit security rationale.
-
-8. **Evaluate `MethodHandles.Lookup.defineClass()` permission gate (N-15 / §7)**  
-   `MethodHandles.Lookup.defineClass()` and related dynamic class-definition APIs bypass `LoadClassPermission` entirely. Evaluate whether an extension of `LoadClassPermission` or a new `DefineClassPermission` is warranted to gate dynamic class injection into existing modules. Until such a gate exists, access to privileged `Lookup` objects must be treated as equivalent to `LoadClassPermission` for the target module.
-
-9. **Document recommended `SocketPermission` policy structure for hardened deployments (N-14 / §9)**  
-   DirtyChai documentation should provide a reference policy template that separates loopback, LAN, multicast, and external address grants rather than using wildcard `connect` grants. The template should also restrict `DatagramSocket`-based discovery and separate multicast permissions from unicast permissions to reduce topology disclosure risk.
-
-10. ~~**Evaluate `LoadModulePermission` gate for runtime module mutation (N-15 / §7)**~~  
-    Resolved: runtime `Module.addExports()` and `Module.addOpens()` now enforce
-    `RuntimePermission("mutateModuleTopology")` via
-    `SecurityManager.checkPermission()` before caller-identity validation.
-    Runtime reflective topology mutations are now policy-gated. Residual risk
-    for startup-time topology changes from `--add-opens`/`--add-exports`/
-    `--add-modules` remains and must still be handled as a trusted deployment
-    perimeter decision.
+5. **Consider making stack scan depth configurable (safe defaults retained)** — allow hardened deployments to raise depth while preserving compatibility defaults.
+6. **Add optional security telemetry for denied installation attempts** — emit deny-event telemetry to improve attack detection and policy tuning.
+7. **Evaluate broader FFM native-memory guard coverage (§8)** — `MemorySegment.reinterpret()`/`Arena.global()` are gated; evaluate equivalent `NativeMemoryPermission` checks for `Arena.ofConfined()`, `Arena.ofShared()`, and `Arena.ofAuto()`, and keep `jdk.foreign` grants trusted-only with explicit rationale.
+8. **Evaluate `MethodHandles.Lookup.defineClass()` permission gate (N-15 / §7)** — because `Lookup.defineClass()` bypasses `LoadClassPermission`, evaluate extending it or adding `DefineClassPermission`; until then, treat privileged `Lookup` access as equivalent to load-class privilege for the target module.
+9. **Document recommended `SocketPermission` policy structure for hardened deployments (N-14 / §9)** — provide a hardened template separating loopback/LAN/multicast/external grants, avoiding wildcard `connect`, and constraining `DatagramSocket` discovery plus multicast/unicast scope.
+10. ~~**Evaluate `LoadModulePermission` gate for runtime module mutation (N-15 / §7)**~~ — Resolved: runtime `Module.addExports()`/`Module.addOpens()` are policy-gated by `RuntimePermission("mutateModuleTopology")`; startup `--add-opens`/`--add-exports`/`--add-modules` remains a trusted-perimeter decision.
 
 ---
 
