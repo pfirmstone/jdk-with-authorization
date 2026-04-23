@@ -224,6 +224,7 @@ public final class Module implements AnnotatedElement {
      * @return The module descriptor for this module
      */
     public ModuleDescriptor getDescriptor() {
+        SecurityConstants.READ_MODULE_TOPOLOGY.checkGuard(null);
         return descriptor;
     }
 
@@ -243,6 +244,7 @@ public final class Module implements AnnotatedElement {
      * @see java.lang.reflect.Proxy
      */
     public ModuleLayer getLayer() {
+        SecurityConstants.READ_MODULE_TOPOLOGY.checkGuard(null);
         if (isNamed()) {
             ModuleLayer layer = this.layer;
             if (layer != null)

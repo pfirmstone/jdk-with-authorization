@@ -46,6 +46,7 @@ import jdk.internal.module.ModuleReferenceImpl;
 import jdk.internal.module.ModuleTarget;
 import jdk.internal.vm.annotation.AOTSafeClassInitializer;
 import jdk.internal.vm.annotation.Stable;
+import sun.security.util.SecurityConstants;
 
 /**
  * A configuration that is the result of <a href="package-summary.html#resolution">
@@ -587,6 +588,7 @@ public final class Configuration {
      *         in this configuration
      */
     public Set<ResolvedModule> modules() {
+        SecurityConstants.READ_MODULE_TOPOLOGY.checkGuard(null);
         return modules;
     }
 

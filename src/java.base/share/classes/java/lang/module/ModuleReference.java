@@ -29,6 +29,7 @@ import java.io.IOException;
 import java.net.URI;
 import java.util.Objects;
 import java.util.Optional;
+import sun.security.util.SecurityConstants;
 
 
 /**
@@ -70,6 +71,7 @@ public abstract class ModuleReference {
      * @return The module descriptor
      */
     public final ModuleDescriptor descriptor() {
+        SecurityConstants.READ_MODULE_TOPOLOGY.checkGuard(null);
         return descriptor;
     }
 

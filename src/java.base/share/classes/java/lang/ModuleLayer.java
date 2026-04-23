@@ -849,6 +849,7 @@ public final class ModuleLayer {
      * @return A possibly-empty unmodifiable set of the modules in this layer
      */
     public Set<Module> modules() {
+        SecurityConstants.READ_MODULE_TOPOLOGY.checkGuard(null);
         Set<Module> modules = this.modules;
         if (modules == null) {
             this.modules = modules = Set.copyOf(nameToModule.values());
@@ -878,6 +879,7 @@ public final class ModuleLayer {
         Objects.requireNonNull(name);
         if (this == EMPTY_LAYER)
             return Optional.empty();
+        SecurityConstants.READ_MODULE_TOPOLOGY.checkGuard(null);
         Module m = nameToModule.get(name);
         if (m != null)
             return Optional.of(m);

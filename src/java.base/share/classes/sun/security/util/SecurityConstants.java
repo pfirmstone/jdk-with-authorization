@@ -139,6 +139,10 @@ public final class SecurityConstants {
     // java.lang.module.ModuleFinder
     public static final RuntimePermission ACCESS_SYSTEM_MODULES = 
             new RuntimePermission("accessSystemModules");
+    
+    // java.lang.module.ModuleLayer Module ModuelReference Configuration
+    public static final RuntimePermission READ_MODULE_TOPOLOGY =
+            new RuntimePermission("readModuleTopology");
 
     // java.security.AccessControlContext
     public static final SecurityPermission CREATE_ACC_PERMISSION =
