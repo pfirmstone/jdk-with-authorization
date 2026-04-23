@@ -596,24 +596,17 @@ operations (native, file, network):
 
 ### The Question
 
-Java class initialization (`<clinit>`) and the constant-pool resolution mechanisms
-(`invokedynamic`, `CONSTANT_Dynamic`) trigger executable code lazily — at the point
-of first use, which may be on any thread and in any calling context.  Does this
-lazy execution model allow privileged effects to occur outside the security
-assumptions of the calling code?
+Class initialization (`<clinit>`) and constant-pool resolution (`invokedynamic`,
+`CONSTANT_Dynamic`) execute lazily at first use. The security question is whether
+that lazy execution can bypass DirtyChai's stack-intersection permission model.
 
-### Class Initialization (`<clinit>`) and the Call Stack
+### Class Initialization (`<clinit>`) Stack-Membership Guarantee
 
-Class initialization runs when a class is first *actively used*: `new`, `getstatic`,
-`putstatic`, `invokestatic`, `Class.forName()` with `initialize=true`, etc.  The
-JVM guarantees class initialization is thread-safe: the initializing thread holds
-the class's initialization lock while `<clinit>` executes, and other threads block
-until initialization completes.
-
-The critical security property is **stack membership**: the thread that triggers
-class initialization has its complete call stack present when `<clinit>` runs.  If
-untrusted code triggers initialization of a trusted class, the untrusted caller's
-frame **is on the stack** when `<clinit>` executes.
+When code first actively uses a class (`new`, `getstatic`, `putstatic`,
+`invokestatic`, `Class.forName(..., true, ...)`), `<clinit>` runs on the triggering
+thread. During that execution, the triggering caller remains on the live stack.
+If untrusted code triggers a trusted class initializer, the untrusted frame is
+still present at permission-check time.
 
 ```
 UntrustedClass.doSomething()          ← triggers TrustedClass static field access
@@ -622,80 +615,43 @@ TrustedClass.<clinit>()               ← trusted ProtectionDomain
   [SecurityManager.checkPermission called here]
 ```
 
-`SecurityManager.checkPermission()` during `<clinit>` intersects:
-- `TrustedClass`'s `ProtectionDomain` (has `NativeInvocationPermission`), AND
-- `UntrustedClass`'s `ProtectionDomain` (does **not** have `NativeInvocationPermission`)
-
-**Result:** permission check fails.  **DirtyChai's stack-intersection guard
-applies during class initialization triggered by untrusted code.**
+`SecurityManager.checkPermission()` intersects all stack domains present at that
+point. So trusted `<clinit>` code does not erase the untrusted caller: if the
+untrusted domain lacks a required permission, the check denies by default.
 
 ### The `LoadClassPermission` Gate
 
-Before a class can be triggered for initialization by untrusted code, it must first
-be *loaded* into the untrusted class's namespace.  DirtyChai gates class loading
-with `LoadClassPermission`.  Untrusted code that is not granted
-`LoadClassPermission("some.trusted.Class")` cannot cause that class to be loaded
-into its classloader's namespace, and therefore cannot trigger its `<clinit>`.
+DirtyChai adds a front-door gate at class loading time: untrusted code must hold
+`LoadClassPermission("some.trusted.Class")` to load new classes into a reachable
+namespace. Without that permission, untrusted code cannot force-load a new target
+and therefore cannot trigger its first initialization.
 
-Once a class has been loaded (e.g., because the system loaded it at startup),
-further references from untrusted code to already-loaded classes in its namespace
-can trigger initialization without re-checking `LoadClassPermission`.  The
-`LoadClassPermission` gate applies to the *loading* step, not to the
-*initialization* step.
-
-**Residual:** If a class was previously loaded (e.g., by platform startup code)
-into a classloader namespace that untrusted code can reach, untrusted code may
-trigger initialization of that class without holding `LoadClassPermission`.  The
-stack-intersection guard still applies at any permission check inside `<clinit>`.
+This gate applies to loading, not to initialization of classes already loaded into
+a reachable namespace (for example, by startup/platform code). In that case,
+untrusted code may still trigger `<clinit>`, but stack intersection still governs
+security-sensitive operations inside the initializer.
 
 ### Unrestricted `doPrivileged` Inside `<clinit>`
 
-The same confused-deputy risk applies here as in normal method calls.  If
-`<clinit>` uses **unrestricted** `AccessController.doPrivileged(...)`, the stack
-walk stops at that frame, removing the untrusted triggering caller's domain from
-the intersection.  This gives `<clinit>` a privilege elevation path reachable by
-untrusted code.
+The same confused-deputy rule from normal calls applies to static initialization:
+if `<clinit>` uses unrestricted `AccessController.doPrivileged(...)`, stack walking
+stops there and the untrusted triggering domain is dropped from the intersection.
+That creates a privilege-elevation path reachable through class initialization.
 
 **Obligation for trusted library authors:** Do **not** use unrestricted
 `doPrivileged` inside `<clinit>` (or any static initializer block) on code paths
-that access security-sensitive resources.  Use `doPrivileged` with a
-restricted `AccessControlContext` or with an explicit `Permission` list.
+that access security-sensitive resources. Use restricted `AccessControlContext`
+or explicit `Permission` lists.
 
-### `invokedynamic` Bootstrap Methods
+### `invokedynamic` and `CONSTANT_Dynamic` Bootstrap Resolution
 
-An `invokedynamic` call site is resolved lazily: the first time the JVM executes
-the `invokedynamic` bytecode, it calls the designated *bootstrap method* to
-produce a `CallSite`.  Subsequent invocations use the cached `CallSite` directly.
+`invokedynamic` resolves lazily at first execution by invoking its bootstrap
+method on the calling thread; `CONSTANT_Dynamic` does the same on first `ldc`.
+In both cases, the triggering caller remains on-stack during bootstrap execution,
+so permission checks are intersection-enforced by default.
 
-Bootstrap methods run on the *calling thread* at the point of first invocation.
-The calling thread's stack is fully present during bootstrap resolution.  Standard
-JDK bootstrap methods (`LambdaMetafactory`, `StringConcatFactory`) are trusted
-`java.base` code.  Custom bootstrap methods defined in application code run in the
-context of whatever thread first executes the call site.
-
-**Security impact:**
-- If untrusted code has an `invokedynamic` call site targeting a custom bootstrap
-  method that performs a sensitive operation, the untrusted class's frame **is on
-  the stack** during resolution, so permission checks inside the bootstrap method
-  are intersection-enforced.
-- If the bootstrap method uses unrestricted `doPrivileged`, the same confused-deputy
-  risk applies.
-
-### `CONSTANT_Dynamic` (JEP 309)
-
-`CONSTANT_Dynamic` (Java 11+) allows constant-pool entries whose values are
-computed at runtime by bootstrap methods, lazily on first `ldc`.  The security
-model is identical to `invokedynamic`: the calling thread's stack is present, and
-any permission check during bootstrap execution is intersection-enforced.
-
-### Class Initialization Deadlock (Security Dimension)
-
-Two classes whose `<clinit>` blocks hold initialization locks in a circular
-dependency can deadlock (JVMS §5.5).  In a security context, an attacker
-controlling one class in the dependency cycle could induce a DoS by triggering
-initialization in two threads simultaneously.  DirtyChai's `LoadClassPermission`
-gate reduces this risk by preventing untrusted code from loading new classes into
-the namespace in the first place.
+Residual risk is identical: a bootstrap method that uses unrestricted
+`doPrivileged` can drop the untrusted domain and act as a confused deputy.
 
 ### Summary — Class-Init and Constant-Pool Path Status
 
