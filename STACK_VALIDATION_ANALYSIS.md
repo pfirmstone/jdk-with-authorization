@@ -255,6 +255,11 @@ private static boolean isTrustedSecurityManagerClass(Class<?> smClass) {
            smClass.getClassLoader() == null; // Bootstrap classloader
 }
 
+// NOTE: The above is the single-class pseudocode used during analysis.
+// The implemented resolution (Issue #85) uses an explicit 3-class whitelist
+// via the trustedSMClass() helper — see Resolution Summary above and
+// System.java for the authoritative implementation.
+
 
 ### Benefits
 
@@ -350,6 +355,11 @@ Conclusion: For trusted built-in deployments,
 
 ### Phase 1: Adopt Conditional Check
 
+> **Note:** The code fragment below is the early single-class analysis pseudocode
+> that guided implementation. The actual implementation (committed in Issue #85)
+> uses `trustedSMClass()` with an explicit 3-class whitelist:
+> `SecurityManager`, `CombinerSecurityManager`, and `PolicyOnlySecurityManager`.
+> See the Resolution Summary above and `System.java` for the authoritative code.
 
 // In System.setSecurityManager()
 private static final String TRUSTED_SM_CLASS = 

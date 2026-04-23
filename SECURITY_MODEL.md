@@ -86,6 +86,128 @@ If any required condition does not match, the operation is denied.
 
 ---
 
+## 5.1) Compact Permission-Check Call-Flow Diagram
+
+### Guard entry points → `CombinerSecurityManager`
+
+```
+ObjectInputStream.readOrdinaryObject()
+  → new SerialObjectPermission(className).checkGuard(null)
+
+ClassLoader.findNative() / SymbolLookup / SystemLookup
+  → new NativeInvocationPermission(libName).checkGuard(null)
+
+Arena.global()
+  → new NativeMemoryPermission("global-arena").checkGuard(null)
+
+AbstractMemorySegmentImpl.reinterpretInternal()
+  → new NativeMemoryPermission("reinterpret-memory-segment").checkGuard(null)
+
+SecureClassLoader.defineClass()
+  → LoadClassPermission.LOAD_CLASS_ALLOW.checkGuard(pd)
+
+ThreadBuilders.PlatformThreadBuilder.unstarted/factory
+  → RuntimePermission("createPlatformThread").checkGuard(null)
+
+ThreadBuilders.VirtualThreadBuilder.unstarted/factory
+  → RuntimePermission("createVirtualThread").checkGuard(null)
+
+Module.addExports() / Module.addOpens()
+  → new RuntimePermission("mutateModuleTopology") → sm.checkPermission(...)
+
+  all paths → Permission.checkGuard(…) → sm.checkPermission(perm)
+```
+
+### `CombinerSecurityManager.checkPermission`
+
+```
+CombinerSecurityManager.checkPermission(perm)
+  │
+  ├─ self-bypass: SMPrivilegedContext / SMConstructorContext? → return
+  │
+  ├─ checked cache hit: (executionContext, perm) already verified? → return
+  │       key: ConcurrentHashMap<ACC, ConcurrentSkipListSet<Permission>>
+  │       TTL: 20 s; cleared on policy.refresh()
+  │
+  ├─ contextCache hit: delegate ACC cached? → use cached delegate ACC
+  │   miss: DelegateDomainCombiner builds optimized delegate ACC, stores it
+  │       key: ConcurrentHashMap<ACC, delegate ACC>; TTL: 60 s
+  │
+  └─ delegateContext.checkPermission(perm)
+         └─ DelegateProtectionDomain.implies(perm) for each domain
+                │
+                ├─ < 4 domains → sequential
+                └─ ≥ 4 domains → parallel (VirtualThreadPerTaskExecutor)
+```
+
+### `AccessControlContext` / stack walk
+
+```
+AccessController.getStackAccessControlContext()  [native]
+  → intersects ProtectionDomain of every frame on call stack
+  → stops at doPrivileged() boundary (privilege elevation point)
+  → returns effective AccessControlContext
+
+AccessControlContext.checkPermission(perm)
+  → for each domain in context: policy.implies(domain, perm)
+  → deny if any domain lacks the permission
+```
+
+### `ConcurrentPolicyFile.implies`
+
+```
+ConcurrentPolicyFile.implies(ProtectionDomain pd, Permission perm)
+  │
+  ├─ volatile read: PermissionGrant[] grantRefCopy = grantArray
+  │     (single memory fence; all subsequent work is thread-local)
+  │
+  ├─ privileged grants first (AllPermission early-exit for infrastructure code)
+  │
+  ├─ static domain permissions (pd.getPermissions())
+  │
+  └─ for each PermissionGrant:
+         ├─ CodeSource match? (RFC 3986 URI string compare, no DNS)
+         │     via Uri.java — normalized at parse time
+         ├─ Principal match? (Subject principal class + name exact match)
+         └─ grant.getPermissions().implies(perm)?
+                └─ Permission.implies() per permission type
+                      (SocketPermission, FilePermission, BasicPermission, …)
+
+  no match → deny (fail-secure default)
+```
+
+### `System.setSecurityManager` validation flow
+
+```
+System.setSecurityManager(sm)
+  │
+  ├─ sm == null → IllegalArgumentException (always)
+  │
+  ├─ trustedSMClass(sm)?    [exact Class.equals(), not instanceof]
+  │     SecurityManager.class
+  │     CombinerSecurityManager.class
+  │     PolicyOnlySecurityManager.class
+  │
+  │  YES (trusted) ──────────────────────────────────────────────►
+  │    → install SM (no stack inspection; policy governs it)
+  │
+  └─ NO (custom/untrusted) ──────────────────────────────────────►
+       Layer 1 (@CallerSensitive)
+         Reflection.getCallerClass() → null caller → SecurityException
+       Layer 2 (StackWalker, limit 50 frames)
+         rejects: java.lang.reflect.*, sun.reflect.*
+                  sun.misc.Unsafe, jdk.internal.misc.Unsafe
+                  non-whitelisted java.lang.invoke.* runtime frames
+                  $$Lambda$, $Proxy, GeneratedMethodAccessor*
+       Layer 3 (ProtectionDomain)
+         caller.getProtectionDomain() == null → SecurityException
+       Layer 4 (generated/synthetic caller name check)
+         isGeneratedClassName(caller.getName()) → SecurityException
+       → install SM if all layers pass
+```
+
+---
+
 ## 6) SecurityManager Installation Model (`System.setSecurityManager`)
 
 Dirty Chai uses **conditional validation** when installing a SecurityManager.

@@ -222,6 +222,8 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for contribution guidelines. Issues are t
 | Update `CombinerSecurityManager` to hand off permission checks to Virtual threads | ✔ Done |
 | Add `LoadClassPermission` to `SecureClassLoader` so HTTP sources and JAR signers can control which code is loaded via policy | ✔ Done |
 | Add `SerialObjectPermission` for Java Serialization, automating class whitelisting | ✔ Done |
+| Add `NativeInvocationPermission` for JNI/FFM native symbol-resolution control (`ClassLoader.findNative`, `SymbolLookup`, `SystemLookup`) | ✔ Done |
+| Add `NativeMemoryPermission` for FFM off-heap memory access control (`Arena.global()` and `MemorySegment.reinterpret*()`) | ✔ Done |
 | Remove XML parsing from trusted code to allow authorization decisions based on authenticated users. XML modules are no longer part of the trusted codebase and can be assigned appropriate permissions, or loading can be prevented via `LoadClassPermission` | ✔ Done |
 | Add policy tests from JGDMS | Planned |
 | Add netmask wildcards to `SocketPermission` | Planned |

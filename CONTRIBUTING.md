@@ -32,6 +32,7 @@ This document provides guidance for AI assistants (Claude) working on the Dirty 
 | `CombinerSecurityManager.java` | Permission intersection enforcement | HIGH |
 | `LoadClassPermission.java` | Class loading authorization | HIGH |
 | `NativeInvocationPermission.java` | Native code invocation control | HIGH |
+| `NativeMemoryPermission.java` | Native/off-heap memory access control (global-arena, reinterpret) | HIGH |
 | `SerialObjectPermission.java` | Object serialization authorization | MEDIUM |
 
 ### Critical Security Constraints
@@ -73,6 +74,7 @@ src/
 │   │       │   ├── guards/
 │   │       │   │   ├── LoadClassPermission.java
 │   │       │   │   ├── NativeInvocationPermission.java
+│   │       │   │   ├── NativeMemoryPermission.java
 │   │       │   │   └── SerialObjectPermission.java
 │   │       │   └── tool/
 │   │       │       └── SecurityPolicyWriter.java
