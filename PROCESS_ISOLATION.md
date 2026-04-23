@@ -910,7 +910,7 @@ Policy on Generative AI adopted by DirtyChai.
 | R-3 | `Method.invoke()` calling trusted class method that uses unrestricted `doPrivileged` internally — untrusted caller on outer stack | **Allowed** (documents residual gap) | n/a — expected-fail test documenting trusted-code obligation |
 | R-4 | `MethodHandle.invoke*()` targeting `System.setSecurityManager` with a custom SM | `SecurityException` thrown | Stack-walk `java.lang.invoke.*` frame detection |
 | R-5 | `MethodHandle.invoke()` calling trusted class method that checks `NativeInvocationPermission`, untrusted caller on stack | `SecurityException` thrown | Stack-intersection in `checkPermission` |
-| R-6 | `MethodHandles.lookup().in(TrustedClass.class)` from untrusted code to access private member | `IllegalAccessException` or `SecurityException` | `Lookup.in()` access check and `checkPackageAccess` |
+| R-6 | `MethodHandles.lookup().in(TrustedClass.class)` from untrusted code to access private member | `IllegalAccessException` or `SecurityException` | `Lookup.in()` access check and `checkPackageAccess` (unnamed-module callers only; JVM skips `checkPackageAccess` for named-module classes) |
 | R-7 | Linkage-time `MethodHandle` frames (`LambdaMetafactory`, `StringConcatFactory`) during SM installation | Allowed — whitelisted linkage-time classes do not block installation of trusted SM implementations | F-10 whitelist |
 
 #### Finalizer and Cleaner Path (N-9)
