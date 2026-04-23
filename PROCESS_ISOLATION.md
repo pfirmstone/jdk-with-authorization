@@ -4,6 +4,10 @@
 This document consolidates the analyses produced during the investigation into
 runtime permission checks for thread creation, atomic serialization, and the
 inherent limits of in-process isolation in a Java security manager environment.
+
+> This document is focused on cross-JVM trust boundaries, JGDMS activation, and
+> multi-process isolation concerns. For DirtyChai's in-process security model,
+> see `SECURITY_ANALYSIS.md`.
 ---
 ## Analysis: RuntimePermission("createPlatformThread") and RuntimePermission("createVirtualThread")
 ### The Gap
@@ -237,8 +241,7 @@ reconstructed through an `@AtomicSerial` constructor.  Gadget chains that depend
 on `readObject` callbacks cannot fire because `readObject` is never called.
 ### Integration with DirtyChai
 DirtyChai adds `SerialObjectPermission` as a JDK-level backstop check that fires
-at the entry to `ObjectInputStream.readObject()` and
-`ObjectOutputStream.writeObject()`.  When a `SecurityManager` is active, the
+at the entry to `ObjectInputStream.readObject()`.  When a `SecurityManager` is active, the
 calling code must hold:
 ```
 permission au.zeus.jdk.authorization.guards.SerialObjectPermission
@@ -259,15 +262,118 @@ This layering ensures that even code running inside a JGDMS service that falls
 back to standard Java serialization (e.g., for legacy data formats) is covered
 by the `SerialObjectPermission` check.
 
-**Activation-group deserialization scope (undocumented boundary):**
+**Activation-group deserialization scope (trust-boundary note):**
 
-The `SerialObjectPermission` enforcement described above applies to the calling JVM. It is not currently documented whether a group JVM (in an RMI activation scenario) re-enforces this permission when it reconstructs activatable objects from `ActivationDesc` descriptors passed by the JGDMS Phoenix activation daemon. Three specific gaps exist:
+The `SerialObjectPermission` enforcement described above is a **calling-JVM**
+DirtyChai control. Activation reconstruction in JGDMS group JVMs is a separate
+boundary and is evaluated in that process' own policy/authority context.
 
-- **Descriptor integrity** — Current JGDMS/Phoenix documentation does not state whether activation-daemon-stored `ActivationDesc` objects are integrity-protected (e.g., with a signature or HMAC). A compromised or malicious JGDMS Phoenix activation daemon could inject arbitrary descriptors, causing the group JVM to deserialize objects that would have been blocked by `SerialObjectPermission` in the originating JVM.
-- **Policy authority on re-activation** — it is undefined whether the group JVM applies its own policy file or the registering administrator's policy when evaluating `SerialObjectPermission` during activation reconstruction. If the group's policy is weaker, the permission check may be ineffective.
-- **`AccessControlContext` freshness on restart** — when a group JVM crashes and restarts, it is unspecified whether it receives a fresh `AccessControlContext` or inherits state from the previous run. Stale context could carry permissions that were valid before a policy change, enabling escalation after a policy tightening event.
+In particular:
 
-See residual N-13 under "Residual N-13: Activation Deserialization Authority Trust Boundaries" in this document.
+- **Descriptor integrity boundary** — `ActivationDesc` persistence/restore is an
+  activation-daemon trust boundary. If persisted descriptors are tampered, group
+  JVM reconstruction can be redirected to attacker-chosen classes/data unless
+  descriptor integrity is independently protected.
+- **Policy authority boundary** — admin JVM and group JVM policy files are
+  independent. During activation reconstruction, deserialization authority is
+  evaluated under group-JVM policy, not by inheriting admin-JVM policy intent.
+- **Restart-context boundary** — group JVM restart always creates fresh
+  runtime/ACC state from current bootstrap and policy inputs, not from prior
+  in-memory context. Misordered bootstrap/policy loading can therefore affect
+  effective deserialization authority at startup.
+
+See the detailed analysis below.
+
+### Residual N-13: Activation Deserialization Authority Trust Boundaries
+
+This section consolidates activation-specific residual N-13 analysis previously
+recorded in `SECURITY_ANALYSIS.md`, and keeps the full cross-JVM trust-boundary
+analysis with the rest of the process-isolation material.
+
+Cross-reference: [JGDMS #182 comment #4296131653](https://github.com/pfirmstone/JGDMS/issues/182#issuecomment-4296131653).
+
+- Activation deserialization in JGDMS `AtomicSerial` is governed by `DeSerializationPermission` (not `SerialObjectPermission`).
+- The check is enforced during `AtomicMarshalInputStream.readObject()` against each class protection domain.
+- Phoenix/admin JVM and each group JVM are separate OS processes with independent policy files.
+- Policy authority is not hierarchical: group JVM enforcement is based on the group JVM's configured policy, not inherited admin policy.
+
+This distinction matters because activation reconstruction in the group JVM follows
+AtomicSerial enforcement points (`DeSerializationPermission` at class-construction
+time), so assuming `SerialObjectPermission`/originating-JVM semantics can hide where
+policy authority is actually decided.
+
+```
+┌─ Admin JVM (Phoenix daemon) ──────────────────┐
+│ Policy File: admin-policy.config              │
+│ SecurityManager: admin process scope          │
+└──────────────────┬────────────────────────────┘
+                   │ (ActivationGroupDesc + policy file path)
+                   ▼
+┌─ Group JVM (ActivationGroupInit) ─────────────┐
+│ Policy File: group-policy.config (SEPARATE)   │
+│ -Djava.security.policy=group-policy.config    │
+│ DeSerializationPermission: GROUP policy scope │
+└───────────────────────────────────────────────┘
+```
+
+#### Two critical N-13 gaps
+
+| Gap | Root cause | Consequence | Severity |
+|---|---|---|---|
+| 1. ActivationDesc integrity protection | No descriptor-level HMAC/signature over persisted security-relevant fields | Phoenix/filesystem compromise can tamper descriptor content and inject unauthorized activation payloads | High |
+| 2. Policy authority separation | Group policy is configured independently and not validated as subset/equivalent to admin policy | Group can allow deserialization classes denied by admin policy | Medium |
+
+#### Representative attack scenario
+
+1. Admin policy is restrictive (example): `permission DeSerializationPermission "ATOMIC";`
+2. Group policy is permissive (example): `permission DeSerializationPermission "*";`
+3. Attacker modifies persisted `ActivationDesc` if Phoenix/filesystem is compromised.
+4. Tampered descriptor references gadget class (example: `com.sun.org.apache.xalan.internal.xsltc.trax.TemplatesImpl`).
+5. Group JVM starts with permissive group policy and deserializes via `AtomicMarshalInputStream`.
+6. `DeSerializationPermission` is evaluated in group-policy context; admin boundary is bypassed.
+
+#### Existing mitigations vs residual risk
+
+| Area | Existing mitigation | Residual risk |
+|---|---|---|
+| AtomicSerial deserialization in activation path | `DeSerializationPermission` checks during class construction in the active deserializing JVM | Checks are only as strict as the currently active process policy (group policy can be broader than admin policy) |
+| JGDMS transport | TLS socket factories and JERI constraints for channel auth/integrity/confidentiality | Transport identity is not equivalent to deserialization-authority identity inside re-activation context |
+| Process isolation | Phoenix and each group JVM run in separate OS processes with separate policies | Isolation does not guarantee descriptor integrity or authority continuity across restart/replay |
+| Policy controls | Per-process policy files and least-privilege guidance in this document | No built-in enforcement that group policy is a subset of admin policy |
+
+#### Hardening recommendations
+
+**High priority**
+
+1. Add descriptor integrity protection for persisted activation state:
+   HMAC-SHA256 or signature over security-relevant `ActivationDesc` fields
+   (implementation class, location/codebase, init data, restart flag, policy path).
+2. Enforce group policy discipline:
+   require operator review/approval of group policy and enforce/document subset
+   constraints so group `DeSerializationPermission` grants cannot exceed admin intent.
+3. Add operator/deployment checks to diff admin vs group policy with warnings on broader group grants.
+    
+**Medium priority**
+
+1. Add defense-in-depth validation at group bootstrap:
+   verify activation classes were also permitted by admin policy at registration time
+   (requires carrying signed admin policy context or whitelist).
+2. Add activation-lifecycle audit events (descriptor write/read/verify/replay) and trace which policy granted deserialization.
+3. Define principal propagation semantics for TLS-authenticated calls so service-side deserialization/authorization logic can consume authenticated identity explicitly.
+
+#### Investigation task backlog (for issue tracking)
+
+- [ ] ACTIVATION-DESC-INTEGRITY (high): Prototype `ActivationDesc` integrity envelope (sign/verify) for Phoenix persistence.
+- [ ] GROUP-POLICY-DISCIPLINE (high): Validate/deploy policy subset checks between admin and group JVM policies.
+- [ ] GROUP-DESERIALIZATION-AUTHORITY (high): Instrument group JVM reconstruction path to assert/document `DeSerializationPermission` authority source.
+- [ ] POLICY-PRECEDENCE-REACTIVATION (medium): Specify and validate policy-authority precedence for re-activation and mismatch diagnostics.
+- [ ] TLS-SUBJECT-PROPAGATION (medium): Define TLS subject propagation contract into service deserialization context.
+
+#### JGDMS code evidence
+
+- `service-starter/src/main/java/org/apache/river/start/SharedActivationGroupDescriptor.java` (lines 127-170): separate group policy parameter passed as `-Djava.security.policy=...`
+- `jgdms-platform/src/main/java/org/apache/river/api/io/ObjectStreamClassContainer.java` (lines 90-146): `deSerializationPermitted()` checks `DeSerializationPermission` against class protection domain
+- `phoenix-activation/phoenix-init/src/main/java/org/apache/river/phoenix/init/ActivationGroupInit.java` (lines 70-71): activation group bootstrap deserializes group descriptors through `AtomicMarshalInputStream.readObject(...)`
 ---
 ## DirtyChai: SerialObjectPermission as the JDK-level Backstop for JGDMS Atomic Serialization — and Why Process Isolation Remains Essential
 ### SerialObjectPermission as Backstop
@@ -320,6 +426,12 @@ All of the controls described above — `SerialObjectPermission`, `@AtomicSerial
 `createVirtualThread`, `SecurityManager` — operate *inside a single JVM
 process*.  In-process isolation has fundamental limits that no permission check
 or deserialization framework can overcome:
+
+Residual N-13 is a concrete activation example: even with strong in-process
+checks, cross-process policy-authority drift and descriptor-integrity gaps can
+re-open deserialization risk unless process boundaries and deployment controls
+are treated as first-class security controls.
+
 #### 1. Shared memory
 All threads and objects in a JVM process share a heap.  A hostile thread that
 has already been scheduled can read or corrupt shared data structures without
@@ -885,6 +997,19 @@ This security-model analysis has moved to `SECURITY_ANALYSIS.md`:
 **"Analysis: Finalizer and Cleaner Thread Execution Contexts (N-9)"**.
 See that section for full details.
 
+Key clarification for current DirtyChai behavior:
+- Finalizer threads are created with
+  `AccessControlContext.neverPrivileged()` (`Finalizer.java`, line 191), so they
+  run with zero permissions.
+- Cleaner daemon threads run on `InnocuousThread` (`CleanerImpl.java`) and are
+  likewise unprivileged.
+- `AccessController.doPrivileged(...)` should be avoided in both `finalize()`
+  and `Cleaner` callbacks: using it in either callback attempts to escalate from
+  an intentionally zero-permission cleanup context.
+- If sensitive cleanup is required, authorization must be established at object
+  creation time (or explicit close/release time), not during finalizer/Cleaner
+  execution.
+
 ---
 
 ## Analysis: Constant-Pool and Class-Initialization Security (N-10)
@@ -1140,80 +1265,6 @@ ends must present credentials accepted by the other's SecurityManager policy.  B
 Phoenix runs under its own DirtyChai policy (separate from the group's policy), a
 compromised group JVM cannot escalate privileges into Phoenix — it can only make calls
 that Phoenix's policy permits.
-
-### Residual N-13: Activation Deserialization Authority Trust Boundaries
-
-This section expands the residual N-13 entry in `SECURITY_ANALYSIS.md` with a
-focused trust-boundary analysis for DirtyChai + JGDMS + Phoenix activation flows.
-
-**Cross-reference:** `SECURITY_ANALYSIS.md` → Residual risk 11 (**N-13**),
-**"Activation deserialization authority (N-13)"**.
-
-#### Integration points in scope
-
-- `SharedActivatableServiceDescriptor` (JGDMS service-registration path and `ActivationDesc` creation)
-- `TlsRMIClientSocketFactory` / `TlsRMIServerSocketFactory` (JGDMS TLS transport/authentication path)
-- Phoenix activation daemon persistence and re-activation path
-- Group JVM bootstrap and `ActivationDesc` deserialization/reconstruction path
-
-#### Trust-boundary gaps (documented residuals)
-
-| Boundary | Documented gap | Exploitation consequence |
-|---|---|---|
-| 1. Calling JVM → group JVM deserialization boundary | `SerialObjectPermission` is enforced in the active deserializing JVM; activation reconstruction currently has no verified cross-JVM carry-over contract from service-registrar JVM (the JVM that registers the activatable descriptor) decisions. | Policy bypass if group JVM allowlist differs from caller allowlist. |
-| 2. Phoenix persistent store integrity boundary | No documented descriptor-level integrity mechanism (HMAC/signature) for stored `ActivationDesc` state. | Descriptor tampering can inject altered activation payloads before restart/re-activation. |
-| 3. Re-activation policy authority boundary | Reconstruction-time policy authority is implementation-defined for restart/replay flows and must be treated as requiring explicit operator verification. | Effective authority may drift to the weaker policy surface, reducing intended deserialization controls. |
-| 4. AccessControlContext lifecycle boundary | Restart/replay flows do not define a guaranteed fresh `AccessControlContext` rebind contract unless bootstrap logic explicitly rebuilds context from current policy state. | Stale context reuse can preserve broader historical privilege after policy tightening. |
-| 5. TLS-authenticated identity propagation boundary | TLS peer authentication is transport-level; authenticated peer identity requires explicit context propagation/binding to participate in service deserialization authority decisions. | Identity confusion: authenticated client identity may not participate in per-call deserialization decisions. |
-
-#### Threat model and exploitation scenarios
-
-| Gap | Threat actor capability | Representative scenario | Security impact |
-|---|---|---|---|
-| SerialObjectPermission reinforcement ambiguity | Can register or influence activatable descriptors | Admin-side checks are strict, but group JVM policy is more permissive; re-activation deserializes a class denied in the origin JVM | Cross-JVM deserialization policy bypass |
-| ActivationDesc integrity gap | Can modify Phoenix persistence store (filesystem compromise or daemon compromise) | Stored descriptor/init data is altered, then loaded after crash/restart | Tampered descriptor injection during activation |
-| Policy authority ambiguity | Can cause re-activation under different policy state | Service re-activates under policy scope that does not match operator expectation | Silent weakening of deserialization authority |
-| ACC freshness gap | Can trigger restart after policy/state drift | Previously captured context survives restart semantics and is reused | Privilege persistence/escalation after policy change |
-| TLS subject propagation gap | Has valid TLS credentials but should have constrained identity scope | Transport auth succeeds, but deserialization path lacks caller principal binding | Confused identity / coarse-grained authorization decisions |
-
-#### Existing mitigations vs residual risk
-
-| Area | Existing mitigation | Residual risk |
-|---|---|---|
-| Standard Java deserialization in DirtyChai | `SerialObjectPermission` guard at `ObjectInputStream.readOrdinaryObject()` in the active JVM | Cross-JVM activation path authority boundaries are not yet fully documented/enforced end-to-end |
-| JGDMS transport | TLS socket factories and JERI constraints for channel auth/integrity/confidentiality | Transport identity is not equivalent to deserialization-authority identity inside re-activation context |
-| Process isolation | Phoenix and each group JVM run in separate OS processes with separate policies | Isolation does not guarantee descriptor integrity or authority continuity across restart/replay |
-| Policy controls | Per-process policy files and least-privilege guidance in this document | Re-activation-time policy precedence and ACC freshness semantics remain under-specified |
-
-#### Hardening recommendations
-
-**High priority**
-
-1. Define and implement descriptor integrity protection for persisted activation state
-   (signature or HMAC over `ActivationDesc` and security-relevant fields such as
-   implementation class, codebase, policy path, restart flag, and init data).
-2. Make group JVM deserialization authority explicit and enforceable: document and
-   verify `SerialObjectPermission` reinforcement semantics during activation
-   reconstruction.
-3. Bind re-activation authority to fresh security context materialization at group JVM
-   bootstrap (no stale context reuse across restart boundaries).
-
-**Medium priority**
-
-1. Specify policy precedence rules for activation replays/restarts (registrar policy vs
-   group policy) and add operator-facing diagnostics when mismatches are detected.
-2. Define principal propagation semantics for TLS-authenticated calls so service-side
-   deserialization/authorization logic can consume authenticated identity explicitly.
-3. Add activation-lifecycle audit events (descriptor write/read/verify/replay) for
-   incident response and post-mortem authority tracing.
-
-#### Investigation task backlog (for issue tracking)
-
-- [ ] ACTIVATION-DESC-INTEGRITY (high): Prototype `ActivationDesc` integrity envelope (sign/verify) for Phoenix persistence.
-- [ ] GROUP-DESERIALIZATION-AUTHORITY (high): Instrument group JVM reconstruction path to assert/document `SerialObjectPermission` authority source.
-- [ ] ACC-RESTART-FRESHNESS (high): Define and test `AccessControlContext` refresh semantics on activation group restart.
-- [ ] POLICY-PRECEDENCE-REACTIVATION (medium): Specify and validate policy-authority precedence for re-activation.
-- [ ] TLS-SUBJECT-PROPAGATION (medium): Define TLS subject propagation contract into service deserialization context.
 
 ### What Activation Isolation Does and Does Not Provide
 
@@ -2661,8 +2712,8 @@ Two `RMIServerSocketFactory` implementations are relevant to DirtyChai + JGDMS d
 | Mutual TLS enforcement | Optional (`needClientAuth` parameter) | Always on (hardcoded `needClientAuth=true`) |
 | TLS credential rotation | Static singleton `SSLSocketFactory`; no session invalidation | Per-`Subject` `SSLContext` cached in a weak/soft map; sessions invalidated when credentials are removed or expire |
 | TLS version | Configurable at construction time | `TLSv1.3` by default (system-property override) |
-| `equals()` / `hashCode()` | Implemented correctly (required by RMI spec for stub comparison) | **Missing** — correctness gap |
-| `Serializable` | Implicitly yes | **Missing** — correctness gap |
+| `equals()` / `hashCode()` | Implemented correctly (recommended by RMI spec for stub comparison) | Uses `Object` identity semantics; appropriate for a stateless factory with no comparison-relevant instance state (custom methods become relevant only if configurable state is added) |
+| `Serializable` | Implicitly yes | Not identified as a specification requirement for the current local RMI Registry socket-factory usage |
 
 **Architectural verdict:** For DirtyChai + JGDMS deployments, the JGDMS
 `TlsRMIServerSocketFactory` is the architecturally superior choice because it
@@ -2672,20 +2723,17 @@ that Subject, to principal-keyed policy grants enforced by the DirtyChai
 no awareness of principals and produces no identity context that policy can
 reason about.
 
-The JGDMS factory has two correctness gaps that must be remedied by a human
-implementor before it can be used reliably in production:
+For `TlsRMIServerSocketFactory` as currently designed (stateless, no
+comparison-relevant instance fields), `Object` default identity-based
+`equals()` / `hashCode()` behavior is an appropriate design choice rather than
+a correctness gap.  If the factory later gains configurable state (for example,
+explicit `SSLContext`, cipher-suite policy, or protocol preferences), then
+value-based `equals()` / `hashCode()` should be implemented at that point.
 
-1. **Missing `equals()` / `hashCode()`** — Per the RMI specification, socket
-   factories embedded in `RemoteRef` objects are compared by value during stub
-   lookup and transport sharing.  Without these methods, two
-   `TlsRMIServerSocketFactory` references that represent the same logical factory
-   will not compare as equal, causing unnecessary transport channel multiplication
-   or `SecurityException` during stub validation.
-2. **Missing `Serializable`** — `RMIServerSocketFactory` instances are distributed
-   to clients as part of the stub's `RemoteRef`.  A non-serializable factory
-   prevents correct stub distribution and deserialization on the client side.
-
-These gaps must be addressed before a production deployment.
+Likewise, this analysis does not treat `Serializable` as a missing requirement:
+no cited specification language mandates that a registry-oriented
+`RMIServerSocketFactory` implementation be serializable for the local usage
+discussed here.
 
 ### DirtyChai API Status: `Subject.getSubject` and `AccessController.getContext`
 
@@ -2883,7 +2931,7 @@ The two subjects serve different roles:
 |---|---|
 | `src/java.rmi/share/classes/sun/rmi/transport/tcp/TCPTransport.java` | `ConnectionHandler.run()` — detect `SSLSocket`, extract peer certs, call `Subject.doAsPrivileged` |
 | `src/java.rmi/share/classes/sun/rmi/transport/tcp/TCPTransport.java` | New private helper `extractPeerSubject(Socket)` — null-safe, returns null for non-TLS sockets |
-| JGDMS `TlsRMIServerSocketFactory` | Add `equals()`, `hashCode()`, and `Serializable` to satisfy the `RMIServerSocketFactory` contract (see gaps above) |
+| JGDMS `TlsRMIServerSocketFactory` | No mandatory contract change identified for current stateless/local-registry usage; revisit `equals()` / `hashCode()` only if configurable state is introduced |
 
 #### Investigation Task Backlog
 
@@ -2893,5 +2941,5 @@ The two subjects serve different roles:
   - Handles `SSLPeerUnverifiedException` with graceful fallback to unauthenticated dispatch
   - Dispatches under `Subject.doAsPrivileged(..., null)` to enable principal-keyed policy grants
   - Verified behavior target: `Subject.getSubject(AccessController.getContext())` inside service methods returns the authenticated peer `Subject`
-- [ ] **TLS-FACTORY-RMI-CONTRACT (high):** Add `equals()`, `hashCode()`, and `implements Serializable` to JGDMS `TlsRMIServerSocketFactory` to satisfy RMI stub-comparison and stub-distribution requirements.
+- [ ] **TLS-FACTORY-RMI-CONTRACT (conditional):** Re-evaluate whether JGDMS `TlsRMIServerSocketFactory` needs value-based `equals()` / `hashCode()` only if the class gains comparison-relevant configurable state (for example, explicit TLS context or cipher-suite settings).
 - [ ] **TLS-FACTORY-TEST (medium):** Add a test that exports a remote object with `TlsRMIServerSocketFactory`, connects with `TlsRMIClientSocketFactory`, and asserts that the service method's calling `Subject` matches the client's X.509 certificate principal.
