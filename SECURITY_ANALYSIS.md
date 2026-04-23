@@ -349,14 +349,14 @@ Policy guidance for administrators:
 
 ## Residual Risks and Omissions (Now Explicit)
 
-| # | Residual risk | Root cause | Mitigation |
+| ID | Residual risk | Root cause | Mitigation |
 |---|---|---|---|
 | 1 | Finite stack scan depth (`limit(50)`) | Bounded scan can miss deep malicious frames | Keep checks near entry points; accept as bounded residual |
 | 2 | Generated-class detection is heuristic | Name patterns are probabilistic (false +/−) | Keep layered caller/stack/CodeSource/policy checks |
 | 3 | Trusted-list and exemption governance | `trustedSMClass()` / ClassLoader exemptions are trust boundaries | Keep lists minimal; require explicit security review for additions |
 | 4 | Policy quality remains critical | Over-broad grants negate hardening | Enforce least privilege with audited policy generation/review |
 | 5 | Documentation drift (resolved) | Prior wording drifted from implementation | Keep docs/Javadoc synced with `limit(50)`; no open drift known |
-| 6 | Confused-deputy in trusted paths (N-8, N-10) | Reflection/MethodHandle and `<clinit>`/bootstrap can reach trusted code that uses unrestricted `doPrivileged` | Disallow unrestricted `doPrivileged` on security-sensitive trusted paths; keep stack-intersection guard |
+| 6 | Confused-deputy in trusted paths (N-8, N-10; consolidated) | Reflection/MethodHandle and `<clinit>`/bootstrap can reach trusted code that uses unrestricted `doPrivileged` | Disallow unrestricted `doPrivileged` on security-sensitive trusted paths; keep stack-intersection guard |
 | 7 | Finalizer/Cleaner context escape (N-9) | Creator-thread limited ACC is not propagated to callback threads | Avoid sensitive finalizer/cleaner work; prefer explicit `close()` and process isolation |
 | 8 | Runtime attach still policy/OS dependent (N-11) | Attach is permission-gated, but over-grants, inactive SM, or OS compromise remain | Keep attach grants narrow; use `-XX:+DisableAttachMechanism` where feasible |
 | 9 | Principal scope ambiguity (N-12) | Class+name grants can collide across realms; trusted-service mutation can abuse shared `Subject` | Use realm-qualified canonical principal identity; consider gating principal-set mutation |
