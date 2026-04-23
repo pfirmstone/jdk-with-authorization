@@ -100,7 +100,7 @@ Security impact: tighter binding of limited-privilege execution to caller proven
 
 #### `AccessControlContext`
 
-Dirty Chai introduces builder APIs not present in OpenJDK 21, plus authorization checks around ACC construction (`AccessControlContext.build(...)`, `checkAuthorized(...)`, permission intersection helpers).
+Dirty Chai introduces builder APIs not present in OpenJDK 21, plus authorization checks around ACC construction (`AccessControlContext.create(...)`, `checkAuthorized(...)`, permission intersection helpers).
 
 Notable security effect versus OpenJDK 21:
 
