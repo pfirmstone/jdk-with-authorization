@@ -366,54 +366,31 @@ Policy guidance for administrators:
 ## Analysis: N-13 TLS Subject Authentication Context Propagation (COMPLETED)
 
 ### Issue Resolution
-
-- **Issue:** [#134](https://github.com/pfirmstone/DirtyChai/issues/134)
-- **Implementation commit:** [`5e5682a8dbb1d3aa0a0838893646e43bfd150dc6`](https://github.com/pfirmstone/DirtyChai/commit/5e5682a8dbb1d3aa0a0838893646e43bfd150dc6)
-- **Status:** Completed in `src/java.rmi/share/classes/sun/rmi/transport/tcp/TCPTransport.java`
+**Issue:** [#134](https://github.com/pfirmstone/DirtyChai/issues/134) • **Implementation commit:** [`5e5682a8dbb1d3aa0a0838893646e43bfd150dc6`](https://github.com/pfirmstone/DirtyChai/commit/5e5682a8dbb1d3aa0a0838893646e43bfd150dc6) • **Status:** Completed in `src/java.rmi/share/classes/sun/rmi/transport/tcp/TCPTransport.java`
 
 ### Implementation Flow
+1. `executeAcceptLoop()` checks accepted sockets for `SSLSocket`.
+2. For TLS connections, peer certificates are read from `SSLSession.getPeerCertificates()`.
+3. The end-entity `X509Certificate` principal (`X500Principal`) is extracted and bound to a read-only Subject: `new Subject(true, Set.of(principal), Set.of(), Set.of())`.
+4. `ConnectionHandler.run()` dispatches under that identity via `Subject.doAsPrivileged(subject, (PrivilegedAction<Void>) () -> { run0(); return null; }, null)`.
+5. Service execution can resolve the authenticated peer identity with `Subject.getSubject(AccessController.getContext())`.
 
-1. On inbound RMI connection accept, `TCPTransport.ConnectionHandler.executeAcceptLoop()` checks whether the accepted socket is an `SSLSocket`.
-2. For TLS sockets, it reads the peer certificate chain from `SSLSession.getPeerCertificates()`.
-3. It extracts the end-entity `X509Certificate` principal (`X500Principal`) and constructs a read-only Subject:
-   - `new Subject(true, Set.of(principal), Set.of(), Set.of())`
-4. The Subject is passed into `ConnectionHandler` and bound for dispatch in `ConnectionHandler.run()` using:
-   - `Subject.doAsPrivileged(subject, (PrivilegedAction<Void>) () -> { run0(); return null; }, null)`
-5. Service-method execution therefore runs with principal context available via:
-   - `Subject.getSubject(AccessController.getContext())`
+### Exception Handling, Fallback, and Subject Immutability
+`SSLPeerUnverifiedException` is explicitly handled during peer extraction. If peer verification is unavailable, dispatch proceeds without Subject binding (unauthenticated path), preserving availability and fail-secure behavior. Using `Subject(true, principals, ...)` keeps the Subject read-only, preventing downstream principal mutation and Subject-based privilege injection.
 
-### Exception Handling and Fallback
-
-`SSLPeerUnverifiedException` is explicitly handled during peer certificate extraction. If peer verification is unavailable, dispatch continues without peer Subject binding (unauthenticated path), preserving availability and fail-secure authorization behavior.
-
-### Subject Immutability
-
-Using `Subject(true, principals, ...)` is correct because the read-only Subject prevents downstream principal mutation and avoids privilege escalation through Subject principal injection.
-
-### Null ACC Semantics
-
-Passing `null` as the ACC to `Subject.doAsPrivileged` intentionally creates an empty context and lets authorization derive from the Subject's principals through `SubjectDomainCombiner`, enabling principal-only authorization for the authenticated peer identity.
-
-### CombinerSecurityManager Integration
-
-No changes were needed in `CombinerSecurityManager`. The principal context is injected by `SubjectDomainCombiner`, and existing permission-check intersection behavior applies unchanged.
+### Integration: ACC Semantics and CombinerSecurityManager
+Passing `null` ACC to `Subject.doAsPrivileged` intentionally uses an empty context so authorization derives from Subject principals through `SubjectDomainCombiner` (principal-only authorization for the authenticated peer identity). No `CombinerSecurityManager` changes were required; existing permission intersection semantics apply unchanged.
 
 ### Security Properties Achieved
-
-- Principal binding from authenticated TLS peer to dispatch execution context
-- Immutable Subject state (no downstream principal extension)
-- Policy-driven principal authorization in service method context
-- Graceful fallback for unverified peers (`SSLPeerUnverifiedException`)
-- No cross-request context leak (peer Subject scoped to connection handler dispatch)
+- Principal binding from authenticated TLS peer to dispatch execution context.
+- Immutable Subject state prevents downstream principal extension/injection.
+- Policy-driven principal authorization remains active in service method context.
+- `SSLPeerUnverifiedException` fallback is graceful (unauthenticated path) and does not leak principal context across requests (peer Subject remains handler-scoped).
 
 ### Files Modified (Implementation Reference)
-
-- `src/java.rmi/share/classes/sun/rmi/transport/tcp/TCPTransport.java`
-  - Peer extraction and Subject construction: lines `430-446`
-  - Subject-bound dispatch in handler: lines `745-758`
+Implementation is contained in `src/java.rmi/share/classes/sun/rmi/transport/tcp/TCPTransport.java` (peer extraction/Subject construction and Subject-bound dispatch updates in the N-13 implementation commit).
 
 ### Remaining Work
-
 - **TLS-FACTORY-TEST:** add integration test asserting service-side `Subject.getSubject(...)` maps to authenticated client certificate principal
 
 ---
