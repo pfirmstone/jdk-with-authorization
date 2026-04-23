@@ -553,102 +553,62 @@ code in a different thread than the one that created the object.  Does this
 mean the original creator's restricted `AccessControlContext` is lost, and can
 this loss be exploited to run sensitive operations with escalated permissions?
 
-### Finalizer Thread Execution Model
+### Finalizer and Cleaner Execution Model
 
-When the JVM determines that an object with a non-trivial `finalize()` method is
-no longer strongly reachable, it enqueues the object onto an internal finalizer
-queue.  A dedicated daemon thread (typically named `Finalizer`) dequeues objects
-and calls their `finalize()` method.
+- **Finalizer:** Objects with non-trivial `finalize()` are queued and processed
+  by the JVM `Finalizer` daemon thread.
+- **Finalizer thread context:** Created at boot via
+  `AccessController.doPrivileged(..., AccessControlContext.neverPrivileged())`,
+  so callback execution is never-privileged.
+- **Cleaner:** `java.lang.ref.Cleaner` uses an `InnocuousThread` daemon
+  (unprivileged) to run registered `Runnable` cleanup callbacks.
+- In both models, the creator thread's `AccessControlContext` is **not**
+  propagated to the callback thread.
 
-The finalizer thread is created during JVM bootstrapping via:
-`AccessController.doPrivileged(..., AccessControlContext.neverPrivileged())`.
-This preserves the privileged thread-creation step while ensuring the resulting
-`Finalizer` thread executes with a never-privileged context (parity with
-`Cleaner` daemon behavior).  The *creator thread's* `AccessControlContext` is
-still **not** inherited by the finalizer thread and is **not** available when
-`finalize()` runs.
+### Stack Intersection & Permission Enforcement
 
-### Stack Composition During Finalization
-
-When `finalize()` executes, the call stack looks like:
+During finalizer/cleaner callback execution, `SecurityManager.checkPermission()`
+and `AccessController.getContext()` still walk the *current* callback stack.
+The callback class frame remains on-stack, so its `ProtectionDomain` is part of
+the domain intersection.
 
 ```
-java.lang.ref.Finalizer$FinalizerThread.run()  ← java.base, neverPrivileged context
-  java.lang.ref.Finalizer.runFinalizer()        ← java.base, neverPrivileged context
-    UntrustedClass.finalize()                   ← untrusted ProtectionDomain
-      [any permission check triggered here]
+java.base finalizer/cleaner daemon frame (unprivileged)
+  callback implementation frame (trusted or untrusted PD)
+    [permission check]
 ```
 
-When `SecurityManager.checkPermission()` is called from within `finalize()`,
-`AccessController.getContext()` walks this stack.  The `UntrustedClass`
-frame **is on the stack** and its `ProtectionDomain` is included in the
-intersection.
+Result: untrusted callback code without `NativeInvocationPermission` is blocked;
+trusted callback code is allowed only if policy grants the required permission.
 
-If `UntrustedClass` lacks `NativeInvocationPermission`, any permission check
-for that permission during `finalize()` will fail.  **DirtyChai's
-stack-intersection guard therefore applies to untrusted finalizer code.**
+### Execution-Context Escape (Core Risk)
 
-### The Execution-Context Escape
-
-The genuine threat is subtler: the **creator's restricted context is lost**, not
-that the finalizer gains extra permission beyond what the class is granted by
-policy.  Concretely:
-
-1. Trusted code runs a restricted operation under a limited
-   `AccessControlContext` (e.g., `doPrivileged(action, limitedContext)`).
-2. Inside that limited scope, a trusted object is created whose `finalize()`
-   performs a sensitive native call.
-3. The creator's limited context was deliberately preventing that native call.
-4. When the object is GC'd, the finalizer runs on the finalizer thread where
-   the limited context **does not apply**.
-5. The trusted class holds `NativeInvocationPermission` in its policy grant.
-6. `SecurityManager.checkPermission()` succeeds because only the trusted class's
-   domain and the `java.base` finalizer frames are on the stack.
-
-**In this scenario, the finalizer thread performs an action that the creating
-thread's limited context was intended to prevent.**  The in-process guard does
-not protect against this because the constraint was encoded in the thread's
-`AccessControlContext`, not in the class's policy grant.
-
-### Cleaner Callbacks (java.lang.ref.Cleaner)
-
-`java.lang.ref.Cleaner` (introduced in Java 9) is the recommended replacement
-for `finalize()`.  A `Cleaner.Cleanable` is registered by supplying a
-`Runnable` that is invoked when the registered object becomes phantom-reachable.
-
-The `Cleaner` creates its own daemon thread using `InnocuousThread` (no
-permissions).  The `Runnable` implementation class **is** on the stack when the
-callback fires, so its `ProtectionDomain` is included in the
-permission-intersection.  The execution-context-escape property is the same as
-for finalizers: the context of the code that called `Cleaner.register(...)` is
-not preserved for the callback thread.
+- **Limited-context constraint is lost when finalizer/cleaner callbacks run on a
+  separate thread:** restrictions encoded in the creator's limited
+  `AccessControlContext` do not survive to callback execution, while class-level
+  policy grants still apply.
 
 ### Policy Decision
 
 | Scenario | In-Process Guard (DirtyChai) | Process Isolation Required? |
 |----------|------------------------------|-----------------------------|
-| Untrusted class finalizer calls native method | Stack intersection blocks it — untrusted PD on stack | No (in-process guard sufficient) |
-| Trusted class finalizer / Cleaner callback calls native method | Allowed only if trusted class policy grants `NativeInvocationPermission`; finalizer/Cleaner threads themselves are unprivileged | No (this is intended behavior) |
-| Trusted class finalizer bypasses a creator's limited context | **Not blocked** — limited context is not part of policy grant | **Yes — use process isolation** |
-| Attacker triggers GC of a trusted object whose finalizer does privileged work | Allowed if trusted class has the permission | Mitigate by avoiding sensitive ops in finalizers |
+| Untrusted finalizer/callback calls native method | Blocked by stack intersection (untrusted PD is on-stack) | No |
+| Trusted finalizer/callback calls native method | Allowed only if policy grants `NativeInvocationPermission`; daemon thread itself is unprivileged | No (intended) |
+| Trusted callback bypasses creator's limited context | **Not blocked** — limited creator ACC is not part of class policy grants | **Yes — process isolation required** |
+| Attacker triggers GC of trusted object with sensitive callback | Executes if trusted class grant allows it | Mitigate by avoiding sensitive finalizer/cleaner operations |
 
 ### Guidance for Trusted Library Authors
 
-Trusted classes whose finalizers or `Cleaner` callbacks perform sensitive
-operations (native calls, file I/O, network access) should:
+For trusted classes whose finalizers/cleaner callbacks perform sensitive
+operations (native, file, network):
 
-1. **Prefer `Cleaner` over `finalize()`** — `Cleaner` avoids JVM finalizer
-   thread contention and is more predictable in timing.
-2. **Use `doPrivileged` with a minimal limited context** inside the callback if
-   the operation must succeed regardless of the invoking (finalizer) thread's
-   inherited context, and document explicitly why the bypass of the caller
-   context is safe.
-3. **Avoid encoding application-level security constraints in finalizers.**
-   If a security constraint must survive GC, enforce it at the time of object
-   construction or through an explicit `close()` / `release()` pattern, not via
-   finalization.
-4. **Process isolation is the ultimate backstop:** an attacker that exploits a
-   finalizer-context escape is still confined to the OS process boundary.
+1. **Prefer `Cleaner` over `finalize()`** for modern, more predictable cleanup.
+2. **Do not encode application security constraints in callbacks;** enforce them
+   at construction/use time or via explicit `close()` / `release()`.
+3. **If privileged callback work is unavoidable, keep it minimal and explicit**
+   (narrow `doPrivileged` scope, documented justification).
+4. **Treat process isolation as the primary containment backstop** for context
+   escape scenarios.
 
 ---
 
