@@ -9,7 +9,9 @@ inherent limits of in-process isolation in a Java security manager environment.
 > multi-process isolation concerns. For DirtyChai's in-process security model,
 > see `SECURITY_ANALYSIS.md`.
 ---
-## Analysis: RuntimePermission("createPlatformThread") and RuntimePermission("createVirtualThread")
+## Thread Creation
+
+### Analysis: RuntimePermission("createPlatformThread") and RuntimePermission("createVirtualThread")
 ### The Gap
 `Thread.java` calls `sm.checkAccess(g)` when a new thread is created.
 `SecurityManager.checkAccess(ThreadGroup g)` only performs a real permission
@@ -83,7 +85,7 @@ which is the correct defence boundary.
 - `src/java.base/share/classes/java/lang/RuntimePermission.java` (permission table entries)
 - `src/java.base/share/classes/sun/security/util/SecurityConstants.java` (new constants)
 ---
-## Analysis: modifyThreadGroup is only checked if the group is rootGroup
+### Analysis: modifyThreadGroup is only checked if the group is rootGroup
 ### Current Behaviour
 `SecurityManager.checkAccess(ThreadGroup g)` (lines 596–604 of `SecurityManager.java`):
 ```java
@@ -126,7 +128,7 @@ every Java program.  The correct fix is to introduce dedicated permissions
 (`createPlatformThread`, `createVirtualThread`) checked unconditionally at the
 thread constructor, as described in the preceding analysis.
 ---
-## Analysis: Forcibly Abandoning a Virtual Thread That Swallows Interrupts
+### Analysis: Forcibly Abandoning a Virtual Thread That Swallows Interrupts
 ### The Blunt Answer
 **You cannot.**  There is no JVM mechanism that can forcibly terminate an
 individual thread — platform or virtual — that is actively running and refuses
@@ -186,7 +188,9 @@ The correct layered defence is therefore:
 3. **Acceptance** — document that a stuck thread will consume its carrier slot
    until the JVM exits, and size the isolated pool's parallelism accordingly.
 ---
-## Analysis: Atomic Serialization and JERI — Architecture, Security Model, and Integration with DirtyChai
+## Serialization & Deserialization
+
+### Analysis: Atomic Serialization and JERI — Architecture, Security Model, and Integration with DirtyChai
 ### Background
 Standard Java serialization (`ObjectInputStream` / `ObjectOutputStream`) has a
 long history of security vulnerabilities.  Its deserialization path invokes
@@ -375,7 +379,7 @@ policy authority is actually decided.
 - `jgdms-platform/src/main/java/org/apache/river/api/io/ObjectStreamClassContainer.java` (lines 90-146): `deSerializationPermitted()` checks `DeSerializationPermission` against class protection domain
 - `phoenix-activation/phoenix-init/src/main/java/org/apache/river/phoenix/init/ActivationGroupInit.java` (lines 70-71): activation group bootstrap deserializes group descriptors through `AtomicMarshalInputStream.readObject(...)`
 ---
-## DirtyChai: SerialObjectPermission as the JDK-level Backstop for JGDMS Atomic Serialization — and Why Process Isolation Remains Essential
+### DirtyChai: SerialObjectPermission as the JDK-level Backstop for JGDMS Atomic Serialization — and Why Process Isolation Remains Essential
 ### SerialObjectPermission as Backstop
 `au.zeus.jdk.authorization.guards.SerialObjectPermission` is a
 `BasicPermission` whose name is the canonical class name of a serializable type.
@@ -421,123 +425,9 @@ Untrusted byte stream
 │  → InvalidObjectException if inputs invalid     │
 └─────────────────────────────────────────────────┘
 ```
-### Why Process Isolation Remains Essential
-All of the controls described above — `SerialObjectPermission`, `@AtomicSerial`,
-`createVirtualThread`, `SecurityManager` — operate *inside a single JVM
-process*.  In-process isolation has fundamental limits that no permission check
-or deserialization framework can overcome:
+## Native Code Isolation
 
-Residual N-13 is a concrete activation example: even with strong in-process
-checks, cross-process policy-authority drift and descriptor-integrity gaps can
-re-open deserialization risk unless process boundaries and deployment controls
-are treated as first-class security controls.
-
-#### 1. Shared memory
-All threads and objects in a JVM process share a heap.  A hostile thread that
-has already been scheduled can read or corrupt shared data structures without
-any permission check, because memory access does not pass through the
-`SecurityManager`.
-
-**Java Memory Model (JMM) guarantees and limits in this context:**
-
-- **Visibility is conditional, not isolated.**  The JMM guarantees visibility
-  across threads only when there is a proper *happens-before* edge (for example:
-  monitor enter/exit, `volatile`, thread start/join, or classes in
-  `java.util.concurrent`).  This improves correctness, but does not prevent
-  untrusted code from reading or writing any object graph it can reference.
-- **Data-race freedom gives predictability, not protection.**  Correctly
-  synchronized code gets well-defined behavior, but there is no policy check on
-  field reads/writes.  A malicious in-process thread can still mutate shared
-  state if it obtains references to that state.
-- **Atomicity scope is limited.**  The JMM guarantees atomic reads/writes for
-  references and 32-bit primitives (and, in modern JDKs, `long`/`double` as
-  well), but compound actions are still non-atomic unless synchronized.  This
-  enables race-based corruption of invariants even when individual reads/writes
-  are atomic.
-- **Ordering rules are semantic, not access control.**  The JMM constrains
-  legal reorderings by compilers/CPUs, but it is not a sandbox boundary.
-  Nothing in the model routes ordinary memory access through
-  `SecurityManager.checkPermission()`.
-
-Therefore, JMM guarantees help reason about *correctness* under concurrency, but
-they do not provide a security boundary between mutually untrusted threads in
-the same JVM process.
-#### 2. Side-channel attacks
-Timing attacks, cache-flush attacks, and speculative-execution side channels
-(Spectre, Meltdown class) operate below the Java security model.  A hostile
-thread running in the same process can leak secrets from other threads via these
-channels regardless of permission grants.  Moving to separate OS processes (via
-JGDMS Activation) reduces but does not eliminate these channels, because two
-processes on the same physical CPU core still share microarchitectural state such
-as L1 cache, branch predictor tables, and Translation Lookaside Buffers (TLBs).
-Full mitigation requires hardware-level isolation; see
-[Hardware-Level Isolation Against Spectre/Meltdown-Class Attacks](#hardware-level-isolation-against-spectremeltdown-class-attacks)
-later in this document.
-#### 3. JVM internals access
-Despite module encapsulation and permission checks, the JVM exposes internal
-state that can be exploited to escape the security model entirely:
-- **`sun.misc.Unsafe` / `jdk.internal.misc.Unsafe`** — allows arbitrary memory
-  reads and writes at native-pointer offsets.
-- **JNI / FFM** — native code runs outside the JVM and is invisible to
-  `StackWalker`; it can call back into the JVM impersonating any class.
-- **JVMTI** — a `-agentlib:` agent attached at startup can intercept or
-  redefine any class before the SecurityManager is installed.
-- **`java.lang.instrument.Instrumentation`** — a `-javaagent:` can redefine
-  classes at runtime, including security-critical classes, after the JVM is
-  running. Runtime attach (`VirtualMachine.attach()`) is gated by
-  `AttachPermission` when the SecurityManager is active; `-XX:+DisableAttachMechanism`
-  remains a VM-level defense-in-depth option.
-#### 4. Resource exhaustion
-As analysed above, a running thread cannot be forcibly terminated.  Even if all
-creation guards are in place, code that has been granted `createVirtualThread`
-can still exhaust carrier threads, fill the heap, or cause GC storms.
-#### 5. Class loader confusion
-Multiple class loaders in a single JVM can define classes with the same name in
-different `ProtectionDomain`s.  Confusion between identically-named classes in
-different loaders has historically led to type-confusion vulnerabilities.
-### The Correct Architecture
-DirtyChai and JGDMS together provide the strongest *in-process* isolation
-available on the JVM.  For truly untrusted code — code whose origin or intent is
-unknown — the correct architecture combines in-process controls with
-OS-level process isolation:
-| Layer | Mechanism | Provided By |
-|---|---|---|
-| Class whitelist | `SerialObjectPermission` | DirtyChai |
-| Deserialization safety | `@AtomicSerial` constructors | JGDMS |
-| Thread creation control | `createPlatformThread` / `createVirtualThread` | DirtyChai (implemented) |
-| Permission enforcement | `SecurityManager` + `ConcurrentPolicyFile` | DirtyChai |
-| Blast-radius containment | Isolated `ForkJoinPool` + deadline | JGDMS service layer |
-| Memory isolation | Separate OS process | OS / GraalVM Espresso / container |
-| Network isolation | Firewall / namespace | OS / container runtime |
-> **Scope of DirtyChai**: DirtyChai provides the *in-process* layer of the
-> combined confinement architecture.  Its core goals are user authorisation —
-> ensuring principals have access only when using approved, policy-controlled
-> code — least-privilege enforcement, and tooling to audit third-party code
-> before deployment.  When combined with JGDMS activation groups and OS-level
-> process and network isolation (as described in this document), DirtyChai's
-> in-process permission layer becomes one tier of a full defence-in-depth
-> posture that can confine untrusted code.  Neither DirtyChai alone nor JGDMS
-> alone is sufficient for that goal; the layers described in "The Correct
-> Architecture" table above are all required.
-In practice, the recommended deployment model for JGDMS services that handle
-untrusted remote input is:
-1. Each service runs in its own OS process.
-2. DirtyChai `SecurityManager` + `ConcurrentPolicyFile` enforces least-privilege
-   within that process.
-3. JGDMS `@AtomicSerial` ensures unmarshalled objects are fully validated at
-   construction time.
-4. `SerialObjectPermission` provides a policy-auditable whitelist for any
-   remaining use of standard Java serialization.
-5. Untrusted-proxy invocations are dispatched through a bounded, isolated
-   `ForkJoinPool` with a caller-side timeout.
-6. The OS process boundary provides the final containment layer: if the JVM
-   process is compromised, the attacker is confined to that process and cannot
-   directly access other services or the host OS without an additional
-   privilege-escalation step.
-
----
-
-## Analysis: Preventing Native Code Loaded by Untrusted Jars from Escaping the SecurityManager
+### Analysis: Preventing Native Code Loaded by Untrusted Jars from Escaping the SecurityManager
 
 ### Background — Why Native Code Is a Special Threat
 
@@ -772,214 +662,124 @@ untrusted service processes).
 
 ---
 
-## Implementation Plan: Native Code Isolation in DirtyChai
+## Fundamental In-Process Limits
+All of the controls described above — `SerialObjectPermission`, `@AtomicSerial`,
+`createVirtualThread`, `SecurityManager` — operate *inside a single JVM
+process*.  In-process isolation has fundamental limits that no permission check
+or deserialization framework can overcome:
 
-The `NativeInvocationPermission` class and its integration into `ClassLoader.findNative()`,
-`SymbolLookup`, `SystemLookup`, and `AbstractMemorySegmentImpl` (`MemorySegment.reinterpret()`)
-are already implemented.  The following tasks remain for
-a complete, policy-auditable native isolation story.
+Residual N-13 is a concrete activation example: even with strong in-process
+checks, cross-process policy-authority drift and descriptor-integrity gaps can
+re-open deserialization risk unless process boundaries and deployment controls
+are treated as first-class security controls.
 
-### Task N-4 — Document `NativeInvocationPermission` in `RuntimePermission.java`'s Permission Table
+#### 1. Shared memory
+All threads and objects in a JVM process share a heap.  A hostile thread that
+has already been scheduled can read or corrupt shared data structures without
+any permission check, because memory access does not pass through the
+`SecurityManager`.
 
-**Priority:** Medium  
-**Files:** `src/java.base/share/classes/java/lang/RuntimePermission.java`
+**Java Memory Model (JMM) guarantees and limits in this context:**
 
-**Description:**  
-Add a row to the JavaDoc permission table in `RuntimePermission.java` that
-cross-references `NativeInvocationPermission` so that users who look up
-`loadLibrary.*` also discover the companion DirtyChai permission.
+- **Visibility is conditional, not isolated.**  The JMM guarantees visibility
+  across threads only when there is a proper *happens-before* edge (for example:
+  monitor enter/exit, `volatile`, thread start/join, or classes in
+  `java.util.concurrent`).  This improves correctness, but does not prevent
+  untrusted code from reading or writing any object graph it can reference.
+- **Data-race freedom gives predictability, not protection.**  Correctly
+  synchronized code gets well-defined behavior, but there is no policy check on
+  field reads/writes.  A malicious in-process thread can still mutate shared
+  state if it obtains references to that state.
+- **Atomicity scope is limited.**  The JMM guarantees atomic reads/writes for
+  references and 32-bit primitives (and, in modern JDKs, `long`/`double` as
+  well), but compound actions are still non-atomic unless synchronized.  This
+  enables race-based corruption of invariants even when individual reads/writes
+  are atomic.
+- **Ordering rules are semantic, not access control.**  The JMM constrains
+  legal reorderings by compilers/CPUs, but it is not a sandbox boundary.
+  Nothing in the model routes ordinary memory access through
+  `SecurityManager.checkPermission()`.
 
-This is a human implementation task (JavaDoc in a shipped source file).
+Therefore, JMM guarantees help reason about *correctness* under concurrency, but
+they do not provide a security boundary between mutually untrusted threads in
+the same JVM process.
+#### 2. Side-channel attacks
+Timing attacks, cache-flush attacks, and speculative-execution side channels
+(Spectre, Meltdown class) operate below the Java security model.  A hostile
+thread running in the same process can leak secrets from other threads via these
+channels regardless of permission grants.  Moving to separate OS processes (via
+JGDMS Activation) reduces but does not eliminate these channels, because two
+processes on the same physical CPU core still share microarchitectural state such
+as L1 cache, branch predictor tables, and Translation Lookaside Buffers (TLBs).
+Full mitigation requires hardware-level isolation; see
+[Hardware-Level Isolation Against Spectre/Meltdown-Class Attacks](#hardware-level-isolation-against-spectremeltdown-class-attacks)
+later in this document.
+#### 3. JVM internals access
+Despite module encapsulation and permission checks, the JVM exposes internal
+state that can be exploited to escape the security model entirely:
+- **`sun.misc.Unsafe` / `jdk.internal.misc.Unsafe`** — allows arbitrary memory
+  reads and writes at native-pointer offsets.
+- **JNI / FFM** — native code runs outside the JVM and is invisible to
+  `StackWalker`; it can call back into the JVM impersonating any class.
+- **JVMTI** — a `-agentlib:` agent attached at startup can intercept or
+  redefine any class before the SecurityManager is installed.
+- **`java.lang.instrument.Instrumentation`** — a `-javaagent:` can redefine
+  classes at runtime, including security-critical classes, after the JVM is
+  running. Runtime attach (`VirtualMachine.attach()`) is gated by
+  `AttachPermission` when the SecurityManager is active; `-XX:+DisableAttachMechanism`
+  remains a VM-level defense-in-depth option.
+#### 4. Resource exhaustion
+As analysed above, a running thread cannot be forcibly terminated.  Even if all
+creation guards are in place, code that has been granted `createVirtualThread`
+can still exhaust carrier threads, fill the heap, or cause GC storms.
+#### 5. Class loader confusion
+Multiple class loaders in a single JVM can define classes with the same name in
+different `ProtectionDomain`s.  Confusion between identically-named classes in
+different loaders has historically led to type-confusion vulnerabilities.
+## Architecture & Deployment
 
----
+### The Correct Architecture
+DirtyChai and JGDMS together provide the strongest *in-process* isolation
+available on the JVM.  For truly untrusted code — code whose origin or intent is
+unknown — the correct architecture combines in-process controls with
+OS-level process isolation:
+| Layer | Mechanism | Provided By |
+|---|---|---|
+| Class whitelist | `SerialObjectPermission` | DirtyChai |
+| Deserialization safety | `@AtomicSerial` constructors | JGDMS |
+| Thread creation control | `createPlatformThread` / `createVirtualThread` | DirtyChai (implemented) |
+| Permission enforcement | `SecurityManager` + `ConcurrentPolicyFile` | DirtyChai |
+| Blast-radius containment | Isolated `ForkJoinPool` + deadline | JGDMS service layer |
+| Memory isolation | Separate OS process | OS / GraalVM Espresso / container |
+| Network isolation | Firewall / namespace | OS / container runtime |
+> **Scope of DirtyChai**: DirtyChai provides the *in-process* layer of the
+> combined confinement architecture.  Its core goals are user authorisation —
+> ensuring principals have access only when using approved, policy-controlled
+> code — least-privilege enforcement, and tooling to audit third-party code
+> before deployment.  When combined with JGDMS activation groups and OS-level
+> process and network isolation (as described in this document), DirtyChai's
+> in-process permission layer becomes one tier of a full defence-in-depth
+> posture that can confine untrusted code.  Neither DirtyChai alone nor JGDMS
+> alone is sufficient for that goal; the layers described in "The Correct
+> Architecture" table above are all required.
 
-### Task N-5 — Add `--illegal-native-access=deny` to Recommended JVM Flags
+### Recommended Deployment Model
 
-**Priority:** Low  
-**Files:** `README.md`, `SECURITY.md`, deployment documentation.
-
-**Description:**  
-Document that DirtyChai deployments should launch the JVM with
-`--illegal-native-access=deny` (or the equivalent for the target JDK version)
-as a defence-in-depth measure.  This ensures the module system's native access
-gate independently blocks any path not covered by the SecurityManager policy,
-so that a hypothetical bug in the SecurityManager installation cannot be
-exploited to load native code through the module-system path.
-
----
-
-### Task N-6 — Confused-Deputy Guidance for Trusted Library Authors
-
-**Priority:** Medium  
-**Files:** `CONTRIBUTING.md`, `SECURITY_MODEL.md`.
-
-**Description:**  
-Document the obligation that trusted library code must honour when it calls
-native methods that may be triggered by caller-supplied inputs.
-
-The Java security model protects against the confused-deputy attack
-automatically: `SecurityManager.checkPermission` walks the entire call stack
-and computes the *intersection* of the `PermissionCollection`s held by every
-`ProtectionDomain` on the stack.  As long as the untrusted caller's domain
-remains on the stack, its absence of `NativeInvocationPermission` prevents the call
-from succeeding — no special coding pattern is required in the trusted class.
-
-The attack only becomes possible when the trusted class uses **unrestricted**
-`AccessController.doPrivileged` (without supplying a restricted
-`AccessControlContext`).  Unrestricted `doPrivileged` tells the stack walk to
-stop at that frame, removing the untrusted caller's domain from the intersection.
-With the caller's domain gone, the trusted class's own `NativeInvocationPermission`
-is sufficient and the permission check passes incorrectly.
-
-**The obligation for trusted library authors is therefore:**
-
-> Do **not** use unrestricted `AccessController.doPrivileged` on code paths
-> that lead to native method calls when those paths can be triggered by
-> caller-supplied inputs.  The normal call path (no `doPrivileged`) lets the
-> security policy enforce the restriction through stack-intersection automatically.
-
-If a trusted class genuinely needs to perform privileged pre-processing while
-still honouring the caller's restrictions, it must reduce privileges to the
-minimum scope and preserve any active `DomainCombiner` (for example,
-authenticated-principal context) while parsing and sanitizing caller input:
-
-```java
-// Preserve DomainCombiner and run with the smallest scope.
-AccessControlContext callerContext = AccessController.getContext();
-SanitizedInput sanitized = AccessController.doPrivilegedWithCombiner(
-    () -> parseAndSanitize(callerSuppliedInput),
-    callerContext,
-    new Permission[0]   // policy decides; no explicit extra permissions added
-);
-
-// For confused-deputy-sensitive native calls, do not use unrestricted doPrivileged.
-nativeMethod(sanitized);
-```
-
-Methods that support explicit privilege restriction, grouped by whether a special
-permission is required to invoke them:
-
-**No special permission required — any domain may call these**
-
-The methods below require no `SecurityPermission` or `AuthPermission` because
-they can only *reduce* the effective permission set of the code running inside
-them.  Stack-intersection semantics make this inherently safe: the intersection
-of the caller's `ProtectionDomain` with a restricted `AccessControlContext` or
-an explicit `Permission` list is always a *subset* of what the caller already
-holds.  A less-privileged domain therefore cannot exploit these methods to
-acquire permissions it does not already possess.
-
-Note that while *using* these methods requires no special permission,
-*constructing* an `AccessControlContext` to pass to them may require
-`SecurityPermission("createAccessControlContext")`.  If the caller does not
-hold that permission, `AccessControlContext.create()` automatically adds the
-calling context's own domains to the supplied array to prevent privilege
-escalation.  The context passed by `AccessController.getContext()` is always
-safe to re-use without that permission.
-
-- `AccessController.getContext()` — takes a read-only snapshot of the current
-  calling context; it does not alter any privilege and cannot be used to
-  escalate.
-- `AccessController.doPrivileged(PrivilegedAction<T>, AccessControlContext)` —
-  runs the action with the *intersection* of the caller's domain and the
-  supplied context.
-- `AccessController.doPrivileged(PrivilegedExceptionAction<T>, AccessControlContext)` —
-  same intersection semantics, for checked-exception actions.
-- `AccessController.doPrivileged(PrivilegedAction<T>, AccessControlContext, Permission...)` —
-  constructs a synthetic `ProtectionDomain` scoped to the *calling class's*
-  `CodeSource` but seeded with the listed permissions, then intersects that
-  with the supplied context.  Policy grants matching the caller's `CodeSource`
-  can *expand* the effective permissions beyond what was explicitly listed,
-  so the final privilege scope is the intersection of the supplied context and
-  the union of the listed permissions plus any applicable policy grants.
-  Passing an **empty** `Permission` array (rather than an explicit list)
-  delegates permission determination entirely to policy: the synthetic domain
-  will hold exactly what policy grants to the caller's `CodeSource`, no more
-  and no less.  This is both more performant (no explicit permission objects
-  to allocate or compare) and, when the policy is generated by
-  `SecurityPolicyWriter`, guarantees the minimum permissions the caller needs.
-- `AccessController.doPrivileged(PrivilegedExceptionAction<T>, AccessControlContext, Permission...)` —
-  same semantics and empty-array optimisation, for checked-exception actions.
-- `AccessController.doPrivilegedWithCombiner(PrivilegedAction<T>, AccessControlContext, Permission...)` —
-  same policy-expansion and empty-array mechanics, additionally preserving the
-  current `DomainCombiner` (e.g. `SubjectDomainCombiner`) across the call
-  boundary.
-- `AccessController.doPrivilegedWithCombiner(PrivilegedExceptionAction<T>, AccessControlContext, Permission...)` —
-  same, for checked-exception actions.
-
-**Explicit `AuthPermission` required — gated because they can change identity**
-
-The methods below associate running code with a `Subject`'s *principals*.
-Policy grants keyed on principals (e.g. `Principal "CN=Admin"`) can unlock
-permissions that the calling domain does not otherwise hold.  Executing code
-under a different Subject identity can therefore *expand* the effective
-permission set, not merely restrict it.  A security manager check gates each
-call to prevent an unprivileged domain from elevating itself by adopting a
-more powerful identity.
-
-- `Subject.doAsPrivileged(Subject, PrivilegedAction<T>, AccessControlContext)` —
-  requires `AuthPermission("doAsPrivileged")`; runs the action under the
-  supplied Subject's identity.  When `acc` is `null`, an empty
-  `AccessControlContext` (no code-source domains) is used, so the only
-  permissions available are those granted by the policy to the Subject's
-  *principals* — an intentionally unprivileged starting point that then grows
-  solely through principal-keyed grants.
-- `Subject.doAsPrivileged(Subject, PrivilegedExceptionAction<T>, AccessControlContext)` —
-  same permission requirement and null-context semantics, for checked-exception
-  actions.
-
-Failing to avoid unrestricted `doPrivileged` creates a confused-deputy
-vulnerability where untrusted code exploits the trusted class's
-`NativeInvocationPermission` to invoke native functionality it could not invoke
-directly.
-
-This guidance is for documentation files only and is therefore within scope for
-this session.
-
-### Task N-7 — Add `NativeInvocationPermission` Grant to `CombinerSecurityManager` Policy
-
-**Priority:** High  
-**Files:** Policy files used by `CombinerSecurityManager` tests and the
-`SecurityPolicyWriter` default output.
-
-**Description:**  
-`CombinerSecurityManager` intersects permission sets.  If neither the caller's
-policy nor the `CombinerSecurityManager`'s own policy grants
-`NativeInvocationPermission`, a `checkPermission` call for that permission will
-correctly fail.  Confirm that the test policy files explicitly enumerate which
-trusted modules receive `NativeInvocationPermission` so that the intersection logic
-is exercised in tests.
-
-This is a human implementation task (policy file changes and test additions).
-
----
-
-> **Footnote — Recommended Policy Authoring Workflow**
->
-> The wildcard grants (`"*", "*"`) used for trusted platform-loader modules are a safe
-> starting point for trusted platform-loader modules, but they are deliberately
-> broad.  For application code and any module whose actual permission requirements
-> are not yet known, the recommended workflow is:
->
-> 1. **Generate first with polpAudit.**  Run the application (or its test suite)
->    under [`polpAudit`](https://github.com/pfirmstone/JGDMS/tree/trunk/tools/polpAudit)
->    (or the equivalent `SecurityPolicyWriter` instrumentation built into
->    DirtyChai).  polpAudit observes every
->    `SecurityManager.checkPermission()` call that occurs during the run and
->    emits a least-privilege policy file containing only the permissions that
->    were actually checked.
->
-> 2. **Review and widen if needed.**  Inspect the generated policy file.  If a
->    legitimate code path was not exercised during the capture run (e.g., an
->    error-recovery branch or a rarely-used feature), add the missing permission
->    entries manually after verifying that granting them is intentional.
->
-> This two-step approach — *capture then widen* — avoids both under-granting
-> (which causes `SecurityException` at runtime) and over-granting (which enlarges
-> the attack surface unnecessarily).  The wildcard entries in the platform-module
-> policy blocks above were applied only after confirming that every platform module
-> listed there is fully trusted and loaded by the platform class loader; the same
-> shortcut must **not** be applied to application-classpath or plugin code.
+In practice, the recommended deployment model for JGDMS services that handle
+untrusted remote input is:
+1. Each service runs in its own OS process.
+2. DirtyChai `SecurityManager` + `ConcurrentPolicyFile` enforces least-privilege
+   within that process.
+3. JGDMS `@AtomicSerial` ensures unmarshalled objects are fully validated at
+   construction time.
+4. `SerialObjectPermission` provides a policy-auditable whitelist for any
+   remaining use of standard Java serialization.
+5. Untrusted-proxy invocations are dispatched through a bounded, isolated
+   `ForkJoinPool` with a caller-side timeout.
+6. The OS process boundary provides the final containment layer: if the JVM
+   process is compromised, the attacker is confined to that process and cannot
+   directly access other services or the host OS without an additional
+   privilege-escalation step.
 
 ---
 
@@ -1277,7 +1077,7 @@ that Phoenix's policy permits.
 | Memory corruption isolation | No — shared heap | Yes — separate address spaces |
 | Network isolation | Depends on policy | Depends on policy + OS firewall |
 
-**What Activation does not solve:**
+### What Activation does not solve
 
 - A group JVM that holds a `SocketPermission "* connect"` grant can still make
   arbitrary outbound network connections unless the OS firewall also restricts the
@@ -2943,3 +2743,214 @@ The two subjects serve different roles:
   - Verified behavior target: `Subject.getSubject(AccessController.getContext())` inside service methods returns the authenticated peer `Subject`
 - [ ] **TLS-FACTORY-RMI-CONTRACT (conditional):** Re-evaluate whether JGDMS `TlsRMIServerSocketFactory` needs value-based `equals()` / `hashCode()` only if the class gains comparison-relevant configurable state (for example, explicit TLS context or cipher-suite settings).
 - [ ] **TLS-FACTORY-TEST (medium):** Add a test that exports a remote object with `TlsRMIServerSocketFactory`, connects with `TlsRMIClientSocketFactory`, and asserts that the service method's calling `Subject` matches the client's X.509 certificate principal.
+
+## Implementation Tasks
+
+The `NativeInvocationPermission` class and its integration into `ClassLoader.findNative()`,
+`SymbolLookup`, `SystemLookup`, and `AbstractMemorySegmentImpl` (`MemorySegment.reinterpret()`)
+are already implemented.  The following tasks remain for
+a complete, policy-auditable native isolation story.
+
+### Task N-4 — Document `NativeInvocationPermission` in `RuntimePermission.java`'s Permission Table
+
+**Priority:** Medium  
+**Files:** `src/java.base/share/classes/java/lang/RuntimePermission.java`
+
+**Description:**  
+Add a row to the JavaDoc permission table in `RuntimePermission.java` that
+cross-references `NativeInvocationPermission` so that users who look up
+`loadLibrary.*` also discover the companion DirtyChai permission.
+
+This is a human implementation task (JavaDoc in a shipped source file).
+
+---
+
+### Task N-5 — Add `--illegal-native-access=deny` to Recommended JVM Flags
+
+**Priority:** Low  
+**Files:** `README.md`, `SECURITY.md`, deployment documentation.
+
+**Description:**  
+Document that DirtyChai deployments should launch the JVM with
+`--illegal-native-access=deny` (or the equivalent for the target JDK version)
+as a defence-in-depth measure.  This ensures the module system's native access
+gate independently blocks any path not covered by the SecurityManager policy,
+so that a hypothetical bug in the SecurityManager installation cannot be
+exploited to load native code through the module-system path.
+
+---
+
+### Task N-6 — Confused-Deputy Guidance for Trusted Library Authors
+
+**Priority:** Medium  
+**Files:** `CONTRIBUTING.md`, `SECURITY_MODEL.md`.
+
+**Description:**  
+Document the obligation that trusted library code must honour when it calls
+native methods that may be triggered by caller-supplied inputs.
+
+The Java security model protects against the confused-deputy attack
+automatically: `SecurityManager.checkPermission` walks the entire call stack
+and computes the *intersection* of the `PermissionCollection`s held by every
+`ProtectionDomain` on the stack.  As long as the untrusted caller's domain
+remains on the stack, its absence of `NativeInvocationPermission` prevents the call
+from succeeding — no special coding pattern is required in the trusted class.
+
+The attack only becomes possible when the trusted class uses **unrestricted**
+`AccessController.doPrivileged` (without supplying a restricted
+`AccessControlContext`).  Unrestricted `doPrivileged` tells the stack walk to
+stop at that frame, removing the untrusted caller's domain from the intersection.
+With the caller's domain gone, the trusted class's own `NativeInvocationPermission`
+is sufficient and the permission check passes incorrectly.
+
+**The obligation for trusted library authors is therefore:**
+
+> Do **not** use unrestricted `AccessController.doPrivileged` on code paths
+> that lead to native method calls when those paths can be triggered by
+> caller-supplied inputs.  The normal call path (no `doPrivileged`) lets the
+> security policy enforce the restriction through stack-intersection automatically.
+
+If a trusted class genuinely needs to perform privileged pre-processing while
+still honouring the caller's restrictions, it must reduce privileges to the
+minimum scope and preserve any active `DomainCombiner` (for example,
+authenticated-principal context) while parsing and sanitizing caller input:
+
+```java
+// Preserve DomainCombiner and run with the smallest scope.
+AccessControlContext callerContext = AccessController.getContext();
+SanitizedInput sanitized = AccessController.doPrivilegedWithCombiner(
+    () -> parseAndSanitize(callerSuppliedInput),
+    callerContext,
+    new Permission[0]   // policy decides; no explicit extra permissions added
+);
+
+// For confused-deputy-sensitive native calls, do not use unrestricted doPrivileged.
+nativeMethod(sanitized);
+```
+
+Methods that support explicit privilege restriction, grouped by whether a special
+permission is required to invoke them:
+
+**No special permission required — any domain may call these**
+
+The methods below require no `SecurityPermission` or `AuthPermission` because
+they can only *reduce* the effective permission set of the code running inside
+them.  Stack-intersection semantics make this inherently safe: the intersection
+of the caller's `ProtectionDomain` with a restricted `AccessControlContext` or
+an explicit `Permission` list is always a *subset* of what the caller already
+holds.  A less-privileged domain therefore cannot exploit these methods to
+acquire permissions it does not already possess.
+
+Note that while *using* these methods requires no special permission,
+*constructing* an `AccessControlContext` to pass to them may require
+`SecurityPermission("createAccessControlContext")`.  If the caller does not
+hold that permission, `AccessControlContext.create()` automatically adds the
+calling context's own domains to the supplied array to prevent privilege
+escalation.  The context passed by `AccessController.getContext()` is always
+safe to re-use without that permission.
+
+- `AccessController.getContext()` — takes a read-only snapshot of the current
+  calling context; it does not alter any privilege and cannot be used to
+  escalate.
+- `AccessController.doPrivileged(PrivilegedAction<T>, AccessControlContext)` —
+  runs the action with the *intersection* of the caller's domain and the
+  supplied context.
+- `AccessController.doPrivileged(PrivilegedExceptionAction<T>, AccessControlContext)` —
+  same intersection semantics, for checked-exception actions.
+- `AccessController.doPrivileged(PrivilegedAction<T>, AccessControlContext, Permission...)` —
+  constructs a synthetic `ProtectionDomain` scoped to the *calling class's*
+  `CodeSource` but seeded with the listed permissions, then intersects that
+  with the supplied context.  Policy grants matching the caller's `CodeSource`
+  can *expand* the effective permissions beyond what was explicitly listed,
+  so the final privilege scope is the intersection of the supplied context and
+  the union of the listed permissions plus any applicable policy grants.
+  Passing an **empty** `Permission` array (rather than an explicit list)
+  delegates permission determination entirely to policy: the synthetic domain
+  will hold exactly what policy grants to the caller's `CodeSource`, no more
+  and no less.  This is both more performant (no explicit permission objects
+  to allocate or compare) and, when the policy is generated by
+  `SecurityPolicyWriter`, guarantees the minimum permissions the caller needs.
+- `AccessController.doPrivileged(PrivilegedExceptionAction<T>, AccessControlContext, Permission...)` —
+  same semantics and empty-array optimisation, for checked-exception actions.
+- `AccessController.doPrivilegedWithCombiner(PrivilegedAction<T>, AccessControlContext, Permission...)` —
+  same policy-expansion and empty-array mechanics, additionally preserving the
+  current `DomainCombiner` (e.g. `SubjectDomainCombiner`) across the call
+  boundary.
+- `AccessController.doPrivilegedWithCombiner(PrivilegedExceptionAction<T>, AccessControlContext, Permission...)` —
+  same, for checked-exception actions.
+
+**Explicit `AuthPermission` required — gated because they can change identity**
+
+The methods below associate running code with a `Subject`'s *principals*.
+Policy grants keyed on principals (e.g. `Principal "CN=Admin"`) can unlock
+permissions that the calling domain does not otherwise hold.  Executing code
+under a different Subject identity can therefore *expand* the effective
+permission set, not merely restrict it.  A security manager check gates each
+call to prevent an unprivileged domain from elevating itself by adopting a
+more powerful identity.
+
+- `Subject.doAsPrivileged(Subject, PrivilegedAction<T>, AccessControlContext)` —
+  requires `AuthPermission("doAsPrivileged")`; runs the action under the
+  supplied Subject's identity.  When `acc` is `null`, an empty
+  `AccessControlContext` (no code-source domains) is used, so the only
+  permissions available are those granted by the policy to the Subject's
+  *principals* — an intentionally unprivileged starting point that then grows
+  solely through principal-keyed grants.
+- `Subject.doAsPrivileged(Subject, PrivilegedExceptionAction<T>, AccessControlContext)` —
+  same permission requirement and null-context semantics, for checked-exception
+  actions.
+
+Failing to avoid unrestricted `doPrivileged` creates a confused-deputy
+vulnerability where untrusted code exploits the trusted class's
+`NativeInvocationPermission` to invoke native functionality it could not invoke
+directly.
+
+This guidance is for documentation files only and is therefore within scope for
+this session.
+
+### Task N-7 — Add `NativeInvocationPermission` Grant to `CombinerSecurityManager` Policy
+
+**Priority:** High  
+**Files:** Policy files used by `CombinerSecurityManager` tests and the
+`SecurityPolicyWriter` default output.
+
+**Description:**  
+`CombinerSecurityManager` intersects permission sets.  If neither the caller's
+policy nor the `CombinerSecurityManager`'s own policy grants
+`NativeInvocationPermission`, a `checkPermission` call for that permission will
+correctly fail.  Confirm that the test policy files explicitly enumerate which
+trusted modules receive `NativeInvocationPermission` so that the intersection logic
+is exercised in tests.
+
+This is a human implementation task (policy file changes and test additions).
+
+---
+
+> **Footnote — Recommended Policy Authoring Workflow**
+>
+> The wildcard grants (`"*", "*"`) used for trusted platform-loader modules are a safe
+> starting point for trusted platform-loader modules, but they are deliberately
+> broad.  For application code and any module whose actual permission requirements
+> are not yet known, the recommended workflow is:
+>
+> 1. **Generate first with polpAudit.**  Run the application (or its test suite)
+>    under [`polpAudit`](https://github.com/pfirmstone/JGDMS/tree/trunk/tools/polpAudit)
+>    (or the equivalent `SecurityPolicyWriter` instrumentation built into
+>    DirtyChai).  polpAudit observes every
+>    `SecurityManager.checkPermission()` call that occurs during the run and
+>    emits a least-privilege policy file containing only the permissions that
+>    were actually checked.
+>
+> 2. **Review and widen if needed.**  Inspect the generated policy file.  If a
+>    legitimate code path was not exercised during the capture run (e.g., an
+>    error-recovery branch or a rarely-used feature), add the missing permission
+>    entries manually after verifying that granting them is intentional.
+>
+> This two-step approach — *capture then widen* — avoids both under-granting
+> (which causes `SecurityException` at runtime) and over-granting (which enlarges
+> the attack surface unnecessarily).  The wildcard entries in the platform-module
+> policy blocks above were applied only after confirming that every platform module
+> listed there is fully trusted and loaded by the platform class loader; the same
+> shortcut must **not** be applied to application-classpath or plugin code.
+
+---
