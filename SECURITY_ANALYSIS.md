@@ -378,7 +378,8 @@ Policy guidance for administrators:
 5. Service execution can resolve the authenticated peer identity with `Subject.getSubject(AccessController.getContext())`.
 
 ### Exception Handling, Fallback, and Subject Immutability
-`SSLPeerUnverifiedException` is explicitly handled during peer extraction. If peer verification is unavailable, dispatch proceeds without Subject binding (unauthenticated path), preserving availability and fail-secure behavior. Using `Subject(true, principals, ...)` keeps the Subject read-only. This prevents downstream principal mutation and Subject-based privilege injection.
+- `SSLPeerUnverifiedException` is explicitly handled during peer extraction. If peer verification is unavailable, dispatch proceeds without Subject binding (unauthenticated path), preserving availability and fail-secure behavior.
+- `Subject(true, principals, ...)` keeps the Subject read-only, preventing downstream principal mutation and Subject-based privilege injection.
 
 ### Integration: ACC Semantics and CombinerSecurityManager
 Passing `null` ACC to `Subject.doAsPrivileged` intentionally uses an empty context so authorization derives from Subject principals through `SubjectDomainCombiner` (principal-only authorization for the authenticated peer identity). No `CombinerSecurityManager` changes were required; existing permission intersection semantics apply unchanged.
@@ -390,7 +391,7 @@ Passing `null` ACC to `Subject.doAsPrivileged` intentionally uses an empty conte
 - Graceful fallback for unverified peers (`SSLPeerUnverifiedException`) with no cross-request context leak (peer Subject scoped to connection handler dispatch).
 
 ### Files Modified (Implementation Reference)
-Implementation is contained in `src/java.rmi/share/classes/sun/rmi/transport/tcp/TCPTransport.java` (peer extraction/Subject construction in lines `430-446`, Subject-bound dispatch in lines `745-758`, as captured by the N-13 implementation commit).
+Implementation is contained in `src/java.rmi/share/classes/sun/rmi/transport/tcp/TCPTransport.java` (peer extraction/Subject construction in lines `430-446`; Subject-bound dispatch in lines `745-758`).
 
 ### Remaining Work
 - **TLS-FACTORY-TEST:** add integration test asserting service-side `Subject.getSubject(...)` maps to authenticated client certificate principal
