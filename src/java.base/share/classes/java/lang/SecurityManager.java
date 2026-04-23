@@ -1289,6 +1289,9 @@ public class SecurityManager {
      * {@link #checkPermission(Permission)} is called with a
      * {@code RuntimePermission("accessClassInPackage."+pkg)} permission.
      * <p>
+     * This method is invoked for classes in unnamed modules, named-module 
+     * classes are handled exclusively by the module system.
+     * <p>
      * If this method is overridden, then {@code super.checkPackageAccess}
      * should be called as the first line in the overridden method.
      *
@@ -1384,6 +1387,9 @@ public class SecurityManager {
      * additional list of restricted packages as noted below. If the package
      * is restricted, {@link #checkPermission(Permission)} is called with a
      * {@code RuntimePermission("defineClassInPackage."+pkg)} permission.
+     * <p>
+     * This method is invoked for classes in unnamed modules, named-module 
+     * classes are handled exclusively by the module system.
      * <p>
      * If this method is overridden, then {@code super.checkPackageDefinition}
      * should be called as the first line in the overridden method.
