@@ -13,6 +13,7 @@
 - [Quick Start](#quick-start)
 - [Building](#building)
 - [Key Features](#key-features)
+- [JGDMS Compatibility](#jgdms-compatibility)
 - [Principle of Least Privilege Policy Writer](#principle-of-least-privilege-policy-writer)
 - [Deploying with SecurityManager](#deploying-with-securitymanager)
 - [Development](#development)
@@ -122,6 +123,25 @@ See <https://openjdk.org/> for more information about the OpenJDK Community and 
    - `ConcurrentPolicyFile` is designed for high-throughput with no DNS-lookup overhead.
    - Authorization overhead is less than 1% in benchmarks.
    - Target: High-performance systems requiring authorization.
+
+5. **JGDMS Binary Compatibility**
+   - Dirty Chai re-exports `org.apache.river.api.security.ScalableNestedPolicy`, `PermissionGrant`, and `PermissionGrantBuilder` from `java.base`.
+   - Existing JGDMS applications run without recompilation; ClassLoader delegation resolves the compatibility APIs from the platform automatically.
+   - `SecurityPolicyWriter` (`polpAudit`) auto-discovers required grants, including `defineClassInPackage.org.apache.river.api.security`.
+
+---
+
+## JGDMS Compatibility
+
+Dirty Chai includes JGDMS core authorization contracts in `java.base` under `org.apache.river.api.security` to preserve binary compatibility for existing deployments:
+
+- `ScalableNestedPolicy`
+- `PermissionGrant`
+- `PermissionGrantBuilder`
+
+This allows JGDMS applications to run on Dirty Chai without recompilation. Platform ClassLoader precedence ensures these API contracts are resolved from Dirty Chai, while JGDMS implementation classes loaded by the application ClassLoader continue to interoperate through the same public types.
+
+For deployment details, ClassLoader behavior, and policy guidance, see [JGDMS_COMPATIBILITY.md](JGDMS_COMPATIBILITY.md).
 
 ---
 
