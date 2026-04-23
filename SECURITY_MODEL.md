@@ -11,11 +11,13 @@
 ## 1) Purpose and Scope
 
 Dirty Chai extends OpenJDK authorization behavior to enforce policy-based least privilege with stronger controls around class loading, caller validation, and privilege boundaries.
+It also re-exports JGDMS compatibility contracts in `org.apache.river.api.security` (`ScalableNestedPolicy`, `PermissionGrant`, `PermissionGrantBuilder`) from `java.base` so existing JGDMS applications can run without recompilation.
 
 This document covers the active model implemented in:
 
 - `java.lang.System`
 - `java.security.AccessController`
+- `org.apache.river.api.security.*` (JGDMS compatibility contracts)
 - `au.zeus.jdk.authorization.policy.ConcurrentPolicyFile`
 - `au.zeus.jdk.authorization.sm.CombinerSecurityManager`
 - `au.zeus.jdk.authorization.guards.*`

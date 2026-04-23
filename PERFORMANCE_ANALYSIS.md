@@ -422,3 +422,7 @@ The `CombinerSecurityManager` Javadoc notes this explicitly:
 > generation heap, since many young objects are created and discarded."_
 
 ---
+
+### JGDMS application tuning note
+
+JGDMS applications running on Dirty Chai do not need recompilation to benefit from these optimizations. The platform ClassLoader re-exports `org.apache.river.api.security` API contracts automatically, so JGDMS code binds to Dirty Chai's high-performance implementations at runtime. During migration, run `polpAudit` with `SecurityPolicyWriter` to auto-discover any missing package-definition grants (including `defineClassInPackage.org.apache.river.api.security`) as part of normal policy tuning.

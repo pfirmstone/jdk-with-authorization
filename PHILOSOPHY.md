@@ -24,6 +24,16 @@ OpenJDK is reluctant to provide hooks for an authorization framework to place gu
 
 ---
 
+## JGDMS Integration
+
+Dirty Chai keeps the core JGDMS authorization API surface available in `java.base` by re-exporting `org.apache.river.api.security.ScalableNestedPolicy`, `PermissionGrant`, and `PermissionGrantBuilder`. This preserves binary compatibility for JGDMS applications without requiring recompilation.
+
+ClassLoader delegation makes the substitution automatic: platform-defined API contracts are resolved first, while JGDMS implementation classes in the same package can still be loaded by the application ClassLoader and interact through those shared contracts.
+
+Potential package-definition permission concerns are handled operationally by `SecurityPolicyWriter` during `polpAudit`: required grants (including `RuntimePermission "defineClassInPackage.org.apache.river.api.security"`) are discovered and written into policy as part of the normal least-privilege workflow.
+
+---
+
 ## Simplification
 
 In Java 1.2, permissions were static: defined by Policy but stored as immutable within a `ProtectionDomain`. `ClassLoader`s assigned permissions to `ProtectionDomain`s under the assumption that a class's `ProtectionDomain` would not change during its lifetime.
