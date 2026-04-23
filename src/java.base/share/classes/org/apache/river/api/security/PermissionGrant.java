@@ -16,8 +16,9 @@
  * limitations under the License.
  */
 
-package au.zeus.jdk.authorization.policy;
+package org.apache.river.api.security;
 
+import au.zeus.jdk.authorization.policy.PermissionComparator;
 import java.security.AllPermission;
 import java.security.CodeSource;
 import java.security.Guard;
@@ -29,7 +30,7 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.Set;
 import java.util.TreeSet;
-import au.zeus.jdk.authorization.policy.PermissionGrantBuilderImp.NullPermissionGrant;
+import org.apache.river.api.security.PermissionGrantBuilderImp.NullPermissionGrant;
 import java.net.SocketPermission;
 
 /**
@@ -68,7 +69,7 @@ import java.net.SocketPermission;
  * of service by an attacker that can access an acting {@link java.security.Policy}
  * 
  * @author Peter Firmstone
- * @since 3.0.0
+ * @since 27
  */
 public abstract class PermissionGrant {
     /*

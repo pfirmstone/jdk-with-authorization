@@ -16,7 +16,7 @@
  * limitations under the License.
  */
 
-package au.zeus.jdk.authorization.policy;
+package org.apache.river.api.security;
 
 import java.lang.ref.WeakReference;
 import java.net.URI;
@@ -42,7 +42,7 @@ import javax.security.auth.Subject;
  * 
  * Single Thread use only.
  * @author Peter Firmstone.
- * @since 3.0.0
+ * @since 27
  * @see PermissionGrant
  */
 public abstract class PermissionGrantBuilder {

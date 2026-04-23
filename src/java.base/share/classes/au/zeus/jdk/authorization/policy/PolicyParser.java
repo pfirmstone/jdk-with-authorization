@@ -18,6 +18,7 @@
 
 package au.zeus.jdk.authorization.policy;
 
+import org.apache.river.api.security.PermissionGrant;
 import java.net.URL;
 import java.util.Collection;
 import java.util.Properties;

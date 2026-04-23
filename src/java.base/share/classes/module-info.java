@@ -135,6 +135,7 @@ module java.base {
     exports javax.security.auth.x500;
     exports javax.security.cert;
     exports au.zeus.jdk.authorization.guards;
+    exports org.apache.river.api.security;
 
 
     // additional qualified exports may be inserted at build time

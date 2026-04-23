@@ -23,6 +23,8 @@
 
 package au.zeus.jdk.authorization.policy;
 
+import org.apache.river.api.security.PermissionGrant;
+import org.apache.river.api.security.PermissionGrantBuilder;
 import au.zeus.jdk.authorization.impl.Messages;
 import java.net.MalformedURLException;
 import java.net.URISyntaxException;

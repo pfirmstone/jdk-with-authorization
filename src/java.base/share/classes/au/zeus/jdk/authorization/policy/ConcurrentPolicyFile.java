@@ -26,6 +26,9 @@
 
 package au.zeus.jdk.authorization.policy;
 
+import org.apache.river.api.security.PermissionGrant;
+import org.apache.river.api.security.PermissionGrantBuilder;
+import org.apache.river.api.security.ScalableNestedPolicy;
 import java.io.File;
 import java.lang.ref.WeakReference;
 import java.net.URL;

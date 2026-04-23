@@ -16,7 +16,7 @@
  * limitations under the License.
  */
 
-package au.zeus.jdk.authorization.policy;
+package org.apache.river.api.security;
 
 import java.security.ProtectionDomain;
 import java.util.List;
@@ -29,7 +29,7 @@ import java.util.List;
  * an order that avoids unnecessary reverse DNS calls for example.
  * 
  * @author Peter Firmstone
- * @since 3.0.0
+ * @since 27
  */
 public interface ScalableNestedPolicy {
     

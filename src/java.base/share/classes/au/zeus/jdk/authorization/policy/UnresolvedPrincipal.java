@@ -39,7 +39,7 @@ import java.security.Principal;
  * @see PermissionGrant
  * @see org.apache.river.api.security.ConcurrentPolicyFile
  */
-final class UnresolvedPrincipal implements Principal {
+public final class UnresolvedPrincipal implements Principal {
 
     /** 
      * Wildcard value denotes any class and/or any name. 

@@ -16,7 +16,7 @@
  * limitations under the License.
  */
 
-package au.zeus.jdk.authorization.policy;
+package org.apache.river.api.security;
 
 import java.io.IOException;
 import java.io.ObjectInputStream;
