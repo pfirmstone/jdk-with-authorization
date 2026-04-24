@@ -783,6 +783,107 @@ untrusted remote input is:
 
 ---
 
+## Bytecode Analysis as Pre-Deployment Gating for JVM Isolation Strategy
+
+### Overview
+
+Before untrusted code is admitted to any deployment environment, a bytecode
+analyser can scan the artifact for high-risk patterns and use those results to
+automatically choose the correct deployment tier.  This makes the isolation
+decision **automated and auditable** rather than relying on manual review.
+
+Bytecode analysis operates *upstream* of the in-process controls described in
+this document.  It answers the question: "Does this artifact require a separate
+OS process, or is same-JVM deployment safe with appropriate policy?"
+
+### Risk-Stratified Pattern Table
+
+| Detected Pattern | Risk Level | Deployment Decision |
+|------------------|-----------|---------------------|
+| `System.loadLibrary()` / `Runtime.load()` invocations | CRITICAL | Process isolation required |
+| FFM `SymbolLookup.libraryLookup()` / `loaderLookup()` invocations | CRITICAL | Process isolation required |
+| `sun.misc.Unsafe` / `jdk.internal.misc.Unsafe` field or method access | CRITICAL | Process isolation required |
+| Declared `native` methods (JNI bindings) | CRITICAL | Process isolation required |
+| Reflection on `SecurityManager` or `AccessController` internals | CRITICAL | Process isolation required |
+| FFM `Linker.downcallHandle()` or `MemorySegment.reinterpret()` invocations | CRITICAL | Process isolation required |
+| Unrestricted `AccessController.doPrivileged()` (no context argument) | HIGH | Process isolation required |
+| Standard `ObjectInputStream` usage outside JGDMS | MEDIUM | Same JVM — restricted policy + `SerialObjectPermission` whitelist |
+| Unbounded thread-creation loops (platform or virtual) | MEDIUM | Same JVM — restricted policy + `createVirtualThread` / `createPlatformThread` gate |
+| Reflection on non-security application classes | MEDIUM | Same JVM — restricted policy; operator attestation required |
+| Clean bytecode — none of the above patterns detected | LOW | Same JVM — standard least-privilege DirtyChai deployment |
+
+### Decision-Flow Diagram
+
+```
+┌─ Untrusted artifact (jar / module)
+│
+├─ Bytecode analysis scan
+│   └─ Enumerate API invocations, field accesses, native declarations
+│
+├─ Any HIGH or CRITICAL patterns?
+│   ├─ YES → Assign to JGDMS activation group (separate OS process)
+│   │         • Dedicated activation group with group-scoped policy file
+│   │         • Caller-side deadline on every proxy invocation
+│   │         • OS process boundary provides final containment
+│   │         • Native and Unsafe access still guarded by NativeInvocationPermission
+│   │           within that process for defence-in-depth
+│   │
+│   └─ NO → Any MEDIUM patterns?
+│             ├─ YES → Same JVM with restricted policy
+│             │         • SerialObjectPermission whitelist for ObjectInputStream use
+│             │         • createVirtualThread / createPlatformThread permission gate
+│             │         • NativeInvocationPermission deny-all (no native code present)
+│             │         • Operator attestation recorded in audit trail
+│             │
+│             └─ NO → Same JVM with least-privilege policy
+│                       (standard DirtyChai deployment — no additional restrictions)
+```
+
+### Implementation Considerations
+
+1. **Analysis tool placement** — Run the analyser at *artifact ingest time*, before
+   the jar is added to any service classpath.  Reject or quarantine artifacts that
+   cannot be analysed (e.g., encrypted jars, non-standard class file formats).
+
+2. **Pattern library** — Maintain a curated list of dangerous method descriptors,
+   field signatures, and class names known to enable sandbox escape.  The list
+   should be versioned alongside the deployment toolchain and reviewed when new
+   JDK versions introduce additional low-level APIs (e.g., new FFM entry points).
+
+3. **False-positive handling** — Scan for *invocations* and *field accesses*, not
+   merely *class references*.  A dependency that defines `System.loadLibrary()` in
+   dead code but never invokes it should not trigger process isolation.  Use
+   call-graph reachability where available; fall back to conservative instruction
+   scanning when a full call graph cannot be constructed.
+
+4. **Policy attestation for MEDIUM-risk code** — Code that contains MEDIUM-risk
+   patterns but is approved for same-JVM deployment requires explicit operator
+   sign-off with an audit record (artifact hash, approver identity, date, and
+   rationale).  The approval is bound to a specific version; a new version of the
+   artifact requires re-approval.
+
+5. **Re-analysis on updates** — Bytecode analysis results are invalidated whenever
+   the artifact (or any of its packaged dependencies) is updated.  The deployment
+   pipeline must re-run the analyser and re-evaluate the isolation decision before
+   the updated artifact is admitted to production.
+
+### Integration with Existing Defence Layers
+
+Bytecode analysis does not replace the in-process controls described in this
+document.  It is an additional, upstream layer in the overall defence-in-depth
+posture:
+
+| Layer | Mechanism | Role |
+|-------|-----------|------|
+| Bytecode analysis | Static pattern scan at ingest time | Upstream policy gating — automates the isolation decision |
+| DirtyChai in-process controls | `SecurityManager`, `ConcurrentPolicyFile`, `NativeInvocationPermission`, `SerialObjectPermission`, thread-creation gates | Enforcement layer for code admitted to the same JVM |
+| JGDMS activation + process isolation | Activation groups, OS process boundaries, group-scoped policy files | Fallback and containment layer for HIGH/CRITICAL-risk artifacts |
+
+All three layers remain required.  Bytecode analysis makes the choice between the
+second and third layers automated and auditable; it does not weaken either.
+
+---
+
 ## Analysis: Reflection and MethodHandle Invocation in the Permission-Check Path (N-8)
 
 This security-model analysis has moved to `SECURITY_ANALYSIS.md`:
@@ -2990,5 +3091,732 @@ This is a human implementation task (policy file changes and test additions).
 > policy blocks above were applied only after confirming that every platform module
 > listed there is fully trusted and loaded by the platform class loader; the same
 > shortcut must **not** be applied to application-classpath or plugin code.
+
+---
+
+## Alternatives
+
+### Bytecode Analysis as an Alternative (or Complement) to Process Isolation
+
+Process isolation is the strongest containment boundary available in the JVM: a
+hostile thread in a separate OS process cannot share memory, corrupt heap objects,
+or pin carrier threads that belong to the parent process.  However, process
+isolation carries deployment cost — separate JVM start-up, IPC serialisation
+overhead, and operational complexity.
+
+For deployments where that cost is unacceptable, a bytecode-analysis layer
+inspected at class-load time provides a *detection* mechanism that allows
+operators to make an informed choice:
+
+- **If the analysis is clean** — proceed with same-JVM deployment under the
+  existing `createVirtualThread` permission check and bounded `ForkJoinPool`
+  containment.
+- **If the analysis flags high-risk patterns** — either block deployment (for
+  critical environments) or accept monitored risk with documented awareness, or
+  fall back to process isolation.
+
+This section describes four patterns that together address the residual gaps
+identified in the "What the new checks cannot protect against" table above.
+
+---
+
+### Threat Model: Residual Gaps Addressed
+
+| Residual gap (from permission-check analysis) | Pattern |
+|---|---|
+| Carrier-thread starvation via `synchronized` | Pattern 2 |
+| CPU exhaustion via busy-loop | Pattern 3 |
+| Stack exhaustion via infinite recursion | Pattern 4 |
+| Shared-memory corruption via data race | Pattern 5 |
+
+The patterns sit between the existing layers in the defence hierarchy:
+
+```
+Prevention  (Policy):           Deny createVirtualThread entirely      ← existing
+Detection   (Bytecode Analysis): Warn / block on dangerous patterns    ← this section
+Containment (Deployment):       Bounded ForkJoinPool + caller deadline ← existing
+Isolation   (Last resort):      Process isolation                      ← existing
+```
+
+---
+
+### Pattern 2: Carrier Thread Pinning via `synchronized` (MEDIUM)
+
+#### Why it matters
+
+`RuntimePermission("createVirtualThread")` gates *creation*; once a virtual
+thread is running it can acquire any monitor.  A `synchronized` block inside a
+virtual thread pins the virtual thread's carrier platform thread for the
+duration of the lock.  There is no JVM mechanism to forcibly release the pin —
+the carrier is unavailable to other virtual threads until the monitor is
+released.  At scale this exhausts the carrier pool without any permission being
+violated.
+
+#### What bytecode analysis detects
+
+The `MONITORENTER` opcode is emitted by `javac` for every `synchronized` block
+or `synchronized` method.  Its presence in untrusted code is a low-false-positive
+signal because `synchronized` is explicit and deliberate.
+
+```java
+// DANGEROUS in virtual-thread contexts
+public class BatchProcessor {
+    private final Object lock = new Object();
+
+    public void processBatch(List<?> items) {
+        synchronized (lock) {   // ← MONITORENTER bytecode; pins carrier
+            for (var item : items) {
+                doWork(item);
+            }
+        }
+    }
+}
+```
+
+#### java.lang.classfile element signature
+
+```java
+// Detect synchronized blocks and synchronized methods via MonitorInstruction
+ClassModel model = ClassFile.of().parse(classBytes);
+for (MethodModel mm : model.methods()) {
+    mm.code().ifPresent(code -> {
+        for (CodeElement e : code) {
+            if (e instanceof MonitorInstruction mi
+                    && mi.opcode() == Opcode.MONITORENTER) {
+                report(mm.methodName().stringValue(),
+                       "MONITORENTER detected — carrier thread pinning risk");
+            }
+        }
+    });
+}
+```
+
+Synchronized *methods* also compile to `MONITORENTER` / `MONITOREXIT` pairs in
+the bytecode, so no special treatment is needed for the `ACC_SYNCHRONIZED`
+method flag — the `MonitorInstruction` stream captures both forms.
+
+#### Action
+
+| Policy directive | Effect |
+|---|---|
+| `WARN_SYNCHRONIZED` | Log at `WARNING`; deployment proceeds |
+| `BLOCK_SYNCHRONIZED` | Throw `SecurityException` from `SecureClassLoader`; class is not loaded |
+
+#### False positive rate
+
+**Low.**  `synchronized` is a deliberate language construct.  Legitimate uses
+(e.g. thread-safe initialization patterns, legacy `java.util` collections)
+will be flagged, but operators can whitelist specific code-bases in the policy
+after review.
+
+---
+
+### Pattern 3: CPU-Bound Loops Without Yield Points (LOW–MEDIUM)
+
+#### Why it matters
+
+A tight loop that never calls a blocking or interruptible method keeps its
+virtual thread permanently mounted on its carrier thread.  No `synchronized`
+is required — pure computation is sufficient to starve the carrier pool.
+
+#### What bytecode analysis detects
+
+A *backward branch* (`GOTO` or a conditional jump whose target offset is less
+than the current instruction offset) is a loop back-edge.  If the loop body
+contains no call to an *interruptible* method, the loop is a candidate for
+carrier starvation.
+
+```java
+// DANGEROUS
+public void computeIntensive() {
+    int result = 0;
+    while (result < 1_000_000_000) {   // ← backward branch, no yield
+        result += compute(result);
+    }
+}
+
+// ACCEPTABLE — interruptible call present
+public void computeIntensive() {
+    int result = 0;
+    while (result < 1_000_000_000) {
+        if (Thread.currentThread().isInterrupted()) break;
+        result += compute(result);
+        if (result % 1_000_000 == 0) {
+            Thread.onSpinWait();   // ← scheduler hint; breaks the pattern
+        }
+    }
+}
+```
+
+#### Interruptible-call whitelist (not exhaustive)
+
+| Category | Methods |
+|---|---|
+| Sleep / park | `Thread.sleep`, `LockSupport.park`, `LockSupport.parkNanos` |
+| I/O | `InputStream.read`, `OutputStream.write`, `Selector.select` |
+| Blocking locks | `ReentrantLock.lock`, `ReentrantLock.lockInterruptibly`, `Condition.await` |
+| Object monitor | `Object.wait` |
+| Future / task | `Future.get`, `CompletableFuture.get`, `CountDownLatch.await` |
+| Scheduler hints | `Thread.yield`, `Thread.onSpinWait` |
+
+#### java.lang.classfile element signature
+
+A back-edge is a `BranchInstruction` whose target `Label` maps to a
+bytecode index (BCI) lower than the instruction's own position.
+`CodeAttribute.labelToBci()` resolves each `Label` to its BCI; `LabelTarget`
+pseudo-instructions in the code stream carry the BCI of each program point.
+
+```java
+// Detect backward branches (loop back-edges) and check for missing yield calls
+ClassModel model = ClassFile.of().parse(classBytes);
+for (MethodModel mm : model.methods()) {
+    if (mm.code().isEmpty()) continue;
+    CodeModel code = mm.code().get();
+    // CodeAttribute (the parsed form) provides labelToBci()
+    if (!(code instanceof CodeAttribute ca)) continue;
+
+    // Single-element arrays used as mutable holders, allowing assignment
+    // from within the switch cases below (lambdas require effectively-final).
+    int[] currentBci = {0};
+    // Declared here so both flags are visible after the loop for the check.
+    boolean hasBackEdge = false;
+    boolean hasYieldCall = false;
+
+    for (CodeElement e : code) {
+        switch (e) {
+            case LabelTarget lt ->
+                currentBci[0] = ca.labelToBci(lt.label());
+            case BranchInstruction bi -> {
+                int targetBci = ca.labelToBci(bi.target());
+                if (targetBci < currentBci[0])
+                    hasBackEdge = true;    // back-edge: loop detected
+            }
+            case InvokeInstruction ii -> {
+                String key = ii.owner().name().stringValue()
+                           + "." + ii.name().stringValue();
+                if (INTERRUPTIBLE_METHODS.contains(key))
+                    hasYieldCall = true;
+            }
+            default -> { }
+        }
+    }
+
+    if (hasBackEdge && !hasYieldCall)
+        report(mm.methodName().stringValue(),
+               "Unbounded loop without interruptible yield point");
+}
+```
+
+#### Action
+
+**Warning-only** (`WARN_UNBOUNDED_LOOPS`).  The false-positive rate is too high
+to safely block: legitimate numeric algorithms (FFT, matrix multiply, hash
+computation) will not have interruptible calls, and they are not a threat when
+they run to completion in bounded time.  The warning gives operators a code-review
+trigger rather than a hard gate.
+
+#### False positive rate
+
+**Medium-High.**  Short, bounded loops (loop count determined by input size) are
+flagged even though they are benign in practice.  Limit the scan to loops where
+the bound cannot be statically determined (i.e. the termination condition depends
+on a non-constant) to reduce noise.
+
+---
+
+### Pattern 4: Infinite / Deep Recursion (MEDIUM)
+
+#### Why it matters
+
+Unbounded recursion exhausts the JVM stack, causing `StackOverflowError`.
+Although the JVM catches this at runtime, the error is thrown deep inside the
+offending thread's stack frame.  Hostile code can weaponise this to trigger error
+conditions in shared infrastructure (e.g. a framework that calls untrusted code
+inside a `try` block it considers safe), or to consume stack memory proportional
+to the number of concurrently running untrusted threads.
+
+#### What bytecode analysis detects
+
+**Direct recursion** — an `INVOKEVIRTUAL` or `INVOKESPECIAL` whose owner and
+name match the currently analysed method, without an unconditional termination
+condition prior to the recursive call.
+
+**Mutually recursive pairs** — method A calls method B, and method B calls
+method A, with no termination guard visible in either method body.
+
+```java
+// Direct tail recursion (easy to detect)
+public void recurse(int depth) {
+    recurse(depth - 1);   // ← INVOKEVIRTUAL to self; no base-case guard
+}
+
+// Mutual recursion (medium difficulty)
+public void methodA(int n) {
+    if (n > 0) methodB(n - 1);
+}
+public void methodB(int n) {
+    if (n > 0) methodA(n - 1);   // ← calls back to methodA
+}
+```
+
+#### Termination guard heuristic
+
+Before each recursive call site, check whether there is a reachable `IF_*`
+branch that can exit without making the recursive call (i.e. a path that leads
+to `RETURN` or `ATHROW` without passing through the recursive `INVOKE`).  If no
+such path exists, the recursion is flagged.
+
+Legitimate recursive algorithms (quicksort, tree traversal) always have a
+clearly reachable base case, so the false-positive rate is acceptably low for
+direct recursion.  Mutual recursion requires a whole-class (or whole-jar)
+call-graph pass, which increases complexity; a single-class pass that detects
+direct recursion only is the recommended MVP scope.
+
+#### java.lang.classfile element signature
+
+Direct recursion is identified by an `InvokeInstruction` whose `owner` and
+`name` match the class and method currently being analysed.
+The `InvokeInstruction` sealed interface covers `INVOKEVIRTUAL`,
+`INVOKESPECIAL`, `INVOKESTATIC`, and `INVOKEINTERFACE`; a recursive call
+typically uses `INVOKEVIRTUAL` or `INVOKESPECIAL`.
+
+```java
+// Detect direct recursive calls (no visible base-case guard)
+ClassModel model = ClassFile.of().parse(classBytes);
+String thisClass = model.thisClass().name().stringValue();
+
+for (MethodModel mm : model.methods()) {
+    String methodName = mm.methodName().stringValue();
+    String methodDesc = mm.methodType().stringValue();
+
+    mm.code().ifPresent(code -> {
+        for (CodeElement e : code) {
+            if (e instanceof InvokeInstruction ii
+                    && ii.owner().name().equalsString(thisClass)
+                    && ii.name().equalsString(methodName)
+                    && ii.type().equalsString(methodDesc)) {
+                report(methodName,
+                       "Direct recursive call without visible base-case guard");
+            }
+        }
+    });
+}
+```
+
+The termination-guard heuristic (checking for a reachable `IF_*` exit path
+before the recursive `INVOKE`) is a second pass over the same `CodeModel`
+stream; it is omitted from the MVP to keep the implementation tractable.
+
+#### Action
+
+**Warning-only** (`WARN_INFINITE_RECURSION`).  Direct recursion is common in
+correct code (e.g. visitor patterns, parsers, tree algorithms); a warning
+prompts review without blocking deployment.
+
+#### False positive rate
+
+**Medium.**  Any bounded recursive algorithm (checked by an `if (n <= 0)` guard)
+triggers the flag if the static analysis cannot determine that the guard is
+sufficient.  Mutual recursion detection is omitted from the MVP to keep
+false-positive rates manageable.
+
+---
+
+### Pattern 5: Data Race Detection (HIGH) — java.lang.classfile Field-Access Tracking
+
+#### Why it matters
+
+From the "Shared Memory" section of the in-process isolation analysis:
+
+> Shared memory: All threads and objects in a JVM process share a heap.  A
+> hostile thread that has already been scheduled can read or corrupt shared data
+> structures without any permission check, because memory access does not pass
+> through the SecurityManager.
+
+A data race is a field access from two concurrent threads where at least one
+access is a *write* and neither access is ordered by a `happens-before`
+relationship.  Without `volatile`, `final`, or synchronisation, the JMM
+provides no ordering guarantee; the write may never become visible, or may
+become visible in a torn state.  Malicious code can exploit this to corrupt
+shared data structures (e.g. counters, collections, configuration objects) that
+trusted code relies upon.
+
+Data-race detection elevates bytecode analysis from a resource-exhaustion
+heuristic to a genuine security control: it distinguishes code that is merely
+CPU-hungry from code that is *designed to corrupt shared state*.
+
+#### java.lang.classfile field-access tracking design
+
+Pattern 5 requires stateful, cross-method analysis within a single class.
+The tracker builds a model of every instance field declared in the class and
+records how each method accesses it.  The entire analysis is a single
+`ClassModel` traversal using the `java.lang.classfile` stream API; no
+visitor callbacks or external library is required.
+
+##### Step 1 — Field inventory (`ClassModel.fields()`)
+
+For each field declared in the class under analysis, record:
+
+```
+FieldRecord {
+    String   name;
+    String   descriptor;        // JVM type descriptor, e.g. "I", "Ljava/util/List;"
+    boolean  isFinal;           // AccessFlag.FINAL
+    boolean  isVolatile;        // AccessFlag.VOLATILE
+    boolean  isStatic;          // AccessFlag.STATIC
+    Set<String> writingMethods; // method names containing PUTFIELD / PUTSTATIC
+    Set<String> readingMethods; // method names containing GETFIELD / GETSTATIC
+}
+```
+
+Fields that carry `AccessFlag.FINAL` or `AccessFlag.VOLATILE` are excluded
+from further analysis: `final` fields are safely published via the constructor
+end, and `volatile` fields have sequentially consistent semantics.
+
+```java
+ClassModel model = ClassFile.of().parse(classBytes);
+String analysedClass = model.thisClass().name().stringValue();
+Map<String, FieldRecord> fieldRecords = new LinkedHashMap<>();
+
+for (FieldModel fm : model.fields()) {
+    AccessFlags flags = fm.flags();
+    if (flags.has(AccessFlag.FINAL) || flags.has(AccessFlag.VOLATILE))
+        continue;    // excluded: safe publication guaranteed
+    String key = fm.fieldName().stringValue();
+    fieldRecords.put(key,
+        new FieldRecord(key, fm.fieldType().stringValue(),
+                        flags.has(AccessFlag.STATIC)));
+}
+```
+
+##### Step 2 — Method-body scan (`ClassModel.methods()` → `CodeModel`)
+
+For every method in the class, iterate the `CodeModel` element stream and track:
+
+1. **Monitor depth counter** (`monitorDepth`).  Initialised to zero.  Increment
+   on `MonitorInstruction(MONITORENTER)`, decrement on `MonitorInstruction(MONITOREXIT)`.
+   A field access is *synchronised* if `monitorDepth > 0` at the point of the access.
+
+2. **Synthetic-access filter**.  `ACC_SYNTHETIC` / `ACC_BRIDGE` methods
+   (generated by `javac` for inner-class access) access fields on behalf of
+   the declaring method.  The tracker follows the call chain one level deep
+   to attribute the real access to the outer method.
+
+3. **`FieldInstruction` with `PUTFIELD` / `PUTSTATIC`**.  When `monitorDepth == 0`
+   and the field is not excluded, add the current method name to
+   `FieldRecord.writingMethods`.
+
+4. **`FieldInstruction` with `GETFIELD` / `GETSTATIC`**.  When `monitorDepth == 0`
+   and the field is not excluded, add the current method name to
+   `FieldRecord.readingMethods`.
+
+```java
+for (MethodModel mm : model.methods()) {
+    String methodName = mm.methodName().stringValue();
+    mm.code().ifPresent(code -> {
+        int[] monitorDepth = {0};
+        for (CodeElement e : code) {
+            switch (e) {
+                case MonitorInstruction mi -> {
+                    if (mi.opcode() == Opcode.MONITORENTER) monitorDepth[0]++;
+                    else                                    monitorDepth[0]--;
+                }
+                case FieldInstruction fi -> {
+                    // Only track accesses to fields of the class being analysed
+                    if (!fi.owner().name().equalsString(analysedClass)) break;
+                    FieldRecord rec = fieldRecords.get(fi.name().stringValue());
+                    if (rec == null) break;          // final/volatile; excluded
+                    if (monitorDepth[0] > 0) break;  // synchronised; safe
+                    if (fi.opcode() == Opcode.PUTFIELD
+                            || fi.opcode() == Opcode.PUTSTATIC)
+                        rec.writingMethods().add(methodName);
+                    else
+                        rec.readingMethods().add(methodName);
+                }
+                default -> { }
+            }
+        }
+    });
+}
+```
+
+##### Step 3 — Cross-method race analysis (post-scan)
+
+After all methods have been scanned, iterate over the `FieldRecord` set:
+
+```
+for each FieldRecord f:
+    if f.writingMethods is empty:
+        skip  // field is read-only in this class; no race possible
+
+    if f.writingMethods.size() == 1
+       and f.readingMethods is empty
+       and the single writer is "<init>":
+        skip  // field written only in constructor; effectively immutable
+
+    if f.writingMethods intersect f.readingMethods is non-empty:
+        // Same method both reads and writes without sync — compound operation risk
+        flag HIGH
+
+    else if f.writingMethods.size() >= 1 and f.readingMethods.size() >= 1:
+        // Written in one method, read in another, no sync around either
+        flag MEDIUM
+
+    if f.writingMethods.size() > 1:
+        // Multiple writers with no sync — concurrent write-write race
+        flag HIGH
+```
+
+##### Step 4 — `AtomicInteger` / `AtomicReference` exclusion
+
+Accesses to fields typed as `java.util.concurrent.atomic.*` are excluded: the
+atomic wrapper provides the required ordering guarantee internally.  The tracker
+checks the field descriptor returned by `FieldModel.fieldType().stringValue()`
+for any of the known atomic types and skips those records.
+
+##### java.lang.classfile traversal summary
+
+```
+ClassFile.of().parse(classBytes)       // → ClassModel
+  │
+  ├── .fields()                         // stream of FieldModel
+  │     → build FieldRecord map;
+  │       skip AccessFlag.FINAL, AccessFlag.VOLATILE
+  │
+  └── .methods()                        // stream of MethodModel
+        → .code()                        // Optional<CodeModel>
+              → for each CodeElement:
+                  MonitorInstruction(MONITORENTER)  → monitorDepth++
+                  MonitorInstruction(MONITOREXIT)   → monitorDepth--
+                  FieldInstruction(PUTFIELD)        → if monitorDepth==0 and
+                  FieldInstruction(PUTSTATIC)           owner==analysedClass:
+                                                        rec.writingMethods.add(method)
+                  FieldInstruction(GETFIELD)        → if monitorDepth==0 and
+                  FieldInstruction(GETSTATIC)           owner==analysedClass:
+                                                        rec.readingMethods.add(method)
+```
+
+Static fields use `PUTSTATIC` / `GETSTATIC`; the same `FieldInstruction`
+sealed type covers all four opcodes — no separate handling is required.
+
+##### Known limitations
+
+| Limitation | Impact |
+|---|---|
+| Single-class scope | Cross-class races (field exposed via getter/setter) are not detected |
+| No alias analysis | A field passed as a parameter to a helper method appears unaccessed in this class's methods |
+| Lock objects not tracked | `java.util.concurrent.locks.Lock` usage (non-`synchronized`) is not tracked as a synchronisation barrier |
+| Synthetic accessor methods | Inner-class access patterns may double-count or miss accesses; the one-level follow is a heuristic |
+
+For the MVP, single-class analysis with the exclusions above is sufficient to
+catch the most obvious intentional corruption patterns (non-`volatile` shared
+counters, mutable shared collections, flag fields).  Cross-class and lock-object
+analysis can be added in a later phase.
+
+#### Example: flagged code
+
+```java
+public class SharedCounter {
+    private int count = 0;            // ← not volatile, not final → tracked
+
+    public void increment() {
+        count++;                       // ← GETFIELD + PUTFIELD without sync → HIGH
+    }
+
+    public int get() {
+        return count;                  // ← GETFIELD without sync → recorded
+    }
+}
+// Analysis result:
+//   field "count" — writingMethods={increment}, readingMethods={get}
+//   → MEDIUM (written in one method, read in another, no synchronisation)
+//   increment() also contains a compound read-modify-write → upgraded to HIGH
+```
+
+#### Example: correctly excluded code
+
+```java
+public class SafeCounter {
+    private volatile int count = 0;       // ← volatile: excluded from analysis
+
+    public void increment() { count++; }  // not flagged
+
+    public int get() { return count; }    // not flagged
+}
+
+public class SyncCounter {
+    private int count = 0;
+
+    public synchronized void increment() {  // MONITORENTER depth > 0 during access
+        count++;                             // ← not flagged
+    }
+
+    public synchronized int get() {
+        return count;                        // ← not flagged
+    }
+}
+```
+
+#### Severity levels
+
+| Condition | Severity |
+|---|---|
+| Non-`volatile` field written in multiple methods without synchronisation | HIGH |
+| Compound read-modify-write (`field++`, `field = field + x`) outside synchronised block | HIGH |
+| Field written in one method and read in another, neither synchronised | MEDIUM |
+| Field written only in `<init>` and read in other methods without synchronisation | LOW (note: safe if constructor completes before sharing) |
+
+#### Action
+
+| Policy directive | Effect |
+|---|---|
+| `WARN_DATA_RACES` | Log with severity level; deployment proceeds |
+| `BLOCK_DATA_RACES` | Throw `SecurityException` from `SecureClassLoader` on HIGH-severity findings |
+
+#### False positive rate
+
+**Medium-High.**  Single-threaded classes that happen to have mutable fields will
+be flagged.  Mitigation:
+
+1. Scope the scan to code-bases explicitly marked as `untrusted` in the policy.
+2. Use a per-code-base suppress annotation (`@SuppressDataRaceWarning`) that
+   operators can apply after human review.
+3. Exclude classes whose name suffix matches a known safe pattern (e.g.
+   `*Builder`, `*Config`) — heuristic only; not a security control.
+
+---
+
+### Implementation Structure
+
+The four patterns share a `java.lang.classfile` traversal infrastructure.
+No third-party bytecode library is required; the API is embedded in the
+`java.base` module of DirtyChai's OpenJDK fork.  The recommended package
+layout is:
+
+```
+au/zeus/jdk/authorization/analysis/
+  ├── BytecodeAnalyzer.java
+  │       Orchestrator: ClassFile.of().parse(classBytes) → ClassModel,
+  │       then delegates to each enabled pattern scanner.
+  │       Returns a list of AnalysisResult records.
+  │
+  ├── pattern/
+  │   ├── SynchronizedPattern.java
+  │   │       CodeModel stream → MonitorInstruction(MONITORENTER) detection.
+  │   ├── UnboundedLoopPattern.java
+  │   │       CodeModel stream → BranchInstruction back-edge detection
+  │   │       + InvokeInstruction whitelist scan.
+  │   ├── InfiniteRecursionPattern.java
+  │   │       CodeModel stream → InvokeInstruction sealed-type matching
+  │   │       for direct recursive calls.
+  │   └── DataRacePattern.java
+  │           ClassModel.fields() → FieldRecord map (Step 1);
+  │           ClassModel.methods() → CodeModel → FieldInstruction +
+  │           MonitorInstruction traversal (Steps 2–4);
+  │           cross-method race analysis in a post-scan phase.
+  │
+  └── report/
+      ├── AnalysisResult.java
+      │       Immutable record: pattern name, severity, field/method name,
+      │       human-readable description.
+      └── RiskLevel.java
+              Enum: CRITICAL, HIGH, MEDIUM, LOW, INFO.
+```
+
+**Integration point:** `SecureClassLoader.getProtectionDomain()` (or the
+equivalent hook in `URLClassLoader`), called immediately after the existing
+`LoadClassPermission` check.  The `BytecodeAnalyzer` receives the raw class
+bytes before they are defined in the JVM, so it can block definition on
+`BLOCK_*` policy directives without the class ever becoming live.
+
+**API call chain:**
+
+```
+ClassFile.of().parse(classBytes)   // → ClassModel (lazy; parses on demand)
+  → .fields()                       // List<FieldModel>  — build field inventory
+  → .methods()                      // List<MethodModel> — iterate methods
+      → .code()                      // Optional<CodeModel> / CodeAttribute
+          → for each CodeElement:    // sealed CodeElement stream
+              instanceof MonitorInstruction  → carrier-pin / sync-depth tracking
+              instanceof BranchInstruction   → back-edge (loop) detection
+              instanceof InvokeInstruction   → recursion / whitelist checks
+              instanceof FieldInstruction    → unsynchronised field-access recording
+```
+
+The analysis runs once per class load and does not add per-invocation overhead.
+A typical 5–50 KB class file is fully analysed in 1–3 ms on a modern JVM.
+
+---
+
+### ASM vs. java.lang.classfile: Comparison
+
+| Feature | ASM (third-party) | `java.lang.classfile` (JDK built-in) |
+|---|---|---|
+| Dependency | External jar (`asm-*.jar`) required | Embedded in `java.base`; no extra jar |
+| API style | Visitor pattern (`ClassVisitor` / `MethodVisitor`) | Stream / iterator over sealed `CodeElement` types |
+| Type safety | Manual opcode integer constants; casting required | Sealed `Instruction` hierarchy; pattern matching |
+| Pattern matching | Not supported | `switch (e) { case MonitorInstruction mi -> … }` |
+| StackMap generation | Manual setup; error-prone | Built-in; automatic on `ClassFile.build()` |
+| Lazy parsing | Full class parsed upfront | Lazy: sections parsed only when accessed |
+| Versioning | Separate ASM version per JDK version | Always in sync with JDK class-file version |
+| Licence / compliance | BSD-3-Clause (separate dependency to declare) | GPLv2+CE (same as JDK; no extra declaration) |
+
+---
+
+### Policy Directive Integration
+
+The bytecode-analysis policy is expressed as a string property alongside the
+standard `java.security.policy` configuration:
+
+```
+# Strict: block synchronized and data races; warn on loops and recursion
+bytecodeAnalysisPolicy = BLOCK_SYNCHRONIZED,BLOCK_DATA_RACES,\
+                         WARN_UNBOUNDED_LOOPS,WARN_INFINITE_RECURSION
+
+# Moderate: warn on everything; operator reviews logs before escalating
+bytecodeAnalysisPolicy = WARN_SYNCHRONIZED,WARN_DATA_RACES,\
+                         WARN_UNBOUNDED_LOOPS,WARN_INFINITE_RECURSION
+
+# Detection only: no blocking; build an audit trail
+bytecodeAnalysisPolicy = WARN_ALL
+
+# Process-isolation mode: analysis disabled; rely entirely on OS isolation
+bytecodeAnalysisPolicy = DISABLED
+```
+
+**Scope restriction:** The analysis applies only to code-bases that are *not*
+trusted in the policy.  Classes loaded by the bootstrap or platform class loader
+are always excluded.  Application-classpath code-bases can be individually
+exempted in the policy with a `bypassBytecodeAnalysis` grant, documented with a
+justification comment, after operator review.
+
+---
+
+### Four-Pattern Summary
+
+| Pattern | Severity | Default action | False-positive rate | Threat addressed |
+|---|---|---|---|---|
+| 2 — `synchronized` | MEDIUM | `WARN` | Low | Carrier thread pinning |
+| 3 — Unbounded loops | LOW | `WARN` | Medium-High | CPU exhaustion |
+| 4 — Infinite recursion | MEDIUM | `WARN` | Medium | Stack exhaustion |
+| 5 — Data races | HIGH | `WARN` (block on HIGH) | Medium-High | Shared-memory corruption |
+
+---
+
+### Decision Guide: Bytecode Analysis vs. Process Isolation
+
+| Scenario | Recommendation |
+|---|---|
+| No HIGH-severity findings from Pattern 5; no `synchronized` in untrusted code | Same-JVM deployment is defensible; use bounded `ForkJoinPool` + deadline |
+| `synchronized` detected; acceptable starvation risk | `WARN_SYNCHRONIZED` + bounded pool; document accepted risk |
+| `synchronized` detected; zero-starvation requirement | `BLOCK_SYNCHRONIZED` or process isolation |
+| HIGH data-race findings in untrusted code | `BLOCK_DATA_RACES` or process isolation |
+| Any HIGH/CRITICAL finding; shared mutable state at stake | Process isolation is strongly recommended |
+| Operator cannot review warnings; fully automated pipeline | `BLOCK_SYNCHRONIZED,BLOCK_DATA_RACES` is the safe default |
+
+Bytecode analysis does not *replace* process isolation; it provides the
+information an operator needs to decide whether process isolation is *necessary*
+for a given code-base.  When in doubt, process isolation remains the correct
+choice.
 
 ---
