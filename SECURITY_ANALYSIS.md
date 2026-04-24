@@ -295,22 +295,186 @@ See residual N-15 and the medium-priority recommendation for a `LoadModulePermis
 
 ### 8) Foreign Function & Memory API (FFM) Trust Boundaries
 
-DirtyChai adds SecurityManager permission gating on several FFM entry points.  Several residual risks remain:
+DirtyChai adds SecurityManager permission gating on selected FFM entry points. This section provides a complete, repo-specific inventory of the FFM API surface, identifies which entry points are gated, and documents remaining gaps through a code-backed gap analysis. An implementation plan is in §8.8.
 
-- **`MemorySegment.reinterpret()`** — DirtyChai gates all three `reinterpret()` overloads with `NativeMemoryPermission("reinterpret-memory-segment")` (checked in `AbstractMemorySegmentImpl.reinterpretInternal()`). Code that does not hold this permission receives a `SecurityException`. This is the core boundary for controlling segment-size/capability reinterpretation.
-- **`Arena.global()`** — DirtyChai gates global arena access with `NativeMemoryPermission("global-arena")` (checked in `Arena.global()`). This protects the process-wide native-memory arena from direct use by untrusted code unless explicitly authorized by policy.
-- **Security impact of `NativeMemoryPermission`** — by requiring explicit grants at both reinterpret and global-arena boundaries, DirtyChai reduces the attack surface for memory-corruption and memory-retention abuse patterns (for example, unchecked reinterpretation and unbounded process-lifetime off-heap retention).
-- **Binary module-open grants** — opening `jdk.foreign` to untrusted code still increases exposure to FFM APIs. Module opens do not replace SecurityManager checks; they only make API reachability easier. `NativeMemoryPermission` remains the enforcement gate for `reinterpret()` and `Arena.global()` calls.
-- **Residual gaps / limitations (known hardening backlog)** — `NativeMemoryPermission` currently does not gate all native-memory allocation surfaces (for example, `Arena.ofConfined()`, `Arena.ofShared()`, and `Arena.ofAuto()` creation paths, and subsequent allocation through those arenas). This is a known, not-yet-finalized hardening area rather than a fully closed boundary. Object-capability transfer risk also remains: if trusted code creates/returns memory capabilities to untrusted code, the permission checks at guarded methods are the final boundary.
+#### Currently Gated FFM Entry Points
 
-Policy guidance for administrators:
+The following FFM entry points have explicit SecurityManager or guard-permission checks in this repository. Each row includes a source reference to the exact check location.
+
+| Entry Point | Guard Location | Permission | Security Intent |
+|---|---|---|---|
+| `Arena.global()` | [`Arena.java:243–246`](https://github.com/pfirmstone/DirtyChai/blob/trunk/src/java.base/share/classes/java/lang/foreign/Arena.java#L243-L246) | `NativeMemoryPermission("global-arena")` | Block unbounded process-lifetime off-heap memory retention by untrusted code |
+| `MemorySegment.reinterpret(long)` | [`AbstractMemorySegmentImpl.java:157–161`](https://github.com/pfirmstone/DirtyChai/blob/trunk/src/java.base/share/classes/jdk/internal/foreign/AbstractMemorySegmentImpl.java#L157-L161) | `NativeMemoryPermission("reinterpret-memory-segment")` | All three `reinterpret()` overloads route through the shared `reinterpretInternal()` path at this location |
+| `MemorySegment.reinterpret(Arena, Consumer)` | (same `reinterpretInternal()` at line 157) | same as above | — |
+| `MemorySegment.reinterpret(long, Arena, Consumer)` | (same `reinterpretInternal()` at line 157) | same as above | — |
+| `SymbolLookup.loaderLookup()` — per-symbol resolution | [`SymbolLookup.java:274`](https://github.com/pfirmstone/DirtyChai/blob/trunk/src/java.base/share/classes/java/lang/foreign/SymbolLookup.java#L274) | `NativeInvocationPermission(<libName>)` | Library name resolved by `NativeLibraries.findLibraryNameAddress()` with null-safe fallback; checked before the resolved address segment is returned |
+| `SymbolLookup.libraryLookup(String/Path, Arena)` — library load | [`SymbolLookup.java:358–361`](https://github.com/pfirmstone/DirtyChai/blob/trunk/src/java.base/share/classes/java/lang/foreign/SymbolLookup.java#L358-L361) | `SecurityManager.checkLink(name)` at load time; additionally [`NativeInvocationPermission(<libName>)` at line 382](https://github.com/pfirmstone/DirtyChai/blob/trunk/src/java.base/share/classes/java/lang/foreign/SymbolLookup.java#L382) per symbol at find time | Two-layer gate: library-load check then per-symbol invocation check |
+| `SystemLookup.lookup()` — default linker per-symbol | [`SystemLookup.java:139`](https://github.com/pfirmstone/DirtyChai/blob/trunk/src/java.base/share/classes/jdk/internal/foreign/SystemLookup.java#L139) | `NativeInvocationPermission(<libName>)` | Checked per resolved symbol in the default C-library lookup used by `Linker.defaultLookup()` |
+| `ClassLoader.findNative()` — JNI native-method binding | [`ClassLoader.java:2575–2580`](https://github.com/pfirmstone/DirtyChai/blob/trunk/src/java.base/share/classes/java/lang/ClassLoader.java#L2575-L2580) | `NativeInvocationPermission(<libName>)` | Fired at JNI method link time; bootstrap-loader callers (`loader == null`) are excluded at line 2575 |
+
+**Note on `@Restricted` and `ensureNativeAccess`:** Several FFM API methods carry the `@Restricted` annotation and call `Reflection.ensureNativeAccess()`. This is a module-system gate (JEP 442: requires `--enable-native-access=<moduleName>` at JVM startup) that is complementary to but independent of SecurityManager checks. It is a deployment-time module-access control, not a runtime policy control, and does not replace or supplement `NativeMemoryPermission` / `NativeInvocationPermission` policy checks. Both mechanisms can coexist and serve distinct, non-overlapping purposes.
+
+#### 8.1 Gap Analysis: Arena Allocation Surfaces
+
+**Ungated entry points:** [`Arena.ofAuto()`](https://github.com/pfirmstone/DirtyChai/blob/trunk/src/java.base/share/classes/java/lang/foreign/Arena.java#L229), [`Arena.ofConfined()`](https://github.com/pfirmstone/DirtyChai/blob/trunk/src/java.base/share/classes/java/lang/foreign/Arena.java#L261), and [`Arena.ofShared()`](https://github.com/pfirmstone/DirtyChai/blob/trunk/src/java.base/share/classes/java/lang/foreign/Arena.java#L272) have no SecurityManager check and no `@Restricted` annotation.
+
+**Security consequence:** Untrusted code that can call these factory methods can allocate unbounded amounts of off-heap native memory without any policy check. Off-heap memory is not bounded by the JVM heap limit (`-Xmx`). The only current gate is at `Arena.global()` (process-lifetime arena) and at `reinterpret()` (capability expansion). The arena-creation gap allows:
+
+- Unbounded native-memory allocation by the calling thread (DoS / resource exhaustion).
+- Creation of shared arenas accessible across threads (`Arena.ofShared()`), widening the cross-thread attack surface compared to heap-only code.
+- Creation of arenas passed to less-trusted code, enabling that code to allocate native memory indirectly without holding an arena-creation permission itself (capability delegation, see §8.4).
+
+| Arena Kind | SM gated? | DoS risk | Lifetime risk |
+|---|---|---|---|
+| `Arena.global()` | ✅ `"global-arena"` | High if ungated — permanent process-lifetime off-heap retention | Process lifetime |
+| `Arena.ofAuto()` | ❌ not gated | Medium — GC-bounded but unbounded peak allocation | GC-controlled |
+| `Arena.ofConfined()` | ❌ not gated | Medium — bounded by explicit `close()`; thread-confined | Thread-confined, explicit |
+| `Arena.ofShared()` | ❌ not gated | Medium-High — cross-thread access; explicit `close()` by any thread | Any thread, explicit |
+
+**Design note for evaluation:** Introducing `NativeMemoryPermission` targets at arena-creation time would close this gap. Possible granularity: a single `"allocate-native"` target covering all three non-global arenas; or separate `"auto-arena"`, `"confined-arena"`, `"shared-arena"` targets to allow fine-grained policy control at the cost of additional administrative complexity. The right choice requires a design decision on least-privilege granularity. See §8.8 Steps 1–3.
+
+#### 8.2 Gap Analysis: Address Acquisition (`MemorySegment.ofAddress`)
+
+**Ungated entry point:** [`MemorySegment.ofAddress(long)`](https://github.com/pfirmstone/DirtyChai/blob/trunk/src/java.base/share/classes/java/lang/foreign/MemorySegment.java#L1572) creates a zero-length native segment with the global scope from a raw `long` address value. It has no SecurityManager check and is not annotated `@Restricted`.
+
+**Security consequence:** A zero-length segment (`byteSize() == 0`) cannot read or write memory — there is no valid access range. To access memory at the obtained address, code must call `reinterpret()` to give the segment a non-zero size, and `reinterpret()` IS gated by `NativeMemoryPermission("reinterpret-memory-segment")`. This gate is the effective barrier for memory access.
+
+However, a zero-length segment holding a native address can be passed directly to `Linker.downcallHandle(MemorySegment, FunctionDescriptor, ...)` as a function-pointer argument. The `AbstractLinker.downcallHandle()` implementation at [`AbstractLinker.java:94–96`](https://github.com/pfirmstone/DirtyChai/blob/trunk/src/java.base/share/classes/jdk/internal/foreign/abi/AbstractLinker.java#L94-L96) calls `SharedUtils.checkSymbol(symbol)`, which validates only that the segment is non-null and native — not that it has non-zero size. **If untrusted code already holds a raw native address value (obtained, for example, by reading from a native segment delegated to it by trusted code), it can construct a function-pointer segment via `ofAddress()` and invoke native code through a downcall handle without holding `NativeInvocationPermission` or `NativeMemoryPermission`.**
+
+The address-round-trip threat model is therefore: `long address → MemorySegment.ofAddress(address) → downcallHandle(segment, fd) → invoke`. This path bypasses `NativeInvocationPermission` if the address was obtained outside a guarded symbol-lookup path.
+
+**Mitigating factor:** Obtaining a useful raw native address requires either (a) a symbol lookup (gated by `NativeInvocationPermission`), or (b) reading it from an existing native memory segment (which requires the segment to be in scope and accessible, which requires an arena). The chain is porous if the address value is already available, but non-trivially bootstrapped from scratch. Note that address values can also leak through non-obvious channels — debug output, serialized data structures, logged error messages containing native addresses — which could lower the practical barrier to this attack.
+
+**Risk rating:** Medium-High. The attack requires a precondition — holding a raw native function-pointer address — that is itself non-trivially obtained without triggering at least one guarded path; however, the path is ungated once the precondition is met, and address leakage via indirect channels is a realistic attack vector in complex systems.
+
+#### 8.3 Gap Analysis: Linker, Downcall, and Upcall Paths
+
+The following Linker API entry points are not gated by SecurityManager permission checks in this repository:
+
+| Entry Point | File:Line | Guard Present | Note |
+|---|---|---|---|
+| `Linker.nativeLinker()` | [`Linker.java:577`](https://github.com/pfirmstone/DirtyChai/blob/trunk/src/java.base/share/classes/java/lang/foreign/Linker.java#L577) | None | Static factory; obtains the platform native linker without any SM or `@Restricted` check |
+| `Linker.downcallHandle(MemorySegment, FunctionDescriptor, ...)` | [`AbstractLinker.java:93–97`](https://github.com/pfirmstone/DirtyChai/blob/trunk/src/java.base/share/classes/jdk/internal/foreign/abi/AbstractLinker.java#L93-L97) | `ensureNativeAccess` only | Module-level native-access check; no `NativeInvocationPermission` or `NativeMemoryPermission` |
+| `Linker.downcallHandle(FunctionDescriptor, ...)` | [`AbstractLinker.java:101–104`](https://github.com/pfirmstone/DirtyChai/blob/trunk/src/java.base/share/classes/jdk/internal/foreign/abi/AbstractLinker.java#L101-L104) | `ensureNativeAccess` only | Returns an unbound handle requiring a function address at invocation time; no SM check |
+| `Linker.upcallStub(MethodHandle, FunctionDescriptor, Arena, ...)` | [`AbstractLinker.java:128–147`](https://github.com/pfirmstone/DirtyChai/blob/trunk/src/java.base/share/classes/jdk/internal/foreign/abi/AbstractLinker.java#L128-L147) | `ensureNativeAccess` only | Registers Java callback for native invocation; no SM check at stub creation or at callback invocation time |
+
+**Security consequence — downcall:** Creating a downcall handle requires only `ensureNativeAccess` (a module-level check). The security boundary for native invocation relies on `NativeInvocationPermission` being checked at the **symbol-lookup stage** before a function address is returned. If a function address is available by means other than a gated symbol lookup (see §8.2), the downcall handle creation and invocation impose no SecurityManager check.
+
+**Security consequence — upcall:** `Linker.upcallStub()` creates a native function pointer that, when called from native code, dispatches to a Java `MethodHandle`. There is no SecurityManager check at stub creation or at upcall-invocation time. If privileged Java code creates an upcall stub and passes its address (a `MemorySegment`) to less-trusted code, the less-trusted code can supply that pointer to native callees, causing native code to invoke the privileged Java method. This is a confused-deputy risk for callbacks registered by trusted code.
+
+**Downcall handle cache:** `AbstractLinker` caches downcall handles and upcall stub factories by `(FunctionDescriptor, LinkerOptions)` in `SoftReferenceCache` instances at [`AbstractLinker.java:88–89`](https://github.com/pfirmstone/DirtyChai/blob/trunk/src/java.base/share/classes/jdk/internal/foreign/abi/AbstractLinker.java#L88-L89). Cached entries are shared across callers: once a template handle is created for a `FunctionDescriptor`, subsequent callers reuse the cached instance. Since the permission check is at address-acquisition time (not at handle-creation time), the cache does not introduce an additional permission-bypass gap — but it confirms that the security model depends entirely on the address-acquisition path being gated. Additionally, because cache-hit responses are faster than cache-miss responses, an unprivileged caller can probe whether a privileged caller has already created a handle for a given `FunctionDescriptor` by measuring response latency — a minor side-channel information-disclosure risk about privileged code behavior. This is noted as a low-severity information-leakage residual under §8.4 delegation risks.
+
+#### 8.4 Gap Analysis: Delegation and Confused-Deputy Risks
+
+The FFM API is an **object-capability system**: possessing a `MemorySegment`, a downcall `MethodHandle`, or an upcall stub segment confers the authority to perform the corresponding privileged operation. SecurityManager checks in DirtyChai are placed at **capability-acquisition time** (symbol lookup, arena creation, segment reinterpretation), not at **capability-use time**. This creates the following delegation risks:
+
+**D-1: Downcall handle transfer.** Trusted code that calls `linker.downcallHandle(symbol, fd)` receives a `MethodHandle`. If it passes that handle to untrusted code, the untrusted code can invoke native functions without holding any SecurityManager permission. There is no permission check at `MethodHandle.invoke*()` for FFM handles.
+
+**D-2: Upcall stub transfer.** Trusted code that calls `linker.upcallStub(target, fd, arena)` receives a `MemorySegment` (the stub's native function-pointer address). If it passes that segment to untrusted code, the untrusted code can supply it as a callback pointer to native callers, causing native code to invoke the Java method specified by `target`. No permission is checked at callback time; the invocation is controlled entirely by native-side caller choice.
+
+**D-3: Arena and allocator transfer.** Trusted code that creates `Arena.ofConfined()` or `Arena.ofShared()` and passes the resulting `Arena` (or a `SegmentAllocator` backed by it) to untrusted code enables that code to allocate off-heap memory using the trusted code's arena — without holding any `NativeMemoryPermission` itself. Each allocation drains the arena's capacity and increases off-heap pressure.
+
+**D-4: Memory segment transfer (read/write access).** Once a native segment is created by trusted code and passed to untrusted code, the untrusted code can read and write memory within the segment's bounds without any SecurityManager check on `get()` / `set()` / `copy()` operations. It can also slice the segment (`asSlice()`), pass it as a downcall argument, or store it in further data structures — all without triggering any SM check. The SM boundary is purely at capability-acquisition time.
+
+**Mitigation principle:** Trusted code that creates FFM capabilities (segments, handles, stubs, arenas) must treat them as authority-carrying objects and must not delegate them to less-trusted code without explicit trust elevation. DirtyChai's current FFM security model is a **"front-door" model**: the guards are at acquisition time. Once past the front door, FFM capability objects confer unrestricted access within their stated bounds.
+
+#### 8.5 Gap Analysis: Module-Open Bypass Risks
+
+**`jdk.internal.foreign` encapsulation:** The `jdk.internal.foreign` package is an internal package not exported to user code under normal module encapsulation. Key factory methods within this package — notably [`SegmentFactories.makeNativeSegmentUnchecked(long, long)`](https://github.com/pfirmstone/DirtyChai/blob/trunk/src/java.base/share/classes/jdk/internal/foreign/SegmentFactories.java#L81) and its overloads — have no SecurityManager check and directly construct native segments from raw addresses and sizes.
+
+If `jdk.internal.foreign` is opened to user code via `--add-opens java.base/jdk.internal.foreign=<module>` or `--add-opens java.base/jdk.internal.foreign=ALL-UNNAMED`, reflection access to `SegmentFactories.makeNativeSegmentUnchecked()` would allow construction of arbitrary-address native segments at arbitrary sizes without any SecurityManager check. This completely bypasses `NativeMemoryPermission("reinterpret-memory-segment")` — the primary reinterpretation guard — and `NativeMemoryPermission("global-arena")`. Critically, it also defeats all arena-creation guards proposed in §8.8 Steps 1–3: once `makeNativeSegmentUnchecked()` is accessible, arena-based allocation gating becomes moot because arbitrary native segments can be created directly without going through any arena factory.
+
+**Consequence:** Opening `jdk.internal.foreign` to untrusted code must be treated as equivalent to granting `AllPermission` for FFM memory operations. No SecurityManager FFM guard remains effective if this package is opened.
+
+**Public `java.lang.foreign` package:** Opening `java.lang.foreign` to untrusted code widens the reachable FFM surface (it is the module-access prerequisite for several `@Restricted` methods) but does not by itself bypass SecurityManager checks. Gated methods (`reinterpret()`, `Arena.global()`, symbol lookups) still check permissions. However, `MemorySegment.ofAddress()` (ungated) is already public regardless of module opens. Module-open grants to `java.lang.foreign` must still be treated as high-sensitivity policy decisions.
+
+**`@Restricted` + `ensureNativeAccess` interaction with module opens:** Opening a package grants reflective access but does not automatically grant `--enable-native-access`. A module open combined with a broad `--enable-native-access=ALL-UNNAMED` grant effectively removes both the module-system and SecurityManager barriers for users of the opened package. Policy must control both flags independently and conservatively.
+
+#### 8.6 Gap Analysis: Resource Exhaustion and Availability Risks
+
+FFM presents availability risks distinct from integrity and confidentiality risks:
+
+- **Unbounded off-heap allocation:** `Arena.ofConfined()`, `Arena.ofShared()`, and `Arena.ofAuto()` can be called to allocate arbitrarily large native memory regions. Off-heap memory is not subject to the JVM heap limit (`-Xmx`). Exhausting native memory causes `OutOfMemoryError`, JVM process termination, or OS-level failure — all denial-of-service outcomes. Only `Arena.global()` is currently gated.
+- **Long-lived leaked arenas:** An `Arena.ofShared()` or `Arena.ofConfined()` created but never explicitly closed retains all allocated native memory until the arena itself becomes unreachable and is GC-finalized. In request-handling or per-connection code, creating arenas without closing them is a progressive memory-leak vector.
+- **Pinned native segments:** Long-lived segments (especially those allocated via `Arena.global()` or file-mapped segments) can interfere with JVM GC interaction and increase native memory fragmentation over time.
+- **Downcall invocation saturation:** A downcall handle targeting a slow or blocking native function can be invoked in a tight loop to exhaust platform thread capacity or pin virtual threads to carrier threads, constituting a thread-DoS vector.
+
+**Current protection status:** Only `Arena.global()` is gated at the arena-creation layer. The remaining three arena factories are ungated, making off-heap resource exhaustion via these arenas a viable DoS attack for any caller that can pass the module-level `ensureNativeAccess` check.
+
+#### 8.7 Policy Guidance for Administrators
 
 - Grant `NativeMemoryPermission` only to fully trusted code bases.
-- Prefer explicit target names (`"global-arena"` and/or `"reinterpret-memory-segment"`) instead of wildcard grants.
-- Treat any grant to code with broad `jdk.foreign` access as high sensitivity and document the operational rationale.
-- Until broader FFM native-memory coverage decisions are finalized, treat grants that expose general arena-creation APIs as high risk and constrain them to trusted code only.
+- Prefer explicit target names (`"global-arena"` and/or `"reinterpret-memory-segment"`) rather than wildcard grants.
+- Do not open `jdk.internal.foreign` to any user code under any circumstance; doing so bypasses all FFM SecurityManager guards regardless of policy.
+- Treat a combined `java.lang.foreign` module-open grant plus `--enable-native-access` grant as high-sensitivity; audit all FFM API paths reachable by the granted module.
+- Be aware that downcall handles, upcall stubs, arenas, and native segments are object-capabilities: once created by trusted code, they confer native-invocation or native-memory authority regardless of the holder's declared permissions.
+- Until arena-creation guards (Steps 1–3, §8.8) are finalized, restrict `Arena.ofShared()`, `Arena.ofConfined()`, and `Arena.ofAuto()` access to trusted code only at the architectural level (i.e., do not expose these factory methods to untrusted code paths).
 
-See the FFM bullet under the Conditional / policy-dependent section and the medium-priority recommendation for broader FFM guard-coverage evaluation.
+See residual risks N-16 (allocation surfaces) and N-17 (delegation risks), and the implementation plan in §8.8.
+
+#### 8.8 Implementation Plan (Actionable Backlog)
+
+This section identifies prioritized, concrete steps for closing the gaps identified above. Each step notes where design decisions are still needed before implementation.
+
+**Step 1 (High Priority): Gate `Arena.ofShared()` with `NativeMemoryPermission("shared-arena")`**
+
+- **Rationale:** `Arena.ofShared()` creates cross-thread-accessible off-heap memory — the highest-risk ungated arena because cross-thread lifetime management increases use-after-free and confusion risk.
+- **Guard point:** [`Arena.java:272`](https://github.com/pfirmstone/DirtyChai/blob/trunk/src/java.base/share/classes/java/lang/foreign/Arena.java#L272) — add `sm.checkPermission(new NativeMemoryPermission("shared-arena"))` at the start of `ofShared()` body.
+- **Permission target name:** `NativeMemoryPermission("shared-arena")`
+- **Compatibility:** When a SecurityManager is active, existing callers of `Arena.ofShared()` without the new grant will receive `SecurityException`. When no SecurityManager is installed, the guard is a no-op and existing code continues to work unchanged. Provide a policy template fragment and a migration note for SecurityManager-enabled deployments.
+- **Design decision needed:** Whether separate per-kind targets (`"shared-arena"`, `"confined-arena"`, `"auto-arena"`) or a single `"allocate-native"` is preferred; separate targets allow finer least-privilege control.
+
+**Step 2 (High Priority): Gate `Arena.ofConfined()` with `NativeMemoryPermission("confined-arena")`**
+
+- **Rationale:** Enables unbounded off-heap allocation per calling thread. Lower cross-thread risk than shared, but still a resource-exhaustion vector.
+- **Guard point:** [`Arena.java:261`](https://github.com/pfirmstone/DirtyChai/blob/trunk/src/java.base/share/classes/java/lang/foreign/Arena.java#L261) — same pattern as Step 1.
+- **Permission target name:** `NativeMemoryPermission("confined-arena")`
+- **Compatibility:** Same migration note as Step 1 (only SecurityManager-enabled deployments are affected; no-SM code is unaffected); add both targets to the policy template.
+
+**Step 3 (Medium Priority): Gate `Arena.ofAuto()` with `NativeMemoryPermission("auto-arena")`**
+
+- **Rationale:** GC-bounded lifetime reduces long-term leak risk, but unbounded peak off-heap allocation is still a viable DoS vector.
+- **Guard point:** [`Arena.java:229`](https://github.com/pfirmstone/DirtyChai/blob/trunk/src/java.base/share/classes/java/lang/foreign/Arena.java#L229) — same pattern.
+- **Permission target name:** `NativeMemoryPermission("auto-arena")`
+- **Design decision:** Whether `"auto-arena"` is a useful separate target or should be folded into a broader `"allocate-native"` target given GC management reduces risk relative to shared/confined.
+
+**Step 4 (Medium Priority): Evaluate gating `Linker.nativeLinker()` with `NativeInvocationPermission("native-linker")`**
+
+- **Rationale:** Obtaining the native linker is the first step toward creating downcall and upcall handles. Gating it prevents untrusted code from creating any linker-based handles.
+- **Current state:** `Linker.nativeLinker()` at [`Linker.java:577`](https://github.com/pfirmstone/DirtyChai/blob/trunk/src/java.base/share/classes/java/lang/foreign/Linker.java#L577) has no SM check and no `@Restricted` annotation per the current repository code.
+- **Permission target name:** `NativeInvocationPermission("native-linker")` (linker access is an invocation authority, not a memory authority).
+- **Design decision:** Whether to gate at `nativeLinker()` (coarser, simpler) or separately at `downcallHandle()` and `upcallStub()` (finer, more complex); gating the singleton factory is recommended as the simpler approach.
+
+**Step 5 (Evaluate): Delegation risk for downcall handles and upcall stubs (D-1, D-2)**
+
+- **Option A (Recommended for now):** Document the delegation risk explicitly in `NativeMemoryPermission` and `NativeInvocationPermission` Javadoc and in policy guidance. Rely on the front-door model and policy governance to prevent trusted code from delegating capabilities to untrusted code. No implementation change required.
+- **Option B (Future evaluation):** Evaluate whether a `doPrivileged`-style wrapper at downcall-handle invocation time can carry the creator domain into the invocation for a SecurityManager intersection check. This would be a significant design change and may affect FFM performance characteristics. Defer until the front-door model is fully closed (Steps 1–4) and if residual risk N-17 is elevated.
+
+**Step 6 (Testing Strategy)**
+
+For each new permission gate added (Steps 1–4):
+
+- **Positive test:** Verify that trusted code holding the appropriate `NativeMemoryPermission` grant can call the gated method without `SecurityException`.
+- **Negative test:** Verify that code lacking the permission receives `SecurityException` from the gated method.
+- **Delegation test:** Verify that code holding an arena or segment object obtained from trusted code can use it (allocate from the arena, access the segment) even without the arena-creation permission — confirming the front-door model is correct by design.
+- **DoS regression test:** Verify that a loop attempting large off-heap allocations via the newly gated arena factory method (with SM active) is blocked.
+- **Test infrastructure:** Use `CombinerSecurityManager` with a test policy that grants only the specific `NativeMemoryPermission` target(s) under test, consistent with existing security test patterns in the repository.
+
+**Step 7 (Compatibility and Administrator Documentation Strategy)**
+
+- Provide policy template fragments for each new permission target. The trailing `-` in the codeBase path is a recursive directory wildcard that applies the grant to all JARs and classes within subdirectories; replace `/path/to/trusted/` with the actual trusted codebase path:
+
+  ```
+  grant codeBase "file:/path/to/trusted/-" {
+      permission au.zeus.jdk.authorization.guards.NativeMemoryPermission "shared-arena";
+      permission au.zeus.jdk.authorization.guards.NativeMemoryPermission "confined-arena";
+      permission au.zeus.jdk.authorization.guards.NativeMemoryPermission "auto-arena";
+  };
+  ```
+
+- Update `NativeMemoryPermission` Javadoc to enumerate all recognized target names and their semantics.
+- Document that `--add-opens java.base/jdk.internal.foreign` is a complete SecurityManager bypass for FFM; hardened deployments must prohibit this flag.
+- Add new target names to the Recommendations section and note any policy migration requirements when guards are added to existing ungated paths.
 
 ### 9) Network Permission Granularity
 
@@ -453,6 +617,8 @@ gate that controls runtime mutation of the topology that the read APIs expose.
 | 9 | Principal scope ambiguity (N-12) | Class+name grants can collide across realms; trusted-service mutation can abuse shared `Subject` | Use realm-qualified canonical principal identity; consider gating principal-set mutation |
 | 10 | Coarse network permission granularity (N-14) | `SocketPermission` lacks granular distinction across network operation types and scope boundaries | Avoid wildcard network grants; publish hardened grant templates |
 | 11 | Module/dynamic-define residuals (N-15) | Runtime topology mutation is gated (`mutateModuleTopology`) and inspection is gated (`readModuleTopology`), but startup flags, `Lookup.defineClass()`, and export cycles can still expose access paths | Treat startup flags as trust-boundary controls; tightly review module exports and dynamic class-definition exposure |
+| 12 | FFM allocation surfaces not gated (N-16) | `Arena.ofConfined()`, `Arena.ofShared()`, and `Arena.ofAuto()` have no `NativeMemoryPermission` check; `Linker.nativeLinker()` has no SM check; `MemorySegment.ofAddress()` has no SM check; any of these can be a DoS or address-acquisition entry point for untrusted code | Gate arena-creation factory methods per §8.8 Steps 1–3; evaluate `Linker.nativeLinker()` gate (Step 4); do not open `jdk.internal.foreign` to user code |
+| 13 | FFM capability delegation risks (N-17) | Downcall `MethodHandle`, upcall stub `MemorySegment`, arena objects, and native segments are authority-carrying objects; once delegated to less-trusted code, no SM check fires at use time | Treat FFM capability objects as ambient authority; trusted code must not delegate them to untrusted code; document delegation policy constraints for administrators; see §8.4 and §8.8 Step 5 |
 
 ## Analysis: N-13 TLS Subject Authentication Context Propagation (COMPLETED)
 
@@ -720,7 +886,7 @@ Residual risk is identical: a bootstrap method that uses unrestricted
 
 5. **Consider making stack scan depth configurable (safe defaults retained)** — allow hardened deployments to raise depth while preserving compatibility defaults.
 6. **Add optional security telemetry for denied installation attempts** — emit deny-event telemetry to improve attack detection and policy tuning.
-7. **Evaluate broader FFM native-memory guard coverage (§8)** — `MemorySegment.reinterpret()`/`Arena.global()` are gated; evaluate equivalent `NativeMemoryPermission` checks for `Arena.ofConfined()`, `Arena.ofShared()`, and `Arena.ofAuto()`, and keep `jdk.foreign` grants trusted-only with explicit rationale.
+7. **Gate FFM arena allocation surfaces and evaluate linker guard (§8, N-16, N-17)** — per the full gap analysis in §8: (a) implement `NativeMemoryPermission` checks at `Arena.ofShared()`, `Arena.ofConfined()`, and `Arena.ofAuto()` (§8.8 Steps 1–3); (b) evaluate gating `Linker.nativeLinker()` with `NativeInvocationPermission("native-linker")` (§8.8 Step 4); (c) document the front-door capability-delegation model for administrators (§8.8 Step 5); and (d) add policy template fragments and compatibility migration notes (§8.8 Step 7). `MemorySegment.reinterpret()` and `Arena.global()` are already gated. Do not open `jdk.internal.foreign` to user code under any circumstance (§8.5).
 8. **Evaluate `MethodHandles.Lookup.defineClass()` permission gate (N-15 / §7)** — because `Lookup.defineClass()` bypasses `LoadClassPermission`, evaluate extending it or adding `DefineClassPermission`; until then, treat privileged `Lookup` access as equivalent to load-class privilege for the target module.
 9. **Document recommended `SocketPermission` policy structure for hardened deployments (N-14 / §9)** — provide a hardened template separating loopback/LAN/multicast/external grants, avoiding wildcard `connect`, and constraining `DatagramSocket` discovery plus multicast/unicast scope.
 10. ~~**Evaluate `LoadModulePermission` gate for runtime module mutation (N-15 / §7)**~~ — Resolved: runtime `Module.addExports()`/`Module.addOpens()` are policy-gated by `RuntimePermission("mutateModuleTopology")` (§10) and runtime topology inspection is policy-gated by `RuntimePermission("readModuleTopology")` (§11); startup `--add-opens`/`--add-exports`/`--add-modules` remains a trusted-perimeter decision.
@@ -760,8 +926,12 @@ The main remaining risks are **operational** (policy configuration and whitelist
 - `src/java.base/share/classes/java/util/concurrent/Executors.java` — default/privileged thread factory behavior and virtual-thread executor entry points
 - `src/java.base/share/classes/java/security/SecureClassLoader.java` — `LoadClassPermission` integration in class-loading permission path
 - `src/java.base/share/classes/java/lang/ClassLoader.java`, `java/lang/foreign/SymbolLookup.java`, `jdk/internal/foreign/SystemLookup.java`, `jdk/internal/loader/NativeLibraries.java` — `NativeInvocationPermission` enforcement at native symbol resolution; `NativeLibraries.findLibraryNameAddress()` provides null-safe library name resolution for permission construction
-- `src/java.base/share/classes/jdk/internal/foreign/AbstractMemorySegmentImpl.java` — `NativeMemoryPermission("reinterpret-memory-segment")` enforcement in `reinterpretInternal()` before `MemorySegment.reinterpret()` proceeds
-- `src/java.base/share/classes/java/lang/foreign/Arena.java` — `NativeMemoryPermission("global-arena")` enforcement in `Arena.global()`
+- `src/java.base/share/classes/jdk/internal/foreign/AbstractMemorySegmentImpl.java` — `NativeMemoryPermission("reinterpret-memory-segment")` enforcement in `reinterpretInternal()` before `MemorySegment.reinterpret()` proceeds; shared by all three `reinterpret()` overloads at lines 132–155
+- `src/java.base/share/classes/java/lang/foreign/Arena.java` — `NativeMemoryPermission("global-arena")` enforcement in `Arena.global()` (line 243); `Arena.ofConfined()` (line 261), `Arena.ofShared()` (line 272), and `Arena.ofAuto()` (line 229) are ungated (N-16); see §8.1 and §8.8 for gap analysis and implementation plan
+- `src/java.base/share/classes/java/lang/foreign/MemorySegment.java` — `MemorySegment.ofAddress(long)` at line 1572 creates a zero-length native segment with no SecurityManager check; address-acquisition gap documented in §8.2
+- `src/java.base/share/classes/java/lang/foreign/Linker.java` — `Linker.nativeLinker()` at line 577 has no SecurityManager check; `downcallHandle()` and `upcallStub()` methods are `@Restricted` / `ensureNativeAccess`-only with no `NativeInvocationPermission` check; linker gaps documented in §8.3
+- `src/java.base/share/classes/jdk/internal/foreign/abi/AbstractLinker.java` — linker implementation; `DOWNCALL_CACHE` / `UPCALL_CACHE` at lines 88–89; `downcallHandle()` at lines 93–104; `upcallStub()` at lines 128–147; all gate via `ensureNativeAccess` only
+- `src/java.base/share/classes/jdk/internal/foreign/SegmentFactories.java` — `makeNativeSegmentUnchecked()` (line 81) constructs native segments from raw addresses with no SecurityManager check; protected only by `jdk.internal.foreign` package encapsulation; module-open bypass risk documented in §8.5
 - `src/java.base/share/classes/au/zeus/jdk/authorization/guards/LoadClassPermission.java` — guard definition
 - `src/java.base/share/classes/au/zeus/jdk/authorization/guards/NativeInvocationPermission.java` — guard definition
 - `src/java.base/share/classes/au/zeus/jdk/authorization/guards/NativeMemoryPermission.java` — guard definition
@@ -772,7 +942,6 @@ The main remaining risks are **operational** (policy configuration and whitelist
 - `src/java.base/share/classes/au/zeus/jdk/net/Uri.java` — URI validation behavior used in CodeSource/policy matching rationale
 - Issue #85 (repository issue tracker) — remediation baseline for hardened exception and validation handling
 - OpenJDK 21 reference (`jdk-21+35`): `java/lang/System.java`, `java/security/AccessController.java`, `java/security/AccessControlContext.java`, `javax/security/auth/Subject.java`, `java/lang/ThreadBuilders.java`, `java/lang/Thread.java`, `java/util/concurrent/Executors.java`, `java/security/SecureClassLoader.java`, `java/lang/Module.java`, `java/io/ObjectInputStream.java`
-- `java.lang.foreign.MemorySegment` / `java.lang.foreign.Arena` — FFM capability transfer; `reinterpret()` and `Arena.global()` object-capability risks documented in §8
 - `java.lang.instrument.Instrumentation` — agent attachment threat surface; `getAllLoadedClasses()` / `redefineClasses()` only reachable with an active `-javaagent`, but see N-11 for the runtime-attach path
 - `com.sun.tools.attach.VirtualMachine`, `com.sun.tools.attach.AttachPermission`, `com.sun.tools.attach.spi.AttachProvider`, `sun.tools.attach.HotSpotAttachProvider` — runtime attach path and enforced permission gates (`attachVirtualMachine`, `createAttachProvider`) discussed in N-11
 - `javax.security.auth.Subject.getPrincipals()` — principal mutation boundary; live mutable set; cross-realm collision and injection risks documented in §E and N-12
@@ -784,6 +953,7 @@ The main remaining risks are **operational** (policy configuration and whitelist
 - `java.lang.module.Configuration.modules()` — resolved-module graph access; `RuntimePermission("readModuleTopology")` gate documented in §11
 - `java.lang.module.ModuleReference.descriptor()` — module-reference descriptor access (used by `ModuleFinder`); `RuntimePermission("readModuleTopology")` gate documented in §11
 - `sun.security.util.SecurityConstants.READ_MODULE_TOPOLOGY` — shared constant used across all `readModuleTopology` enforcement points
+- `java.lang.foreign.MemorySegment` / `java.lang.foreign.Arena` — FFM capability transfer; full gap analysis of gated and ungated entry points in §8; `reinterpret()` and `Arena.global()` gated; `Arena.ofConfined()`, `Arena.ofShared()`, `Arena.ofAuto()`, `MemorySegment.ofAddress()`, and `Linker.nativeLinker()` ungated (N-16, N-17); delegation/confused-deputy risks in §8.4; module-open bypass in §8.5; implementation plan in §8.8
 
 ---
 
