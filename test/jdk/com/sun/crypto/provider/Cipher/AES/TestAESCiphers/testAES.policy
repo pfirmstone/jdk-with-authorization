@@ -5,4 +5,5 @@ grant codeBase "file:${test.classes}/*" {
                "accessClassInPackage.com.sun.crypto.provider";
     permission java.util.PropertyPermission "test.provider.name", "read";
     permission au.zeus.jdk.authorization.guards.LoadClassPermission;
+    permission au.zeus.jdk.authorization.guards.DefineClassPermission "ALLOW";
 };
