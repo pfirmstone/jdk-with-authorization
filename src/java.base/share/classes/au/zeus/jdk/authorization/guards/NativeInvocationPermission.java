@@ -27,7 +27,36 @@ package au.zeus.jdk.authorization.guards;
 import java.security.BasicPermission;
 
 /**
- * NativeInvocationPermission works guards invocation of native libraries.
+ * NativeInvocationPermission guards invocation of native libraries.
+ * 
+ * <table class="striped">
+ * <caption style="display:none">permission target name,
+ *  what the target allows, and associated risks</caption>
+ * <thead>
+ * <tr>
+ * <th scope="col">Permission Target Name</th>
+ * <th scope="col">What the Permission Allows</th>
+ * <th scope="col">Risks of Allowing this Permission</th>
+ * </tr>
+ * </thead>
+ * <tbody>
+ *
+ * <tr>
+ *   <th scope="row">library name resolved by 
+ * jdk.internal.loader.NativeLibraries.findLibraryNameAddress</th>
+ *   <td>Allows access to resolved libraries at runtime.</td>
+ *   <td>This permission guards native library resolution, for example if
+ * trusted code loads a native library, an attacker could otherwise access
+ * that library at runtime.
+ * </td>
+ * 
+ * </tbody>
+ * </table>
+ * 
+ * <p>
+ * Trusted code must be careful not to delegate native invocation capability
+ * to code that is not trusted to do so.
+ * 
  */
 public class NativeInvocationPermission extends BasicPermission<NativeInvocationPermission> {
     

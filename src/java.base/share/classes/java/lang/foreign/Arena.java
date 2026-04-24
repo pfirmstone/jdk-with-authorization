@@ -227,6 +227,10 @@ public interface Arena extends SegmentAllocator, AutoCloseable {
      * @return a new arena that is managed, automatically, by the garbage collector
      */
     static Arena ofAuto() {
+        SecurityManager sm = System.getSecurityManager();
+        if (sm != null){
+            sm.checkPermission(new NativeMemoryPermission("auto-arena"));
+        }
         return MemorySessionImpl.createImplicit(CleanerFactory.cleaner()).asArena();
     }
 
@@ -259,6 +263,10 @@ public interface Arena extends SegmentAllocator, AutoCloseable {
      * are zero-initialized.
      */
     static Arena ofConfined() {
+        SecurityManager sm = System.getSecurityManager();
+        if (sm != null){
+            sm.checkPermission(new NativeMemoryPermission("confined-arena"));
+        }
         return MemorySessionImpl.createConfined(Thread.currentThread()).asArena();
     }
 
@@ -270,6 +278,10 @@ public interface Arena extends SegmentAllocator, AutoCloseable {
      * are zero-initialized.
      */
     static Arena ofShared() {
+        SecurityManager sm = System.getSecurityManager();
+        if (sm != null){
+            sm.checkPermission(new NativeMemoryPermission("shared-arena"));
+        }
         return MemorySessionImpl.createShared().asArena();
     }
 

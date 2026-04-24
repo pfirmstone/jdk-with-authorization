@@ -27,7 +27,85 @@ package au.zeus.jdk.authorization.guards;
 import java.security.BasicPermission;
 
 /**
- * Guards access to MemorySegment.reinterpret and Arena.global
+ * Guards access to native memory.
+ * 
+ * <table class="striped">
+ * <caption style="display:none">permission target name,
+ *  what the target allows, and associated risks</caption>
+ * <thead>
+ * <tr>
+ * <th scope="col">Permission Target Name</th>
+ * <th scope="col">What the Permission Allows</th>
+ * <th scope="col">Risks of Allowing this Permission</th>
+ * </tr>
+ * </thead>
+ * <tbody>
+ *
+ * <tr>
+ *   <th scope="row">global-arena</th>
+ *   <td>Native memory segments from the global arena are visible to any thread.</td>
+ *   <td>This is dangerous permission to grant, an attacker could perform a 
+ * denial of service by preventing the release and collection of off heap global memory.
+ * Off heap memory is not bounded by the JVM heap limit -Xmx
+ * Exhausting native memory causes OutOfMemoryError, JVM process termination, 
+ * or OS-level failure — all denial-of-service outcomes.
+ * </td>
+ * 
+ * <tr>
+ *   <th scope="row">reinterpret-memory-segment</th>
+ *   <td>Native memory segments can be reinterpreted and resized.</td>
+ *   <td>This is dangerous permission to grant, an attacker could perform a 
+ * denial of service by consuming excessive memory.
+ * Off heap memory is not bounded by the JVM heap limit -Xmx
+ * Exhausting native memory causes OutOfMemoryError, JVM process termination, 
+ * or OS-level failure — all denial-of-service outcomes.
+ * </td>
+ * 
+ * <tr>
+ *   <th scope="row">shared-arena</th>
+ *   <td>Allows allocation of cross-thread-accessible off heap native memory.</td>
+ *   <td>This is dangerous permission to grant, an attacker could perform a 
+ * denial of service by allocating arbitrarily large native memory regions.
+ * Off heap memory is not bounded by the JVM heap limit -Xmx
+ * Exhausting native memory causes OutOfMemoryError, JVM process termination, 
+ * or OS-level failure — all denial-of-service outcomes.
+ * </td>
+ * 
+ * <tr>
+ *   <th scope="row">confined-arena</th>
+ *   <td>Allows per thread allocation of off heap native memory.</td>
+ *   <td>This is dangerous permission to grant, an attacker could perform a 
+ * denial of service by allocating arbitrarily large native memory regions.
+ * Off heap memory is not bounded by the JVM heap limit -Xmx
+ * Exhausting native memory causes OutOfMemoryError, JVM process termination, 
+ * or OS-level failure — all denial-of-service outcomes.
+ * </td>
+ * 
+ * <tr>
+ *   <th scope="row">auto-arena</th>
+ *   <td>Allows allocation of garbage collection bounded off heap native memory.</td>
+ *   <td>This is dangerous permission to grant, an attacker could perform a 
+ * denial of service by allocating arbitrarily large native memory regions.
+ * Off heap memory is not bounded by the JVM heap limit -Xmx
+ * Exhausting native memory causes OutOfMemoryError, JVM process termination, 
+ * or OS-level failure — all denial-of-service outcomes.
+ * </td>
+ * 
+ * <tr>
+ *   <th scope="row">native-linker</th>
+ *   <td>Permits creating downcall and upcall handles.</td>
+ *   <td>This is dangerous permission to grant, obtaining the native linker is 
+ * the first step toward creating downcall and upcall handles.
+ * </td>
+ * 
+ * </tbody>
+ * </table>
+ * 
+ * <p>
+ * Trusted code must be careful not to delegate native invocation capability
+ * to code that is not trusted to do so.
+ * 
+ * 
  * @author peter
  */
 public class NativeMemoryPermission extends BasicPermission<NativeMemoryPermission> {

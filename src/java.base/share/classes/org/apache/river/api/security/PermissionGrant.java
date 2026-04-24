@@ -161,7 +161,7 @@ public abstract class PermissionGrant {
      * external event thread perform the privileged action and update a volatile 
      * variable that can be checked during an implies call without invoking another
      * security check.
-     * <p>
+     * 
      * @param decorated PermissionGrant to be decorated.
      * @throws IllegalArgumentException if decorated is privileged
      * @throws SecurityException if caller doesn't have {@link java.lang.RuntimePermission}
@@ -236,7 +236,6 @@ public abstract class PermissionGrant {
      *
      * @param pd ProtectionDomain
      * @return true if implies.
-     * @see RevocablePolicy
      */
     public abstract boolean implies(ProtectionDomain pd);  
     /**

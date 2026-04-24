@@ -25,6 +25,7 @@
 
 package java.lang.foreign;
 
+import au.zeus.jdk.authorization.guards.NativeInvocationPermission;
 import jdk.internal.foreign.abi.AbstractLinker;
 import jdk.internal.foreign.abi.CapturableState;
 import jdk.internal.foreign.abi.LinkerOptions;
@@ -575,6 +576,10 @@ public sealed interface Linker permits AbstractLinker {
      *           and {@code libdl}.
      */
     static Linker nativeLinker() {
+        SecurityManager sm = System.getSecurityManager();
+        if (sm != null){
+            sm.checkPermission(new NativeInvocationPermission("native-linker"));
+        }
         return SharedUtils.getSystemLinker();
     }
 
