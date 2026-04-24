@@ -28,6 +28,7 @@ OpenJDK 21 is the last LTS release line that still includes SecurityManager APIs
 | Reflection/generated-caller blocking for custom SM install | Not implemented as a dedicated layered defense at install time | Explicit stack/reflection/method-handle/generated-code blocking for custom SM install |
 | Guard permission model | No `au.zeus.jdk.authorization.guards.*` guard classes | Adds dedicated guard permissions (`LoadClassPermission`, `NativeInvocationPermission`, `NativeMemoryPermission`, `SerialObjectPermission`) and integrates them into security-critical flows |
 | Runtime module-topology mutation API gate (`Module.addExports()` / `Module.addOpens()`) | No dedicated `RuntimePermission("mutateModuleTopology")` gate at these API entry points | `SecurityManager.checkPermission(new RuntimePermission("mutateModuleTopology"))` gate at runtime mutation entry points before caller-identity validation |
+| Runtime module-topology read API gate (`Module.getDescriptor()`, `ModuleLayer.modules()`, etc.) | No dedicated `RuntimePermission("readModuleTopology")` gate at module inspection entry points | `SecurityConstants.READ_MODULE_TOPOLOGY.checkGuard(null)` gate at `Module.getDescriptor()`, `Module.getLayer()`, `ModuleLayer.modules()`, `ModuleLayer.findModule()`, `Configuration.modules()`, and `ModuleReference.descriptor()` |
 | Executors + thread factory behavior | `Executors.defaultThreadFactory()` returns classic `DefaultThreadFactory` | `Executors.defaultThreadFactory()` routes through `Thread.ofPlatform().group(...).factory()` and therefore through Dirty Chai platform-thread permission checks |
 | Virtual thread creation path | `ThreadBuilders` virtual/platform builder paths do not enforce dedicated `createVirtualThread`/`createPlatformThread` checks | Builder `unstarted()` and `factory()` paths enforce explicit runtime permissions and capture `AccessController.getContext()` for inherited security context |
 | `AccessController` / `AccessControlContext` / `Subject` model | OpenJDK 21 `doPrivileged(..., AccessControlContext, Permission...)` uses wrapper/context-validation flow (`checkContext`/`createWrapper`), with `Subject` propagation via ACC/`SubjectDomainCombiner` | Explicit limited-privilege domain intersection via `DomainIdentity`, ACC builder/authorization helpers, and ACC/`SubjectDomainCombiner` subject propagation in active Dirty Chai runtime path |
@@ -348,6 +349,58 @@ Policy guidance for administrators:
 - Continue treating all module-altering JVM flags as explicit deployment-time
   security decisions.
 
+### 10.1) Module Topology Read Permission
+
+DirtyChai gates runtime module-topology read/inspection APIs with
+`RuntimePermission("readModuleTopology")`.
+
+- **Enforcement points** — the following APIs perform
+  `SecurityConstants.READ_MODULE_TOPOLOGY.checkGuard(null)` (equivalent to
+  `SecurityManager.checkPermission(new RuntimePermission("readModuleTopology"))`)
+  at API entry:
+  - `Module.getDescriptor()` — returns the `ModuleDescriptor` describing a
+    module's exports, opens, requires, and uses declarations.
+  - `Module.getLayer()` — returns the `ModuleLayer` in which a named module was
+    defined, revealing layer-graph membership.
+  - `ModuleLayer.modules()` — returns the full set of `Module` objects in a
+    layer, allowing enumeration of all resident modules.
+  - `ModuleLayer.findModule(String name)` — resolves a module by name within a
+    layer, enabling targeted inspection of individual modules.
+  - `Configuration.modules()` — returns the set of `ResolvedModule` objects in a
+    module graph configuration, exposing the dependency graph.
+  - `ModuleReference.descriptor()` — returns the `ModuleDescriptor` from a
+    module reference obtained via `ModuleFinder`, exposing descriptor metadata
+    prior to instantiation.
+- **Security effect** — untrusted code can no longer inspect module descriptors,
+  enumerate layer contents, or map the resolved module graph unless explicitly
+  granted policy authority.
+- **Threat-model effect** — module topology disclosure reveals internal
+  architecture details (exported packages, opened packages, service dependencies,
+  required modules). Untrusted code with read access can use this information to
+  map trusted service bindings, identify high-value targets for injection or
+  confused-deputy attacks, and fingerprint the deployment environment.
+  Gating these APIs reduces information leakage to untrusted code without
+  restricting trusted components that legitimately require topology visibility.
+- **Relationship to mutateModuleTopology (§10)** — `readModuleTopology` and
+  `mutateModuleTopology` form a complementary pair covering the full
+  read/write surface of runtime module topology access. Denying read access
+  prevents reconnaissance; denying write access prevents topology manipulation.
+  Both should be withheld from untrusted code in hardened deployments.
+- **Static vs runtime read boundary** — this gate applies to runtime API calls
+  only. Module descriptor information embedded in `module-info.class` files and
+  accessible via `ClassLoader`/`ModuleFinder` paths outside the gated APIs
+  remains governed by file-system and class-loading permissions.
+
+Policy guidance for administrators:
+
+- Default deny `RuntimePermission("readModuleTopology")` to untrusted code.
+- Grant only to narrowly scoped, fully trusted code that requires programmatic
+  module introspection (e.g., framework layer managers, diagnostic tooling,
+  module-aware service locators).
+- Treat `readModuleTopology` grants with the same sensitivity as
+  `mutateModuleTopology` grants — both expose the module graph to caller
+  scrutiny or manipulation.
+
 ---
 
 ## Threat Review (Current)
@@ -385,7 +438,7 @@ Policy guidance for administrators:
 | 8 | Runtime attach still policy/OS dependent (N-11) | Attach is permission-gated, but over-grants, inactive SM, or OS compromise remain | Keep attach grants narrow; use `-XX:+DisableAttachMechanism` where feasible |
 | 9 | Principal scope ambiguity (N-12) | Class+name grants can collide across realms; trusted-service mutation can abuse shared `Subject` | Use realm-qualified canonical principal identity; consider gating principal-set mutation |
 | 10 | Coarse network permission granularity (N-14) | `SocketPermission` lacks granular distinction across network operation types and scope boundaries | Avoid wildcard network grants; publish hardened grant templates |
-| 11 | Module/dynamic-define residuals (N-15) | Runtime topology mutation is gated, but startup flags, `Lookup.defineClass()`, and export cycles can still expose access paths | Treat startup flags as trust-boundary controls; tightly review module exports and dynamic class-definition exposure |
+| 11 | Module/dynamic-define residuals (N-15) | Runtime topology mutation is gated by `mutateModuleTopology` and read access is gated by `readModuleTopology`, but startup flags, `Lookup.defineClass()`, and export cycles can still expose access paths | Treat startup flags as trust-boundary controls; deny both `mutateModuleTopology` and `readModuleTopology` to untrusted code; tightly review module exports and dynamic class-definition exposure |
 
 ## Analysis: N-13 TLS Subject Authentication Context Propagation (COMPLETED)
 
