@@ -3072,16 +3072,27 @@ public class BatchProcessor {
 }
 ```
 
-#### ASM opcode signature
+#### java.lang.classfile element signature
 
-```
-MONITORENTER   // any occurrence in the method body
-MONITOREXIT    // paired exit (not separately flagged, but used to delimit scope)
+```java
+// Detect synchronized blocks and synchronized methods via MonitorInstruction
+ClassModel model = ClassFile.of().parse(classBytes);
+for (MethodModel mm : model.methods()) {
+    mm.code().ifPresent(code -> {
+        for (CodeElement e : code) {
+            if (e instanceof MonitorInstruction mi
+                    && mi.opcode() == Opcode.MONITORENTER) {
+                report(mm.methodName().stringValue(),
+                       "MONITORENTER detected — carrier thread pinning risk");
+            }
+        }
+    });
+}
 ```
 
 Synchronized *methods* also compile to `MONITORENTER` / `MONITOREXIT` pairs in
 the bytecode, so no special treatment is needed for the `ACC_SYNCHRONIZED`
-method flag — the opcode scan captures both forms.
+method flag — the `MonitorInstruction` stream captures both forms.
 
 #### Action
 
@@ -3147,15 +3158,52 @@ public void computeIntensive() {
 | Future / task | `Future.get`, `CompletableFuture.get`, `CountDownLatch.await` |
 | Scheduler hints | `Thread.yield`, `Thread.onSpinWait` |
 
-#### ASM instruction signature
+#### java.lang.classfile element signature
 
-```
-// Loop back-edge: branch target < current offset
-GOTO           label  where label.offset < current_offset
-IF_ICMPLT      label  (and all other IF_* variants) with backward target
+A back-edge is a `BranchInstruction` whose target `Label` maps to a
+bytecode index (BCI) lower than the instruction's own position.
+`CodeAttribute.labelToBci()` resolves each `Label` to its BCI; `LabelTarget`
+pseudo-instructions in the code stream carry the BCI of each program point.
 
-// Absence of interruptible call within the loop body:
-no INVOKEVIRTUAL / INVOKESTATIC to any method in the whitelist above
+```java
+// Detect backward branches (loop back-edges) and check for missing yield calls
+ClassModel model = ClassFile.of().parse(classBytes);
+for (MethodModel mm : model.methods()) {
+    if (mm.code().isEmpty()) continue;
+    CodeModel code = mm.code().get();
+    // CodeAttribute (the parsed form) provides labelToBci()
+    if (!(code instanceof CodeAttribute ca)) continue;
+
+    // Single-element arrays used as mutable holders, allowing assignment
+    // from within the switch cases below (lambdas require effectively-final).
+    int[] currentBci = {0};
+    // Declared here so both flags are visible after the loop for the check.
+    boolean hasBackEdge = false;
+    boolean hasYieldCall = false;
+
+    for (CodeElement e : code) {
+        switch (e) {
+            case LabelTarget lt ->
+                currentBci[0] = ca.labelToBci(lt.label());
+            case BranchInstruction bi -> {
+                int targetBci = ca.labelToBci(bi.target());
+                if (targetBci < currentBci[0])
+                    hasBackEdge = true;    // back-edge: loop detected
+            }
+            case InvokeInstruction ii -> {
+                String key = ii.owner().name().stringValue()
+                           + "." + ii.name().stringValue();
+                if (INTERRUPTIBLE_METHODS.contains(key))
+                    hasYieldCall = true;
+            }
+            default -> { }
+        }
+    }
+
+    if (hasBackEdge && !hasYieldCall)
+        report(mm.methodName().stringValue(),
+               "Unbounded loop without interruptible yield point");
+}
 ```
 
 #### Action
@@ -3223,15 +3271,40 @@ direct recursion.  Mutual recursion requires a whole-class (or whole-jar)
 call-graph pass, which increases complexity; a single-class pass that detects
 direct recursion only is the recommended MVP scope.
 
-#### ASM instruction signature
+#### java.lang.classfile element signature
 
-```
-// Direct recursion
-INVOKEVIRTUAL  owner=thisClass  name=currentMethod  descriptor=currentDesc
-INVOKESPECIAL  owner=thisClass  name=currentMethod  descriptor=currentDesc
+Direct recursion is identified by an `InvokeInstruction` whose `owner` and
+`name` match the class and method currently being analysed.
+The `InvokeInstruction` sealed interface covers `INVOKEVIRTUAL`,
+`INVOKESPECIAL`, `INVOKESTATIC`, and `INVOKEINTERFACE`; a recursive call
+typically uses `INVOKEVIRTUAL` or `INVOKESPECIAL`.
 
-// No unconditional return path without passing through the INVOKE above
+```java
+// Detect direct recursive calls (no visible base-case guard)
+ClassModel model = ClassFile.of().parse(classBytes);
+String thisClass = model.thisClass().name().stringValue();
+
+for (MethodModel mm : model.methods()) {
+    String methodName = mm.methodName().stringValue();
+    String methodDesc = mm.methodType().stringValue();
+
+    mm.code().ifPresent(code -> {
+        for (CodeElement e : code) {
+            if (e instanceof InvokeInstruction ii
+                    && ii.owner().name().equalsString(thisClass)
+                    && ii.name().equalsString(methodName)
+                    && ii.type().equalsString(methodDesc)) {
+                report(methodName,
+                       "Direct recursive call without visible base-case guard");
+            }
+        }
+    });
+}
 ```
+
+The termination-guard heuristic (checking for a reachable `IF_*` exit path
+before the recursive `INVOKE`) is a second pass over the same `CodeModel`
+stream; it is omitted from the MVP to keep the implementation tractable.
 
 #### Action
 
@@ -3248,7 +3321,7 @@ false-positive rates manageable.
 
 ---
 
-### Pattern 5: Data Race Detection (HIGH) — ASM Field-Access Tracking
+### Pattern 5: Data Race Detection (HIGH) — java.lang.classfile Field-Access Tracking
 
 #### Why it matters
 
@@ -3271,13 +3344,15 @@ Data-race detection elevates bytecode analysis from a resource-exhaustion
 heuristic to a genuine security control: it distinguishes code that is merely
 CPU-hungry from code that is *designed to corrupt shared state*.
 
-#### ASM field-access tracking design
+#### java.lang.classfile field-access tracking design
 
 Pattern 5 requires stateful, cross-method analysis within a single class.
 The tracker builds a model of every instance field declared in the class and
-records how each method accesses it.
+records how each method accesses it.  The entire analysis is a single
+`ClassModel` traversal using the `java.lang.classfile` stream API; no
+visitor callbacks or external library is required.
 
-##### Step 1 — Field inventory (`ClassVisitor.visitField`)
+##### Step 1 — Field inventory (`ClassModel.fields()`)
 
 For each field declared in the class under analysis, record:
 
@@ -3285,42 +3360,88 @@ For each field declared in the class under analysis, record:
 FieldRecord {
     String   name;
     String   descriptor;        // JVM type descriptor, e.g. "I", "Ljava/util/List;"
-    boolean  isFinal;           // ACC_FINAL flag
-    boolean  isVolatile;        // ACC_VOLATILE flag
-    boolean  isStatic;          // ACC_STATIC flag
-    Set<String> writingMethods; // method names that contain PUTFIELD / PUTSTATIC
-    Set<String> readingMethods; // method names that contain GETFIELD / GETSTATIC
+    boolean  isFinal;           // AccessFlag.FINAL
+    boolean  isVolatile;        // AccessFlag.VOLATILE
+    boolean  isStatic;          // AccessFlag.STATIC
+    Set<String> writingMethods; // method names containing PUTFIELD / PUTSTATIC
+    Set<String> readingMethods; // method names containing GETFIELD / GETSTATIC
 }
 ```
 
-Fields that are `final` or `volatile` are excluded from further analysis:
-`final` fields are safely published via the constructor end, and `volatile`
-fields have sequentially consistent semantics.
+Fields that carry `AccessFlag.FINAL` or `AccessFlag.VOLATILE` are excluded
+from further analysis: `final` fields are safely published via the constructor
+end, and `volatile` fields have sequentially consistent semantics.
 
-##### Step 2 — Method-body scan (`MethodVisitor`)
+```java
+ClassModel model = ClassFile.of().parse(classBytes);
+String analysedClass = model.thisClass().name().stringValue();
+Map<String, FieldRecord> fieldRecords = new LinkedHashMap<>();
 
-For every method in the class, the `MethodVisitor` tracks:
+for (FieldModel fm : model.fields()) {
+    AccessFlags flags = fm.flags();
+    if (flags.has(AccessFlag.FINAL) || flags.has(AccessFlag.VOLATILE))
+        continue;    // excluded: safe publication guaranteed
+    String key = fm.fieldName().stringValue();
+    fieldRecords.put(key,
+        new FieldRecord(key, fm.fieldType().stringValue(),
+                        flags.has(AccessFlag.STATIC)));
+}
+```
+
+##### Step 2 — Method-body scan (`ClassModel.methods()` → `CodeModel`)
+
+For every method in the class, iterate the `CodeModel` element stream and track:
 
 1. **Monitor depth counter** (`monitorDepth`).  Initialised to zero.  Increment
-   on `MONITORENTER`, decrement on `MONITOREXIT`.  A field access is
-   *synchronised* if `monitorDepth > 0` at the point of the access.
+   on `MonitorInstruction(MONITORENTER)`, decrement on `MonitorInstruction(MONITOREXIT)`.
+   A field access is *synchronised* if `monitorDepth > 0` at the point of the access.
 
 2. **Synthetic-access filter**.  `ACC_SYNTHETIC` / `ACC_BRIDGE` methods
    (generated by `javac` for inner-class access) access fields on behalf of
    the declaring method.  The tracker follows the call chain one level deep
    to attribute the real access to the outer method.
 
-3. **PUTFIELD / PUTSTATIC detection**.  When `monitorDepth == 0` and the field
-   is not `final` or `volatile`, add the current method name to
+3. **`FieldInstruction` with `PUTFIELD` / `PUTSTATIC`**.  When `monitorDepth == 0`
+   and the field is not excluded, add the current method name to
    `FieldRecord.writingMethods`.
 
-4. **GETFIELD / GETSTATIC detection**.  When `monitorDepth == 0` and the field
-   is neither `final` nor `volatile`, add the current method name to
+4. **`FieldInstruction` with `GETFIELD` / `GETSTATIC`**.  When `monitorDepth == 0`
+   and the field is not excluded, add the current method name to
    `FieldRecord.readingMethods`.
+
+```java
+for (MethodModel mm : model.methods()) {
+    String methodName = mm.methodName().stringValue();
+    mm.code().ifPresent(code -> {
+        int[] monitorDepth = {0};
+        for (CodeElement e : code) {
+            switch (e) {
+                case MonitorInstruction mi -> {
+                    if (mi.opcode() == Opcode.MONITORENTER) monitorDepth[0]++;
+                    else                                    monitorDepth[0]--;
+                }
+                case FieldInstruction fi -> {
+                    // Only track accesses to fields of the class being analysed
+                    if (!fi.owner().name().equalsString(analysedClass)) break;
+                    FieldRecord rec = fieldRecords.get(fi.name().stringValue());
+                    if (rec == null) break;          // final/volatile; excluded
+                    if (monitorDepth[0] > 0) break;  // synchronised; safe
+                    if (fi.opcode() == Opcode.PUTFIELD
+                            || fi.opcode() == Opcode.PUTSTATIC)
+                        rec.writingMethods().add(methodName);
+                    else
+                        rec.readingMethods().add(methodName);
+                }
+                default -> { }
+            }
+        }
+    });
+}
+```
 
 ##### Step 3 — Cross-method race analysis (post-scan)
 
-After all methods have been visited, iterate over the `FieldRecord` set:
+After all methods have been scanned, iterate over the `FieldRecord` set:
 
 ```
 for each FieldRecord f:
@@ -3349,32 +3470,33 @@ for each FieldRecord f:
 
 Accesses to fields typed as `java.util.concurrent.atomic.*` are excluded: the
 atomic wrapper provides the required ordering guarantee internally.  The tracker
-checks the field descriptor for any of the known atomic types and skips those
-records.
+checks the field descriptor returned by `FieldModel.fieldType().stringValue()`
+for any of the known atomic types and skips those records.
 
-##### ASM traversal summary
+##### java.lang.classfile traversal summary
 
 ```
-ClassVisitor
-  └── visitField(access, name, desc, ...)
-        → build FieldRecord; skip ACC_FINAL, ACC_VOLATILE
-
-  └── visitMethod(access, name, desc, ...)
-        → return new RaceDetectionMethodVisitor(name, fieldRecords)
-
-RaceDetectionMethodVisitor extends MethodVisitor
-  ├── visitInsn(MONITORENTER)   → monitorDepth++
-  ├── visitInsn(MONITOREXIT)    → monitorDepth--
-  ├── visitFieldInsn(PUTFIELD,  owner, name, desc)
-  │     if monitorDepth == 0 and owner == analysedClass:
-  │         fieldRecords[name].writingMethods.add(currentMethod)
-  └── visitFieldInsn(GETFIELD,  owner, name, desc)
-        if monitorDepth == 0 and owner == analysedClass:
-            fieldRecords[name].readingMethods.add(currentMethod)
+ClassFile.of().parse(classBytes)       // → ClassModel
+  │
+  ├── .fields()                         // stream of FieldModel
+  │     → build FieldRecord map;
+  │       skip AccessFlag.FINAL, AccessFlag.VOLATILE
+  │
+  └── .methods()                        // stream of MethodModel
+        → .code()                        // Optional<CodeModel>
+              → for each CodeElement:
+                  MonitorInstruction(MONITORENTER)  → monitorDepth++
+                  MonitorInstruction(MONITOREXIT)   → monitorDepth--
+                  FieldInstruction(PUTFIELD)        → if monitorDepth==0 and
+                  FieldInstruction(PUTSTATIC)           owner==analysedClass:
+                                                        rec.writingMethods.add(method)
+                  FieldInstruction(GETFIELD)        → if monitorDepth==0 and
+                  FieldInstruction(GETSTATIC)           owner==analysedClass:
+                                                        rec.readingMethods.add(method)
 ```
 
-Static fields use `PUTSTATIC` / `GETSTATIC`; the same logic applies with
-`isStatic == true` and owner matching the analysed class.
+Static fields use `PUTSTATIC` / `GETSTATIC`; the same `FieldInstruction`
+sealed type covers all four opcodes — no separate handling is required.
 
 ##### Known limitations
 
@@ -3465,41 +3587,39 @@ be flagged.  Mitigation:
 
 ### Implementation Structure
 
-The four patterns share an ASM traversal infrastructure.  The recommended
-package layout is:
+The four patterns share a `java.lang.classfile` traversal infrastructure.
+No third-party bytecode library is required; the API is embedded in the
+`java.base` module of DirtyChai's OpenJDK fork.  The recommended package
+layout is:
 
 ```
 au/zeus/jdk/authorization/analysis/
   ├── BytecodeAnalyzer.java
-  │       Orchestrator: accepts a byte[] class buffer and a policy directive,
-  │       runs all enabled pattern scanners via a single ASM ClassReader pass,
-  │       returns a list of AnalysisResult records.
-  │
-  ├── BytecodeScanner.java
-  │       ASM ClassVisitor that delegates to per-pattern MethodVisitors.
-  │       Holds the shared FieldRecord map for Pattern 5.
+  │       Orchestrator: ClassFile.of().parse(classBytes) → ClassModel,
+  │       then delegates to each enabled pattern scanner.
+  │       Returns a list of AnalysisResult records.
   │
   ├── pattern/
   │   ├── SynchronizedPattern.java
-  │   │       MethodVisitor: flags MONITORENTER.
+  │   │       CodeModel stream → MonitorInstruction(MONITORENTER) detection.
   │   ├── UnboundedLoopPattern.java
-  │   │       MethodVisitor: flags backward branches without interruptible calls.
+  │   │       CodeModel stream → BranchInstruction back-edge detection
+  │   │       + InvokeInstruction whitelist scan.
   │   ├── InfiniteRecursionPattern.java
-  │   │       MethodVisitor: flags recursive INVOKE without reachable base case.
+  │   │       CodeModel stream → InvokeInstruction sealed-type matching
+  │   │       for direct recursive calls.
   │   └── DataRacePattern.java
-  │           ClassVisitor + MethodVisitor: builds FieldRecord map (Steps 1–2),
-  │           then performs cross-method analysis (Steps 3–4) in visitEnd().
+  │           ClassModel.fields() → FieldRecord map (Step 1);
+  │           ClassModel.methods() → CodeModel → FieldInstruction +
+  │           MonitorInstruction traversal (Steps 2–4);
+  │           cross-method race analysis in a post-scan phase.
   │
-  ├── report/
-  │   ├── AnalysisResult.java
-  │   │       Immutable record: pattern name, severity, field/method name,
-  │   │       human-readable description.
-  │   └── RiskLevel.java
-  │           Enum: CRITICAL, HIGH, MEDIUM, LOW, INFO.
-  │
-  └── tracking/
-      └── FieldRecord.java
-              Mutable accumulator used during the ASM pass for Pattern 5.
+  └── report/
+      ├── AnalysisResult.java
+      │       Immutable record: pattern name, severity, field/method name,
+      │       human-readable description.
+      └── RiskLevel.java
+              Enum: CRITICAL, HIGH, MEDIUM, LOW, INFO.
 ```
 
 **Integration point:** `SecureClassLoader.getProtectionDomain()` (or the
@@ -3508,9 +3628,37 @@ equivalent hook in `URLClassLoader`), called immediately after the existing
 bytes before they are defined in the JVM, so it can block definition on
 `BLOCK_*` policy directives without the class ever becoming live.
 
-**Performance:** A single ASM `ClassReader` pass over a typical 5–50 KB class
-file takes 1–3 ms on a modern JVM.  The analysis runs once per class load; it
-does not add per-invocation overhead.
+**API call chain:**
+
+```
+ClassFile.of().parse(classBytes)   // → ClassModel (lazy; parses on demand)
+  → .fields()                       // List<FieldModel>  — build field inventory
+  → .methods()                      // List<MethodModel> — iterate methods
+      → .code()                      // Optional<CodeModel> / CodeAttribute
+          → for each CodeElement:    // sealed CodeElement stream
+              instanceof MonitorInstruction  → carrier-pin / sync-depth tracking
+              instanceof BranchInstruction   → back-edge (loop) detection
+              instanceof InvokeInstruction   → recursion / whitelist checks
+              instanceof FieldInstruction    → unsynchronised field-access recording
+```
+
+The analysis runs once per class load and does not add per-invocation overhead.
+A typical 5–50 KB class file is fully analysed in 1–3 ms on a modern JVM.
+
+---
+
+### ASM vs. java.lang.classfile: Comparison
+
+| Feature | ASM (third-party) | `java.lang.classfile` (JDK built-in) |
+|---|---|---|
+| Dependency | External jar (`asm-*.jar`) required | Embedded in `java.base`; no extra jar |
+| API style | Visitor pattern (`ClassVisitor` / `MethodVisitor`) | Stream / iterator over sealed `CodeElement` types |
+| Type safety | Manual opcode integer constants; casting required | Sealed `Instruction` hierarchy; pattern matching |
+| Pattern matching | Not supported | `switch (e) { case MonitorInstruction mi -> … }` |
+| StackMap generation | Manual setup; error-prone | Built-in; automatic on `ClassFile.build()` |
+| Lazy parsing | Full class parsed upfront | Lazy: sections parsed only when accessed |
+| Versioning | Separate ASM version per JDK version | Always in sync with JDK class-file version |
+| Licence / compliance | BSD-3-Clause (separate dependency to declare) | GPLv2+CE (same as JDK; no extra declaration) |
 
 ---
 
