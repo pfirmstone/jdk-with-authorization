@@ -684,7 +684,7 @@ the dedicated `DefineClassPermission` guard (commit 0f90b38, 2026-04-24).
 | 4 | Policy quality remains critical | Over-broad grants negate hardening | Enforce least privilege with audited policy generation/review |
 | 5 | Documentation drift — **RESOLVED** | Prior wording drifted from implementation | Keep docs/Javadoc synced with `limit(50)`; no open drift known |
 | 6 | Confused-deputy in trusted paths (N-8, N-10; consolidated) | Reflection/MethodHandle and `<clinit>`/bootstrap can reach trusted code that uses unrestricted `doPrivileged` | Disallow unrestricted `doPrivileged` on security-sensitive trusted paths; keep stack-intersection guard |
-| 7 | Finalizer/Cleaner context escape (N-9) | Finalizer/Cleaner threads run `neverPrivileged`/innocuous by default, but creator-thread limited `AccessControlContext` is not propagated to callbacks | Avoid sensitive finalizer/cleaner work; prefer explicit `close()` and process isolation |
+| 7 | Finalizer/Cleaner context escape (N-9) | Both Finalizer and Cleaner threads now run under `neverPrivileged` (Issue #129), blocking `Subject.doAsPrivileged()` escalation. `neverPrivileged` alone cannot prevent unrestricted `AccessController.doPrivileged()` calls, which still intersect the callback class's `ProtectionDomain`. PoLP observation bounds those class-level grants, preventing unobserved operations. **OPERATIONALLY MITIGATED** — neverPrivileged (blocks Subject escalation) + PoLP (blocks unrestricted doPrivileged escalation) | Ensure both gates are active: deploy with `neverPrivileged` on Finalizer/Cleaner threads (Issue #129) and generate PoLP policies that reflect observed callback behaviour; avoid sensitive finalizer/cleaner work and prefer explicit `close()` |
 | 8 | Runtime attach still policy/OS dependent (N-11) | Attach is permission-gated, but over-grants, inactive SM, or OS compromise remain | Keep attach grants narrow; use `-XX:+DisableAttachMechanism` where feasible |
 | 9 | Principal scope ambiguity (N-12) | Class+name grants can collide across realms; trusted-service mutation can abuse shared `Subject` | Use realm-qualified canonical principal identity; consider gating principal-set mutation |
 | 10 | Coarse network permission granularity (N-14) | `SocketPermission` lacks granular distinction across network operation types and scope boundaries | Avoid wildcard network grants; publish hardened grant templates |
@@ -819,8 +819,9 @@ this loss be exploited to run sensitive operations with escalated permissions?
 - **Finalizer thread context:** Created at boot via
   `AccessController.doPrivileged(..., AccessControlContext.neverPrivileged())`,
   so callback execution is never-privileged.
-- **Cleaner:** `java.lang.ref.Cleaner` uses an `InnocuousThread` daemon
-  (unprivileged) to run registered `Runnable` cleanup callbacks.
+- **Cleaner:** `java.lang.ref.Cleaner` daemon thread is also created under
+  `AccessControlContext.neverPrivileged()` (Issue #129), so cleanup callbacks
+  are likewise never-privileged.
 - In both models, the creator thread's `AccessControlContext` is **not**
   propagated to the callback thread.
 
@@ -847,14 +848,81 @@ trusted callback code is allowed only if policy grants the required permission.
   `AccessControlContext` do not survive to callback execution, while class-level
   policy grants still apply.
 
+### Dual-Layer Mitigation: neverPrivileged + PoLP
+
+#### Layer 1 — neverPrivileged (Issue #129)
+
+Both Finalizer and Cleaner threads now execute under
+`AccessControlContext.neverPrivileged()`.  This is **more restrictive than
+unprivileged**: a `neverPrivileged` context cannot accumulate permissions from
+authenticated `Subject` principals, so the `Subject.doAsPrivileged()` escalation
+path is completely closed.
+
+```
+neverPrivileged (finalizer/cleaner thread):
+  ✓ Blocks: Subject.doAsPrivileged(subject, action, null)
+  ✓ Blocks: gaining permissions from authenticated principal credentials
+  ✗ Cannot block: unrestricted AccessController.doPrivileged(() -> ...)
+```
+
+#### Layer 2 — PoLP Policy Observation
+
+`neverPrivileged` does **not** prevent a callback from issuing an unrestricted
+`AccessController.doPrivileged(action)` call.  When that call is made, the JVM
+computes the stack intersection starting from the callback's `ProtectionDomain`:
+
+```
+// Callback executing in neverPrivileged context
+AccessController.doPrivileged(() -> {
+    // neverPrivileged does not block this path
+    // Stack intersection is computed from the callback class PD
+    // Policy grants for that class are the effective ceiling
+    return performSensitiveOperation();
+});
+```
+
+The `ProtectionDomain` of the callback class is therefore the effective
+authority ceiling.  PoLP policy generation limits that ceiling to what was
+**actually observed** during normal operation:
+
+```
+Observation phase:
+  Finalizer observed: FilePermission("temp/cleanup.txt", "read")
+  Policy grants:      FilePermission("temp/cleanup.txt", "read") only
+
+Runtime escalation attempt:
+  Finalizer calls doPrivileged(() -> read("/etc/passwd"))
+  Stack intersection: PoLP grant (limited) ∩ callback class domain
+  Result: DENIED — /etc/passwd not in policy grant
+```
+
+Unobserved operations are denied by default, so a callback cannot escalate to
+permissions it was never observed exercising.
+
+#### Combined Mitigation Model
+
+| Escalation Path | neverPrivileged | PoLP | Combined Result |
+|-----------------|-----------------|------|-----------------|
+| `Subject.doAsPrivileged()` to gain principal permissions | ✅ **Blocked** | — | Eliminated |
+| Unrestricted `AccessController.doPrivileged()` using class policy grants | ❌ Not blocked | ✅ **Bounded** to observed behaviour | Eliminated |
+| Any escalation beyond observed behaviour | — | ✅ **Denied** by default | Eliminated |
+
+**Without PoLP**: `neverPrivileged` alone is insufficient — unrestricted
+`doPrivileged` in a callback can still exploit any over-broad class-level
+policy grants.
+
+**With both layers active**: no escalation path remains open.
+
 ### Policy Decision
 
 | Scenario | In-Process Guard (DirtyChai) | Process Isolation Required? |
 |----------|------------------------------|-----------------------------|
 | Untrusted finalizer/callback calls native method | Blocked by stack intersection (untrusted PD is on-stack) | No |
-| Trusted finalizer/callback calls native method | Allowed only if policy grants `NativeInvocationPermission`; daemon thread itself is unprivileged | No (intended) |
-| Trusted callback bypasses creator's limited context | **Not blocked** — limited creator ACC is not part of class policy grants | **Yes — process isolation required** |
-| Attacker triggers GC of trusted object with sensitive callback | Executes if trusted class grant allows it | Mitigate by avoiding sensitive finalizer/cleaner operations |
+| Trusted finalizer/callback calls native method | Allowed only if policy grants `NativeInvocationPermission`; daemon thread itself is never-privileged (Issue #129) | No (intended) |
+| Trusted callback bypasses creator's limited context via `Subject.doAsPrivileged()` | **Blocked** — `neverPrivileged` context cannot gain Subject principal permissions | No (Issue #129 resolved) |
+| Trusted callback issues unrestricted `AccessController.doPrivileged()` to access resources beyond observed behaviour | **Blocked by PoLP** — policy ceiling is bounded to observed callback behaviour; unobserved operations denied | No (PoLP required) |
+| Trusted callback bypasses creator's limited context — no PoLP deployed | **Not blocked** — class-level grants act as ceiling; over-broad grants exploitable | **Yes — process isolation required if PoLP not in use** |
+| Attacker triggers GC of trusted object with sensitive callback | Escalation bounded by PoLP ceiling; if callback never observed accessing target, denied | No under PoLP; process isolation backstop without it |
 
 ### Guidance for Trusted Library Authors
 
@@ -866,8 +934,13 @@ operations (native, file, network):
    at construction/use time or via explicit `close()` / `release()`.
 3. **If privileged callback work is unavoidable, keep it minimal and explicit**
    (narrow `doPrivileged` scope, documented justification).
-4. **Treat process isolation as the primary containment backstop** for context
-   escape scenarios.
+4. **Ensure finalizer/cleaner behaviour is exercised during the PoLP observation
+   window** so generated policy grants are bounded to actual callback needs;
+   over-broad grants create the escalation surface that `neverPrivileged` alone
+   cannot close.
+5. **Treat process isolation as a backstop for deployments without PoLP** —
+   when PoLP policies are properly generated and both layers (neverPrivileged +
+   PoLP) are active, process isolation is not required for N-9 mitigation.
 
 ---
 
