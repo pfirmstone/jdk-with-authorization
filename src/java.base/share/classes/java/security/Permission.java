@@ -53,6 +53,9 @@ package java.security;
  * in that they are immutable once they have been created. Subclasses should not
  * provide methods that can change the state of a permission
  * once it has been created.
+ * 
+ * <p> {@code Permission} does not support the use Lambda expressions in implementation
+ * classes.
  *
  * @see Permissions
  * @see PermissionCollection

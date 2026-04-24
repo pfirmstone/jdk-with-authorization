@@ -490,8 +490,14 @@ public class ProtectionDomain {
         // The use of lambda's could cause problems at bootstrap time?
         PermissionCollection<Permission> perms =
             java.security.AccessController.doPrivileged
-            ((PrivilegedAction<PermissionCollection<Permission>>) () ->
-                Policy.getPolicyNoCheck().getPermissions(ProtectionDomain.this));
+            ((PrivilegedAction<PermissionCollection<Permission>>) 
+                    new PrivilegedAction<PermissionCollection<Permission>>() 
+            {
+                @Override
+                public PermissionCollection<Permission> run() {
+                    return Policy.getPolicyNoCheck().getPermissions(ProtectionDomain.this);
+                }
+            });
         //Policy has responsiblity of merging permissions, but simple test Policies don't.
         if (perms != null && perms != Policy.UNSUPPORTED_EMPTY_COLLECTION){
             if (permissions == null) return perms;

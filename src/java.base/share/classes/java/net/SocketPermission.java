@@ -37,6 +37,7 @@ import java.util.Map;
 import java.util.StringJoiner;
 import java.util.StringTokenizer;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.BiFunction;
 import sun.net.util.IPAddressUtil;
 import sun.net.PortConfig;
 import sun.security.action.GetBooleanAction;
@@ -1179,15 +1180,19 @@ public final class SocketPermission extends Permission
      */
     @SuppressWarnings("removal")
     private static int initEphemeralPorts(String suffix) {
-        return AccessController.doPrivileged((PrivilegedAction<Integer>) () -> {
-            int val = Integer.getInteger(
-                    "jdk.net.ephemeralPortRange."+suffix, -1
-            );
-            if (val != -1) {
-                return val;
-            } else {
-                return suffix.equals("low") ?
-                        PortConfig.getLower() : PortConfig.getUpper();
+        return AccessController.doPrivileged(
+            (PrivilegedAction<Integer>) new PrivilegedAction<Integer>() {
+            @Override
+            public Integer run() {
+                int val = Integer.getInteger(
+                        "jdk.net.ephemeralPortRange."+suffix, -1
+                );
+                if (val != -1) {
+                    return val;
+                } else {
+                    return suffix.equals("low") ?
+                            PortConfig.getLower() : PortConfig.getUpper();
+                }
             }
         });
     }
@@ -1333,7 +1338,9 @@ final class SocketPermissionCollection extends PermissionCollection<SocketPermis
 
         // Add permission to map if it is absent, or replace with new
         // permission if applicable.
-        perms.merge(sp.getName(), sp, (existingVal, newVal) -> {
+        perms.merge(sp.getName(), sp, new BiFunction<SocketPermission, SocketPermission, SocketPermission>() {
+            @Override
+            public SocketPermission apply(SocketPermission existingVal, SocketPermission newVal) {
                 int oldMask = existingVal.getMask();
                 int newMask = newVal.getMask();
                 if (oldMask != newMask) {
@@ -1347,7 +1354,7 @@ final class SocketPermissionCollection extends PermissionCollection<SocketPermis
                 }
                 return existingVal;
             }
-        );
+        });
     }
 
     /**
