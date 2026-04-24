@@ -250,7 +250,7 @@ The three-layer defense model assumes binary loader trust (a loader is either tr
 - **Parent-delegation bypass** — a custom `ClassLoader` that overrides `loadClass(String)` and refuses parent delegation can introduce class name collisions (shadow classes). `RuntimePermission("extendClassLoader")` partially mitigates this by requiring explicit policy authorization to subclass `ClassLoader`. However, the exemption list (see above) means several built-in loader types can still exhibit delegation variation without triggering the extension check.
 - **Resource lookup** — `ClassLoader.findResource()` and `getResource()` are not subject to `LoadClassPermission`. A hostile loader that passes the `extendClassLoader` gate can intercept and redirect resource lookups (property files, service descriptors, configuration files) without triggering any DirtyChai permission check.
 - **Partial trust** — code that holds both `createClassLoader` and `LoadClassPermission` with selective delegation is not modeled by the three-layer architecture. The current design does not define the security properties of partially-trusted loaders that legitimately create ClassLoader instances but apply non-standard delegation policies.
-- **Dynamic class definition via `MethodHandles.Lookup.defineClass()`** — **GATED (commit 0f90b38, see §12):** `DefineClassPermission` now enforces a SecurityManager check in the private inner `ClassDefiner.defineClass(boolean, Object)` method in `MethodHandles.java`, before any class-definition work begins. Untrusted code can no longer bypass `LoadClassPermission` by defining classes dynamically through this path. See §12 for the complete documentation of the `DefineClassPermission` enforcement point and the updated layered defense model.
+- **Dynamic class definition via `MethodHandles.Lookup.defineClass()`** — **GATED (commit 0f90b38, see §12):** `DefineClassPermission` now enforces a SecurityManager check at the package-private `Lookup.defineClass(boolean, Object)` method in `MethodHandles.java`, before any class-definition work begins. Untrusted code can no longer bypass `LoadClassPermission` by defining classes dynamically through this path. See §12 for the complete documentation of the `DefineClassPermission` enforcement point and the updated layered defense model.
 
 #### Module System and LoadClassPermission Interaction
 
@@ -610,11 +610,10 @@ DirtyChai gates dynamic class definition via `MethodHandles.Lookup.defineClass()
 the dedicated `DefineClassPermission` guard (commit 0f90b38, 2026-04-24).
 
 - **Permission name:** `au.zeus.jdk.authorization.guards.DefineClassPermission`
-- **Enforcement point:** `ClassDefiner.defineClass(boolean, Object)` — a private inner
-  class method in `MethodHandles.java` that all public `defineClass()` entry points route
-  through.  The check fires before any class-definition work begins (fail-secure placement).
-  Note: non-full-privilege callers also encounter a prior `RuntimePermission("defineClass")`
-  check via `Lookup.ensureDefineClassPermission()` before reaching this point.
+- **Enforcement point:** `MethodHandles.Lookup.defineClass(boolean, Object)` — a
+  package-private method in the `Lookup` inner class of `MethodHandles.java` that all public
+  `defineClass()` entry points route through.  The check fires before any class-definition
+  work begins (fail-secure placement).
 - **Security effect:** Untrusted code can no longer bypass `LoadClassPermission` by
   defining classes dynamically through a sufficiently privileged `Lookup` object.  Prior to
   this gate, a caller holding a `Lookup` with `PACKAGE` or `MODULE` lookup mode could inject
@@ -1020,7 +1019,7 @@ The main remaining risks are **operational** (policy configuration and whitelist
 - `java.lang.instrument.Instrumentation` — agent attachment threat surface; `getAllLoadedClasses()` / `redefineClasses()` only reachable with an active `-javaagent`, but see N-11 for the runtime-attach path
 - `com.sun.tools.attach.VirtualMachine`, `com.sun.tools.attach.AttachPermission`, `com.sun.tools.attach.spi.AttachProvider`, `sun.tools.attach.HotSpotAttachProvider` — runtime attach path and enforced permission gates (`attachVirtualMachine`, `createAttachProvider`) discussed in N-11
 - `javax.security.auth.Subject.getPrincipals()` — principal mutation boundary; live mutable set; cross-realm collision and injection risks documented in §E and N-12
-- `src/java.base/share/classes/java/lang/invoke/MethodHandles.java` — `DefineClassPermission` enforcement in `ClassDefiner.defineClass(boolean, Object)` (a private inner class method, commit 0f90b38); all public `defineClass()` entry points route through this method, ensuring complete coverage of the dynamic class-definition path; see §12
+- `src/java.base/share/classes/java/lang/invoke/MethodHandles.java` — `DefineClassPermission` enforcement in `Lookup.defineClass(boolean, Object)` (a package-private method in the `Lookup` inner class, commit 0f90b38); all public `defineClass()` entry points route through this method, ensuring complete coverage of the dynamic class-definition path; see §12
 - `java.lang.invoke.MethodHandles.Lookup.defineClass()` — dynamic class definition gate; previously bypassed `LoadClassPermission`; now gated by `DefineClassPermission` (commit 0f90b38); residual fully resolved; see §12 and updated N-15 in Residual Risks table
 - `java.net.DatagramSocket` / `java.net.MulticastSocket` — network isolation surface; unconnected discovery and topology-disclosure risks documented in §9 and N-14
 - `java.lang.Module.addOpens()` / `java.lang.Module.addExports()` — runtime module mutation APIs; `RuntimePermission("mutateModuleTopology")` gate and interaction with `LoadClassPermission` documented in §7, §10, and N-15
