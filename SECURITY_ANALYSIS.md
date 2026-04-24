@@ -250,7 +250,7 @@ The three-layer defense model assumes binary loader trust (a loader is either tr
 - **Parent-delegation bypass** — a custom `ClassLoader` that overrides `loadClass(String)` and refuses parent delegation can introduce class name collisions (shadow classes). `RuntimePermission("extendClassLoader")` partially mitigates this by requiring explicit policy authorization to subclass `ClassLoader`. However, the exemption list (see above) means several built-in loader types can still exhibit delegation variation without triggering the extension check.
 - **Resource lookup** — `ClassLoader.findResource()` and `getResource()` are not subject to `LoadClassPermission`. A hostile loader that passes the `extendClassLoader` gate can intercept and redirect resource lookups (property files, service descriptors, configuration files) without triggering any DirtyChai permission check.
 - **Partial trust** — code that holds both `createClassLoader` and `LoadClassPermission` with selective delegation is not modeled by the three-layer architecture. The current design does not define the security properties of partially-trusted loaders that legitimately create ClassLoader instances but apply non-standard delegation policies.
-- **Dynamic class definition via `MethodHandles.Lookup.defineClass()`** — classes defined through `MethodHandles.Lookup.defineClass()` bypass the `ClassLoader.loadClass()` path entirely and therefore bypass the `LoadClassPermission` gate. DirtyChai does not currently document whether a separate permission check guards `Lookup.defineClass()`. If unguarded, untrusted code with access to a sufficiently privileged `Lookup` object can inject new classes into an existing module without `LoadClassPermission`. See residual N-15 for the broader module interaction and the medium-priority recommendation below.
+- ~~**Dynamic class definition via `MethodHandles.Lookup.defineClass()`**~~ — **GATED (commit 0f90b38):** `DefineClassPermission` now enforces a SecurityManager check at the private inner method entry point of `Lookup.defineClass(boolean, Object)` in `MethodHandles.java`, before any class-definition work begins. Untrusted code can no longer bypass `LoadClassPermission` by defining classes dynamically through this path. See §12 for the complete documentation of the `DefineClassPermission` enforcement point and the updated layered defense model.
 
 #### Module System and LoadClassPermission Interaction
 
@@ -592,6 +592,54 @@ gate that controls runtime mutation of the topology that the read APIs expose.
 
 ---
 
+### 12) Dynamic Class Definition Permission
+
+DirtyChai gates dynamic class definition via `MethodHandles.Lookup.defineClass()` with
+the dedicated `DefineClassPermission` guard (commit 0f90b38, 2026-04-24).
+
+- **Permission name:** `au.zeus.jdk.authorization.guards.DefineClassPermission`
+- **Enforcement point:** `MethodHandles.Lookup.defineClass(boolean, Object)` — the private
+  inner method in `MethodHandles.java` that all public `defineClass()` entry points route
+  through.  The check fires before any class-definition work begins (fail-secure placement).
+- **Security effect:** Untrusted code can no longer bypass `LoadClassPermission` by
+  defining classes dynamically through a sufficiently privileged `Lookup` object.  Prior to
+  this gate, a caller holding a `Lookup` with `PACKAGE` or `MODULE` lookup mode could inject
+  new classes into an existing module without triggering any `LoadClassPermission` check,
+  because `Lookup.defineClass()` routes through the JVM's `jvm_lookup_define_class` path
+  rather than `ClassLoader.loadClass()`.
+- **Permission semantics:** No-target binary permission — code either holds `defineClass`
+  authority or it does not.  The `DefineClassPermission` constructor uses the fixed target
+  string `"ALLOW"` (inherited from `BasicPermission`) and carries no action field.  This
+  reflects the uniform nature of the gate: the check applies to every dynamic class
+  definition attempt regardless of the class being defined.
+- **Integration with layered defense:**
+
+  | Layer | Control | Enforcement |
+  |-------|---------|-------------|
+  | Layer 1 (Creation/Extension) | `RuntimePermission("createClassLoader")` / `RuntimePermission("extendClassLoader")` | ClassLoader instantiation / subclassing |
+  | Layer 2 (Loading Control) | `LoadClassPermission` | Class loading via `ClassLoader.loadClass()` |
+  | Layer 3 (Dynamic Definition) | `DefineClassPermission` ✅ **NOW GATED** | Class definition via `Lookup.defineClass()` (commit 0f90b38) |
+  | Layer 4 (Policy) | Admin-controlled policy file | Governs permission grants for all three layers |
+
+- **Policy guidance:** Grant `DefineClassPermission` only to fully trusted code that
+  legitimately needs to generate or define classes at runtime (e.g., bytecode-generation
+  frameworks, compiler back-ends, instrumentation agents operating under a known
+  trust boundary).  Do not grant to untrusted or sandboxed code.  A policy fragment
+  template:
+
+  ```
+  grant codeBase "file:/path/to/trusted/bytecode-generator/-" {
+      permission au.zeus.jdk.authorization.guards.DefineClassPermission;
+  };
+  ```
+
+- **Residual N-15 resolution:** This implementation closes the previously documented
+  dynamic-class-definition bypass sub-item of residual N-15.  The remaining N-15 items
+  (module-system startup flags) are documented separately in the updated residual risks
+  table below.
+
+---
+
 ## Threat Review (Current)
 
 ### Blocked or strongly mitigated
@@ -627,9 +675,10 @@ gate that controls runtime mutation of the topology that the read APIs expose.
 | 8 | Runtime attach still policy/OS dependent (N-11) | Attach is permission-gated, but over-grants, inactive SM, or OS compromise remain | Keep attach grants narrow; use `-XX:+DisableAttachMechanism` where feasible |
 | 9 | Principal scope ambiguity (N-12) | Class+name grants can collide across realms; trusted-service mutation can abuse shared `Subject` | Use realm-qualified canonical principal identity; consider gating principal-set mutation |
 | 10 | Coarse network permission granularity (N-14) | `SocketPermission` lacks granular distinction across network operation types and scope boundaries | Avoid wildcard network grants; publish hardened grant templates |
-| 11 | Module/dynamic-define residuals (N-15) | Runtime topology mutation is gated (`mutateModuleTopology`) and inspection is gated (`readModuleTopology`), but startup flags, `Lookup.defineClass()`, and export cycles can still expose access paths | Treat startup flags as trust-boundary controls; tightly review module exports and dynamic class-definition exposure |
-| 12 | FFM allocation surfaces (N-16) — arena creation now gated | `Arena.ofConfined()`, `Arena.ofShared()`, and `Arena.ofAuto()` now each require `NativeMemoryPermission` (commit b62577c, 2026-04-24); `Linker.nativeLinker()` now requires `NativeInvocationPermission("native-linker")` (same commit); `MemorySegment.ofAddress()` has no SM check; address-round-trip still an ungated path | Arena-creation DoS and linker-factory risks are now mitigated by policy gate; `MemorySegment.ofAddress()` gap documented in §8.2 remains; do not open `jdk.internal.foreign` to user code |
-| 13 | FFM capability delegation risks (N-17) | Downcall `MethodHandle`, upcall stub `MemorySegment`, arena objects, and native segments are authority-carrying objects; once delegated to less-trusted code, no SM check fires at use time | Treat FFM capability objects as ambient authority; trusted code must not delegate them to untrusted code; document delegation policy constraints for administrators; see §8.4 and §8.8 Step 5 |
+| 11 | Module system residuals (N-15) | Runtime topology mutation is gated (`mutateModuleTopology`) and inspection is gated (`readModuleTopology`), but startup flags `--add-opens`, `--add-exports`, `--add-modules` bypass module checks at JVM startup | Treat startup flags as explicit trust-boundary decisions; no runtime revocation possible |
+| 12 | Dynamic class definition (RESOLVED — N-15 sub-item) | `Lookup.defineClass()` now gated by `DefineClassPermission` (commit 0f90b38, 2026-04-24); untrusted dynamic class definition is no longer an ungated bypass of `LoadClassPermission` | Verify policy grants are appropriately restricted to trusted code that legitimately needs dynamic class generation; see §12 |
+| 13 | FFM allocation surfaces (N-16) — arena creation now gated | `Arena.ofConfined()`, `Arena.ofShared()`, and `Arena.ofAuto()` now each require `NativeMemoryPermission` (commit b62577c, 2026-04-24); `Linker.nativeLinker()` now requires `NativeInvocationPermission("native-linker")` (same commit); `MemorySegment.ofAddress()` has no SM check; address-round-trip still an ungated path | Arena-creation DoS and linker-factory risks are now mitigated by policy gate; `MemorySegment.ofAddress()` gap documented in §8.2 remains; do not open `jdk.internal.foreign` to user code |
+| 14 | FFM capability delegation risks (N-17) | Downcall `MethodHandle`, upcall stub `MemorySegment`, arena objects, and native segments are authority-carrying objects; once delegated to less-trusted code, no SM check fires at use time | Treat FFM capability objects as ambient authority; trusted code must not delegate them to untrusted code; document delegation policy constraints for administrators; see §8.4 and §8.8 Step 5 |
 
 ## Analysis: N-13 TLS Subject Authentication Context Propagation (COMPLETED)
 
@@ -898,7 +947,7 @@ Residual risk is identical: a bootstrap method that uses unrestricted
 5. **Consider making stack scan depth configurable (safe defaults retained)** — allow hardened deployments to raise depth while preserving compatibility defaults.
 6. **Add optional security telemetry for denied installation attempts** — emit deny-event telemetry to improve attack detection and policy tuning.
 7. ~~**Gate FFM arena allocation surfaces and evaluate linker guard (§8, N-16, N-17)**~~ — **Completed (commit b62577c, 2026-04-24):** Steps 1–4 from §8.8 have been implemented: `NativeMemoryPermission` checks are now enforced at `Arena.ofShared()` (`"shared-arena"`), `Arena.ofConfined()` (`"confined-arena"`), and `Arena.ofAuto()` (`"auto-arena"`); `Linker.nativeLinker()` is now gated by `NativeInvocationPermission("native-linker")`. **Continue monitoring FFM delegation risks (N-17, §8.4, §8.8 Step 5):** the front-door capability-delegation model means that downcall handles, upcall stubs, arenas, and native segments remain authority-carrying objects once created; trusted code must not delegate them to untrusted code; `MemorySegment.reinterpret()` and `Arena.global()` remain gated; do not open `jdk.internal.foreign` to user code under any circumstance (§8.5).
-8. **Evaluate `MethodHandles.Lookup.defineClass()` permission gate (N-15 / §7)** — because `Lookup.defineClass()` bypasses `LoadClassPermission`, evaluate extending it or adding `DefineClassPermission`; until then, treat privileged `Lookup` access as equivalent to load-class privilege for the target module.
+8. ~~**Evaluate `MethodHandles.Lookup.defineClass()` permission gate (N-15 / §7)**~~ — **Completed (commit 0f90b38, 2026-04-24):** `DefineClassPermission` now gates `Lookup.defineClass()` calls at the private inner method level in `MethodHandles.java`, preventing untrusted dynamic class definition. See §12 for the full security documentation.
 9. **Document recommended `SocketPermission` policy structure for hardened deployments (N-14 / §9)** — provide a hardened template separating loopback/LAN/multicast/external grants, avoiding wildcard `connect`, and constraining `DatagramSocket` discovery plus multicast/unicast scope.
 10. ~~**Evaluate `LoadModulePermission` gate for runtime module mutation (N-15 / §7)**~~ — Resolved: runtime `Module.addExports()`/`Module.addOpens()` are policy-gated by `RuntimePermission("mutateModuleTopology")` (§10) and runtime topology inspection is policy-gated by `RuntimePermission("readModuleTopology")` (§11); startup `--add-opens`/`--add-exports`/`--add-modules` remains a trusted-perimeter decision.
 
@@ -906,7 +955,7 @@ Residual risk is identical: a bootstrap method that uses unrestricted
 
 ## Final Assessment
 
-Dirty Chai’s current implementation demonstrates robust defense-in-depth for SecurityManager installation and policy enforcement paths, with clear fail-secure tendencies and improved handling from the Issue #85 cycle.
+Dirty Chai’s current implementation demonstrates robust defense-in-depth for SecurityManager installation and policy enforcement paths, with clear fail-secure tendencies and improved handling from the Issue #85 cycle, and with the completion of the dynamic-class-definition gate (`DefineClassPermission`, commit 0f90b38, 2026-04-24).
 
 The main remaining risks are **operational** (policy configuration and whitelist governance) rather than obvious structural bypasses in the reviewed core logic.
 
@@ -944,6 +993,7 @@ The main remaining risks are **operational** (policy configuration and whitelist
 - `src/java.base/share/classes/jdk/internal/foreign/abi/AbstractLinker.java` — linker implementation; `DOWNCALL_CACHE` / `UPCALL_CACHE` at lines 88–89; `downcallHandle()` at lines 93–104; `upcallStub()` at lines 128–147; all gate via `ensureNativeAccess` only
 - `src/java.base/share/classes/jdk/internal/foreign/SegmentFactories.java` — `makeNativeSegmentUnchecked()` (line 81) constructs native segments from raw addresses with no SecurityManager check; protected only by `jdk.internal.foreign` package encapsulation; module-open bypass risk documented in §8.5
 - `src/java.base/share/classes/au/zeus/jdk/authorization/guards/LoadClassPermission.java` — guard definition
+- `src/java.base/share/classes/au/zeus/jdk/authorization/guards/DefineClassPermission.java` — guard definition; binary permission gating dynamic class definition via `Lookup.defineClass()`; see §12
 - `src/java.base/share/classes/au/zeus/jdk/authorization/guards/NativeInvocationPermission.java` — guard definition
 - `src/java.base/share/classes/au/zeus/jdk/authorization/guards/NativeMemoryPermission.java` — guard definition
 - `src/java.base/share/classes/au/zeus/jdk/authorization/guards/SerialObjectPermission.java` — guard definition
@@ -956,7 +1006,8 @@ The main remaining risks are **operational** (policy configuration and whitelist
 - `java.lang.instrument.Instrumentation` — agent attachment threat surface; `getAllLoadedClasses()` / `redefineClasses()` only reachable with an active `-javaagent`, but see N-11 for the runtime-attach path
 - `com.sun.tools.attach.VirtualMachine`, `com.sun.tools.attach.AttachPermission`, `com.sun.tools.attach.spi.AttachProvider`, `sun.tools.attach.HotSpotAttachProvider` — runtime attach path and enforced permission gates (`attachVirtualMachine`, `createAttachProvider`) discussed in N-11
 - `javax.security.auth.Subject.getPrincipals()` — principal mutation boundary; live mutable set; cross-realm collision and injection risks documented in §E and N-12
-- `java.lang.invoke.MethodHandles.Lookup.defineClass()` — dynamic class definition gate; bypasses `LoadClassPermission`; residual documented in §7 (Delegation Attack Residuals) and N-15
+- `src/java.base/share/classes/java/lang/invoke/MethodHandles.java` — `DefineClassPermission` enforcement in `Lookup.defineClass(boolean, Object)` at the private inner method level (commit 0f90b38); all public `defineClass()` entry points route through this method, ensuring complete coverage of the dynamic class-definition path; see §12
+- `java.lang.invoke.MethodHandles.Lookup.defineClass()` — dynamic class definition gate; previously bypassed `LoadClassPermission`; now gated by `DefineClassPermission` (commit 0f90b38); residual fully resolved; see §12 and updated N-15 in Residual Risks table
 - `java.net.DatagramSocket` / `java.net.MulticastSocket` — network isolation surface; unconnected discovery and topology-disclosure risks documented in §9 and N-14
 - `java.lang.Module.addOpens()` / `java.lang.Module.addExports()` — runtime module mutation APIs; `RuntimePermission("mutateModuleTopology")` gate and interaction with `LoadClassPermission` documented in §7, §10, and N-15
 - `java.lang.Module.getDescriptor()` / `java.lang.Module.getLayer()` — runtime module inspection APIs; `RuntimePermission("readModuleTopology")` gate documented in §11
