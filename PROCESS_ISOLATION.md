@@ -783,6 +783,107 @@ untrusted remote input is:
 
 ---
 
+## Bytecode Analysis as Pre-Deployment Gating for JVM Isolation Strategy
+
+### Overview
+
+Before untrusted code is admitted to any deployment environment, a bytecode
+analyser can scan the artifact for high-risk patterns and use those results to
+automatically choose the correct deployment tier.  This makes the isolation
+decision **automated and auditable** rather than relying on manual review.
+
+Bytecode analysis operates *upstream* of the in-process controls described in
+this document.  It answers the question: "Does this artifact require a separate
+OS process, or is same-JVM deployment safe with appropriate policy?"
+
+### Risk-Stratified Pattern Table
+
+| Detected Pattern | Risk Level | Deployment Decision |
+|------------------|-----------|---------------------|
+| `System.loadLibrary()` / `Runtime.load()` invocations | CRITICAL | Process isolation required |
+| FFM `SymbolLookup.libraryLookup()` / `loaderLookup()` invocations | CRITICAL | Process isolation required |
+| `sun.misc.Unsafe` / `jdk.internal.misc.Unsafe` field or method access | CRITICAL | Process isolation required |
+| Declared `native` methods (JNI bindings) | CRITICAL | Process isolation required |
+| Reflection on `SecurityManager` or `AccessController` internals | CRITICAL | Process isolation required |
+| FFM `Linker.downcallHandle()` or `MemorySegment.reinterpret()` invocations | CRITICAL | Process isolation required |
+| Unrestricted `AccessController.doPrivileged()` (no context argument) | HIGH | Process isolation required |
+| Standard `ObjectInputStream` usage outside JGDMS | MEDIUM | Same JVM — restricted policy + `SerialObjectPermission` whitelist |
+| Unbounded thread-creation loops (platform or virtual) | MEDIUM | Same JVM — restricted policy + `createVirtualThread` / `createPlatformThread` gate |
+| Reflection on non-security application classes | MEDIUM | Same JVM — restricted policy; operator attestation required |
+| Clean bytecode — none of the above patterns detected | LOW | Same JVM — standard least-privilege DirtyChai deployment |
+
+### Decision-Flow Diagram
+
+```
+┌─ Untrusted artifact (jar / module)
+│
+├─ Bytecode analysis scan
+│   └─ Enumerate API invocations, field accesses, native declarations
+│
+├─ Any HIGH or CRITICAL patterns?
+│   ├─ YES → Assign to JGDMS activation group (separate OS process)
+│   │         • Dedicated activation group with group-scoped policy file
+│   │         • Caller-side deadline on every proxy invocation
+│   │         • OS process boundary provides final containment
+│   │         • Native and Unsafe access still guarded by NativeInvocationPermission
+│   │           within that process for defence-in-depth
+│   │
+│   └─ NO → Any MEDIUM patterns?
+│             ├─ YES → Same JVM with restricted policy
+│             │         • SerialObjectPermission whitelist for ObjectInputStream use
+│             │         • createVirtualThread / createPlatformThread permission gate
+│             │         • NativeInvocationPermission deny-all (no native code present)
+│             │         • Operator attestation recorded in audit trail
+│             │
+│             └─ NO → Same JVM with least-privilege policy
+│                       (standard DirtyChai deployment — no additional restrictions)
+```
+
+### Implementation Considerations
+
+1. **Analysis tool placement** — Run the analyser at *artifact ingest time*, before
+   the jar is added to any service classpath.  Reject or quarantine artifacts that
+   cannot be analysed (e.g., encrypted jars, non-standard class file formats).
+
+2. **Pattern library** — Maintain a curated list of dangerous method descriptors,
+   field signatures, and class names known to enable sandbox escape.  The list
+   should be versioned alongside the deployment toolchain and reviewed when new
+   JDK versions introduce additional low-level APIs (e.g., new FFM entry points).
+
+3. **False-positive handling** — Scan for *invocations* and *field accesses*, not
+   merely *class references*.  A dependency that defines `System.loadLibrary()` in
+   dead code but never invokes it should not trigger process isolation.  Use
+   call-graph reachability where available; fall back to conservative instruction
+   scanning when a full call graph cannot be constructed.
+
+4. **Policy attestation for MEDIUM-risk code** — Code that contains MEDIUM-risk
+   patterns but is approved for same-JVM deployment requires explicit operator
+   sign-off with an audit record (artifact hash, approver identity, date, and
+   rationale).  The approval is bound to a specific version; a new version of the
+   artifact requires re-approval.
+
+5. **Re-analysis on updates** — Bytecode analysis results are invalidated whenever
+   the artifact (or any of its packaged dependencies) is updated.  The deployment
+   pipeline must re-run the analyser and re-evaluate the isolation decision before
+   the updated artifact is admitted to production.
+
+### Integration with Existing Defence Layers
+
+Bytecode analysis does not replace the in-process controls described in this
+document.  It is an additional, upstream layer in the overall defence-in-depth
+posture:
+
+| Layer | Mechanism | Role |
+|-------|-----------|------|
+| Bytecode analysis | Static pattern scan at ingest time | Upstream policy gating — automates the isolation decision |
+| DirtyChai in-process controls | `SecurityManager`, `ConcurrentPolicyFile`, `NativeInvocationPermission`, `SerialObjectPermission`, thread-creation gates | Enforcement layer for code admitted to the same JVM |
+| JGDMS activation + process isolation | Activation groups, OS process boundaries, group-scoped policy files | Fallback and containment layer for HIGH/CRITICAL-risk artifacts |
+
+All three layers remain required.  Bytecode analysis makes the choice between the
+second and third layers automated and auditable; it does not weaken either.
+
+---
+
 ## Analysis: Reflection and MethodHandle Invocation in the Permission-Check Path (N-8)
 
 This security-model analysis has moved to `SECURITY_ANALYSIS.md`:
