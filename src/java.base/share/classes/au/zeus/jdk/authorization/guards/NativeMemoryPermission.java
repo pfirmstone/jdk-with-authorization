@@ -52,16 +52,6 @@ import java.security.BasicPermission;
  * </td>
  * 
  * <tr>
- *   <th scope="row">reinterpret-memory-segment</th>
- *   <td>Native memory segments can be reinterpreted and resized.</td>
- *   <td>This is dangerous permission to grant, an attacker could perform a 
- * denial of service by consuming excessive memory.
- * Off heap memory is not bounded by the JVM heap limit -Xmx
- * Exhausting native memory causes OutOfMemoryError, JVM process termination, 
- * or OS-level failure — all denial-of-service outcomes.
- * </td>
- * 
- * <tr>
  *   <th scope="row">shared-arena</th>
  *   <td>Allows allocation of cross-thread-accessible off heap native memory.</td>
  *   <td>This is dangerous permission to grant, an attacker could perform a 
@@ -97,6 +87,28 @@ import java.security.BasicPermission;
  *   <td>This is dangerous permission to grant, obtaining the native linker is 
  * the first step toward creating downcall and upcall handles.
  * </td>
+ * 
+ * <tr>
+ *   <th scope="row">reinterpret-memory-segment</th>
+ *   <td>Native memory segments can be reinterpreted and resized.</td>
+ *   <td>This is dangerous permission to grant, an attacker could perform a 
+ * denial of service by consuming excessive memory.
+ * Off heap memory is not bounded by the JVM heap limit -Xmx
+ * Exhausting native memory causes OutOfMemoryError, JVM process termination, 
+ * or OS-level failure — all denial-of-service outcomes.
+ * </td>
+ * 
+ * <tr>
+ *   <th scope="row">address-memory-segment</th>
+ *   <td>Creates a native segment with the global scope from a raw long address value.</td>
+ *   <td>This is dangerous permission to grant, an attacker could perform a 
+ * denial of service by preventing the release and collection of off heap global memory.
+ * Off heap memory is not bounded by the JVM heap limit -Xmx
+ * Exhausting native memory causes OutOfMemoryError, JVM process termination, 
+ * or OS-level failure — all denial-of-service outcomes.
+ * </td>
+ * 
+ * 
  * 
  * </tbody>
  * </table>

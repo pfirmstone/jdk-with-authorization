@@ -25,6 +25,7 @@
 
 package java.lang.foreign;
 
+import au.zeus.jdk.authorization.guards.NativeMemoryPermission;
 import jdk.internal.foreign.AbstractMemorySegmentImpl;
 import jdk.internal.foreign.MemorySessionImpl;
 import jdk.internal.foreign.SegmentBulkOperations;
@@ -1570,6 +1571,10 @@ public sealed interface MemorySegment permits AbstractMemorySegmentImpl {
      * @return a zero-length native segment with the given address
      */
     static MemorySegment ofAddress(long address) {
+        SecurityManager sm = System.getSecurityManager();
+        if (sm != null){
+            sm.checkPermission(new NativeMemoryPermission("address-memory-segment"));
+        }
         return SegmentFactories.makeNativeSegmentUnchecked(address, 0);
     }
 
