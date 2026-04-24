@@ -901,12 +901,20 @@ See that section for full details.
 Key clarification for current DirtyChai behavior:
 - Finalizer threads are created with
   `AccessControlContext.neverPrivileged()` (`Finalizer.java`, line 191), so they
-  run with zero permissions.
-- Cleaner daemon threads run on `InnocuousThread` (`CleanerImpl.java`) and are
-  likewise unprivileged.
+  run under `neverPrivileged` — **more restrictive than ordinary unprivileged
+  code**. `neverPrivileged` cannot be escalated via `Subject.doAsPrivileged()`
+  or `AccessController.doPrivileged()`; the finalizer thread is permanently
+  locked at minimum privilege regardless of Subject principals.
+- Cleaner daemon threads run on `InnocuousThread` (`CleanerImpl.java`) at
+  baseline unprivileged. Unlike finalizer threads, `InnocuousThread` callbacks
+  could theoretically call `Subject.doAsPrivileged()` to gain permissions from
+  authenticated principals. Under PoLP policy generation this theoretical path
+  is bounded: if the callback never calls `Subject.doAsPrivileged()` during the
+  observation window, the policy grants no Subject authority and any such
+  escalation attempt at runtime is denied.
 - `AccessController.doPrivileged(...)` should be avoided in both `finalize()`
   and `Cleaner` callbacks: using it in either callback attempts to escalate from
-  an intentionally zero-permission cleanup context.
+  an intentionally restricted cleanup context.
 - If sensitive cleanup is required, authorization must be established at object
   creation time (or explicit close/release time), not during finalizer/Cleaner
   execution.

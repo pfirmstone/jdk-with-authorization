@@ -684,7 +684,8 @@ the dedicated `DefineClassPermission` guard (commit 0f90b38, 2026-04-24).
 | 4 | Policy quality remains critical | Over-broad grants negate hardening | Enforce least privilege with audited policy generation/review |
 | 5 | Documentation drift — **RESOLVED** | Prior wording drifted from implementation | Keep docs/Javadoc synced with `limit(50)`; no open drift known |
 | 6 | Confused-deputy in trusted paths (N-8, N-10; consolidated) | Reflection/MethodHandle and `<clinit>`/bootstrap can reach trusted code that uses unrestricted `doPrivileged` | Disallow unrestricted `doPrivileged` on security-sensitive trusted paths; keep stack-intersection guard |
-| 7 | Finalizer/Cleaner context escape (N-9) | Finalizer/Cleaner threads run `neverPrivileged`/innocuous by default, but creator-thread limited `AccessControlContext` is not propagated to callbacks | Avoid sensitive finalizer/cleaner work; prefer explicit `close()` and process isolation |
+| 7a | Finalizer context escape (N-9) | Finalizer threads run under `neverPrivileged`; creator-thread limited `AccessControlContext` is not propagated | No escalation possible — `neverPrivileged` is permanently locked; no action needed beyond avoiding sensitive work in finalizers |
+| 7b | Cleaner context escape (N-9) | Cleaner `InnocuousThread` is baseline unprivileged; could theoretically escalate via `Subject.doAsPrivileged()`; creator-thread limited `AccessControlContext` is not propagated | PoLP bounds callback authority to observed usage (unobserved Subject escalations denied); prefer explicit `close()` and process isolation for residual risk |
 | 8 | Runtime attach still policy/OS dependent (N-11) | Attach is permission-gated, but over-grants, inactive SM, or OS compromise remain | Keep attach grants narrow; use `-XX:+DisableAttachMechanism` where feasible |
 | 9 | Principal scope ambiguity (N-12) | Class+name grants can collide across realms; trusted-service mutation can abuse shared `Subject` | Use realm-qualified canonical principal identity; consider gating principal-set mutation |
 | 10 | Coarse network permission granularity (N-14) | `SocketPermission` lacks granular distinction across network operation types and scope boundaries | Avoid wildcard network grants; publish hardened grant templates |
@@ -818,11 +819,48 @@ this loss be exploited to run sensitive operations with escalated permissions?
   by the JVM `Finalizer` daemon thread.
 - **Finalizer thread context:** Created at boot via
   `AccessController.doPrivileged(..., AccessControlContext.neverPrivileged())`,
-  so callback execution is never-privileged.
+  so callback execution runs under `neverPrivileged` — **more restrictive than
+  ordinary unprivileged code** (see "Privilege Level Distinction" below).
 - **Cleaner:** `java.lang.ref.Cleaner` uses an `InnocuousThread` daemon
-  (unprivileged) to run registered `Runnable` cleanup callbacks.
+  (baseline unprivileged) to run registered `Runnable` cleanup callbacks.
 - In both models, the creator thread's `AccessControlContext` is **not**
   propagated to the callback thread.
+
+### Privilege Level Distinction: `neverPrivileged` vs. Unprivileged
+
+`neverPrivileged` and ordinary unprivileged are **not equivalent**; they sit at
+different positions in the privilege hierarchy:
+
+```
+neverPrivileged  ← MOST RESTRICTIVE (finalizer threads)
+    │
+    │  Cannot escalate via Subject.doAsPrivileged()
+    │  Cannot escalate via AccessController.doPrivileged()
+    │  Permanently locked — no privilege-elevation mechanism works
+    │
+unprivileged     ← BASELINE (cleaner InnocuousThread)
+    │
+    │  CAN call Subject.doAsPrivileged(subject, action, null)
+    │    → gains permissions derived from authenticated principals
+    │  CAN call AccessController.doPrivileged(action, limitedContext)
+    │    → if calling code holds the authority
+    │
+privileged
+```
+
+**Key distinction:** Ordinary unprivileged code can gain authority through
+`Subject.doAsPrivileged()` when authenticated principals are present. Code
+running under `neverPrivileged` cannot — it remains permanently locked at
+minimum privilege regardless of Subject principals.
+
+| Thread type | Base context | `Subject.doAsPrivileged()` effective? | `doPrivileged()` effective? |
+|---|---|---|---|
+| Finalizer daemon | `neverPrivileged` | **No** — permanently locked | **No** — permanently locked |
+| Cleaner `InnocuousThread` | Unprivileged (baseline) | **Yes**, if authenticated principals present | **Yes**, if calling code holds the authority |
+
+**Implication for N-9:** Finalizer callbacks are more locked down than the
+current documentation implied. Subject-based privilege escalation is a
+**cleaner-specific theoretical risk**, not a finalizer risk.
 
 ### Stack Intersection & Permission Enforcement
 
@@ -868,6 +906,65 @@ operations (native, file, network):
    (narrow `doPrivileged` scope, documented justification).
 4. **Treat process isolation as the primary containment backstop** for context
    escape scenarios.
+
+### N-9 Residual Risk Mitigation via Principle of Least Privilege (PoLP) Policy Generation
+
+Even when callback code uses `doPrivileged`, or when cleaner callbacks
+theoretically invoke `Subject.doAsPrivileged()`, PoLP-generated policy provides
+an effective ceiling on what those callbacks can actually do.
+
+#### How PoLP Bounds Callback Authority
+
+PoLP policy generation works by **observing normal application behavior** and
+issuing the minimum set of grants that cover observed usage. Because cleanup
+callbacks execute during normal operation (objects are cleaned up during regular
+GC cycles), their actual permission requirements are captured by observation:
+
+```
+Observation phase:
+  Finalizer cleans resource → reads "temp/cleanup.tmp"
+  Policy grant generated: FilePermission("temp/cleanup.tmp", "read")
+
+Runtime attack attempt:
+  Finalizer uses doPrivileged(() -> read("/etc/passwd"))
+  Stack intersection: PoLP grant (limited) ∩ callback class domain
+  Result: DENIED — /etc/passwd was never observed → never granted
+```
+
+#### Why This Works for Both Finalizers and Cleaners
+
+| Context | Base Privilege | Escalation Path | PoLP Mitigation |
+|---|---|---|---|
+| Finalizer (`neverPrivileged`) | Never-privileged (minimum) | **None** — permanently locked | N/A — already maximally restricted |
+| Cleaner (`unprivileged`) | Baseline unprivileged | `Subject.doAsPrivileged()` (requires principals) | Bounds to observed usage; see "Subject-Based Escalation" below |
+
+#### Subject-Based Escalation (Cleaner-Specific Risk)
+
+Cleaner `InnocuousThread` callbacks run at baseline unprivileged and can
+theoretically call `Subject.doAsPrivileged(subject, action, null)` to gain
+permissions from authenticated principals. PoLP prevents this from being
+exploitable:
+
+- If callback code **never** calls `Subject.doAsPrivileged()` during the
+  observation window → the generated policy does not grant the permissions that
+  such a call would require
+- If callback code **does** call `Subject.doAsPrivileged()` during observation
+  → only the actually-needed permissions are granted (bounded to observed usage)
+- **Result:** Unobserved Subject-based escalations are denied by the policy
+
+#### Summary: N-9 Risk Under PoLP
+
+| Deployment model | N-9 risk level | Rationale |
+|---|---|---|
+| Traditional (no PoLP, broad grants) | **High** | Over-broad class-level grants + `doPrivileged` = escalation |
+| PoLP (observation-based policy) | **Low** | Grants explicitly bounded to observed callback behavior |
+| PoLP + process isolation | **Very Low** | Policy bounds + separate JVM process boundary |
+
+Administrators should ensure that finalizer and cleaner methods are exercised
+during the PoLP observation window so that the generated policy accurately
+captures their required permissions. Any `SecurityException` raised during
+finalization or cleanup after policy deployment indicates that the observation
+window did not cover that code path and should be reviewed.
 
 ---
 
