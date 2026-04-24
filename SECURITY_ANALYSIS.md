@@ -801,6 +801,124 @@ Result: for permission checks inside a target method, the untrusted caller's
 | `MethodHandle.invoke` to call trusted class native method | Untrusted caller PD remains on stack; intersection enforced | **Protected by default** |
 | Trusted target uses unrestricted `doPrivileged` inside reflective call | Stack walk stops at `doPrivileged`; untrusted caller PD dropped | **Residual gap — trusted code must not use unrestricted `doPrivileged`** |
 
+### N-8 Residual Risk Mitigation via Principle of Least Privilege (PoLP) Policy Generation
+
+The summary table above notes that an unrestricted `doPrivileged` call inside trusted code is a
+residual gap. In practice, this gap is substantially bounded when the recommended DirtyChai
+deployment model is used: **observation-based PoLP policy generation via polpAudit**.
+
+#### How PoLP Policy Generation Works
+
+PoLP policy generation is an observation-based approach:
+
+1. **Observe:** Run the application under an active SecurityManager with polpAudit monitoring every
+   `SecurityManager.checkPermission()` call.
+2. **Capture:** Generate a policy file that grants *only* the permissions that were actually requested
+   during the observation run — no wildcards, no `AllPermission`, no implicit broadening.
+3. **Review:** Inspect the generated policy. If a legitimate but unexercised code path requires
+   additional permissions, add them explicitly after human review.
+4. **Deploy:** The resulting policy constrains every domain, including trusted libraries, to exactly
+   the permissions they were observed to need.
+
+#### How PoLP Bounds the N-8 Attack Surface
+
+Even if trusted code contains an unrestricted `doPrivileged` call, it can only execute operations
+that the *policy* authorises for its domain. The `doPrivileged` frame drops the untrusted caller
+from the stack intersection, but the trusted domain itself is still subject to its own policy grants.
+
+```
+Without PoLP (over-broad grant):
+
+  grant codeBase "file:/trusted/lib/-" {
+      permission java.security.AllPermission;      // ← grants everything
+  };
+
+  Trusted library calls System.load() inside unrestricted doPrivileged:
+  → SecurityManager checks TrustedLib domain only (untrusted caller dropped)
+  → AllPermission implies RuntimePermission("loadLibrary.*")
+  → Native load SUCCEEDS  ✗ VULNERABLE — attacker can reach any native op
+```
+
+```
+With PoLP Policy (observation-based grant):
+
+  grant codeBase "file:/trusted/lib/-" {
+      permission au.zeus.jdk.authorization.guards.NativeInvocationPermission "native-linker";
+      permission java.lang.RuntimePermission "loadLibrary.mylib";
+      permission java.io.FilePermission "/opt/myapp/lib/mylib.so", "read";
+      // nothing else — polpAudit observed no other permission requests
+  };
+
+  Trusted library calls System.load("/opt/myapp/lib/mylib.so") inside unrestricted doPrivileged:
+  → SecurityManager checks TrustedLib domain only (untrusted caller dropped)
+  → Policy grants RuntimePermission("loadLibrary.mylib") — exact match
+  → Native load SUCCEEDS for the one observed library  ✓ BOUNDED
+
+  Attacker attempts to route a different native path through the same doPrivileged:
+  → SecurityManager checks TrustedLib domain
+  → Policy does NOT grant RuntimePermission("loadLibrary.evilnative")
+  → SecurityException: access denied  ✓ BLOCKED BY POLICY
+```
+
+#### Concrete Before/After Comparison
+
+| Scenario | Without PoLP | With PoLP |
+|----------|-------------|-----------|
+| Trusted lib has `AllPermission`; untrusted caller routes native op via `doPrivileged` | ✗ Exploit succeeds — no bound on what can be executed | ✓ Impossible — PoLP never generates `AllPermission` grants |
+| Trusted lib loads one specific native library | ✓ Works | ✓ Works — `loadLibrary.<name>` grant present from observation |
+| Attacker uses same `doPrivileged` path to load a different native library | ✗ Succeeds if `AllPermission` or wildcard `RuntimePermission` granted | ✓ Blocked — only the observed library is in the grant |
+| Trusted lib opens a specific configuration file | ✓ Works | ✓ Works — observed `FilePermission` path present in grant |
+| Attacker routes arbitrary file read via the same `doPrivileged` | ✗ Succeeds with broad `FilePermission("<<ALL FILES>>","read")` | ✓ Blocked — only the one observed path is in the grant |
+| Trusted lib makes an outbound network call to a known host | ✓ Works | ✓ Works — observed `SocketPermission` for that host present |
+| Attacker routes arbitrary outbound connection via `doPrivileged` | ✗ Succeeds with `SocketPermission("*","connect")` | ✓ Blocked — only the observed host/port is in the grant |
+
+#### Why N-8 Becomes Low-Practical-Risk Under PoLP
+
+PoLP policy generation eliminates the precondition that makes N-8 dangerous: **over-broad grants**.
+Without an over-broad grant, unrestricted `doPrivileged` inside trusted code can only authorise
+operations that the policy explicitly anticipated. The attack surface for confused-deputy escalation
+collapses to *only those operations the code was already trusted to perform*.
+
+The practical risk reduction works at two levels:
+
+1. **No implicit privilege escalation path:** An attacker routing an unexpected operation through an
+   unrestricted `doPrivileged` will encounter a permission denial unless the operation was explicitly
+   observed and granted. The `doPrivileged` boundary cannot conjure permissions that the policy does
+   not contain.
+
+2. **Observation-based policy is self-limiting:** polpAudit-generated grants reflect actual runtime
+   behaviour. Novel attacker-introduced operations were, by definition, not observed during capture,
+   so they are absent from the policy. This creates a natural boundary around previously unseen
+   attack paths.
+
+#### Residual Scenarios Where N-8 Remains Relevant
+
+PoLP deployment does not eliminate N-8 in every scenario. The following cases keep N-8 as a live
+risk and must be managed through separate controls:
+
+| Residual Scenario | Risk Level | Required Control |
+|-------------------|------------|-----------------|
+| Administrator manually broadens a PoLP-generated grant (e.g., adds `AllPermission` or wildcard `RuntimePermission`) | Medium | Policy governance: change-control process for policy file modifications; peer review for any grant wider than what polpAudit produced |
+| Trusted library is compromised (supply-chain attack) and introduces a new unrestricted `doPrivileged` call that was not present at policy-capture time | High | Supply-chain security: code provenance, dependency signing, regular policy re-capture after library updates |
+| An unexercised code path inside trusted code performs a sensitive operation that polpAudit never observed (e.g., error-handling branch that loads a diagnostic library) | Low–Medium | Test coverage: ensure all execution branches, including error-handling and shutdown paths, are exercised before policy capture; re-run polpAudit after updates |
+| PoLP policy is used as a starting template but then extended with permissions not derived from observation (e.g., "just in case" grants) | Medium | Policy review discipline: treat every non-observed addition as requiring explicit security justification and documentation |
+
+#### Updated Risk Assessment for N-8 Under PoLP
+
+| Deployment Model | Practical Risk Level | Rationale |
+|-----------------|---------------------|-----------|
+| PoLP-generated policy, no manual broadening | **Low** | Attack surface bounded to observed permission set; no escalation path beyond explicit grants |
+| PoLP-generated policy, with targeted manual additions reviewed by a human | **Low–Medium** | Each addition is individually scoped; risk proportional to breadth of added grants |
+| Policy with `AllPermission` or broad wildcard grants | **Medium–High** | PoLP benefit is absent; N-8 residual is the full confused-deputy risk described in the summary table above |
+| No SecurityManager active | **High** | No permission checks at all; N-8 is one of many unrestricted attack vectors |
+
+**Summary:** N-8 (Confused Deputy via Unrestricted `doPrivileged`) is a genuine structural residual
+in the Java security model. Under PoLP-based deployment — the primary recommended model for
+DirtyChai — its practical risk is **Low**, because the attack surface is bounded by the explicit
+observation-derived policy grants. Administrators following PoLP discipline should not treat N-8 as
+a blocking concern; it becomes significant only when policy governance, supply-chain integrity, or
+test coverage controls are absent.
+
 ---
 
 ## Analysis: Finalizer and Cleaner Thread Execution Contexts (N-9)
