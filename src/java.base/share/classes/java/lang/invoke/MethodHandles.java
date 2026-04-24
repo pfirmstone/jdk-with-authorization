@@ -25,6 +25,7 @@
 
 package java.lang.invoke;
 
+import au.zeus.jdk.authorization.guards.DefineClassPermission;
 import jdk.internal.access.SharedSecrets;
 import jdk.internal.misc.Unsafe;
 import jdk.internal.misc.VM;
@@ -2458,6 +2459,10 @@ public final class MethodHandles {
              * @throws LinkageError linkage error
              */
             Class<?> defineClass(boolean initialize, Object classData) {
+                SecurityManager sm = System.getSecurityManager();
+                if (sm != null)
+                    sm.checkPermission(new DefineClassPermission());
+                
                 Class<?> lookupClass = lookup.lookupClass();
                 ClassLoader loader = lookupClass.getClassLoader();
                 ProtectionDomain pd = (loader != null) ? lookup.lookupClassProtectionDomain() : null;
