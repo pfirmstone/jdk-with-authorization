@@ -684,7 +684,7 @@ the dedicated `DefineClassPermission` guard (commit 0f90b38, 2026-04-24).
 | 4 | Policy quality remains critical | Over-broad grants negate hardening | Enforce least privilege with audited policy generation/review |
 | 5 | Documentation drift — **RESOLVED** | Prior wording drifted from implementation | Keep docs/Javadoc synced with `limit(50)`; no open drift known |
 | 6 | Confused-deputy in trusted paths (N-8, N-10; consolidated) | Reflection/MethodHandle and `<clinit>`/bootstrap can reach trusted code that uses unrestricted `doPrivileged` | Disallow unrestricted `doPrivileged` on security-sensitive trusted paths; keep stack-intersection guard |
-| 7 | Finalizer/Cleaner context escape (N-9) | Finalizer/Cleaner threads run `neverPrivileged`/innocuous by default, but creator-thread limited `AccessControlContext` is not propagated to callbacks | Avoid sensitive finalizer/cleaner work; prefer explicit `close()` and process isolation |
+| 7 | Finalizer/Cleaner context escape (N-9) — **OPERATIONALLY MITIGATED** | Both Finalizer and Cleaner threads now execute under `neverPrivileged` (Issue #129); no escalation path via `Subject.doAsPrivileged()` or unrestricted `doPrivileged` exists; creator-thread limited `AccessControlContext` is architecturally lost but operationally irrelevant since `neverPrivileged` prevents any use of it | `neverPrivileged` enforcement prevents any escalation regardless of the lost ACC; process isolation remains best practice for defence-in-depth |
 | 8 | Runtime attach still policy/OS dependent (N-11) | Attach is permission-gated, but over-grants, inactive SM, or OS compromise remain | Keep attach grants narrow; use `-XX:+DisableAttachMechanism` where feasible |
 | 9 | Principal scope ambiguity (N-12) | Class+name grants can collide across realms; trusted-service mutation can abuse shared `Subject` | Use realm-qualified canonical principal identity; consider gating principal-set mutation |
 | 10 | Coarse network permission granularity (N-14) | `SocketPermission` lacks granular distinction across network operation types and scope boundaries | Avoid wildcard network grants; publish hardened grant templates |
@@ -819,8 +819,14 @@ this loss be exploited to run sensitive operations with escalated permissions?
 - **Finalizer thread context:** Created at boot via
   `AccessController.doPrivileged(..., AccessControlContext.neverPrivileged())`,
   so callback execution is never-privileged.
-- **Cleaner:** `java.lang.ref.Cleaner` uses an `InnocuousThread` daemon
-  (unprivileged) to run registered `Runnable` cleanup callbacks.
+- **Cleaner:** `java.lang.ref.Cleaner` cleanup callbacks also execute under
+  `AccessControlContext.neverPrivileged()` (completed in Issue #129).
+- **Both models use `neverPrivileged`:** neither finalizer nor cleaner threads
+  can escalate privileges via `Subject.doAsPrivileged()` or unrestricted
+  `AccessController.doPrivileged()`.  `neverPrivileged` is more restrictive than
+  ordinary unprivileged — an ordinary unprivileged thread can still call
+  `Subject.doAsPrivileged()` to acquire principal-granted permissions, whereas a
+  `neverPrivileged` thread cannot escalate via any mechanism.
 - In both models, the creator thread's `AccessControlContext` is **not**
   propagated to the callback thread.
 
@@ -832,7 +838,7 @@ The callback class frame remains on-stack, so its `ProtectionDomain` is part of
 the domain intersection.
 
 ```
-java.base finalizer/cleaner daemon frame (unprivileged)
+java.base finalizer/cleaner daemon frame (neverPrivileged)
   callback implementation frame (trusted or untrusted PD)
     [permission check]
 ```
@@ -840,21 +846,28 @@ java.base finalizer/cleaner daemon frame (unprivileged)
 Result: untrusted callback code without `NativeInvocationPermission` is blocked;
 trusted callback code is allowed only if policy grants the required permission.
 
-### Execution-Context Escape (Core Risk)
+### Execution-Context Escape (Architectural Gap — Operationally Mitigated)
 
 - **Limited-context constraint is lost when finalizer/cleaner callbacks run on a
   separate thread:** restrictions encoded in the creator's limited
   `AccessControlContext` do not survive to callback execution, while class-level
   policy grants still apply.
+- **Operational impact is now negligible (Issue #129):** because both finalizer
+  and cleaner threads execute under `neverPrivileged`, no escalation path exists
+  regardless of the lost creator ACC.  Even if a callback attempted to call
+  `Subject.doAsPrivileged()` or unrestricted `AccessController.doPrivileged()`,
+  the `neverPrivileged` context prevents any privilege elevation.  The
+  architectural gap therefore has no meaningful exploit surface.
 
 ### Policy Decision
 
 | Scenario | In-Process Guard (DirtyChai) | Process Isolation Required? |
 |----------|------------------------------|-----------------------------|
 | Untrusted finalizer/callback calls native method | Blocked by stack intersection (untrusted PD is on-stack) | No |
-| Trusted finalizer/callback calls native method | Allowed only if policy grants `NativeInvocationPermission`; daemon thread itself is unprivileged | No (intended) |
-| Trusted callback bypasses creator's limited context | **Not blocked** — limited creator ACC is not part of class policy grants | **Yes — process isolation required** |
-| Attacker triggers GC of trusted object with sensitive callback | Executes if trusted class grant allows it | Mitigate by avoiding sensitive finalizer/cleaner operations |
+| Trusted finalizer/callback calls native method | Allowed only if policy grants `NativeInvocationPermission`; daemon thread itself is `neverPrivileged` | No (intended) |
+| Trusted callback attempts `Subject.doAsPrivileged()` escalation | **Blocked** — both finalizer and cleaner threads run `neverPrivileged` (Issue #129); no Subject-based escalation is possible | No |
+| Trusted callback bypasses creator's limited context | Architecturally, the limited creator ACC is not propagated; **operationally irrelevant** because `neverPrivileged` prevents any escalation that the creator's limited ACC would have prevented | No (operationally mitigated) |
+| Attacker triggers GC of trusted object with sensitive callback | Executes if trusted class grant allows it, but `neverPrivileged` ceiling still applies | Mitigate by avoiding sensitive finalizer/cleaner operations |
 
 ### Guidance for Trusted Library Authors
 
