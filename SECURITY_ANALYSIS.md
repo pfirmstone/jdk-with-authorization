@@ -156,7 +156,7 @@ Custom SecurityManager installation path blocks:
 **Additional attack surfaces not directly blocked by `validateCallerStackWithStackWalker()` (documented residuals):**
 
 - `MethodHandles.Lookup.in(Class<?> requestedLookupClass)` — a `Lookup` object obtained by trusted code and passed to untrusted code can be used to perform private/package-private field and method access across trust-domain boundaries. The stack walk blocks generation of a new `Lookup` via reflection, but does not revoke an already-transferred `Lookup` object's capabilities. This is an object-capability transfer risk rather than a stack-spoofing risk.
-- `Instrumentation.getAllLoadedClasses()` / `Instrumentation.redefineClasses()` — reachable only when a `-javaagent` is active at startup. Runtime dynamic agent injection via `VirtualMachine.attach()` is gated by `AttachPermission` when the `SecurityManager` is active; hardened deployments should deny `AttachPermission("attachVirtualMachine")` to untrusted code and may also set `-XX:+DisableAttachMechanism` as defense in depth. See N-11.
+- `Instrumentation.getAllLoadedClasses()` / `Instrumentation.redefineClasses()` — reachable only when a `-javaagent` is active at startup. Runtime dynamic agent injection via `VirtualMachine.attach()` is gated by `AttachPermission` when the `SecurityManager` is active; hardened deployments should deny `AttachPermission("attachVirtualMachine")` to untrusted code and may also set `-XX:+DisableAttachMechanism` as defense in depth. **Under PoLP-generated policies, agent codebases are absent from the observation window and therefore receive no `LoadClassPermission` grants; this provides a second independent gate that blocks agent class loading even if `AttachPermission` is bypassed.** See N-11.
 - JVM startup flags `--add-opens`, `--add-exports`, `--add-modules` — these bypass module encapsulation before the SecurityManager is installed and cannot be revoked at runtime. They must be treated as part of the trusted deployment perimeter, not as runtime security controls subject to SecurityManager enforcement.
 
 ### 3) Policy Enforcement / Fail-Secure Behavior
@@ -685,7 +685,7 @@ the dedicated `DefineClassPermission` guard (commit 0f90b38, 2026-04-24).
 | 5 | Documentation drift — **RESOLVED** | Prior wording drifted from implementation | Keep docs/Javadoc synced with `limit(50)`; no open drift known |
 | 6 | Confused-deputy in trusted paths (N-8, N-10; consolidated) | Reflection/MethodHandle and `<clinit>`/bootstrap can reach trusted code that uses unrestricted `doPrivileged` | Disallow unrestricted `doPrivileged` on security-sensitive trusted paths; keep stack-intersection guard |
 | 7 | Finalizer/Cleaner context escape (N-9) | Finalizer/Cleaner threads run `neverPrivileged`/innocuous by default, but creator-thread limited `AccessControlContext` is not propagated to callbacks | Avoid sensitive finalizer/cleaner work; prefer explicit `close()` and process isolation |
-| 8 | Runtime attach still policy/OS dependent (N-11) | Attach is permission-gated, but over-grants, inactive SM, or OS compromise remain | Keep attach grants narrow; use `-XX:+DisableAttachMechanism` where feasible |
+| 8 | Runtime attach — residual risk substantially mitigated (N-11) | Attach is permission-gated, but over-grants, inactive SM, or OS compromise remain; **under PoLP + `LoadClassPermission` the agent loading gate provides defense-in-depth: agent codebases absent from PoLP observation window receive no `LoadClassPermission` grants and therefore cannot load classes even if `AttachPermission` is bypassed** | Keep attach grants narrow; use `-XX:+DisableAttachMechanism` where feasible; **deploy PoLP-generated policies so that agent codebases never receive `LoadClassPermission` grants; see N-11 analysis section** |
 | 9 | Principal scope ambiguity (N-12) | Class+name grants can collide across realms; trusted-service mutation can abuse shared `Subject` | Use realm-qualified canonical principal identity; consider gating principal-set mutation |
 | 10 | Coarse network permission granularity (N-14) | `SocketPermission` lacks granular distinction across network operation types and scope boundaries | Avoid wildcard network grants; publish hardened grant templates |
 | 11 | Module system residuals (N-15) | Runtime topology mutation is gated (`mutateModuleTopology`) and inspection is gated (`readModuleTopology`), but startup flags `--add-opens`, `--add-exports`, and `--add-modules` bypass these checks at JVM bootstrap time and cannot be retroactively constrained by runtime permission gates | Treat startup flags as explicit trust-boundary decisions; no runtime revocation possible |
@@ -946,6 +946,132 @@ Residual risk is identical: a bootstrap method that uses unrestricted
 
 ---
 
+## Analysis: Runtime Agent Attachment and PoLP Policy Defense (N-11)
+
+### The Question
+
+When an attacker gains the ability to attach a Java agent to a running JVM —
+either by holding `AttachPermission("attachVirtualMachine")`, by administrative
+over-grant, or by OS-level compromise — can DirtyChai prevent the attached
+agent from executing code?
+
+### Attack Model (Without PoLP)
+
+Under a traditional SecurityManager deployment without least-privilege policy
+generation, the attach path provides a viable escalation route:
+
+1. Attacker calls `VirtualMachine.attach(pid)` (requires `AttachPermission`
+   or OS-level process access).
+2. JVM loads the agent JAR via `Instrumentation.appendToSystemClassLoaderSearch()`.
+3. Agent classes load without a `LoadClassPermission` gate (agent classloader is
+   trusted by construction under a broad policy).
+4. Agent `premain` / `agentmain` executes with the full permissions granted to
+   the system class loader domain.
+5. **Result:** Complete privilege escalation — attacker code executes with
+   system-class-loader-domain permissions.
+
+### The PoLP + `LoadClassPermission` Defense Gate
+
+DirtyChai's `SecureClassLoader` enforces a `LoadClassPermission` check for
+every class load: the calling (loading) code domain must hold
+`LoadClassPermission` for the class being loaded.  When policies are generated
+by **observation-based PoLP tooling** (e.g. `polpAudit`), only permissions
+actually exercised during the observation window are granted.
+
+**Key structural property:** agent code is, by definition, *not part of the
+observed baseline*.  Agents are injected dynamically after JVM startup — they
+are never present during the PoLP observation window.  Consequently:
+
+- The PoLP-generated policy grants `LoadClassPermission` only to codebases
+  observed loading specific classes.
+- The agent codebase has no entry in the generated policy.
+- When the agent JAR is attached and agent classes are requested, the class
+  loader attempts to load them.
+- The `LoadClassPermission` check fires; the agent codebase domain holds no
+  such grant.
+- **Class loading fails.  Agent initialisation is aborted before any agent
+  code runs.**
+
+```
+Attack path under PoLP + LoadClassPermission
+─────────────────────────────────────────────────────────────────────
+1. Attacker bypasses / is granted AttachPermission
+2. VirtualMachine.attach(pid) succeeds — JVM receives attach request
+3. Agent JAR appended to search path
+4. Agent class loader attempts: ClassLoader.loadClass("com.attacker.Agent")
+       ↓
+   SecureClassLoader.checkPermission(
+       new LoadClassPermission("com.attacker.Agent"))
+       ↓
+   Agent codebase has NO LoadClassPermission grant (absent from PoLP policy)
+       ↓
+   SecurityManager.checkPermission → DENY
+       ↓
+5. ClassNotFoundException / SecurityException — agent fails to initialise
+6. No agent code executes
+─────────────────────────────────────────────────────────────────────
+Result: Attack surface ELIMINATED
+```
+
+### Why Agent Code Is Naturally Excluded from PoLP Observations
+
+PoLP policy generation captures permissions from the live permission-check
+stream during normal application execution.  Agent attachment is an
+*administrative / adversarial* event that occurs:
+
+- After the observation window closes, or
+- In environments where the application under observation does not itself
+  attach agents.
+
+In either case, agent codebases never appear as requesting code domains in the
+`SecurityManager.checkPermission()` call stream.  They therefore receive no
+`LoadClassPermission` entries in the generated policy.  This exclusion is
+structural, not configuration-dependent.
+
+### Defense-in-Depth Layering
+
+| Gate | Where Enforced | Scope |
+|------|---------------|-------|
+| `AttachPermission("attachVirtualMachine")` | `VirtualMachine.attach()` pre-check | Blocks the JVM from accepting the attach request |
+| `-XX:+DisableAttachMechanism` | JVM startup flag | Removes the attach listener entirely at OS level |
+| `LoadClassPermission` under PoLP policy | `SecureClassLoader.loadClass()` | Blocks class loading even if attach succeeds and agent JAR is appended |
+
+All three gates are independent.  An attacker who bypasses `AttachPermission`
+(e.g. admin over-grant or OS compromise) still faces the `LoadClassPermission`
+gate, which is enforced purely by the SecurityManager permission-intersection
+model and cannot be bypassed by the attach mechanism itself.
+
+### Risk Assessment Update
+
+| Deployment Model | N-11 Risk Level | Rationale |
+|---|---|---|
+| No SecurityManager (legacy) | **Critical** | No gate; agent executes unconditionally |
+| SecurityManager, broad policy (`AllPermission`) | **High** | `AttachPermission` may be over-granted; agent loads freely once attached |
+| SecurityManager, manually-written narrow policy | **Medium** | Depends on policy author excluding agent codebases from `LoadClassPermission` grants |
+| SecurityManager + PoLP-generated policy | **Low** | Agent codebase structurally absent from observation window → no `LoadClassPermission` grant → class loading blocked |
+| PoLP policy + `-XX:+DisableAttachMechanism` | **Negligible** | Attach mechanism removed entirely; `LoadClassPermission` gate retained as a backstop |
+
+### Practical Guidance for Hardened Deployments
+
+1. **Deny `AttachPermission("attachVirtualMachine")` to all untrusted code.**
+   This is the primary, highest-impact control.
+2. **Generate policy with PoLP tooling from a clean observation window.**
+   Agent codebases must not be present during the observation run; if they are
+   (e.g. monitoring agents started at JVM boot), exclude their codebases
+   explicitly or restrict their `LoadClassPermission` grants after generation.
+3. **Use `-XX:+DisableAttachMechanism` in production environments where runtime
+   attach is not operationally required.**  This eliminates the OS-level attach
+   listener and provides a hardware-independent backstop independent of
+   SecurityManager state.
+4. **Do not grant `LoadClassPermission` wildcards** (e.g.
+   `LoadClassPermission("*")`) to any codebase.  Wildcard grants defeat the
+   loading gate for all agent classes.
+5. **Treat the agent codebase as untrusted by default.** Even if an agent JAR
+   is from a known vendor, it should not receive `LoadClassPermission` grants
+   broader than what it legitimately needs during normal operation.
+
+---
+
 ## Recommendations
 
 ### High priority
@@ -953,7 +1079,7 @@ Residual risk is identical: a bootstrap method that uses unrestricted
 1. **Keep `trustedSMClass()` under strict review control** — require explicit security review and written rationale for every addition.
 2. **Add targeted regression tests for residual-risk boundaries** — cover deep-stack and generated/invoke-frame classification, reflection/MethodHandle native-wrapper paths (N-8), Finalizer/Cleaner permission enforcement (N-9), and class-initialization stack-intersection enforcement (N-10).
 3. ~~**Correct stale Javadoc in `System.java` (source file)**~~ — Resolved: stack-scan-depth wording now consistently matches `limit(50)` across source and documentation.
-4. **Document hardened-deployment attach controls and JVM flag requirements (N-11)** — deny `AttachPermission("attachVirtualMachine")` (and where applicable `AttachPermission("createAttachProvider")`) to untrusted code, use `-XX:+DisableAttachMechanism` for defense in depth, and treat `--add-opens`/`--add-exports`/`--add-modules` as trusted-perimeter decisions.
+4. **Document hardened-deployment attach controls and JVM flag requirements (N-11)** — deny `AttachPermission("attachVirtualMachine")` (and where applicable `AttachPermission("createAttachProvider")`) to untrusted code, use `-XX:+DisableAttachMechanism` for defense in depth, and treat `--add-opens`/`--add-exports`/`--add-modules` as trusted-perimeter decisions. **Additionally, deploy PoLP-generated policies so that agent codebases never receive `LoadClassPermission` grants — this provides a critical second gate that blocks agent class loading even if `AttachPermission` is bypassed; see the N-11 analysis section for the full layered-defense model.**
 
 ### Medium priority
 
