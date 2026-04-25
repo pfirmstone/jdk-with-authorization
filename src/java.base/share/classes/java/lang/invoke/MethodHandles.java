@@ -55,6 +55,7 @@ import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.nio.ByteOrder;
 import java.security.ProtectionDomain;
+import java.security.AccessControlContext;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.BitSet;
@@ -475,6 +476,20 @@ public final class MethodHandles {
         SecurityConstants.ACCESS_PERMISSION.checkGuard(null);
         Lookup lookup = Lookup.IMPL_LOOKUP;  // use maximally privileged lookup
         return lookup.revealDirect(target).reflectAs(expected, lookup);
+    }
+    
+    /**
+     * Context to create domain context for dynamic class generation.
+     */
+    public static final class Context extends AccessControlContext.ContextBuilder{
+        
+        private static final Context CONTEXT = new Context();
+        
+        private static AccessControlContext create(ProtectionDomain [] pd){
+            return CONTEXT.build(pd);
+        }
+        
+        private Context(){}// Prevent instantiation.
     }
 
     /**
@@ -2459,13 +2474,13 @@ public final class MethodHandles {
              * @throws LinkageError linkage error
              */
             Class<?> defineClass(boolean initialize, Object classData) {
-                SecurityManager sm = System.getSecurityManager();
-                if (sm != null)
-                    sm.checkPermission(new DefineClassPermission());
-                
                 Class<?> lookupClass = lookup.lookupClass();
                 ClassLoader loader = lookupClass.getClassLoader();
                 ProtectionDomain pd = (loader != null) ? lookup.lookupClassProtectionDomain() : null;
+                SecurityManager sm = System.getSecurityManager();
+                if (sm != null && pd != null){
+                    sm.checkPermission(new DefineClassPermission(), Context.create(new ProtectionDomain[]{pd}));
+                }
                 Class<?> c = null;
                 try {
                     c = SharedSecrets.getJavaLangAccess()
