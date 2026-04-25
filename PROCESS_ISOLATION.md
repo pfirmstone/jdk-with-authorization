@@ -902,11 +902,16 @@ Key clarification for current DirtyChai behavior:
 - Finalizer threads are created with
   `AccessControlContext.neverPrivileged()` (`Finalizer.java`, line 191), so they
   run with zero permissions.
-- Cleaner daemon threads run on `InnocuousThread` (`CleanerImpl.java`) and are
-  likewise unprivileged.
-- `AccessController.doPrivileged(...)` should be avoided in both `finalize()`
-  and `Cleaner` callbacks: using it in either callback attempts to escalate from
-  an intentionally zero-permission cleanup context.
+- Cleaner daemon threads are also created under
+  `AccessControlContext.neverPrivileged()` (Issue #129), giving identical
+  zero-permission enforcement for cleanup callbacks.
+- **`neverPrivileged` blocks `Subject.doAsPrivileged()` escalation** but does
+  not prevent a callback from issuing an unrestricted
+  `AccessController.doPrivileged(...)` call.  Unrestricted `doPrivileged` still
+  intersects the callback class's `ProtectionDomain`, so the class-level policy
+  grants remain the effective authority ceiling.  **PoLP policy generation is
+  therefore required** to bound those grants to observed callback behaviour;
+  see the N-9 analysis in `SECURITY_ANALYSIS.md` for the full dual-layer model.
 - If sensitive cleanup is required, authorization must be established at object
   creation time (or explicit close/release time), not during finalizer/Cleaner
   execution.
@@ -954,7 +959,7 @@ discipline in trusted library authors.
 | Reflection / MethodHandle + unrestricted `doPrivileged` | Trusted target uses unrestricted `doPrivileged`; untrusted PD dropped from intersection | Trusted code must use `doPrivileged` with limited context on caller-controlled paths |
 | `<clinit>` unrestricted `doPrivileged` | Trusted static initializer uses unrestricted `doPrivileged` | Trusted code must not use unrestricted `doPrivileged` inside `<clinit>` |
 | `invokedynamic` bootstrap + unrestricted `doPrivileged` | Trusted bootstrap method uses unrestricted `doPrivileged` | Same obligation as above |
-| Finalizer context escape | Trusted finalizer/Cleaner callback performs operation blocked by creator's limited context | Avoid sensitive ops in finalizers; use explicit `close()`; apply process isolation |
+| Finalizer context escape | Trusted finalizer/Cleaner callback performs operation blocked by creator's limited context | Both threads run `neverPrivileged` (Issue #129) + PoLP bounds callback policy grants; process isolation required only when PoLP is not deployed |
 
 ### What Requires Process Isolation
 
@@ -963,7 +968,7 @@ process isolation (each service in its own JVM/container):
 
 | Residual Gap | Why In-Process Guards Are Insufficient |
 |--------------|----------------------------------------|
-| Finalizer / Cleaner thread context escape | Creator's restricted `AccessControlContext` is not carried to the finalizer/Cleaner thread; no in-process mechanism propagates it |
+| Finalizer / Cleaner thread context escape — **no PoLP deployed** | Without PoLP, class-level grants are unconstrained; `neverPrivileged` alone cannot prevent unrestricted `doPrivileged` escalation; process isolation is the backstop |
 | JVMTI / `-agentlib:` attached at startup | JVMTI agents run before the `SecurityManager` is installed and can bypass all Java-level checks |
 | JNI `CallXxxMethod` callbacks from within native code | Re-entrant JNI calls do not go through Java-side permission checks |
 | Shared-memory side-channel attacks (Spectre-class) | Require hardware-level isolation (separate physical cores or core flushing) |
