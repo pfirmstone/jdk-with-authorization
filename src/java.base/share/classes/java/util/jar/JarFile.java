@@ -431,7 +431,7 @@ public class JarFile extends ZipFile {
                     }
                     man = new Manifest(jv, new ByteArrayInputStream(b), getName());
                 } else {
-                    try (InputStream is = super.getInputStream(manEntry)) {
+                    try (InputStream is = new InputStreamCounter(super.getInputStream(manEntry))) {
                         man = new Manifest(is, getName());
                     }
                 }
@@ -439,6 +439,50 @@ public class JarFile extends ZipFile {
             }
         }
         return man;
+    }
+    
+    private static class InputStreamCounter extends InputStream {
+
+        private final InputStream in;
+        private int counter = 0;
+        private static final int LIMIT = Integer.MAX_VALUE;
+        
+        private InputStreamCounter(InputStream in){
+            this.in = in;
+        }
+
+        @Override
+        public int read() throws IOException {
+            if (++counter < LIMIT && counter > 0) return in.read();
+            throw new IOException("Maximum stream limit exceeded");
+        }
+        
+        @Override
+        public int read(byte[] b, int off, int len) throws IOException{
+            counter = counter + len;
+            if (counter < LIMIT && counter > 0) return in.read(b, off, len);
+            throw new IOException("Maximum stream limit exceeded");
+        }
+        
+        public int available() throws IOException {
+            return in.available();
+        }
+        
+        public void close() throws IOException {
+            in.close();
+        }
+        
+        public void mark(int readlimit) {
+            in.mark(readlimit);
+        }
+        
+        public void reset() throws IOException {
+            in.reset();
+        }
+        
+        public boolean markSupported() {
+            return in.markSupported();
+        }
     }
 
     /**
@@ -790,7 +834,7 @@ public class JarFile extends ZipFile {
      * META-INF files.
      */
     private byte[] getBytes(ZipEntry ze) throws IOException {
-        try (InputStream is = super.getInputStream(ze)) {
+        try (InputStream is = new InputStreamCounter(super.getInputStream(ze))) {
             long uncompressedSize = ze.getSize();
             if (uncompressedSize > SignatureFileVerifier.MAX_SIG_FILE_SIZE) {
                 throw new IOException("Unsupported size: " + uncompressedSize +

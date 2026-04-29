@@ -29,9 +29,10 @@ import java.io.IOException;
 import java.io.FileNotFoundException;
 import java.net.URL;
 import java.net.URLConnection;
-import java.util.HashMap;
 import java.util.jar.JarFile;
 import java.security.Permission;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 import jdk.internal.util.OperatingSystem;
 import sun.net.util.URLUtil;
@@ -48,10 +49,10 @@ import static jdk.internal.util.Exceptions.formatMsg;
 class JarFileFactory implements URLJarFile.URLJarFileCloseController {
 
     /* the url to file cache */
-    private static final HashMap<String, JarFile> fileCache = new HashMap<>();
+    private static final Map<String, JarFile> fileCache = new LimitedMap<>();
 
     /* the file to url cache */
-    private static final HashMap<JarFile, URL> urlCache = new HashMap<>();
+    private static final Map<JarFile, URL> urlCache = new LimitedMap<>();
 
     private static final JarFileFactory instance = new JarFileFactory();
 
@@ -270,5 +271,22 @@ class JarFileFactory implements URLJarFile.URLJarFileCloseController {
         }
 
         return null;
+    }
+    
+    /**
+     * Map that holds no more than 2048 entries.
+     * @param <K>
+     * @param <V> 
+     */
+    private static class LimitedMap<K,V> extends LinkedHashMap<K,V> {
+        private static final long serialVersionUID = 1L;
+        
+        private LimitedMap(){
+            super();
+        }
+        
+        protected boolean removeEldestEntry(Map.Entry<K,V> eldest){
+            return size() >= 2048;
+        }
     }
 }

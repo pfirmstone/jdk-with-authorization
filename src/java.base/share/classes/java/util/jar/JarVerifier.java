@@ -49,6 +49,7 @@ class JarVerifier {
     public static final String MULTIPLE_MANIFEST_WARNING =
             "WARNING: Multiple MANIFEST.MF found. Treat JAR file as unsigned.";
 
+    private static final int MAX_SIG_BYTES = 64 * SignatureFileVerifier.MAX_SIG_FILE_SIZE;
     /* Are we debugging ? */
     static final Debug debug = Debug.getInstance("jar");
 
@@ -62,6 +63,8 @@ class JarVerifier {
 
     /* a hash table to hold .SF bytes */
     private Hashtable<String, byte[]> sigFileData;
+    
+    private int sigFileDataCounter = 0;
 
     /** "queue" of pending PKCS7 blocks that we couldn't parse
      *  until we parsed the .SF file */
@@ -105,7 +108,7 @@ class JarVerifier {
         sigFileSigners = new Hashtable<>();
         verifiedSigners = new Hashtable<>();
         sigFileData = new Hashtable<>(11);
-        pendingBlocks = new ArrayList<>();
+        pendingBlocks = new ArrayList<>(64);
         baos = new ByteArrayOutputStream();
         manifestDigests = new ArrayList<>();
         signersToAlgs = new HashMap<>();
@@ -266,6 +269,11 @@ class JarVerifier {
                     byte bytes[] = baos.toByteArray();
                     // add to sigFileData in case future blocks need it
                     sigFileData.put(key, bytes);
+                    sigFileDataCounter = sigFileDataCounter + bytes.length;
+                    if (sigFileDataCounter > MAX_SIG_BYTES) { // DOS protection.
+                        doneWithMeta();
+                        return;
+                    }
                     // check pending blocks, we can now process
                     // anyone waiting for this .SF file
                     for (SignatureFileVerifier sfv : pendingBlocks) {
@@ -314,7 +322,12 @@ class JarVerifier {
                         if (debug != null) {
                             debug.println("adding pending block");
                         }
-                        pendingBlocks.add(sfv);
+                        // Defence against excessive jar signers.
+                        if (pendingBlocks.size() <= 64 ){
+                            pendingBlocks.add(sfv);
+                        } else {
+                            doneWithMeta();
+                        }
                         return;
                     } else {
                         sfv.setSignatureFile(bytes);
@@ -392,6 +405,7 @@ class JarVerifier {
         anyToVerify = !sigFileSigners.isEmpty();
         baos = null;
         sigFileData = null;
+        sigFileDataCounter = 0;
         pendingBlocks = null;
         signerCache = null;
         manDig = null;
