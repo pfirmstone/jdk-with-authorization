@@ -285,8 +285,17 @@ class JarFileFactory implements URLJarFile.URLJarFileCloseController {
             super();
         }
         
-        protected boolean removeEldestEntry(Map.Entry<K,V> eldest){
-            return size() >= 2048;
+        protected boolean removeEldestEntry(Map.Entry<K,V> eldest) {
+            if (size() >= 2048) {
+                // Only for fileCache (values are JarFiles)
+                if (eldest.getValue() instanceof JarFile) {
+                    try {
+                        ((JarFile) eldest.getValue()).close();
+                    } catch (IOException ignored) {}
+                }
+                return true;
+            }
+            return false;
         }
     }
 }

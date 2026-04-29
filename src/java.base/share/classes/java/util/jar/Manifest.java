@@ -344,7 +344,7 @@ public class Manifest implements Cloneable {
             name = null;
             skipEmptyLines = true;
         }
-        if (ecount > 100000) throw new IOException("Manifest entry count limit exceeded");
+        if (ecount >= 100000) throw new IOException("Manifest entry count limit exceeded");
     }
 
     private String parseName(byte[] lbuf, int len) {
