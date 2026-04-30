@@ -28,7 +28,7 @@ The analysis is based on a direct reading of:
 
 Dirty Chai implements a coherent, defense-in-depth authorization model that meaningfully extends OpenJDK's deprecated `SecurityManager` architecture into modern Java (virtual threads, Foreign Function & Memory API, dynamic class definition). The core design is sound: installation controls are multi-layered, policy evaluation is fail-secure and concurrent, and new permission guards close surfaces that the base JDK left open.
 
-The second half of this document (sections 15–18) provides a process-isolation necessity analysis. It answers: which threats are fully stopped by the SecurityManager permission layer alone, which threats can only be *contained* in-process, and which threats require OS-level process isolation regardless of what DirtyChai does.
+The second half of this document (sections 14–17) provides a process-isolation necessity analysis. It answers: which threats are fully stopped by the SecurityManager permission layer alone, which threats can only be *contained* in-process, and which threats require OS-level process isolation regardless of what DirtyChai does.
 
 Five areas from the core-model analysis warrant continued attention:
 
@@ -316,9 +316,7 @@ The combination of parse-time normalization and string equality (no DNS) for pol
 
 `ThreadBuilders.PlatformThreadBuilder` and `VirtualThreadBuilder` now check `RuntimePermission("createPlatformThread")` and `RuntimePermission("createVirtualThread")` respectively at builder `unstarted()` and `factory()` call sites. This fires before any OS resource is consumed.
 
-**Coverage gap (documented in `PROCESS_ISOLATION.md`):** The checks are in the builder path. The traditional `new Thread(...)` constructor path uses `sm.checkAccess(g)`, which does not call `checkPermission` for application thread groups (only for the root/system group). This means code using `new Thread(...)` directly bypasses the new permission checks.
-
-**Status:** This gap is documented in `PROCESS_ISOLATION.md`. The complete fix would require adding the same `checkPermission` call in the traditional constructor path. This is a **known open gap**, not an oversight.
+**Coverage:** Both the builder path and the traditional `new Thread(...)` constructor path are covered. Every public `Thread` constructor calls the private helper `canCreatePlatformThread()` (`Thread.java:765–768`) as a constructor argument, which calls `sm.checkPermission(new RuntimePermission("createPlatformThread"))` before the constructor body executes. The builder path additionally checks at `unstarted()` / `factory()` (`ThreadBuilders.java:185, 207`), giving a second gate for the builder path. There is no bypass via the traditional constructor.
 
 ### 10.2 Virtual Thread Carrier Pinning
 
@@ -370,7 +368,6 @@ This is the intended behavior and is documented in `SECURITY_MODEL.md` section 1
 
 | ID | Description | Severity | Documented? |
 |----|-------------|----------|-------------|
-| G-1 | `new Thread(...)` constructor path does not call `checkPermission("createPlatformThread")` — only the builder path does | Medium | Yes — `PROCESS_ISOLATION.md` |
 | G-2 | Virtual thread carrier pinning cannot be prevented once a virtual thread is running | Low (requires prior `createVirtualThread` grant) | Yes — `PROCESS_ISOLATION.md` |
 | G-3 | `SerialObjectPermission` in `readOrdinaryObject()` — coverage of `readProxyDesc()` and `readClassDesc()` should be verified to confirm gadget chains through proxy deserialization are blocked | Medium | Not yet documented |
 | G-4 | `contextCache` and `checked` caches have time-based TTL but no count-based cap — high-volume distinct-context workloads can cause unbounded cache growth | Low | Not yet documented |
@@ -394,10 +391,9 @@ The following recommendations are offered for human review and decision. They ar
 | ID | Recommendation | Priority |
 |----|----------------|----------|
 | R-1 | Verify `SerialObjectPermission` coverage of `readProxyDesc()` deserialization path (G-3) | Medium |
-| R-2 | Add `checkPermission("createPlatformThread")` to the traditional `new Thread(...)` constructor path to close G-1, aligning it with the builder path | Medium |
-| R-3 | Document G-4 (cache unbounded growth) in `SECURITY_ANALYSIS.md` and consider adding a maximum entry count to `contextCache` | Low |
-| R-4 | Consider whether the `SocketPermission` caching concern (G-5) is acceptable for the target deployment environment. If DNS rebinding is a concern, SocketPermission entries should be excluded from the `checked` cache | Low |
-| R-5 | For deployments that must permit `createVirtualThread` to partially-trusted code, route that code through a bounded, isolated `ForkJoinPool` with a caller-side deadline per the three-step layered defence in `PROCESS_ISOLATION.md` (sections on containment strategy) | Low |
+| R-2 | Document G-4 (cache unbounded growth) in `SECURITY_ANALYSIS.md` and consider adding a maximum entry count to `contextCache` | Low |
+| R-3 | Consider whether the `SocketPermission` caching concern (G-5) is acceptable for the target deployment environment. If DNS rebinding is a concern, SocketPermission entries should be excluded from the `checked` cache | Low |
+| R-4 | For deployments that must permit `createVirtualThread` to partially-trusted code, route that code through a bounded, isolated `ForkJoinPool` with a caller-side deadline per the three-step layered defence in `PROCESS_ISOLATION.md` (sections on containment strategy) | Low |
 
 ---
 
@@ -475,7 +471,7 @@ A thread granted `createVirtualThread` can:
 3. Consume all carrier slots within a bounded window (`minRunnable` triggers expansion up to `maxPoolSize`).
 4. Stall the entire JVM's default virtual thread scheduler until the JVM exits.
 
-For platform threads, the analogous attack creates OS threads. Platform threads are heavier, making mass creation slower, but the attack is still possible without `createPlatformThread` gating in the traditional `new Thread(...)` constructor path (gap G-1 / `PROCESS_ISOLATION.md`).
+For platform threads, the analogous attack creates OS threads. Platform threads are heavier, making mass creation slower, but `createPlatformThread` is checked for both the builder and the traditional `new Thread(...)` constructor path, so thread-bomb attacks require the permission to be granted.
 
 ---
 
@@ -585,8 +581,8 @@ The following threats are fully blocked by the DirtyChai permission layer withou
 
 | Threat | Guard | Notes |
 |--------|-------|-------|
-| Unauthorized virtual thread creation | `RuntimePermission("createVirtualThread")` at `ThreadBuilders.java:258–259, 276–277` | Builder path only — see G-1 for constructor path gap |
-| Unauthorized platform thread creation | `RuntimePermission("createPlatformThread")` at `ThreadBuilders.java:184–185, 206–207` | Builder path only |
+| Unauthorized virtual thread creation | `RuntimePermission("createVirtualThread")` at `ThreadBuilders.java:258–259, 276–277` | `VirtualThread` has no public constructor; builder is the only creation path |
+| Unauthorized platform thread creation | `RuntimePermission("createPlatformThread")` at `ThreadBuilders.java:184–185, 206–207` and `Thread.java:765–768` | Both builder path and all public `Thread(...)` constructors covered |
 | Reflection-based custom SecurityManager installation | `@CallerSensitive` + `StackWalker` scan in `System.setSecurityManager()` | All known reflection/proxy/lambda bypass vectors blocked |
 | Unauthorized native library load | `RuntimePermission("loadLibrary.*")` via `SecurityManager.checkLink()` | `Runtime.load0()` / `loadLibrary0()` |
 | Unauthorized native symbol resolution | `NativeInvocationPermission(libName)` at `ClassLoader.findNative()`, `SymbolLookup`, `SystemLookup` | Two independent gates |
