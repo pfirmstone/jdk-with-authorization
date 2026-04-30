@@ -653,6 +653,168 @@ the dedicated `DefineClassPermission` guard (commit 0f90b38, 2026-04-24).
 
 ---
 
+### 13) JarFile Denial-of-Service Attack Hardening (`InputStreamCounter`)
+
+DirtyChai includes a stream-level denial-of-service mitigation in `JarFile` that prevents
+unbounded memory allocation and CPU consumption during manifest loading and signature
+verification when processing malformed or malicious JAR files.
+
+#### Threat Model
+
+ZIP and JAR files include an **uncompressed-size field** in each central-directory entry
+that JAR-processing code uses to pre-allocate read buffers and decide how much data to
+read from an inflated stream.  An attacker who can present a crafted JAR to a JVM (for
+example by placing it on the classpath, by deploying it as a plugin, or by serving it
+over a network to a class loader) can set this field to a very large value — up to
+4 GiB in 32-bit ZIP headers — while keeping the actual compressed content small.
+
+Without a guard, processing such an entry causes:
+
+- **Memory exhaustion** — pre-allocation of a multi-gigabyte byte array based on the
+  claimed `uncompressedSize` value.
+- **Unbounded stream reads** — if allocation succeeds, reading from the inflating stream
+  consumes CPU indefinitely if the decompressor loops to produce the declared byte count.
+- **Resource exhaustion via signature verification** — because manifest loading and
+  signature-file reading are performed during `JarFile` initialization (triggered
+  implicitly by many class-loading operations), a single JAR on the classpath can trigger
+  this DoS vector against any thread that loads a class from it.
+
+#### Defense Mechanism — `InputStreamCounter`
+
+`JarFile.java` defines the private static inner class `InputStreamCounter`
+(`JarFile.java` lines 444–489):
+
+```java
+private static class InputStreamCounter extends InputStream {
+    private final InputStream in;
+    private int counter = 0;
+    private static final int LIMIT = Integer.MAX_VALUE; // ~2 GiB hard ceiling
+
+    @Override
+    public int read() throws IOException {
+        if (++counter < LIMIT && counter > 0) return in.read();
+        throw new IOException("Maximum stream limit exceeded");
+    }
+
+    @Override
+    public int read(byte[] b, int off, int len) throws IOException {
+        int bytesRead = in.read(b, off, len);
+        if (bytesRead > 0) {
+            counter += bytesRead;
+            if (counter > LIMIT) throw new IOException("Maximum stream limit exceeded");
+        }
+        return bytesRead;
+    }
+    // mark/reset/available/close/markSupported delegate to wrapped stream
+}
+```
+
+Security properties of this design:
+
+| Property | Behavior |
+|----------|----------|
+| Hard byte ceiling | `Integer.MAX_VALUE` (~2.0 GiB, 2,147,483,647 bytes) — no single entry stream can read beyond this limit |
+| Fail-secure on single-byte path | Single-byte `read()` checks `counter > 0` after pre-increment: when the counter increments past `Integer.MAX_VALUE` and wraps directly to `Integer.MIN_VALUE`, the `counter > 0` guard evaluates `false` and throws `IOException`, preventing any read after wrap-around |
+| Bulk-read path wrap-around gap | In `read(byte[], int, int)`, `counter += bytesRead` may silently overflow to a negative value — specifically when `counter` is already close to `Integer.MAX_VALUE` and `bytesRead` is large enough to cross the signed boundary — before the `counter > LIMIT` check fires; a negative counter passes the `> LIMIT` check silently (see residual risks below) |
+| Per-stream scope | Each wrapped stream holds its own counter; the limit applies per entry, not to the aggregate JAR |
+
+#### Application Points
+
+`InputStreamCounter` is applied at both critical JAR-processing paths:
+
+1. **Manifest loading** (`getManifestFromReference()`, line 434) — covers unsigned JARs
+   and pre-verification manifest reads:
+
+   ```java
+   try (InputStream is = new InputStreamCounter(super.getInputStream(manEntry))) {
+       man = new Manifest(is, getName());
+   }
+   ```
+
+   When a `JarVerifier` is active, the manifest bytes are read via `getBytes()` (see
+   below) and then wrapped in a `ByteArrayInputStream` before constructing the `Manifest`.
+
+2. **Signature file reading** (`getBytes()`, lines 839–866) — called for every
+   `META-INF/*.SF`, `*.DSA`, `*.RSA`, and `*.EC` file during JAR verification
+   initialization:
+
+   ```java
+   try (InputStream is = new InputStreamCounter(super.getInputStream(ze))) {
+       long uncompressedSize = ze.getSize();
+       if (uncompressedSize > SignatureFileVerifier.MAX_SIG_FILE_SIZE) {
+           throw new IOException("Unsupported size: " + uncompressedSize + …);
+       }
+       // … read bytes via is
+   }
+   ```
+
+   Two independent limits apply here in sequence:
+
+   - **Pre-read size check:** `uncompressedSize > MAX_SIG_FILE_SIZE` — rejects entries
+     whose claimed size exceeds the configurable signature-file size limit before any
+     reading begins.
+   - **Stream-read limit:** `InputStreamCounter.LIMIT` — prevents the inflating stream
+     from producing more than `Integer.MAX_VALUE` bytes even when `uncompressedSize` is
+     spoofed, set to `-1` (unknown size), or fell below `MAX_SIG_FILE_SIZE`.
+
+   The two-layer check means an attacker cannot bypass the pre-read size gate by setting
+   `uncompressedSize` to `-1` and then supplying a large compressed stream, because
+   `InputStreamCounter` fires on the actual bytes read.
+
+#### Configuration — `jdk.jar.maxSignatureFileSize`
+
+`SignatureFileVerifier.MAX_SIG_FILE_SIZE` is initialized at JVM startup from the
+system property `jdk.jar.maxSignatureFileSize` (default: **16,000,000 bytes**, ~15.3 MiB):
+
+```java
+int tmp = GetIntegerAction.privilegedGetProperty(
+        "jdk.jar.maxSignatureFileSize", 16000000);
+if (tmp < 0 || tmp > MAX_ARRAY_SIZE) {
+    tmp = 16000000;  // reset to safe default on out-of-range value
+}
+```
+
+Administrator guidance:
+
+- The default of 16 MiB accommodates all standard JDK and third-party JAR signatures
+  in typical deployments.  Legitimate signature files larger than this are exceedingly
+  rare.
+- **Do not raise this value** without auditing the JARs being processed and confirming
+  that larger signature files are genuinely required.  Raising the limit increases the
+  memory-exhaustion attack surface.
+- **Lowering the value** to match the actual largest signature file in your deployment
+  provides additional defense-in-depth.
+- The property is read once at JVM startup via a privileged `GetIntegerAction`; it cannot
+  be changed after the JVM starts without a restart.
+
+#### Relationship to SecurityManager Permission Model
+
+`InputStreamCounter` is an **intrinsic resource guard** — it enforces a hard byte ceiling
+at the stream-I/O layer without consulting the SecurityManager or any policy grant:
+
+- The DoS guard is active regardless of whether a SecurityManager is installed.
+- No policy grant can expand or contract the `InputStreamCounter.LIMIT` ceiling; only the
+  `jdk.jar.maxSignatureFileSize` property can adjust the signature-file-size pre-check.
+- The guard complements SecurityManager-based access control: the SM controls *who* may
+  open a JAR entry; `InputStreamCounter` limits *how much data* can be read from any
+  entry opened during JAR initialization.
+
+This is analogous to the FFM arena-allocation gating model (§8): SecurityManager checks
+govern capability acquisition, while the stream counter limits resource consumption
+during capability use.
+
+#### Residual Risks
+
+| Risk | Description | Mitigation |
+|------|-------------|------------|
+| Multiple concurrent opens | The limit is per-stream; an attacker causing many concurrent `JarFile` opens can still consume `N × 2 GiB` across N threads | Deploy with thread-creation permission controls (§6); restrict classpath access for untrusted code |
+| Bulk-read path wrap-around | In `read(byte[], int, int)`, `counter += bytesRead` can wrap to a negative value if `counter` is close to `Integer.MAX_VALUE` and `bytesRead` pushes it past the signed boundary.  A negative counter passes the subsequent `counter > LIMIT` check silently, allowing reads to continue indefinitely.  The single-byte `read()` path does not share this gap — its `counter > 0` guard correctly catches a wrapped counter.  For signature files, the upstream `uncompressedSize > MAX_SIG_FILE_SIZE` pre-check in `getBytes()` provides a second line of defense; the manifest path relies solely on `InputStreamCounter` | Avoid the manifest path for untrusted JARs where possible; for signature files, keep `jdk.jar.maxSignatureFileSize` at a value well below `Integer.MAX_VALUE` so the pre-check fires before the counter can approach wrap-around range |
+| No per-JVM aggregate limit | Individual entry limits are enforced, but there is no cap on the total bytes read across all META-INF entries in a single JAR | Acceptable residual for typical deployments; high-load environments processing untrusted JARs should add OS-level resource controls |
+
+See residual row 15.
+
+---
+
 ## Threat Review (Current)
 
 ### Blocked or strongly mitigated
@@ -692,6 +854,7 @@ the dedicated `DefineClassPermission` guard (commit 0f90b38, 2026-04-24).
 | 12 | Dynamic class definition (RESOLVED — N-15 sub-item) | `Lookup.defineClass()` now gated by `DefineClassPermission` (commit 0f90b38, 2026-04-24); untrusted dynamic class definition is no longer an ungated bypass of `LoadClassPermission` | Verify policy grants are appropriately restricted to trusted code that legitimately needs dynamic class generation; see §12 |
 | 13 | FFM address/allocation surfaces (N-16) — **RESOLVED** | All FFM address-acquisition and arena-allocation surfaces are now gated: `Arena.ofConfined()`, `Arena.ofShared()`, and `Arena.ofAuto()` now each require `NativeMemoryPermission` (commit b62577c, 2026-04-24); `Linker.nativeLinker()` now requires `NativeInvocationPermission("native-linker")` (same commit); `MemorySegment.ofAddress(long)` now requires `NativeMemoryPermission("address-memory-segment")` (commit 3561dab, 2026-04-24) | — |
 | 14 | FFM capability delegation risks (N-17) | Downcall `MethodHandle`, upcall stub `MemorySegment`, arena objects, and native segments are authority-carrying objects; once delegated to less-trusted code, no SM check fires at use time | Treat FFM capability objects as ambient authority; trusted code must not delegate them to untrusted code; document delegation policy constraints for administrators; see §8.4 and §8.8 Step 6 |
+| 15 | JarFile DoS — per-stream limit only (§13) | `InputStreamCounter` enforces a per-stream `Integer.MAX_VALUE` ceiling; signed-integer wrap-around in the bulk-read path and the absence of an aggregate per-JAR cap mean that a crafted JAR with many oversized META-INF entries can still consume significant heap across concurrent opens | Restrict classpath access for untrusted code; apply OS/JVM heap and thread-creation limits; consider lowering `jdk.jar.maxSignatureFileSize` to match observed deployment maximums; see §13 |
 
 ## Analysis: N-13 TLS Subject Authentication Context Propagation (COMPLETED)
 
