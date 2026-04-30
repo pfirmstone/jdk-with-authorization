@@ -286,8 +286,8 @@ public class Manifest implements Cloneable {
         String name = null;
         boolean skipEmptyLines = true;
         byte[] lastline = null;
-
-        while ((len = fis.readLine(lbuf)) != -1) {
+        // Maximum manifest entries 100,000
+        while ((len = fis.readLine(lbuf)) != -1 && ecount < 100000) {
             byte c = lbuf[--len];
             lineNumber++;
 
@@ -344,6 +344,7 @@ public class Manifest implements Cloneable {
             name = null;
             skipEmptyLines = true;
         }
+        if (ecount >= 100000) throw new IOException("Manifest entry count limit exceeded");
     }
 
     private String parseName(byte[] lbuf, int len) {

@@ -32,6 +32,7 @@ import java.io.ObjectStreamField;
 import java.io.Serializable;
 import java.security.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.BiFunction;
 import sun.security.util.SecurityConstants;
 
 /**
@@ -327,12 +328,16 @@ public final class PropertyPermission extends BasicPermission<PropertyPermission
      * @return the canonical string representation of the actions.
      */
     static String getActions(int mask) {
-        return switch (mask & (READ | WRITE)) {
-            case READ         -> SecurityConstants.PROPERTY_READ_ACTION;
-            case WRITE        -> SecurityConstants.PROPERTY_WRITE_ACTION;
-            case READ | WRITE -> SecurityConstants.PROPERTY_RW_ACTION;
-            default           -> "";
-        };
+        switch (mask & (READ | WRITE)) {
+            case READ:          
+                return SecurityConstants.PROPERTY_READ_ACTION;
+            case WRITE:        
+                return SecurityConstants.PROPERTY_WRITE_ACTION;
+            case READ | WRITE: 
+                return SecurityConstants.PROPERTY_RW_ACTION;
+            default:           
+                return "";
+        }
     }
 
     /**
@@ -430,7 +435,9 @@ final class PropertyPermissionCollection extends PermissionCollection<PropertyPe
 
         // Add permission to map if it is absent, or replace with new
         // permission if applicable.
-        perms.merge(propName, pp, (existingVal, newVal) -> {
+        perms.merge(propName, pp, new BiFunction<PropertyPermission, PropertyPermission, PropertyPermission>() {
+            @Override
+            public PropertyPermission apply(PropertyPermission existingVal, PropertyPermission newVal) {
                 int oldMask = existingVal.getMask();
                 int newMask = newVal.getMask();
                 if (oldMask != newMask) {
@@ -444,7 +451,7 @@ final class PropertyPermissionCollection extends PermissionCollection<PropertyPe
                 }
                 return existingVal;
             }
-        );
+        });
 
         if (!all_allowed) {
             if (propName.equals("*"))

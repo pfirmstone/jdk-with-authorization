@@ -30,6 +30,7 @@ import java.security.Permission;
 import java.security.PermissionCollection;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.BiFunction;
 
 /**
  * This class is used to protect Kerberos services and the
@@ -486,7 +487,9 @@ final class KrbServicePermissionCollection
 
         // Add permission to map if it is absent, or replace with new
         // permission if applicable.
-        perms.merge(princName, sp, (existingVal, newVal) -> {
+        perms.merge(princName, sp, new BiFunction<ServicePermission, ServicePermission, ServicePermission>() {
+            @Override
+            public ServicePermission apply(ServicePermission existingVal, ServicePermission newVal) {
                 int oldMask = existingVal.getMask();
                 int newMask = newVal.getMask();
                 if (oldMask != newMask) {
@@ -500,7 +503,7 @@ final class KrbServicePermissionCollection
                 }
                 return existingVal;
             }
-        );
+        });
     }
 
     /**

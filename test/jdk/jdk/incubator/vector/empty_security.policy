@@ -26,4 +26,5 @@
 grant
 {
     permission au.zeus.jdk.authorization.guards.LoadClassPermission;
+    permission au.zeus.jdk.authorization.guards.DefineClassPermission "ALLOW";
 };

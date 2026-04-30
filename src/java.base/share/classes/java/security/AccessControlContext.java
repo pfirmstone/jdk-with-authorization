@@ -33,6 +33,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ForkJoinPool;
+import java.lang.invoke.MethodHandles;
 
 import sun.security.util.Debug;
 import sun.security.util.SecurityConstants;
@@ -949,7 +950,7 @@ public final class AccessControlContext {
      * escalation of permissions.   
      */
     public static abstract sealed class ContextBuilder 
-            permits ClassLoader.Context, ForkJoinPool.Context {
+            permits ClassLoader.Context, ForkJoinPool.Context, MethodHandles.Context {
         
         /**
          * Creates a new ContextBuilder instance;

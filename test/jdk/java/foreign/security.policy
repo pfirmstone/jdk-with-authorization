@@ -10,4 +10,6 @@ grant
     permission au.zeus.jdk.authorization.guards.LoadClassPermission "ALLOW";
     permission java.lang.RuntimePermission "accessClassInPackage.sun.util.locale.provider";
     permission au.zeus.jdk.authorization.guards.NativeInvocationPermission "*";
+    permission au.zeus.jdk.authorization.guards.NativeMemoryPermission "*";
+    permission au.zeus.jdk.authorization.guards.DefineClassPermission "ALLOW";
 };

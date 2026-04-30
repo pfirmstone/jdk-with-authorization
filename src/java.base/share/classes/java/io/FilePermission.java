@@ -32,6 +32,7 @@ import java.util.Objects;
 import java.util.StringJoiner;
 import java.util.Collections;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.BiFunction;
 
 import jdk.internal.access.JavaIOFilePermissionAccess;
 import jdk.internal.access.SharedSecrets;
@@ -316,21 +317,24 @@ public final class FilePermission extends Permission {
         if ((mask & ALL) != mask) throw new IllegalArgumentException("invalid actions mask");
         if (mask == NONE) throw new IllegalArgumentException("invalid actions mask");
         if (cpath != null){
-            return AccessController.doPrivileged((PrivilegedAction<String>) () -> {
-                try {
-                    String path1 = cpath;
-                    if (cpath.endsWith("*")) {
-                        // call getCanonicalPath with a path with wildcard character
-                        // replaced to avoid calling it with paths that are
-                        // intended to match all entries in a directory
-                        path1 = path1.substring(0, path1.length() - 1) + "-";
-                        path1 = new File(path1).getCanonicalPath();
-                        return path1.substring(0, path1.length() - 1) + "*";
-                    } else {
-                        return new File(path1).getCanonicalPath();
+            return AccessController.doPrivileged((PrivilegedAction<String>) new PrivilegedAction<String>() {
+                @Override
+                public String run() {
+                    try {
+                        String path1 = cpath;
+                        if (cpath.endsWith("*")) {
+                            // call getCanonicalPath with a path with wildcard character
+                            // replaced to avoid calling it with paths that are
+                            // intended to match all entries in a directory
+                            path1 = path1.substring(0, path1.length() - 1) + "-";
+                            path1 = new File(path1).getCanonicalPath();
+                            return path1.substring(0, path1.length() - 1) + "*";
+                        } else {
+                            return new File(path1).getCanonicalPath();
+                        }
+                    } catch (IOException ioe) {
+                        return cpath;
                     }
-                } catch (IOException ioe) {
-                    return cpath;
                 }
             });
         }
@@ -1134,7 +1138,9 @@ final class FilePermissionCollection extends PermissionCollection<FilePermission
 
         // Add permission to map if it is absent, or replace with new
         // permission if applicable.
-        perms.merge(permission.getName(), permission, (existingVal, newVal) -> {
+        perms.merge(permission.getName(), permission, new BiFunction<FilePermission, FilePermission, FilePermission>() {
+            @Override
+            public FilePermission apply(FilePermission existingVal, FilePermission newVal) {
                 int oldMask = existingVal.getMask();
                 int newMask = newVal.getMask();
                 if (oldMask != newMask) {
@@ -1148,7 +1154,7 @@ final class FilePermissionCollection extends PermissionCollection<FilePermission
                 }
                 return existingVal;
             }
-        );
+        });
     }
 
     /**

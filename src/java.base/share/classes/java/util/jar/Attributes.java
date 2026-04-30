@@ -372,8 +372,11 @@ public class Attributes implements Map<Object,Object>, Cloneable {
         String name = null, value;
         ByteArrayOutputStream fullLine = new ByteArrayOutputStream();
 
-        int len;
+        int len, maxLen = 1048576; //1MB
+        long totalLen = 0;
         while ((len = is.readLine(lbuf)) != -1) {
+            totalLen = totalLen + len;
+            if (totalLen > maxLen) throw new IOException("Manifest length excessive");
             boolean lineContinued = false;
             byte c = lbuf[--len];
             lineNumber++;
