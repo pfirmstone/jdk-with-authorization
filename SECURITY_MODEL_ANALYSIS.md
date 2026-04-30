@@ -1,8 +1,8 @@
 # Security Model Analysis — Dirty Chai
 
-**Version:** 1.0  
+**Version:** 1.1  
 **Date:** 2026-04-30  
-**Scope:** Source-code analysis of the Dirty Chai security model as implemented in the current `trunk` branch.  
+**Scope:** Source-code analysis of the Dirty Chai security model as implemented in the current `trunk` branch, including process-isolation necessity analysis: virtual thread pinning, ForkJoinPool carrier-thread saturation, SecurityManager bypass risk, FFM resource-exhaustion surfaces, and process-isolation decision boundaries.  
 **Analyst:** Copilot (AI-assisted analysis; content reviewed and approved for this exempt document per `CLAUDE.md`)  
 **Related Documents:** `SECURITY_MODEL.md`, `SECURITY_ANALYSIS.md`, `STACK_VALIDATION_ANALYSIS.md`, `PROCESS_ISOLATION.md`, `VULNERABILITIES_ADDRESSED.md`
 
@@ -28,7 +28,9 @@ The analysis is based on a direct reading of:
 
 Dirty Chai implements a coherent, defense-in-depth authorization model that meaningfully extends OpenJDK's deprecated `SecurityManager` architecture into modern Java (virtual threads, Foreign Function & Memory API, dynamic class definition). The core design is sound: installation controls are multi-layered, policy evaluation is fail-secure and concurrent, and new permission guards close surfaces that the base JDK left open.
 
-Five areas warrant continued attention:
+The second half of this document (sections 15–18) provides a process-isolation necessity analysis. It answers: which threats are fully stopped by the SecurityManager permission layer alone, which threats can only be *contained* in-process, and which threats require OS-level process isolation regardless of what DirtyChai does.
+
+Five areas from the core-model analysis warrant continued attention:
 
 | Area | Finding | Status |
 |------|---------|--------|
@@ -373,6 +375,7 @@ This is the intended behavior and is documented in `SECURITY_MODEL.md` section 1
 | G-3 | `SerialObjectPermission` in `readOrdinaryObject()` — coverage of `readProxyDesc()` and `readClassDesc()` should be verified to confirm gadget chains through proxy deserialization are blocked | Medium | Not yet documented |
 | G-4 | `contextCache` and `checked` caches have time-based TTL but no count-based cap — high-volume distinct-context workloads can cause unbounded cache growth | Low | Not yet documented |
 | G-5 | `SocketPermission` in the `checked` cache may return a stale allow after DNS state changes within the TTL window | Low | Acknowledged in source code comment |
+| G-6 | Virtual threads that enter `synchronized` blocks pin their carrier thread; once running, no JVM mechanism can forcibly terminate or unpin them — carrier-thread exhaustion is possible for code already granted `createVirtualThread` | Low (requires prior grant) | Documented in `PROCESS_ISOLATION.md` |
 
 ### 12.3 Design Observations
 
@@ -394,10 +397,234 @@ The following recommendations are offered for human review and decision. They ar
 | R-2 | Add `checkPermission("createPlatformThread")` to the traditional `new Thread(...)` constructor path to close G-1, aligning it with the builder path | Medium |
 | R-3 | Document G-4 (cache unbounded growth) in `SECURITY_ANALYSIS.md` and consider adding a maximum entry count to `contextCache` | Low |
 | R-4 | Consider whether the `SocketPermission` caching concern (G-5) is acceptable for the target deployment environment. If DNS rebinding is a concern, SocketPermission entries should be excluded from the `checked` cache | Low |
+| R-5 | For deployments that must permit `createVirtualThread` to partially-trusted code, route that code through a bounded, isolated `ForkJoinPool` with a caller-side deadline per the three-step layered defence in `PROCESS_ISOLATION.md` (sections on containment strategy) | Low |
 
 ---
 
-## 14. Related Documents
+## 14. Process Isolation Analysis — Virtual Thread Pinning and DoS Vectors
+
+### 14.1 What Pinning Is
+
+When a virtual thread executes a `synchronized` block or method, or calls `Continuation.pin()` directly, the JVM scheduler cannot unmount the continuation from its carrier (platform) thread. The virtual thread is said to be *pinned*. While pinned, the carrier thread is blocked until the virtual thread exits the `synchronized` region or explicitly parks.
+
+This is not a DirtyChai invention; it is inherent to the OpenJDK virtual-thread design. Evidence in the codebase:
+
+- **`VirtualThread.java:764–780`** — the comment `// park on the carrier thread when pinned` appears at the `park`/`sleep` paths. When `!yielded` (the virtual thread could not yield because it is pinned), `parkOnCarrierThread(false, 0)` is called, which parks the OS thread itself.
+- **`VirtualThread.java:1377`** — `Continuation.pin()` is called directly in `disableSuspendAndPreempt()`, used by `VirtualThread` to guard scheduler-start continuations.
+- **`VirtualThread.java:359`** — `Continuation.pin()` / `Continuation.unpin()` wraps task submission to the scheduler when the submitting thread is itself virtual, preventing a scheduler deadlock during startup.
+- **`VirtualThread.java:859`** — `// Call into VM when pinned to record a JFR jdk.VirtualThreadPinned event`.
+
+### 14.2 DoS Vector: Carrier Saturation by Pinned Virtual Threads
+
+The default `ForkJoinPool` scheduler is created at `VirtualThread.java:1469–1501`:
+
+```java
+private static ForkJoinPool createDefaultScheduler() {
+    ForkJoinWorkerThreadFactory factory = pool -> {
+        PrivilegedAction<ForkJoinWorkerThread> pa = () -> new CarrierThread(pool);
+        return AccessController.doPrivileged(pa);
+    };
+    PrivilegedAction<ForkJoinPool> pa = () -> {
+        int parallelism, maxPoolSize, minRunnable;
+        // ...property lookups...
+        parallelism = Runtime.getRuntime().availableProcessors();     // line 1482
+        maxPoolSize = Integer.max(parallelism, 256);                  // line 1488
+        minRunnable = Integer.max(parallelism / 2, 1);                // line 1493
+        return new ForkJoinPool(parallelism, factory, handler, asyncMode,
+                     0, maxPoolSize, minRunnable, pool -> true, 30, SECONDS);
+    };
+    return AccessController.doPrivileged(pa);
+}
+```
+
+Key scheduler parameters (defaults, overridable via system properties):
+
+| Parameter | Default | System Property |
+|-----------|---------|-----------------|
+| `parallelism` | `Runtime.availableProcessors()` | `jdk.virtualThreadScheduler.parallelism` |
+| `maxPoolSize` | `max(parallelism, 256)` | `jdk.virtualThreadScheduler.maxPoolSize` |
+| `minRunnable` | `max(parallelism / 2, 1)` | `jdk.virtualThreadScheduler.minRunnable` |
+
+The `maxPoolSize` cap (default 256) is the hard carrier-thread ceiling for the entire JVM. A `synchronized` virtual thread holds a carrier for its entire blocked duration and does not release it even when waiting on a monitor. If code pins `maxPoolSize` virtual threads simultaneously — each blocked in a `synchronized` section waiting for each other, or waiting on I/O inside a `synchronized` block — every carrier slot is consumed. The scheduler cannot spawn new carriers beyond `maxPoolSize`. No other virtual thread in the JVM can be scheduled until a pinned thread unblocks.
+
+This attack does not require any SecurityManager permission beyond the permission to *create* virtual threads. `synchronized` entry is not a SecurityManager-gated operation. The DoS arises from consumption of a resource (carrier threads) that the virtual thread already holds legitimately.
+
+`PROCESS_ISOLATION.md` documents this directly (lines 27–30):
+
+> "Carrier thread starvation — Buggy code can pin carrier threads via `synchronized` in virtual threads at scale."
+> "Both attacks require the hostile thread to be already running. The new permission checks prevent that thread from being created in the first place, which is the correct defence boundary."
+
+### 14.3 Interrupt-Immunity Compounds the Risk
+
+Once a virtual thread is running inside a pinned `synchronized` block, it is essentially unremovable (`PROCESS_ISOLATION.md` lines 131–171):
+
+- **`Thread.interrupt()`** — sets a flag; code that never polls `isInterrupted()` or never blocks in an interruptible method ignores it.
+- **`Thread.stop()`** — permanently removed; throws `UnsupportedOperationException` on virtual threads.
+- **`StructuredTaskScope.close()`** — calls `interrupt()` on subtasks; if the subtask swallows `InterruptedException`, `close()` blocks forever.
+- **`ExecutorService.shutdownNow()`** — interrupt-based; subject to the same limitation.
+- **`ForkJoinPool` shutdown** — sends `interrupt()` to carrier threads; a mounted virtual thread that ignores the flag continues to block its carrier.
+
+No mechanism can forcibly terminate a virtual thread that refuses to cooperate. This is a fundamental property of the Java threading model, not a gap in DirtyChai's design (`PROCESS_ISOLATION.md` lines 133–136).
+
+### 14.4 Compound DoS Scenarios
+
+A thread granted `createVirtualThread` can:
+
+1. Spawn `maxPoolSize` (256 by default) virtual threads.
+2. Have each thread enter a wide `synchronized(lock) { busyWait(); }` block.
+3. Consume all carrier slots within a bounded window (`minRunnable` triggers expansion up to `maxPoolSize`).
+4. Stall the entire JVM's default virtual thread scheduler until the JVM exits.
+
+For platform threads, the analogous attack creates OS threads. Platform threads are heavier, making mass creation slower, but the attack is still possible without `createPlatformThread` gating in the traditional `new Thread(...)` constructor path (gap G-1 / `PROCESS_ISOLATION.md`).
+
+---
+
+## 15. ForkJoinPool Carrier-Thread Saturation and SecurityManager Behavior
+
+### 15.1 No SecurityManager Hook on ForkJoinPool Scheduling
+
+`ForkJoinPool` is a `java.util.concurrent` component. Its internal carrier-thread creation (`new CarrierThread(pool)` at `VirtualThread.java:1471`) runs inside a `PrivilegedAction` passed to `AccessController.doPrivileged(pa)`. This drops any caller-context restrictions at creation time. The internal scheduling logic — work-stealing, task submission, thread compensation — contains no `SecurityManager.checkPermission()` calls.
+
+This has two concrete implications:
+
+**Implication A — Carrier thread compensation is not policy-gated.**  
+When the `ForkJoinPool` decides to compensate for a blocked carrier (maintaining `minRunnable` running threads), it creates a new carrier thread internally. This creation path does not invoke `RuntimePermission("createPlatformThread")`. The permission check at `ThreadBuilders.java:185` and `207` fires only when application code explicitly calls `Thread.ofPlatform()...unstarted()` or `...factory()`. Even if an operator grants `createVirtualThread` but denies `createPlatformThread`, the `ForkJoinPool` scheduler still creates carrier threads internally as compensation. This is consistent with the documented design: the permission gates *application-level* thread creation; JVM-internal scheduler behavior is separate.
+
+**Implication B — Carrier saturation does not bypass SecurityManager; it starves it.**  
+Carrier saturation does not bypass the SecurityManager in the sense of causing incorrect permission decisions. However, if all carrier threads are blocked, new virtual threads submitted to the scheduler are never mounted. Permission checks for those threads never fire — not because the checks are circumvented, but because the threads never reach the point of executing code. Any in-flight or queued work is frozen. This is a denial-of-service against the *availability* of the authorization machinery, not its *integrity*.
+
+### 15.2 Can SecurityManager Checks Be Spoofed via Carrier Thread Context?
+
+When a virtual thread mounts on a carrier thread, it runs on that carrier's OS thread. The `AccessControlContext` used by the virtual thread is the one captured at *creation* time: `AccessController.getContext()` called in `ThreadBuilders.java:260` (virtual thread builder `unstarted()`) and `279` (virtual thread factory `newThread()`). It is not the carrier thread's context.
+
+Therefore: **No.** Carrier-thread saturation cannot cause a virtual thread to run with a different `AccessControlContext` than intended.
+
+`VirtualThread` manages its own `inheritedAccessControlContext` field. This is set explicitly from the caller's context in `ThreadBuilders.newVirtualThread()` and is not overwritten by carrier assignment. When a permission check is triggered inside a virtual thread, `AccessController.getStackAccessControlContext()` (native) walks the *continuation stack* of the virtual thread — not the carrier's stack. The carrier's frames are not included. The untrusted caller's `ProtectionDomain` is therefore correctly intersected even when the virtual thread is executing on a carrier.
+
+### 15.3 Scheduler Injection Risk
+
+`Thread.ofVirtual()` exposes an internal-API hook `.scheduler(executor)` that allows a custom `Executor` to back a virtual thread's scheduling. A caller who has `createVirtualThread` permission and obtains a `VirtualThreadBuilder` reference could pass a custom scheduler that runs on a pool the caller controls. This could cause confusion in context management for threads on that custom scheduler. This is an advanced concern; in practice, the custom scheduler path requires explicit opt-in by the code constructing the virtual thread builder, and the builder checks `createVirtualThread` permission at construction regardless of scheduler choice (`ThreadBuilders.java:258–259, 276–277`).
+
+---
+
+## 16. How Current Guards Handle Virtual Thread and FFM Resource Exhaustion
+
+### 16.1 Creation Gate: `RuntimePermission("createVirtualThread")`
+
+The primary guard is the permission check at creation time. In `ThreadBuilders.java`:
+
+```java
+// Line 258–259 — VirtualThreadBuilder.unstarted():
+SecurityManager sm = System.getSecurityManager();
+if (sm != null) sm.checkPermission(new RuntimePermission("createVirtualThread"));
+
+// Line 276–277 — VirtualThreadBuilder.factory():
+SecurityManager sm = System.getSecurityManager();
+if (sm != null) sm.checkPermission(new RuntimePermission("createVirtualThread"));
+```
+
+If untrusted code lacks `createVirtualThread`, it cannot create virtual threads at all. This is the correct and most effective defense: resource-exhaustion attacks require the resource to be *acquired* first. By denying acquisition, the attack is stopped before any carrier slot is consumed. `PROCESS_ISOLATION.md` (lines 56–80) frames this explicitly as the security contract:
+
+> "The new permission checks prevent that thread from being created in the first place, which is the correct defence boundary."
+
+### 16.2 What the Guards Cannot Do After Creation
+
+The guards offer no runtime enforcement once a virtual thread is running:
+
+| Threat | Guard Available? | Reason |
+|--------|------------------|--------|
+| Virtual thread entering `synchronized` and pinning carrier | None | Monitor acquisition is not SecurityManager-gated |
+| Virtual thread in busy-loop consuming CPU | None | CPU consumption is not gated |
+| Virtual thread causing `OutOfMemoryError` by allocating heap objects | None | Heap allocation is not gated |
+| Virtual thread holding an open `Arena.ofConfined()` and blocking | None at runtime | FFM operations are gated at *acquisition*, not use |
+
+### 16.3 Containment via Isolated ForkJoinPool
+
+When creation cannot be denied, `PROCESS_ISOLATION.md` (lines 173–189) documents the available containment strategies:
+
+| Strategy | What It Achieves | Limitation |
+|----------|------------------|------------|
+| Isolated `ForkJoinPool` for untrusted virtual threads | Saturation of that pool does not affect trusted scheduler pools | The stuck thread still consumes its carrier(s) within that pool |
+| Bounded parallelism in the isolated pool | Limits the number of carriers that can be monopolised | Does not stop the thread; limits blast radius only |
+| Deadline on the caller (`latch.await(timeout)`) | The caller moves on and treats the task as failed | The task thread keeps running, leaking a carrier slot |
+| Watchdog that replaces the pool | A new pool can be created for fresh work | Old stuck threads remain alive until JVM exits |
+| `Thread.join(Duration)` | Non-blocking wait with timeout | After timeout, the thread is still alive |
+
+The recommended layered defence (`PROCESS_ISOLATION.md` lines 183–189):
+
+1. **Prevention** — use `createVirtualThread` permission check to stop untrusted code from creating virtual threads at all.
+2. **Containment** — if creation must be permitted, route untrusted work through a bounded, isolated `ForkJoinPool` with a caller-side deadline.
+3. **Acceptance** — document that a stuck thread will consume its carrier slot until JVM exit, and size the isolated pool's parallelism accordingly.
+
+### 16.4 FFM Resource-Exhaustion Guards
+
+The FFM API presents distinct resource-exhaustion risk via off-heap memory allocation. All four `Arena` factory entry points are now gated in `Arena.java`:
+
+| Arena | Guard | Source Line |
+|-------|-------|-------------|
+| `Arena.ofAuto()` | `NativeMemoryPermission("auto-arena")` | `Arena.java:230–232` |
+| `Arena.global()` | `NativeMemoryPermission("global-arena")` | `Arena.java:247–249` |
+| `Arena.ofConfined()` | `NativeMemoryPermission("confined-arena")` | `Arena.java:266–268` |
+| `Arena.ofShared()` | `NativeMemoryPermission("shared-arena")` | `Arena.java:281–283` |
+
+`AbstractMemorySegmentImpl.reinterpretInternal()` is separately gated by `NativeMemoryPermission("reinterpret-memory-segment")`.
+
+The critical property (`SECURITY_ANALYSIS.md`): off-heap memory is not bounded by `-Xmx`. Exhausting native memory causes `OutOfMemoryError`, JVM process termination, or OS-level failure — all denial-of-service outcomes. The permission gate prevents unauthorized *acquisition*, but once acquired legitimately, the holding pattern is outside the security model's reach:
+
+> "Long-lived leaked arenas: An `Arena.ofShared()` or `Arena.ofConfined()` created but never explicitly closed retains all allocated native memory until the arena itself becomes unreachable and is GC-finalized."
+
+**Virtual thread + FFM interaction:** A virtual thread that holds an open `Arena.ofConfined()` and blocks on a `synchronized` monitor simultaneously causes both carrier-thread starvation (section 14.2) and native memory retention. The arena permission gate prevents unauthorized acquisition, but the double-resource-hold pattern is outside the security model's reach once both grants are held.
+
+---
+
+## 17. Process Isolation Decision Boundaries
+
+### 17.1 Where SecurityManager Alone Is Sufficient
+
+The following threats are fully blocked by the DirtyChai permission layer without requiring OS-level process isolation (`PROCESS_ISOLATION.md` lines 935–949):
+
+| Threat | Guard | Notes |
+|--------|-------|-------|
+| Unauthorized virtual thread creation | `RuntimePermission("createVirtualThread")` at `ThreadBuilders.java:258–259, 276–277` | Builder path only — see G-1 for constructor path gap |
+| Unauthorized platform thread creation | `RuntimePermission("createPlatformThread")` at `ThreadBuilders.java:184–185, 206–207` | Builder path only |
+| Reflection-based custom SecurityManager installation | `@CallerSensitive` + `StackWalker` scan in `System.setSecurityManager()` | All known reflection/proxy/lambda bypass vectors blocked |
+| Unauthorized native library load | `RuntimePermission("loadLibrary.*")` via `SecurityManager.checkLink()` | `Runtime.load0()` / `loadLibrary0()` |
+| Unauthorized native symbol resolution | `NativeInvocationPermission(libName)` at `ClassLoader.findNative()`, `SymbolLookup`, `SystemLookup` | Two independent gates |
+| Unauthorized deserialization of arbitrary classes | `SerialObjectPermission(className)` at `ObjectInputStream.readOrdinaryObject()` | Gadget chains blocked before object instantiation |
+| Unauthorized class loading | `LoadClassPermission` at `SecureClassLoader.defineClass()` | Guards URL-based class loading |
+| Unauthorized dynamic class definition | `DefineClassPermission` at `MethodHandles.Lookup.defineClass()` | Guards Lookup-based runtime class injection |
+| Unauthorized off-heap memory allocation | `NativeMemoryPermission(arenaType)` at all four `Arena` factories | Off-heap DoS prevention |
+| Unauthorized memory segment reinterpretation | `NativeMemoryPermission("reinterpret-memory-segment")` | Memory confusion prevention |
+| Untrusted `<clinit>` loading trusted classes | Untrusted `ProtectionDomain` on stack; intersection enforced | Policy must not grant AllPermission to untrusted PDs |
+| Untrusted code triggering `invokedynamic` bootstrap | Untrusted PD on stack; intersection enforced | Same as above |
+| Unauthorized runtime attach | `AttachPermission("attachVirtualMachine")` in attach provider path | When SecurityManager policy denies attach |
+
+### 17.2 Where Process Isolation Is Required
+
+The following residual gaps cannot be fully closed in-process regardless of DirtyChai's guards (`PROCESS_ISOLATION.md` lines 964–975):
+
+| Residual Gap | Why In-Process Guards Are Insufficient |
+|--------------|----------------------------------------|
+| Virtual thread carrier saturation by `synchronized`-pinned threads — after `createVirtualThread` is granted | Permission checks fire at *creation*, not at `synchronized` entry; JVM has no mechanism to forcibly unpin or terminate a running virtual thread |
+| Finalizer / Cleaner context escape — no PoLP deployed | Without PoLP, class-level grants are unconstrained; `neverPrivileged` alone cannot prevent unrestricted `doPrivileged` escalation |
+| JVMTI / `-agentlib:` attached at JVM startup | JVMTI agents load before the SecurityManager is installed and can bypass all Java-level checks |
+| JNI `CallXxxMethod` re-entrant callbacks from within native code | Re-entrant JNI calls do not pass through Java-side SecurityManager permission checks |
+| Shared-memory side-channel attacks (Spectre-class) | Require hardware-level isolation (separate physical cores or memory flushing) |
+| Unrestricted `doPrivileged` in trusted code reachable from untrusted code | DirtyChai cannot prevent a trusted class from calling unrestricted `doPrivileged` on a path that untrusted code can reach |
+
+### 17.3 Operator Checklist for Mixed-Trust Deployments
+
+(Reproduced from `PROCESS_ISOLATION.md` operator checklist for convenience)
+
+- Every trusted class callable from untrusted code **must not** use unrestricted `AccessController.doPrivileged(...)` on paths that lead to native calls, sensitive I/O, or class loading.
+- Trusted classes must not perform sensitive operations in `finalize()` or `Cleaner` callbacks that should be restricted by the creator's `AccessControlContext`.
+- `<clinit>` blocks in trusted classes must not use unrestricted `doPrivileged` to initialize security-sensitive resources.
+- For code whose trust level is not fully established, use process isolation (Phoenix activation groups or containers).
+- If `createVirtualThread` must be granted to partially-trusted code, route that code's threads through a bounded, isolated `ForkJoinPool` with a caller-side deadline (containment strategy, section 16.3).
+
+---
+
+## 18. Related Documents
 
 | Document | Relationship |
 |----------|-------------|
