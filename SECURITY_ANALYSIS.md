@@ -1224,6 +1224,104 @@ operations (native, file, network):
    when PoLP policies are properly generated and both layers (neverPrivileged +
    PoLP) are active, process isolation is not required for N-9 mitigation.
 
+### N-9 Residual Risk Mitigation via PoLP Policy Generation
+
+When observation-based Principle of Least Privilege (PoLP) policy generation is
+used, the N-9 context-escape vector is practically eliminated even when
+`doPrivileged` is present inside finalizer/cleaner callbacks.
+
+#### How PoLP Bounds Callback Authority
+
+Observation-based PoLP policy generation captures the permissions that each
+class actually exercises during a complete application lifecycle observation
+window.  The resulting policy grants are:
+
+- **Explicit and bounded** — only what was observed is granted.
+- **No wildcards** — no `AllPermission`, no overly broad `FilePermission("*", "read")`.
+- **Lifecycle-inclusive** — finalizer and cleaner callbacks are observed as part
+  of the normal GC/cleanup cycle, so their actual permission requirements are
+  captured accurately.
+
+#### Why `doPrivileged` Cannot Escalate Under PoLP
+
+`AccessController.doPrivileged(action)` drops caller-domain frames from the
+stack intersection, which is the mechanism that allows a context-escape attempt.
+However, even after dropping those frames, the callback class's own
+`ProtectionDomain` — and therefore its PoLP-generated policy grant — becomes the
+*ceiling* for what that execution can do.
+
+```text
+Finalizer thread (neverPrivileged base)
+  TrustedCallback.cleanup()              ← PoLP grant: FilePermission("temp/cleanup.txt","read")
+    AccessController.doPrivileged(...)   ← drops caller frames; ceiling = PoLP grant
+      [attempts: read("/etc/passwd")]
+      → SecurityManager.checkPermission(FilePermission("/etc/passwd","read"))
+      → Intersection: PoLP grant does NOT include "/etc/passwd"
+      → SecurityException thrown — ESCALATION BLOCKED
+```
+
+Even if the callback class held a `doPrivileged` call that would otherwise drop
+a limited creator context, the resolved permission set is bounded by the PoLP
+observation.  An operation that was never observed cannot appear in the grant,
+and therefore cannot be performed under `doPrivileged`.
+
+#### Concrete Example
+
+| Step | Traditional model (no PoLP) | PoLP model |
+|------|-----------------------------|-----------------------------|
+| Finalizer observed doing | `read("temp/cleanup.txt")` | `read("temp/cleanup.txt")` |
+| Policy grants callback | `FilePermission("-","read")` (over-broad, all files recursively) | `FilePermission("temp/cleanup.txt","read")` (exact) |
+| Finalizer attempts via `doPrivileged` | `read("/etc/passwd")` | `read("/etc/passwd")` |
+| Result | ✗ **ESCALATION** — grant covers `/etc/passwd` | ✓ **BLOCKED** — `SecurityException` |
+
+#### Updated Risk Assessment
+
+| Deployment model | N-9 practical risk | Reason |
+|------------------|--------------------|--------|
+| No PoLP (over-broad grants) | **High** | Context escape + broad grant = escalation possible |
+| PoLP observation-based policy | **Low** | Grant ceiling equals observed behavior; unobserved ops denied |
+| PoLP + process isolation | **Very Low** | Defense-in-depth: policy boundary + process boundary |
+
+Context escape is still architecturally present (creator's limited ACC is not
+propagated), but it is operationally inert when the callback class holds only
+the PoLP-observed permissions.
+
+#### Policy Implications
+
+PoLP policy generation is not only a convenience tool — it acts as a **security
+boundary** for finalizer/cleaner escalation:
+
+- A finalizer that never called `System.load(nativeLib)` during observation
+  will not hold `NativeInvocationPermission` in its grant.
+- A finalizer that never accessed `/etc/passwd` will not hold a matching
+  `FilePermission`.
+- `doPrivileged` inside that finalizer cannot grant what the policy does not
+  give.
+
+This shifts the N-9 classification from *"Residual gap requiring process
+isolation"* to *"Low practical risk under PoLP"*.  Process isolation remains a
+valid additional layer, but is not the primary control when PoLP policies are
+in use.
+
+#### Administrator Guidance
+
+1. **Generate PoLP policies with the full application lifecycle**, including the
+   cleanup phase, so finalizer and cleaner callbacks are exercised during the
+   observation window and their actual needs are captured.
+2. **Exercise finalizer/cleaner paths explicitly** during the observation run
+   (e.g., force GC, call `System.runFinalization()`, or trigger explicit
+   `Cleaner` actions) to ensure their permission requirements appear in the
+   generated policy.
+3. **Do not manually over-grant permissions to cleanup code.**  If a finalizer
+   requires broader access than was observed, treat that as a design smell and
+   refactor to explicit `close()` / `release()` patterns.
+4. **Monitor for `SecurityException` during finalization** at runtime.  Such
+   exceptions indicate either a policy mismatch (observation was incomplete) or
+   an attempted escalation beyond observed behavior.
+5. **Treat a request to broaden cleanup grants as a threat indicator** — review
+   carefully before granting permissions that were not captured during
+   observation.
+
 ---
 
 ## Analysis: Constant-Pool and Class-Initialization Security (N-10)
