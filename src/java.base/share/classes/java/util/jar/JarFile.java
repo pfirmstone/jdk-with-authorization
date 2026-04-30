@@ -453,6 +453,7 @@ public class JarFile extends ZipFile {
 
         @Override
         public int read() throws IOException {
+            // Wraparound is intentional
             if (++counter < LIMIT && counter > 0) return in.read();
             throw new IOException("Maximum stream limit exceeded");
         }
@@ -462,7 +463,8 @@ public class JarFile extends ZipFile {
             int bytesRead = in.read(b, off, len);
             if (bytesRead > 0) {
                 counter += bytesRead;
-                if (counter > LIMIT) throw new IOException("Maximum stream limit exceeded");
+                // Wraparound is intentional
+                if (counter == LIMIT || counter < 0) throw new IOException("Maximum stream limit exceeded");
             }
             return bytesRead;
         }
