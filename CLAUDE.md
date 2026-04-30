@@ -173,6 +173,7 @@ developers and users who read the GitHub repository:
 - `CONTRIBUTING.md`
 - `STACK_VALIDATION_ANALYSIS.md`
 - `SECURITY_MODEL.md`
+- `SECURITY_MODEL_ANALYSIS.md`
 - `VULNERABILITIES_ADDRESSED.md`
 - `PHILOSOPHY.md`
 - `README.md`
