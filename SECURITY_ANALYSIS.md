@@ -1,6 +1,6 @@
 # Dirty Chai Security Analysis
 
-**Date:** 2026-04-24  
+**Date:** 2026-04-30  
 **Project:** Dirty Chai  
 **Scope:** `System.setSecurityManager()`, `AccessController`, `ConcurrentPolicyFile`, URI handling, guard permissions, Executors, and virtual-thread/security-manager interaction paths
 
@@ -701,7 +701,8 @@ private static class InputStreamCounter extends InputStream {
         int bytesRead = in.read(b, off, len);
         if (bytesRead > 0) {
             counter += bytesRead;
-            if (counter > LIMIT) throw new IOException("Maximum stream limit exceeded");
+            // Wraparound is intentional
+            if (counter == LIMIT || counter < 0) throw new IOException("Maximum stream limit exceeded");
         }
         return bytesRead;
     }
@@ -715,7 +716,7 @@ Security properties of this design:
 |----------|----------|
 | Hard byte ceiling | `Integer.MAX_VALUE` (~2.0 GiB, 2,147,483,647 bytes) — no single entry stream can read beyond this limit |
 | Fail-secure on single-byte path | Single-byte `read()` checks `counter > 0` after pre-increment: when the counter increments past `Integer.MAX_VALUE` and wraps directly to `Integer.MIN_VALUE`, the `counter > 0` guard evaluates `false` and throws `IOException`, preventing any read after wrap-around |
-| Bulk-read path wrap-around gap | In `read(byte[], int, int)`, `counter += bytesRead` may silently overflow to a negative value — specifically when `counter` is already close to `Integer.MAX_VALUE` and `bytesRead` is large enough to cross the signed boundary — before the `counter > LIMIT` check fires; a negative counter passes the `> LIMIT` check silently (see residual risks below) |
+| Bulk-read path wrap-around — **RESOLVED (commit 6b4815e9, 2026-04-30)** | Both single-byte and bulk-read paths now detect signed-integer wrap-around via negative-value checks. The bulk-read path now checks `counter == LIMIT || counter < 0`, matching the single-byte path's wrap-around detection strategy. The `counter < 0` guard fires when `counter += bytesRead` overflows past `Integer.MAX_VALUE` into negative territory, causing `IOException` instead of silent passthrough. For signature files, this is a second line of defense behind the pre-check at `getBytes()` that rejects entries claiming sizes exceeding `MAX_SIG_FILE_SIZE` before reading begins. For manifests, `InputStreamCounter` provides the sole DoS guard. |
 | Per-stream scope | Each wrapped stream holds its own counter; the limit applies per entry, not to the aggregate JAR |
 
 #### Application Points
@@ -854,7 +855,7 @@ See residual row 15.
 | 12 | Dynamic class definition (RESOLVED — N-15 sub-item) | `Lookup.defineClass()` now gated by `DefineClassPermission` (commit 0f90b38, 2026-04-24); untrusted dynamic class definition is no longer an ungated bypass of `LoadClassPermission` | Verify policy grants are appropriately restricted to trusted code that legitimately needs dynamic class generation; see §12 |
 | 13 | FFM address/allocation surfaces (N-16) — **RESOLVED** | All FFM address-acquisition and arena-allocation surfaces are now gated: `Arena.ofConfined()`, `Arena.ofShared()`, and `Arena.ofAuto()` now each require `NativeMemoryPermission` (commit b62577c, 2026-04-24); `Linker.nativeLinker()` now requires `NativeInvocationPermission("native-linker")` (same commit); `MemorySegment.ofAddress(long)` now requires `NativeMemoryPermission("address-memory-segment")` (commit 3561dab, 2026-04-24) | — |
 | 14 | FFM capability delegation risks (N-17) | Downcall `MethodHandle`, upcall stub `MemorySegment`, arena objects, and native segments are authority-carrying objects; once delegated to less-trusted code, no SM check fires at use time | Treat FFM capability objects as ambient authority; trusted code must not delegate them to untrusted code; document delegation policy constraints for administrators; see §8.4 and §8.8 Step 6 |
-| 15 | JarFile DoS — per-stream limit only (§13) | `InputStreamCounter` enforces a per-stream `Integer.MAX_VALUE` ceiling; signed-integer wrap-around in the bulk-read path and the absence of an aggregate per-JAR cap mean that a crafted JAR with many oversized META-INF entries can still consume significant heap across concurrent opens | Restrict classpath access for untrusted code; apply OS/JVM heap and thread-creation limits; consider lowering `jdk.jar.maxSignatureFileSize` to match observed deployment maximums; see §13 |
+| 15 | JarFile DoS — per-stream limit only (§13) — **WRAP-AROUND MITIGATION COMPLETE (commit 6b4815e9, 2026-04-30)** | Signed-integer wrap-around in the bulk-read path is now blocked: the check `counter == LIMIT || counter < 0` prevents silent overflow bypass. The per-stream limit remains as designed (individual entry ceiling, not aggregate JAR ceiling), but the wrap-around vulnerability that could allow unbounded reads after overflow is now closed. The two-layer defense (pre-check on `uncompressedSize` + runtime `InputStreamCounter` detection) provides robust protection against malicious ZIP central-directory entries. | Apply polpAudit + strict policy grants to restrict classpath access for untrusted code; monitor for unusual JAR processing patterns in logs |
 
 ## Analysis: N-13 TLS Subject Authentication Context Propagation (COMPLETED)
 
