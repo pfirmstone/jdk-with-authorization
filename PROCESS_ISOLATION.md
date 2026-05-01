@@ -3157,6 +3157,16 @@ the carrier is unavailable to other virtual threads until the monitor is
 released.  At scale this exhausts the carrier pool without any permission being
 violated.
 
+JEP 491 has addressed synchronized blocks pinning carrier threads, now only 
+native methods pin threads. https://openjdk.org/jeps/491  "In particular,
+if a virtual thread calls native code, either through a native method or
+the Foreign Function & Memory API, and that native code calls back to Java
+code that performs a blocking operation or blocks on a monitor, then the
+virtual thread will be pinned."  This narrows the scope significantly, we
+will need to perform static analysis and look for this pattern in the JDK
+and either guard these calls or determine if they can be made non blocking.
+
+
 #### What bytecode analysis detects
 
 The `MONITORENTER` opcode is emitted by `javac` for every `synchronized` block
