@@ -25,8 +25,8 @@ unlimited platform and virtual threads with no policy enforcement.
 ### Impact
 | Threat | Detail |
 |---|---|
-| **Thread-bomb DoS** | Buggy code can exhaust the OS thread pool by spawning unbounded platform threads |
-| **Carrier thread starvation** | Buggy code can pin carrier threads via `synchronized` in virtual threads at scale |
+| **Thread-bomb DoS** | Buggy / untrusted code can exhaust the OS thread pool by spawning unbounded platform threads |
+| **Carrier thread starvation** | Buggy / untrusted code can pin carrier threads via blocking method calls in <clint> and native method call backs in virtual threads at scale |
 | **Policy bypass** | `RuntimePermission("modifyThreadGroup")` is documented as the thread-creation guard, but is never checked for application threads |
 | **Privilege escalation vector** | Thread creation can be used to outlive a restricted `AccessControlContext`, gaining a new inherited context |
 ### Proposed Fix
