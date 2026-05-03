@@ -25,8 +25,8 @@ unlimited platform and virtual threads with no policy enforcement.
 ### Impact
 | Threat | Detail |
 |---|---|
-| **Thread-bomb DoS** | Buggy code can exhaust the OS thread pool by spawning unbounded platform threads |
-| **Carrier thread starvation** | Buggy code can pin carrier threads via `synchronized` in virtual threads at scale |
+| **Thread-bomb DoS** | Buggy / untrusted code can exhaust the OS thread pool by spawning unbounded platform threads |
+| **Carrier thread starvation** | Buggy / untrusted code can pin carrier threads via blocking method calls in <clint> and native method call backs in virtual threads at scale |
 | **Policy bypass** | `RuntimePermission("modifyThreadGroup")` is documented as the thread-creation guard, but is never checked for application threads |
 | **Privilege escalation vector** | Thread creation can be used to outlive a restricted `AccessControlContext`, gaining a new inherited context |
 ### Proposed Fix
@@ -3156,6 +3156,16 @@ duration of the lock.  There is no JVM mechanism to forcibly release the pin —
 the carrier is unavailable to other virtual threads until the monitor is
 released.  At scale this exhausts the carrier pool without any permission being
 violated.
+
+JEP 491 has addressed synchronized blocks pinning carrier threads, now only 
+native methods pin threads. https://openjdk.org/jeps/491  "In particular,
+if a virtual thread calls native code, either through a native method or
+the Foreign Function & Memory API, and that native code calls back to Java
+code that performs a blocking operation or blocks on a monitor, then the
+virtual thread will be pinned."  This narrows the scope significantly, we
+will need to perform static analysis and look for this pattern in the JDK
+and either guard these calls or determine if they can be made non blocking.
+
 
 #### What bytecode analysis detects
 
