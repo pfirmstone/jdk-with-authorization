@@ -930,6 +930,8 @@ public final class AccessControlContext {
     }
     
     /**
+     * This class is not part of the Java Standards.
+     * 
      * Utility class allowing JVM platform classes to create AccessControlContext
      * without permission checks that would otherwise cause stack overflow errors.
      * 

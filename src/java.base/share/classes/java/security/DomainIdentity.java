@@ -36,6 +36,8 @@ import java.util.SortedSet;
 import java.util.TreeSet;
 
 /**
+ * This class is not part of the Java Standards.
+ * 
  * DomainIdentity provides Object equals and hashCode identity based on the equality of 
  * its fields.
  * <p>

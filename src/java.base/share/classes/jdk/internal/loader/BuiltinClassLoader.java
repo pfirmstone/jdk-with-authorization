@@ -666,6 +666,19 @@ public class BuiltinClassLoader
                     } else {
                         // delegate to the other loader
                         c = loader.loadClassOrNull(cn);
+                        // DirtyChai: if the owning module loader couldn't find the class,
+                        // fall through to the classpath. This supports split-package
+                        // compatibility with JGDMS — org.apache.river.api.security is
+                        // partially defined in java.base but JGDMS publishes additional
+                        // classes in this package loaded by the app classloader.
+                        // See JGDMS_COMPATIBILITY.md
+                        if (c == null && hasClassPath() && VM.isModuleSystemInited()) {
+                            int pos = cn.lastIndexOf('.');
+                            String pn = (pos > 0) ? cn.substring(0, pos) : "";
+                            if ("org.apache.river.api.security".equals(pn)) {
+                                c = findClassOnClassPathOrNull(cn);
+                            }
+                        }
                     }
 
                 } else {
