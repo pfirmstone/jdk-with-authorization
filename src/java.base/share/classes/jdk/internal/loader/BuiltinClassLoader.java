@@ -672,6 +672,8 @@ public class BuiltinClassLoader
                         // partially defined in java.base but JGDMS publishes additional
                         // classes in this package loaded by the app classloader.
                         // See JGDMS_COMPATIBILITY.md
+                        // The package identity is different, even though their
+                        // the package names are identical.
                         if (c == null && hasClassPath() && VM.isModuleSystemInited()) {
                             int pos = cn.lastIndexOf('.');
                             String pn = (pos > 0) ? cn.substring(0, pos) : "";

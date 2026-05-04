@@ -153,12 +153,18 @@ class PermissionGrantBuilderImp extends PermissionGrantBuilder implements
 
     public PermissionGrant build() {
         switch (context) {
+            case CLASSLOADER: //Dynamic grant
+                // Don't return principal grant if domain null, dynamic grant's
+                // are treated special.
+                return new ClassLoaderGrant(domain, principals, permissions );
             case URI:
                 if (uris != null && !uris.isEmpty() ) uri = uris.toArray(new String[uris.size()]);
                 if (uri == null ) uri = new String[0];
                 return new URIGrant(uri, certs, aliases, principals, permissions);              
             case CODESOURCE_CERTS:
                 return new CertificateGrant(certs, aliases, principals, permissions);
+                case PROTECTIONDOMAIN: //Dynamic grant
+                return new ProtectionDomainGrant(domain, principals, permissions );
             case PRINCIPAL:
                 return new PrincipalGrant(principals, permissions);
             default:
