@@ -87,7 +87,7 @@ import sun.security.util.Debug;
 public class DefaultPolicyParser implements PolicyParser {
     
     // Pluggable scanner for a specific file format
-    private final DefaultPolicyScanner scanner;
+    protected final DefaultPolicyScanner scanner;
     
     private static final Debug DEBUG = Debug.getInstance("policy");
 
