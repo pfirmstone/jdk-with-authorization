@@ -64,6 +64,64 @@ JGDMS publishes additional classes in `org.apache.river.api.security`. When thos
 
 This is handled by the normal least-privilege audit cycle. Dirty Chai's `SecurityPolicyWriter` (`-Djava.security.manager=polpAudit`) automatically discovers required grants during staged execution and appends them to policy output for review.
 
+## Obtaining a Pre-Built DirtyChai JDK
+
+A pre-built linux-x64 release JDK is published as a rolling GitHub Release
+whenever the **Build JDK for JGDMS** workflow is run.
+
+### Download URL
+
+```
+https://github.com/pfirmstone/DirtyChai/releases/download/dirty-chai-latest/jdk-linux-x64.tar.gz
+```
+
+A SHA-256 checksum file is also published alongside the bundle:
+
+```
+https://github.com/pfirmstone/DirtyChai/releases/download/dirty-chai-latest/jdk-linux-x64.tar.gz.sha256
+```
+
+### Verification and installation (shell)
+
+```sh
+wget -q https://github.com/pfirmstone/DirtyChai/releases/download/dirty-chai-latest/jdk-linux-x64.tar.gz
+wget -q https://github.com/pfirmstone/DirtyChai/releases/download/dirty-chai-latest/jdk-linux-x64.tar.gz.sha256
+sha256sum -c jdk-linux-x64.tar.gz.sha256
+mkdir -p dirty-chai-jdk
+tar -xf jdk-linux-x64.tar.gz -C dirty-chai-jdk --strip-components=1
+export DIRTY_CHAI_JAVA_HOME="$(pwd)/dirty-chai-jdk"
+"$DIRTY_CHAI_JAVA_HOME/bin/java" -version
+```
+
+### Using DirtyChai as the JDK in a JGDMS Maven/Gradle build
+
+Point your build tool at the DirtyChai JDK by setting `JAVA_HOME` before
+invoking the build:
+
+```sh
+export JAVA_HOME="$DIRTY_CHAI_JAVA_HOME"
+mvn test            # Maven
+./gradlew test      # Gradle
+```
+
+Or pass it explicitly to Maven:
+
+```sh
+mvn -Djvm="$DIRTY_CHAI_JAVA_HOME/bin/java" test
+```
+
+### Triggering a fresh build
+
+The workflow can be triggered manually from the **Actions** tab of the
+DirtyChai repository:
+
+1. Navigate to **Actions → Build JDK for JGDMS**.
+2. Click **Run workflow**.
+3. Wait for the run to complete (typically 30–60 minutes).
+4. The `dirty-chai-latest` release is updated automatically.
+
+---
+
 ## Deployment Workflow for JGDMS Applications
 
 1. Run the application in staging with `polpAudit` enabled.
