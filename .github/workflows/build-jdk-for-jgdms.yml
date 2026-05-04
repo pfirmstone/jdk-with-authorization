@@ -1,0 +1,155 @@
+#
+# Copyright (c) 2025, Oracle and/or its affiliates. All rights reserved.
+# DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+#
+# This code is free software; you can redistribute it and/or modify it
+# under the terms of the GNU General Public License version 2 only, as
+# published by the Free Software Foundation.  Oracle designates this
+# particular file as subject to the "Classpath" exception as provided
+# by Oracle in the LICENSE file that accompanied this code.
+#
+# This code is distributed in the hope that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+# FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+# version 2 for more details (a copy is included in the LICENSE file that
+# accompanied this code).
+#
+# You should have received a copy of the GNU General Public License version
+# 2 along with this work; if not, write to the Free Software Foundation,
+# Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+#
+# Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+# or visit www.oracle.com if you need additional information or have any
+# questions.
+#
+
+name: 'Build JDK for JGDMS'
+
+# Produces a release linux-x64 JDK bundle for use by a JGDMS agent.
+# The bundle is attached to a rolling GitHub Release (tag: dirty-chai-latest)
+# so JGDMS agents can download it with a stable URL, and also uploaded as a
+# workflow artifact for same-run consumption.
+
+on:
+  workflow_dispatch:
+    inputs:
+      configure-arguments:
+        description: 'Additional configure arguments'
+        required: false
+      make-arguments:
+        description: 'Additional make arguments'
+        required: false
+
+jobs:
+  build:
+    name: 'Build linux-x64 release JDK'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+
+    steps:
+      - name: 'Checkout the JDK source'
+        uses: actions/checkout@v4
+
+      - name: 'Get the BootJDK'
+        id: bootjdk
+        uses: ./.github/actions/get-bootjdk
+        with:
+          platform: linux-x64
+
+      - name: 'Get GTest'
+        id: gtest
+        uses: ./.github/actions/get-gtest
+
+      - name: 'Install toolchain and dependencies'
+        run: |
+          sudo apt update
+          sudo apt install --only-upgrade apt
+          sudo apt install \
+            gcc-10 \
+            g++-10 \
+            libasound2-dev \
+            libcups2-dev \
+            libfontconfig1-dev \
+            libx11-dev \
+            libxext-dev \
+            libxrandr-dev \
+            libxrender-dev \
+            libxt-dev \
+            libxtst-dev
+          sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-10 100 --slave /usr/bin/g++ g++ /usr/bin/g++-10
+
+      - name: 'Configure'
+        run: >
+          bash configure
+          --with-conf-name=linux-x64
+          --with-debug-level=release
+          --with-version-opt=${GITHUB_SHA::8}
+          --with-boot-jdk=${{ steps.bootjdk.outputs.path }}
+          --with-gtest=${{ steps.gtest.outputs.path }}
+          --with-zlib=system
+          --with-jmod-compress=zip-1
+          --with-external-symbols-in-bundles=none
+          --with-native-debug-symbols-level=none
+          ${{ github.event.inputs.configure-arguments }} || (
+          echo "Dumping config.log:" &&
+          cat config.log &&
+          exit 1)
+
+      - name: 'Build product-bundles'
+        id: build
+        run: >
+          make -k LOG=info product-bundles
+          ${{ github.event.inputs.make-arguments }}
+          || bash ./.github/scripts/gen-build-failure-report.sh "$GITHUB_STEP_SUMMARY"
+
+      - name: 'Check for build failure'
+        run: |
+          build_dir="$(ls -d build/*)"
+          if [[ -e $build_dir/build-failure ]]; then
+            echo "Build failed — see summary for details."
+            exit 1
+          fi
+
+      - name: 'Stage bundle'
+        id: stage
+        run: |
+          bundle="$(ls build/*/bundles/jdk-*_bin.tar.gz)"
+          mkdir -p staging
+          cp "$bundle" staging/jdk-linux-x64.tar.gz
+          echo "bundle=staging/jdk-linux-x64.tar.gz" >> $GITHUB_OUTPUT
+          sha256sum staging/jdk-linux-x64.tar.gz | awk '{print $1}' > staging/jdk-linux-x64.tar.gz.sha256
+          echo "SHA256: $(cat staging/jdk-linux-x64.tar.gz.sha256)"
+
+      - name: 'Upload workflow artifact'
+        uses: actions/upload-artifact@v4
+        with:
+          name: jdk-linux-x64
+          path: staging/
+          retention-days: 90
+
+      - name: 'Delete existing rolling release (if present)'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete dirty-chai-latest --yes 2>/dev/null || true
+          git push --delete origin dirty-chai-latest 2>/dev/null || true
+
+      - name: 'Create rolling GitHub Release'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          commit_sha="${GITHUB_SHA::8}"
+          gh release create dirty-chai-latest \
+            --title "DirtyChai latest linux-x64 JDK (${commit_sha})" \
+            --notes "Rolling release of the DirtyChai linux-x64 JDK bundle.
+
+This artifact is intended for JGDMS agents testing JGDMS on DirtyChai.
+
+**Built from commit:** \`${GITHUB_SHA}\`
+**SHA-256:** \`$(cat staging/jdk-linux-x64.tar.gz.sha256)\`
+
+See [JGDMS_COMPATIBILITY.md](https://github.com/${{ github.repository }}/blob/trunk/JGDMS_COMPATIBILITY.md) for usage instructions." \
+            --prerelease \
+            staging/jdk-linux-x64.tar.gz \
+            staging/jdk-linux-x64.tar.gz.sha256
