@@ -86,7 +86,7 @@ https://github.com/pfirmstone/DirtyChai/releases/download/dirty-chai-latest/jdk-
 ```sh
 wget -q https://github.com/pfirmstone/DirtyChai/releases/download/dirty-chai-latest/jdk-linux-x64.tar.gz
 wget -q https://github.com/pfirmstone/DirtyChai/releases/download/dirty-chai-latest/jdk-linux-x64.tar.gz.sha256
-echo "$(cat jdk-linux-x64.tar.gz.sha256)  jdk-linux-x64.tar.gz" | sha256sum -c
+sha256sum -c jdk-linux-x64.tar.gz.sha256
 mkdir -p dirty-chai-jdk
 tar -xf jdk-linux-x64.tar.gz -C dirty-chai-jdk --strip-components=1
 export DIRTY_CHAI_JAVA_HOME="$(pwd)/dirty-chai-jdk"

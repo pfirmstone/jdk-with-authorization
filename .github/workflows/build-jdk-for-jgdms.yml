@@ -40,6 +40,10 @@ on:
         description: 'Additional make arguments'
         required: false
 
+concurrency:
+  group: rolling-release
+  cancel-in-progress: false
+
 jobs:
   build:
     name: 'Build linux-x64 release JDK'
@@ -64,8 +68,8 @@ jobs:
       - name: 'Install toolchain and dependencies'
         run: |
           sudo apt update
-          sudo apt install --only-upgrade apt
-          sudo apt install \
+          sudo apt install -y --only-upgrade apt
+          sudo apt install -y \
             gcc-10 \
             g++-10 \
             libasound2-dev \
@@ -118,8 +122,8 @@ jobs:
           mkdir -p staging
           cp "$bundle" staging/jdk-linux-x64.tar.gz
           echo "bundle=staging/jdk-linux-x64.tar.gz" >> $GITHUB_OUTPUT
-          sha256sum staging/jdk-linux-x64.tar.gz | awk '{print $1}' > staging/jdk-linux-x64.tar.gz.sha256
-          echo "SHA256: $(cat staging/jdk-linux-x64.tar.gz.sha256)"
+          sha256sum staging/jdk-linux-x64.tar.gz > staging/jdk-linux-x64.tar.gz.sha256
+          echo "SHA256: $(awk '{print $1}' staging/jdk-linux-x64.tar.gz.sha256)"
 
       - name: 'Upload workflow artifact'
         uses: actions/upload-artifact@v4
@@ -147,7 +151,7 @@ jobs:
 This artifact is intended for JGDMS agents testing JGDMS on DirtyChai.
 
 **Built from commit:** \`${GITHUB_SHA}\`
-**SHA-256:** \`$(cat staging/jdk-linux-x64.tar.gz.sha256)\`
+**SHA-256:** \`$(awk '{print $1}' staging/jdk-linux-x64.tar.gz.sha256)\`
 
 See [JGDMS_COMPATIBILITY.md](https://github.com/${{ github.repository }}/blob/trunk/JGDMS_COMPATIBILITY.md) for usage instructions." \
             --prerelease \
