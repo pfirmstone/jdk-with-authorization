@@ -662,13 +662,35 @@ public final class Subject implements java.io.Serializable {
             // for doPrivileged
             final AccessControlContext callerAcc =
                     (acc == null ?
-                            AccessControlContext.create(NULL_PD_ARRAY) :
+                            Context.create(NULL_PD_ARRAY) :
                             acc);
 
             // call doPrivileged and push this new context on the stack
             return java.security.AccessController.doPrivileged
                     (action,
                             createContext(subject, callerAcc));
+    }
+    
+    /**
+     * Builds AccessControlContext instances or obtains from cache, without
+     * permission checks.
+     */
+    public final static class Context extends AccessControlContext.ContextBuilder{
+        
+        Context(){
+        }
+        
+        static final AccessControlContext.ContextBuilder builder = new Context();
+        
+        static AccessControlContext create(ProtectionDomain [] context){
+            return builder.build(context);
+        }
+        
+        static AccessControlContext create(AccessControlContext acc,
+                                             DomainCombiner combiner) {
+            return builder.build(acc, combiner);
+        }
+        
     }
 
     /**
@@ -740,7 +762,7 @@ public final class Subject implements java.io.Serializable {
             // set up the new Subject-based AccessControlContext for doPrivileged
             final AccessControlContext callerAcc =
                     (acc == null ?
-                            AccessControlContext.create(NULL_PD_ARRAY) :
+                            Context.create(NULL_PD_ARRAY) :
                             acc);
 
             // call doPrivileged and push this new context on the stack
@@ -752,19 +774,8 @@ public final class Subject implements java.io.Serializable {
     @SuppressWarnings("removal")
     private static AccessControlContext createContext(final Subject subject,
                                         final AccessControlContext acc) {
-
-
-        return java.security.AccessController.doPrivileged
-            (new java.security.PrivilegedAction<>() {
-            public AccessControlContext run() {
-                if (subject == null) {
-                    return AccessControlContext.create(acc, null);
-                } else {
-                    return AccessControlContext.create(acc,
-                                        new SubjectDomainCombiner(subject));
-            }
-            }
-        });
+        if (subject == null) return Context.create(acc, null);
+        else return Context.create(acc, new SubjectDomainCombiner(subject));
     }
 
     /**

@@ -34,6 +34,7 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ForkJoinPool;
 import java.lang.invoke.MethodHandles;
+import javax.security.auth.Subject;
 
 import sun.security.util.Debug;
 import sun.security.util.SecurityConstants;
@@ -952,7 +953,8 @@ public final class AccessControlContext {
      * escalation of permissions.   
      */
     public static abstract sealed class ContextBuilder 
-            permits ClassLoader.Context, ForkJoinPool.Context, MethodHandles.Context {
+            permits ClassLoader.Context, ForkJoinPool.Context,
+            MethodHandles.Context, Subject.Context {
         
         /**
          * Creates a new ContextBuilder instance;
@@ -977,5 +979,27 @@ public final class AccessControlContext {
         public final AccessControlContext build(ProtectionDomain[] context){
             return AccessControlContext.create(context, false);
         }
+        
+        /**
+         * Create an {@code AccessControlContext} with the given array of
+         * {@code ProtectionDomain} objects.
+         * Context must not be {@code null}.
+         * 
+         * <p>
+         * Non standard API.
+         *
+         * @param acc the {@code AccessControlContext}. 
+         * @param combiner the {@code DomainCombiner}.
+         * @return a cached AccessControlContext matching the provided parameters or
+         * a new AccessControlContext if one doesn't already exist.
+         * @throws NullPointerException if {@code acc} is {@code null}
+         * @since 27
+         */
+        public AccessControlContext build(AccessControlContext acc,
+                                             DomainCombiner combiner) {
+            return AccessControlContext.create(acc, combiner);
+        }
+        
+        
     }
 }
