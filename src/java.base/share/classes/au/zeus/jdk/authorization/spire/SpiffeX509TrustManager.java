@@ -75,24 +75,17 @@ public final class SpiffeX509TrustManager implements X509TrustManager {
         
         // 2. Verify trust domain matches (optional — can cross-trust)
         // Uncomment to enforce same-trust-domain requirement:
-         String ourSpiffeId = credentialManager.getSpiffeId();
-         if (ourSpiffeId != null && ourSpiffeId.startsWith("spiffe://")) {
-             String ourTrustDomain = extractTrustDomain(ourSpiffeId);
-             String peerTrustDomain = extractTrustDomain(spiffeId);
-             if (!ourTrustDomain.equals(peerTrustDomain)) {
-                 throw new CertificateException("SPIFFE ID trust domain mismatch: peer=" + 
-                                               peerTrustDomain + ", ours=" + ourTrustDomain);
-             }
-         }
-        
-        // 3. Verify signature chain against trust bundle
-        try {
-            verifyChainAgainstTrustBundle(chain);
-        } catch (Exception e) {
-            throw new CertificateException("Failed to verify SPIFFE SVID chain", e);
+        String ourSpiffeId = credentialManager.getSpiffeId();
+        if (ourSpiffeId != null && ourSpiffeId.startsWith("spiffe://")) {
+            String ourTrustDomain = extractTrustDomain(ourSpiffeId);
+            String peerTrustDomain = extractTrustDomain(spiffeId);
+            if (!ourTrustDomain.equals(peerTrustDomain)) {
+                throw new CertificateException("SPIFFE ID trust domain mismatch: peer=" + 
+                                           peerTrustDomain + ", ours=" + ourTrustDomain);
+            }
         }
         
-        // Verify certificate validity for ALL certs in chain
+        // Check validity FIRST — cheap, avoids unnecessary crypto
         for (int i = 0; i < chain.length; i++) {
             try {
                 chain[i].checkValidity();
@@ -104,7 +97,13 @@ public final class SpiffeX509TrustManager implements X509TrustManager {
                     "Certificate at position " + i + " in chain is not yet valid", e);
             }
         }
-        // Success — peer is trusted SPIFFE workload
+        try {
+            // THEN verify signature chain
+            verifyChainAgainstTrustBundle(chain);
+            // Success — peer is trusted SPIFFE workload
+        } catch (Exception e) {
+            throw new CertificateException("Failed to verify SPIFFE SVID chain", e);
+        }
     }
     
     /**
@@ -164,55 +163,41 @@ public final class SpiffeX509TrustManager implements X509TrustManager {
      * @throws Exception if verification fails
      */
     private void verifyChainAgainstTrustBundle(X509Certificate[] chain)
-            throws Exception {
-        
+        throws Exception {
+
         if (chain.length == 0) {
             throw new CertificateException("Empty certificate chain");
         }
-        
-        // Get trust bundle from credential manager
+
         X509Certificate[] trustBundle = credentialManager.getTrustBundle();
         if (trustBundle.length == 0) {
             throw new CertificateException(
                 "No trust bundle available — SPIRE may not have provided bundle yet");
         }
-        
-        // Verify chain integrity: each cert signed by next
+
+        // Verify chain integrity: each cert is signed by the next
         for (int i = 0; i < chain.length - 1; i++) {
-            X509Certificate cert = chain[i];
-            X509Certificate issuer = chain[i + 1];
-            cert.verify(issuer.getPublicKey());
+            chain[i].verify(chain[i + 1].getPublicKey());
         }
-        
-        // Verify root is self-signed
-        X509Certificate rootCert = chain[chain.length - 1];
-        rootCert.verify(rootCert.getPublicKey());
-        
-        // Verify root fingerprint matches trust bundle
-        byte[] rootFingerprint = computeSha256Fingerprint(rootCert);
-        boolean foundInBundle = false;
-        
+
+        // Find the trust bundle cert that signed the last cert in the chain.
+        // The root CA is in the trust bundle, NOT in the chain itself.
+        X509Certificate lastInChain = chain[chain.length - 1];
+        boolean foundIssuer = false;
         for (int i = 0; i < trustBundle.length; i++) {
-            byte[] bundleFingerprint = computeSha256Fingerprint(trustBundle[i]);
-            if (Arrays.equals(rootFingerprint, bundleFingerprint)) {
-                foundInBundle = true;
+            try {
+                lastInChain.verify(trustBundle[i].getPublicKey());
+                foundIssuer = true;
                 break;
+            } catch (Exception e) {
+                // Not signed by this trust bundle cert — try next
             }
         }
-        
-        if (!foundInBundle) {
+
+        if (!foundIssuer) {
             throw new CertificateException(
-                "Root certificate not found in SPIRE trust bundle (SHA-256 mismatch)");
+                "Certificate chain is not anchored by any certificate in the SPIRE trust bundle");
         }
-    }
-    
-    /**
-     * Computes SHA-256 fingerprint of a certificate.
-     * Bootstrap-safe: uses standard MessageDigest.
-     */
-    private byte[] computeSha256Fingerprint(X509Certificate cert) throws Exception {
-        MessageDigest digest = MessageDigest.getInstance("SHA-256");
-        return digest.digest(cert.getEncoded());
     }
     
     @Override
