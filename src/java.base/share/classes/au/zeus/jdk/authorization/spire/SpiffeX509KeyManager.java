@@ -27,8 +27,11 @@ import java.security.Principal;
 import java.security.PrivateKey;
 import java.security.cert.X509Certificate;
 import java.io.IOException;
+import java.security.cert.CertPath;
+import java.util.List;
 import java.util.Set;
 import javax.security.auth.Subject;
+import javax.security.auth.x500.X500PrivateCredential;
 
 /**
  * X509KeyManager that retrieves credentials from SpiffeCredentialManager.
@@ -87,14 +90,13 @@ public final class SpiffeX509KeyManager implements X509KeyManager {
         }
         
         Subject subject = credentialManager.getSubject(); // Credential manager unavailable -> return null (JSSE will fail handshake)
-        Set<X509Certificate> certs = subject.getPublicCredentials(X509Certificate.class);
-        // SPIRE returns certificates in order: leaf, intermediate, ...
-        // Convert to array preserving order
+        Set<CertPath> certPaths = subject.getPublicCredentials(CertPath.class);
+        if (certPaths.isEmpty()) return null;
+        CertPath cp = certPaths.iterator().next();
+        List<? extends java.security.cert.Certificate> certs = cp.getCertificates();
         X509Certificate[] chain = new X509Certificate[certs.size()];
-        int index = 0;
-        for (X509Certificate cert : certs) {
-            chain[index] = cert;
-            index = index + 1;
+        for (int i = 0; i < certs.size(); i++) {
+            chain[i] = (X509Certificate) certs.get(i);
         }
         return chain;
     }
@@ -106,10 +108,10 @@ public final class SpiffeX509KeyManager implements X509KeyManager {
         }
         
         Subject subject = credentialManager.getSubject();
-        Set<PrivateKey> keys = subject.getPrivateCredentials(PrivateKey.class);
-        // SPIRE returns exactly one private key per SVID
-        for (PrivateKey key : keys) {
-            return key;  // Return first (and only) key
+        Set<X500PrivateCredential> xpcs = subject.getPrivateCredentials(
+            javax.security.auth.x500.X500PrivateCredential.class);
+        for (X500PrivateCredential xpc : xpcs) {
+            return xpc.getPrivateKey();
         }
         return null;
     }

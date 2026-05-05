@@ -31,6 +31,7 @@ import java.nio.file.Path;
 import java.security.KeyFactory;
 import java.security.NoSuchAlgorithmException;
 import java.security.PrivateKey;
+import java.security.cert.CertPath;
 import java.security.cert.CertificateException;
 import java.security.cert.CertificateFactory;
 import java.security.cert.X509Certificate;
@@ -44,6 +45,7 @@ import java.util.List;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+import javax.security.auth.x500.X500PrivateCredential;
 
 /**
  * Singleton manager for SPIFFE credentials obtained from the SPIRE Workload API.
@@ -338,14 +340,15 @@ public final class SpiffeCredentialManager {
       PrivateKey privateKey = keyFactory.generatePrivate(keySpec);
 
       // Build Subject
+      // Build CertPath for public credentials
+      CertPath certPath = cf.generateCertPath(certList);  // cf is already available
+
       Set<Object> publicCreds = new LinkedHashSet<Object>();
-      for (int i = 0; i < certList.size(); i++) {
-        publicCreds.add(certList.get(i));
-      }
+      publicCreds.add(certPath); // JERI needs CertPath
 
       Set<Object> privateCreds = new LinkedHashSet<Object>();
-      privateCreds.add(privateKey);
-
+      privateCreds.add(new X500PrivateCredential(leafCert, privateKey)); // JERI needs X500PrivateCredential
+        
       Set<X500Principal> principals = new LinkedHashSet<X500Principal>();
       principals.add(leafCert.getSubjectX500Principal());
 
