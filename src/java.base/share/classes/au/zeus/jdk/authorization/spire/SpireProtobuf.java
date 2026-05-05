@@ -134,7 +134,7 @@ final class SpireProtobuf {
       } else if (fieldNumber == FIELD_X509_SVID_BUNDLE) {
         bundle = value;
       } else if (fieldNumber == FIELD_X509_SVID_SPIFFE_ID) {
-        spiffeId = new String(value, "UTF-8");
+        spiffeId = new String(value, java.nio.charset.StandardCharsets.UTF_8);
       }
     }
 
@@ -151,9 +151,13 @@ final class SpireProtobuf {
    * Reads a protobuf varint from the stream. Varints encode integers
    * using 7 bits per byte, with the MSB indicating continuation.
    *
+   * <p>A 32-bit varint occupies at most 5 bytes. The 5th byte contributes
+   * bits 28–31; any continuation bit set on the 5th byte indicates the value
+   * exceeds 32 bits and is rejected.
+   *
    * @param in input stream
    * @return decoded integer
-   * @throws IOException if stream ends unexpectedly or varint is too large
+   * @throws IOException if stream ends unexpectedly or varint exceeds 32 bits
    */
   private static int readVarint(ByteArrayInputStream in) throws IOException {
     int result = 0;
@@ -164,7 +168,7 @@ final class SpireProtobuf {
       result |= (b & 0x7F) << shift;
       if ((b & 0x80) == 0) return result;
       shift += 7;
-      if (shift > 35) throw new IOException("Varint too large (max 5 bytes)");
+      if (shift >= 35) throw new IOException("Varint too large (exceeds 32 bits)");
     }
   }
 

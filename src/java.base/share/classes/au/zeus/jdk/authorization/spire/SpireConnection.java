@@ -64,8 +64,17 @@ final class SpireConnection {
   private static final int FLAG_END_HEADERS = 0x04;
   private static final int FLAG_ACK = 0x01; // for SETTINGS/PING
 
+  // Maximum frame payload size accepted (1 MB). The HTTP/2 spec allows up to
+  // 16 MB - 1 byte, but SPIRE SVIDs are small. Rejecting oversized frames
+  // protects against a malformed or malicious agent response.
+  private static final int MAX_FRAME_SIZE = 1024 * 1024; // 1 MB
+
   private final SocketChannel channel;
-  private int nextStreamId = 1; // Client stream IDs are odd
+  // nextStreamId is written by startFetchX509SVIDStream() and read by the same
+  // call site. The volatile ensures visibility across the thread boundary between
+  // the initial fetch (constructor thread) and the watcher thread. Only one
+  // stream is open at a time — concurrent stream creation is not supported.
+  private volatile int nextStreamId = 1; // Client stream IDs are odd
   private volatile boolean closed = false;
 
   /**
@@ -292,10 +301,10 @@ final class SpireConnection {
 
   /**
    * Encodes a string as length-prefixed bytes (HPACK string literal).
-   * No Huffman encoding (bit 7 = 0).
+   * No Huffman encoding (bit 7 = 0). Always uses UTF-8 as required by HTTP/2.
    */
   private void encodeString(ByteBuffer buf, String s) {
-    byte[] bytes = s.getBytes();
+    byte[] bytes = s.getBytes(java.nio.charset.StandardCharsets.UTF_8);
     buf.put((byte) bytes.length);
     buf.put(bytes);
   }
@@ -357,6 +366,11 @@ final class SpireConnection {
     int flags = header.get() & 0xFF;
     int streamId = header.getInt() & 0x7FFFFFFF;
 
+    if (length > MAX_FRAME_SIZE) {
+      throw new IOException("HTTP/2 frame too large: " + length +
+                            " bytes (max " + MAX_FRAME_SIZE + ")");
+    }
+
     // Read payload
     byte[] payload = new byte[length];
     if (length > 0) {
@@ -373,10 +387,15 @@ final class SpireConnection {
   }
 
   private void writeBuffer(ByteBuffer buf) throws IOException {
+    // SocketChannel.open(UnixDomainSocketAddress) returns a blocking channel.
+    // On a blocking channel, write() returns only when all bytes are accepted
+    // by the OS buffer or an error occurs — returning 0 is not possible.
+    // The loop below is kept for defensive correctness; the write()==0 branch
+    // is unreachable under normal operation.
     while (buf.hasRemaining()) {
       int written = channel.write(buf);
       if (written == 0) {
-        throw new IOException("Socket write returned 0");
+        throw new IOException("Socket write returned 0 (unexpected on blocking channel)");
       }
     }
   }

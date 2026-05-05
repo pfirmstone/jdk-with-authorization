@@ -102,7 +102,7 @@ public final class SpiffeCredentialManager {
   }
 
   private final SpireWorkloadApiClient client;
-  AtomicReference<R> subjectBundle = new AtomicReference<R>();
+  private final AtomicReference<R> subjectBundle = new AtomicReference<R>();
   
   private final List<SvidRotationListener> listeners;
   private final Object listenerLock = new Object();
@@ -309,7 +309,8 @@ public final class SpiffeCredentialManager {
   private void updateSubject(SpireProtobuf.X509SVIDResponse response)
       throws IOException {
     if (response == null || response.svids.isEmpty()) {
-        subjectBundle.set(new R(new Subject(), null, new X509Certificate[0]));
+      // Do NOT overwrite the existing Subject — the current SVID remains valid
+      // until it expires. Log and throw; the caller decides whether to retry.
       throw new IOException(
           "SPIRE returned empty SVID list — workload may not be registered");
     }
@@ -411,6 +412,14 @@ public final class SpiffeCredentialManager {
    * Schedules a reconnection attempt after the specified delay.
    * Bootstrap-safe: uses raw Thread + Thread.sleep, not ScheduledExecutorService.
    *
+   * <p>The {@code !watcherRunning} guard below is intentional: if a concurrent
+   * successful update has already restarted the watcher (setting
+   * {@code watcherRunning = true}), this thread must not start a second watcher.
+   * The guard is a volatile read, which is sufficient for visibility. The small
+   * window between the guard check and {@link #reconnectWatcher()} is safe
+   * because {@code reconnectWatcher()} itself tolerates a redundant call — it
+   * will find the watcher already running and return after the next update.
+   *
    * @param delayMs delay in milliseconds before attempting reconnection
    */
   private void scheduleReconnect(final long delayMs) {
@@ -459,14 +468,20 @@ public final class SpiffeCredentialManager {
             return;
           }
           
+          // Increment first, then compute backoff from the new attempt number.
+          // This ensures attempt 1 uses 1x delay, attempt 2 uses 2x, etc.
+          // A concurrent successful update resets reconnectAttempts to 0 via
+          // onUpdate(); if that races with this path, the worst case is one
+          // extra reconnect attempt, which is harmless.
+          int attempt = reconnectAttempts.incrementAndGet();
           long backoffMs = Math.min(
-              initialBackoffMs * (1L << reconnectAttempts.get()),
+              initialBackoffMs * (1L << (attempt - 1)),
               maxBackoffMs
           );
           
-          if (reconnectAttempts.incrementAndGet() < maxReconnectAttempts) {
+          if (attempt <= maxReconnectAttempts) {
             StringBuilder sb = new StringBuilder();
-            sb.append("Scheduling reconnect attempt ").append(reconnectAttempts)
+            sb.append("Scheduling reconnect attempt ").append(attempt)
                     .append(" of ").append(maxReconnectAttempts).append(" in ")
                     .append(backoffMs).append("ms");
             System.getLogger(SpiffeCredentialManager.class.getName()).log(
