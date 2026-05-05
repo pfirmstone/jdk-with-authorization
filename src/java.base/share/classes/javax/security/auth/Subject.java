@@ -316,7 +316,7 @@ public final class Subject implements java.io.Serializable {
                 ("invalid.null.AccessControlContext.provided"));
 
             // return the Subject from the DomainCombiner of the provided context
-            Subject subject = AccessController.doPrivileged
+            return AccessController.doPrivileged
                     (new java.security.PrivilegedAction<>() {
                         public Subject run() {
                             DomainCombiner dc = acc.getDomainCombiner();
@@ -327,14 +327,6 @@ public final class Subject implements java.io.Serializable {
                             return sdc.getSubject();
                         }
                     });
-            if (subject == null) {
-                try {
-                    subject = SpiffeCredentialManager.getInstance().getSubject();
-                } catch (IOException e){
-                    // Ignore don't leak information.
-                }
-            }
-            return subject;
     }
 
     static final ScopedValue<Subject> SCOPED_SUBJECT =
