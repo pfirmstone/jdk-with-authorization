@@ -61,19 +61,41 @@ public final class SpiffeX509TrustManager implements X509TrustManager {
     private void checkTrusted(X509Certificate[] chain, String authType, boolean isClient)
             throws CertificateException {
         
-        if (chain == null || chain.length == 0) {
+        if (chain == null || chain.length == 0)
             throw new CertificateException("Peer presented no certificates");
-        }
         
+        if (authType == null || authType.length() == 0)
+            throw new CertificateException("authType must not be null or empty");
+       
         X509Certificate leafCert = chain[0];
         
-        // 1. Verify it's a SPIFFE SVID (has URI SAN starting with "spiffe://")
+        if (isClient){
+            String leafKeyAlg = leafCert.getPublicKey().getAlgorithm(); // "EC" or "RSA"
+            if (!authType.equals(leafKeyAlg)) {
+                throw new CertificateException(
+                    "authType '" + authType + "' does not match leaf certificate " +
+                    "key algorithm '" + leafKeyAlg + "'");
+            }
+        } else { // server
+            String leafKeyAlg = leafCert.getPublicKey().getAlgorithm(); // "EC" or "RSA"
+            // "EC" certs appear as "ECDHE_ECDSA", "ECDH_ECDSA"; RSA as "ECDHE_RSA", "RSA" etc.
+            String authTypeUpper = authType.toUpperCase();
+            boolean consistent = ("EC".equals(leafKeyAlg) && authTypeUpper.contains("ECDSA"))
+                              || ("RSA".equals(leafKeyAlg) && authTypeUpper.contains("RSA"));
+            if (!consistent) {
+                throw new CertificateException(
+                    "authType '" + authType + "' inconsistent with leaf certificate " +
+                    "key algorithm '" + leafKeyAlg + "'");
+            }
+        }
+        
+        // Verify it's a SPIFFE SVID (has URI SAN starting with "spiffe://")
         String spiffeId = extractSpiffeId(leafCert);
         if (spiffeId == null) {
             throw new CertificateException("Peer certificate is not a SPIFFE SVID (no spiffe:// URI SAN)");
         }
         
-        // 2. Verify trust domain matches (optional — can cross-trust)
+        // Verify trust domain matches (optional — can cross-trust)
         // Uncomment to enforce same-trust-domain requirement:
         String ourSpiffeId = credentialManager.getSpiffeId();
         if (ourSpiffeId != null && ourSpiffeId.startsWith("spiffe://")) {
@@ -97,10 +119,13 @@ public final class SpiffeX509TrustManager implements X509TrustManager {
                     "Certificate at position " + i + " in chain is not yet valid", e);
             }
         }
+        
         try {
             // THEN verify signature chain
             verifyChainAgainstTrustBundle(chain);
             // Success — peer is trusted SPIFFE workload
+        } catch (CertificateException e) {
+            throw e;
         } catch (Exception e) {
             throw new CertificateException("Failed to verify SPIFFE SVID chain", e);
         }
