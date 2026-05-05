@@ -92,9 +92,18 @@ public final class SpiffeX509TrustManager implements X509TrustManager {
             throw new CertificateException("Failed to verify SPIFFE SVID chain", e);
         }
         
-        // 4. Verify certificate validity
-        leafCert.checkValidity();
-        
+        // Verify certificate validity for ALL certs in chain
+        for (int i = 0; i < chain.length; i++) {
+            try {
+                chain[i].checkValidity();
+            } catch (java.security.cert.CertificateExpiredException e) {
+                throw new CertificateException(
+                    "Certificate at position " + i + " in chain has expired", e);
+            } catch (java.security.cert.CertificateNotYetValidException e) {
+                throw new CertificateException(
+                    "Certificate at position " + i + " in chain is not yet valid", e);
+            }
+        }
         // Success — peer is trusted SPIFFE workload
     }
     
