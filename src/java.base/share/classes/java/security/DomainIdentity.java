@@ -25,6 +25,10 @@
 package java.security;
 
 import au.zeus.jdk.net.Uri;
+import java.io.IOException;
+import java.io.NotSerializableException;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
 import java.net.URISyntaxException;
 import java.net.URL;
 import java.util.Arrays;
@@ -267,6 +271,18 @@ public final class DomainIdentity extends ProtectionDomain {
             java.security.cert.Certificate [] mine = getCertificates();
             java.security.cert.Certificate [] theirs = that.getCertificates();
             return Arrays.equals(mine, theirs);
+        }
+
+        @Serial
+        private void writeObject(ObjectOutputStream out) throws IOException {
+            throw new NotSerializableException(
+            "UriCodeSource must not be serialized — use standard CodeSource for serialization");
+        }
+
+        @Serial
+        private void readObject(ObjectInputStream in) throws IOException {
+            throw new NotSerializableException(
+                "UriCodeSource must not be deserialized");
         }
        
     }
