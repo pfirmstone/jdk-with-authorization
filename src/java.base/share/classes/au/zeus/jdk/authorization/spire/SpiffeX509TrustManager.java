@@ -21,9 +21,11 @@
 package au.zeus.jdk.authorization.spire;
 
 import javax.net.ssl.X509TrustManager;
+import java.security.MessageDigest;
 import java.security.cert.CertificateException;
 import java.security.cert.X509Certificate;
 import java.io.IOException;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
 
@@ -31,7 +33,10 @@ import java.util.List;
  * X509TrustManager that validates peer certificates as SPIFFE SVIDs.
  * Trusts certificates signed by the SPIRE trust bundle.
  * 
- * <p>Bootstrap-safe: no lambdas.
+ * <p>Bootstrap-safe: no lambdas, explicit loops.
+ * 
+ * @author Peter Firmstone
+ * @since 3.1.1
  */
 public final class SpiffeX509TrustManager implements X509TrustManager {
     
@@ -69,13 +74,18 @@ public final class SpiffeX509TrustManager implements X509TrustManager {
         }
         
         // 2. Verify trust domain matches (optional — can cross-trust)
-        // String expectedTrustDomain = credentialManager.getSpiffeId().split("/")[2];
-        // if (!spiffeId.startsWith("spiffe://" + expectedTrustDomain + "/")) {
-        //     throw new CertificateException("SPIFFE ID trust domain mismatch");
+        // Uncomment to enforce same-trust-domain requirement:
+        // String ourSpiffeId = credentialManager.getSpiffeId();
+        // if (ourSpiffeId != null && ourSpiffeId.startsWith("spiffe://")) {
+        //     String ourTrustDomain = extractTrustDomain(ourSpiffeId);
+        //     String peerTrustDomain = extractTrustDomain(spiffeId);
+        //     if (!ourTrustDomain.equals(peerTrustDomain)) {
+        //         throw new CertificateException("SPIFFE ID trust domain mismatch: peer=" + 
+        //                                       peerTrustDomain + ", ours=" + ourTrustDomain);
+        //     }
         // }
         
         // 3. Verify signature chain against trust bundle
-        // (SPIRE trust bundle is in our own Subject's public credentials as root CA)
         try {
             verifyChainAgainstTrustBundle(chain);
         } catch (Exception e) {
@@ -88,6 +98,9 @@ public final class SpiffeX509TrustManager implements X509TrustManager {
         // Success — peer is trusted SPIFFE workload
     }
     
+    /**
+     * Extracts SPIFFE ID from certificate's URI SAN extension.
+     */
     private String extractSpiffeId(X509Certificate cert) {
         try {
             // X.509 SAN extension: 2.5.29.17 (Subject Alternative Name)
@@ -112,16 +125,50 @@ public final class SpiffeX509TrustManager implements X509TrustManager {
         }
     }
     
+    /**
+     * Extracts trust domain from SPIFFE ID.
+     * Example: "spiffe://jgdms.example.org/host/policy" → "jgdms.example.org"
+     */
+    private String extractTrustDomain(String spiffeId) {
+        if (spiffeId == null || !spiffeId.startsWith("spiffe://")) {
+            return null;
+        }
+        String withoutScheme = spiffeId.substring("spiffe://".length());
+        int slashIndex = withoutScheme.indexOf('/');
+        if (slashIndex == -1) {
+            return withoutScheme;
+        }
+        return withoutScheme.substring(0, slashIndex);
+    }
+    
+    /**
+     * Verifies the certificate chain against the SPIRE trust bundle.
+     * 
+     * <p>Verification steps:
+     * <ol>
+     *   <li>Verify each certificate is signed by the next in chain
+     *   <li>Verify root certificate is self-signed
+     *   <li>Verify root certificate fingerprint matches SPIRE trust bundle
+     * </ol>
+     *
+     * @param chain certificate chain from peer (leaf to root)
+     * @throws Exception if verification fails
+     */
     private void verifyChainAgainstTrustBundle(X509Certificate[] chain)
             throws Exception {
         
-        // Get trust bundle from SpiffeCredentialManager
-        // (SPIRE includes trust bundle in X509SVIDResponse.bundle field)
-        // For now, simplified: verify chain[last] is self-signed root
+        if (chain.length == 0) {
+            throw new CertificateException("Empty certificate chain");
+        }
         
-        X509Certificate rootCert = chain[chain.length - 1];
+        // Get trust bundle from credential manager
+        X509Certificate[] trustBundle = credentialManager.getTrustBundle();
+        if (trustBundle.length == 0) {
+            throw new CertificateException(
+                "No trust bundle available — SPIRE may not have provided bundle yet");
+        }
         
-        // Verify each cert is signed by the next in chain
+        // Verify chain integrity: each cert signed by next
         for (int i = 0; i < chain.length - 1; i++) {
             X509Certificate cert = chain[i];
             X509Certificate issuer = chain[i + 1];
@@ -129,16 +176,45 @@ public final class SpiffeX509TrustManager implements X509TrustManager {
         }
         
         // Verify root is self-signed
+        X509Certificate rootCert = chain[chain.length - 1];
         rootCert.verify(rootCert.getPublicKey());
         
-        // TODO: Compare root fingerprint against SPIRE trust bundle
-        // (requires SpiffeCredentialManager to expose trust bundle)
+        // Verify root fingerprint matches trust bundle
+        byte[] rootFingerprint = computeSha256Fingerprint(rootCert);
+        boolean foundInBundle = false;
+        
+        for (int i = 0; i < trustBundle.length; i++) {
+            byte[] bundleFingerprint = computeSha256Fingerprint(trustBundle[i]);
+            if (Arrays.equals(rootFingerprint, bundleFingerprint)) {
+                foundInBundle = true;
+                break;
+            }
+        }
+        
+        if (!foundInBundle) {
+            throw new CertificateException(
+                "Root certificate not found in SPIRE trust bundle (SHA-256 mismatch)");
+        }
+    }
+    
+    /**
+     * Computes SHA-256 fingerprint of a certificate.
+     * Bootstrap-safe: uses standard MessageDigest.
+     */
+    private byte[] computeSha256Fingerprint(X509Certificate cert) throws Exception {
+        MessageDigest digest = MessageDigest.getInstance("SHA-256");
+        return digest.digest(cert.getEncoded());
     }
     
     @Override
     public X509Certificate[] getAcceptedIssuers() {
-        // Return empty array — we accept any SPIFFE SVID in our trust domain
-        // (JSSE uses this for client cert requests; empty = "any issuer OK")
-        return new X509Certificate[0];
+        // Return trust bundle — tells peer what CAs we accept
+        // (JSSE uses this for client cert requests)
+        try {
+            return credentialManager.getTrustBundle();
+        } catch (Exception e) {
+            // Fallback: return empty array (accept any issuer)
+            return new X509Certificate[0];
+        }
     }
 }

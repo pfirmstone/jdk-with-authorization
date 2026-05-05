@@ -20,7 +20,6 @@
 
 package au.zeus.jdk.authorization.spire;
 
-import au.zeus.jdk.authorization.policy.PolicyInitializationException;
 
 import javax.security.auth.Subject;
 import javax.security.auth.x500.X500Principal;
@@ -42,6 +41,8 @@ import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.IntUnaryOperator;
 
 /**
  * Singleton manager for SPIFFE credentials obtained from the SPIRE Workload API.
@@ -61,6 +62,12 @@ import java.util.Set;
  *       (default: {@code /run/spire/sockets/agent.sock})
  *   <li>{@code spiffe.policy.url} — bootstrap policy URL (overrides derivation
  *       from SPIFFE ID)
+ *   <li>{@code spiffe.reconnect.max.attempts} — maximum reconnection attempts
+ *       (default: 10, set to 0 to disable reconnection)
+ *   <li>{@code spiffe.reconnect.initial.backoff.ms} — initial backoff delay
+ *       (default: 1000 ms)
+ *   <li>{@code spiffe.reconnect.max.backoff.ms} — maximum backoff delay
+ *       (default: 300000 ms = 5 minutes)
  * </ul>
  *
  * @author Peter Firmstone
@@ -71,6 +78,13 @@ public final class SpiffeCredentialManager {
   private static final String DEFAULT_SOCKET_PATH = "/run/spire/sockets/agent.sock";
   private static final String SOCKET_PROPERTY = "spiffe.workload.socket";
   private static final String POLICY_URL_PROPERTY = "spiffe.policy.url";
+  private static final String RECONNECT_MAX_ATTEMPTS_PROPERTY = "spiffe.reconnect.max.attempts";
+  private static final String RECONNECT_INITIAL_BACKOFF_PROPERTY = "spiffe.reconnect.initial.backoff.ms";
+  private static final String RECONNECT_MAX_BACKOFF_PROPERTY = "spiffe.reconnect.max.backoff.ms";
+
+  private static final int DEFAULT_MAX_RECONNECT_ATTEMPTS = 10;
+  private static final long DEFAULT_INITIAL_BACKOFF_MS = 1000;
+  private static final long DEFAULT_MAX_BACKOFF_MS = 300000; // 5 minutes
 
   private static final SpiffeCredentialManager INSTANCE;
   
@@ -87,18 +101,35 @@ public final class SpiffeCredentialManager {
   private final SpireWorkloadApiClient client;
   private volatile Subject currentSubject;
   private volatile String currentSpiffeId;
+  private volatile X509Certificate[] trustBundle;
   private final List<SvidRotationListener> listeners;
   private final Object listenerLock = new Object();
+  
+  // Reconnection state
+  private volatile boolean watcherRunning = false;
+  private final AtomicInteger reconnectAttempts = new AtomicInteger();
+  private final int maxReconnectAttempts;
+  private final long initialBackoffMs;
+  private final long maxBackoffMs;
 
   /**
    * Private constructor for singleton. Connects to SPIRE agent and performs
    * initial SVID fetch.
    *
-   * @throws PolicyInitializationException if SPIRE connection or initial
-   *         fetch fails
+   * @throws IOException if SPIRE connection or initial fetch fails
    */
   private SpiffeCredentialManager() throws IOException {
     this.listeners = new ArrayList<SvidRotationListener>();
+    
+    // Load reconnection configuration
+    int mra = getIntProperty(
+        RECONNECT_MAX_ATTEMPTS_PROPERTY, DEFAULT_MAX_RECONNECT_ATTEMPTS);
+    if (mra > 62) mra = 62; // max allowed before bitshift overflow occurs.
+    this.maxReconnectAttempts = mra;
+    this.initialBackoffMs = getLongProperty(
+        RECONNECT_INITIAL_BACKOFF_PROPERTY, DEFAULT_INITIAL_BACKOFF_MS);
+    this.maxBackoffMs = getLongProperty(
+        RECONNECT_MAX_BACKOFF_PROPERTY, DEFAULT_MAX_BACKOFF_MS);
 
     String socketPath = System.getProperty(SOCKET_PROPERTY, DEFAULT_SOCKET_PATH);
     Path path = Path.of(socketPath);
@@ -110,24 +141,8 @@ public final class SpiffeCredentialManager {
       updateSubject(response);
 
       // Start watching for updates
-      client.startWatching(new SpireWorkloadApiClient.SvidUpdateCallback() {
-        @Override
-        public void onUpdate(SpireProtobuf.X509SVIDResponse response) {
-          try {
-            updateSubject(response);
-            notifyListeners();
-          } catch (IOException e) {
-            // Log but don't crash — current SVID remains valid
-            System.err.println("Failed to update SVID: " + e.getMessage());
-          }
-        }
-
-        @Override
-        public void onError(SpiffeConnectionException error) {
-          System.err.println("SVID watcher error: " + error.getMessage());
-          // TODO: Implement reconnection logic with exponential backoff
-        }
-      });
+      this.watcherRunning = true;
+      client.startWatching(createCallback());
 
     } catch (SpiffeConnectionException e) {
       throw new IOException(
@@ -139,7 +154,7 @@ public final class SpiffeCredentialManager {
    * Returns the singleton instance.
    *
    * @return the credential manager instance
-   * @throws PolicyInitializationException if initialization failed
+   * @throws IOException if initialization failed
    */
   public static SpiffeCredentialManager getInstance() throws IOException {
       if (INSTANCE == null) throw new IOException(
@@ -173,6 +188,27 @@ public final class SpiffeCredentialManager {
    */
   public String getSpiffeId() {
     return currentSpiffeId;
+  }
+
+  /**
+   * Returns the SPIRE trust bundle (root CA certificates). The returned array
+   * is a defensive copy — modifications will not affect the internal state.
+   *
+   * <p>The trust bundle is used to validate peer SPIFFE SVIDs. It rotates
+   * independently of the workload's SVID and contains the root CA certificates
+   * for the trust domain.
+   *
+   * @return defensive copy of trust bundle, never {@code null} but may be empty
+   */
+  public X509Certificate[] getTrustBundle() {
+    X509Certificate[] bundle = trustBundle; // Read volatile once
+    if (bundle == null) {
+      return new X509Certificate[0];
+    }
+    // Defensive copy
+    X509Certificate[] copy = new X509Certificate[bundle.length];
+    System.arraycopy(bundle, 0, copy, 0, bundle.length);
+    return copy;
   }
 
   /**
@@ -250,10 +286,10 @@ public final class SpiffeCredentialManager {
   }
 
   /**
-   * Updates the current Subject from a SPIRE SVID response.
+   * Updates the current Subject and trust bundle from a SPIRE SVID response.
    *
    * @param response SVID response from SPIRE
-   * @throws PolicyInitializationException if certificate or key parsing fails
+   * @throws IOException if certificate or key parsing fails
    */
   private void updateSubject(SpireProtobuf.X509SVIDResponse response)
       throws IOException {
@@ -266,8 +302,9 @@ public final class SpiffeCredentialManager {
     SpireProtobuf.X509SVID svid = response.svids.get(0);
 
     try {
-      // Parse certificate chain
       CertificateFactory cf = CertificateFactory.getInstance("X.509");
+      
+      // Parse certificate chain
       ByteArrayInputStream certStream = new ByteArrayInputStream(svid.certChain);
       List<X509Certificate> certList = new ArrayList<X509Certificate>();
       while (certStream.available() > 0) {
@@ -305,8 +342,25 @@ public final class SpiffeCredentialManager {
           Collections.unmodifiableSet(privateCreds)
       );
 
+      // Parse trust bundle from X509SVID.bundle field
+      // (SPIRE includes the trust bundle for this SVID's trust domain)
+      X509Certificate[] bundle = null;
+      if (svid.bundle != null && svid.bundle.length > 0) {
+        ByteArrayInputStream bundleStream = new ByteArrayInputStream(svid.bundle);
+        List<X509Certificate> bundleList = new ArrayList<X509Certificate>();
+        while (bundleStream.available() > 0) {
+          X509Certificate cert = (X509Certificate) cf.generateCertificate(bundleStream);
+          bundleList.add(cert);
+        }
+        bundle = bundleList.toArray(new X509Certificate[bundleList.size()]);
+      } else {
+        bundle = new X509Certificate[0];
+      }
+
+      // Atomic update
       this.currentSubject = subject;
       this.currentSpiffeId = svid.spiffeId;
+      this.trustBundle = bundle;
 
     } catch (CertificateException e) {
       throw new IOException("Failed to parse SVID certificates", e);
@@ -333,8 +387,151 @@ public final class SpiffeCredentialManager {
         listener.onSvidRotation();
       } catch (Exception e) {
         // Prevent one listener from breaking others
-        System.err.println("Listener " + listener + " threw exception: " + e.getMessage());
+        System.getLogger(SpiffeCredentialManager.class.getName()).log(System.Logger.Level.DEBUG, "Listener " + listener + " threw exception: ", e);
       }
+    }
+  }
+
+  /**
+   * Schedules a reconnection attempt after the specified delay.
+   * Bootstrap-safe: uses raw Thread + Thread.sleep, not ScheduledExecutorService.
+   *
+   * @param delayMs delay in milliseconds before attempting reconnection
+   */
+  private void scheduleReconnect(final long delayMs) {
+    Thread reconnector = new Thread(new Runnable() {
+      @Override
+      public void run() {
+        try {
+          Thread.sleep(delayMs);
+          if (!watcherRunning) {
+            reconnectWatcher();
+          }
+        } catch (InterruptedException e) {
+          Thread.currentThread().interrupt();
+          System.getLogger(SpiffeCredentialManager.class.getName()).log(System.Logger.Level.DEBUG, "Reconnection attempt interrupted", e);
+        }
+      }
+    });
+    reconnector.setDaemon(true);
+    reconnector.setName("SPIRE-Watcher-Reconnect-" + reconnectAttempts);
+    reconnector.start();
+  }
+  
+  private SpireWorkloadApiClient.SvidUpdateCallback createCallback(){
+      return new SpireWorkloadApiClient.SvidUpdateCallback(){
+        @Override
+        public void onUpdate(SpireProtobuf.X509SVIDResponse response) {
+          try {
+            updateSubject(response);
+            reconnectAttempts.set(0); // Reset on successful update
+            notifyListeners();
+          } catch (IOException e) {
+            System.getLogger(SpiffeCredentialManager.class.getName()).log(
+                    System.Logger.Level.DEBUG, "Failed to update SVID: ", e);
+          }
+        }
+
+        @Override
+        public void onError(SpiffeConnectionException error) {
+            System.getLogger(SpiffeCredentialManager.class.getName()).log(
+                    System.Logger.Level.ERROR, "SVID watcher error: ", error);
+          watcherRunning = false;
+          
+          if (maxReconnectAttempts <= 0) {
+            System.getLogger(SpiffeCredentialManager.class.getName()).log(
+                    System.Logger.Level.DEBUG, "Reconnection disabled. SVID will expire without renewal.");
+            return;
+          }
+          
+          long backoffMs = Math.min(
+              initialBackoffMs * (1L << reconnectAttempts.get()),
+              maxBackoffMs
+          );
+          
+          if (reconnectAttempts.incrementAndGet() < maxReconnectAttempts) {
+            StringBuilder sb = new StringBuilder();
+            sb.append("Scheduling reconnect attempt ").append(reconnectAttempts)
+                    .append(" of ").append(maxReconnectAttempts).append(" in ")
+                    .append(backoffMs).append("ms");
+            System.getLogger(SpiffeCredentialManager.class.getName()).log(
+                    System.Logger.Level.DEBUG, sb.toString());
+            scheduleReconnect(backoffMs);
+          } else {
+              System.getLogger(SpiffeCredentialManager.class.getName()).log(
+                    System.Logger.Level.DEBUG, "Max reconnect attempts reached. SVID will expire without renewal.");
+          }
+        }
+      };
+  }
+
+  /**
+   * Attempts to reconnect to the SPIRE agent and restart the watcher.
+   */
+  private void reconnectWatcher() {
+    try {
+      client.stopWatching(); // Clean up old connection
+      SpireProtobuf.X509SVIDResponse response = client.fetchSVID();
+      updateSubject(response);
+      
+      watcherRunning = true;
+      client.startWatching(createCallback());
+      
+      reconnectAttempts.set(0); // Reset on successful reconnection
+      System.getLogger(SpiffeCredentialManager.class.getName()).log(
+                    System.Logger.Level.DEBUG, "SPIRE watcher reconnected successfully");
+      
+    } catch (SpiffeConnectionException e) {
+      // Reconnection failed — onError will be called automatically
+      System.getLogger(SpiffeCredentialManager.class.getName()).log(
+                    System.Logger.Level.DEBUG, "Reconnection attempt failed: ", e);
+    } catch (IOException e) {
+      System.getLogger(SpiffeCredentialManager.class.getName()).log(
+                    System.Logger.Level.DEBUG, "Failed to update SVID after reconnection: ", e);
+    }
+  }
+
+  /**
+   * Reads an integer system property with a default value.
+   * Bootstrap-safe: no parsing exceptions propagate.
+   */
+  private static int getIntProperty(String name, int defaultValue) {
+    String value = System.getProperty(name);
+    if (value == null) {
+      return defaultValue;
+    }
+    try {
+      return Integer.parseInt(value);
+    } catch (NumberFormatException e) {
+      StringBuilder sb = new StringBuilder();
+            sb.append("Invalid integer property ").append(name)
+                    .append("=").append(value).append(", using default ")
+                    .append(defaultValue);
+            System.getLogger(SpiffeCredentialManager.class.getName()).log(
+                    System.Logger.Level.DEBUG, sb.toString(), e);
+      return defaultValue;
+    }
+  }
+
+  /**
+   * Reads a long system property with a default value.
+   * Bootstrap-safe: no parsing exceptions propagate.
+   */
+  private static long getLongProperty(String name, long defaultValue) {
+    String value = System.getProperty(name);
+    if (value == null) {
+      return defaultValue;
+    }
+    try {
+      return Long.parseLong(value);
+    } catch (NumberFormatException e) {
+      StringBuilder sb = new StringBuilder();
+            sb.append("Invalid long property ").append(name)
+                    .append("=").append(value).append(", using default ")
+                    .append(defaultValue);
+            System.getLogger(SpiffeCredentialManager.class.getName()).log(
+                    System.Logger.Level.DEBUG, sb.toString(), e);
+      return defaultValue;
     }
   }
 
