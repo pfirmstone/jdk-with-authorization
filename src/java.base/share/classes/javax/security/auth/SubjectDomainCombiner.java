@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 1999, 2021, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 1999, 2026, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -33,6 +33,7 @@ import java.security.DomainIdentity;
 import java.util.Set;
 import java.util.HashSet;
 import java.util.Iterator;
+import static javax.security.auth.Subject.SCOPED_SUBJECT;
 import sun.security.util.SecurityConstants;
 
 /**
@@ -40,24 +41,30 @@ import sun.security.util.SecurityConstants;
  * with Principals from the {@code Subject} associated with this
  * {@code SubjectDomainCombiner}.
  *
+ * <p>When a {@code SecurityManager} is active, this combiner injects
+ * principals from two sources:
+ * <ul>
+ *   <li>The SPIFFE workload Subject associated with this combiner
+ *       (established via {@link Subject#doAsPrivileged})
+ *   <li>The human user Subject bound to the current thread via
+ *       {@link Subject#callAs} (if any)
+ * </ul>
+ *
+ * <p>Principals from both Subjects are merged additively — neither
+ * replaces the other. A grant conditioned on both workload and user
+ * principals requires both to be present.
+ *
  * <p> Deprecated since 17, removed or disabled since 24, 
  * retained and maintained operational for Authorization.
  * 
  * @since 1.4
  */
-// * @deprecated This class is only useful in conjunction with
-// *       {@linkplain SecurityManager the Security Manager}, which is deprecated
-// *       and subject to removal in a future release. Consequently, this class
-// *       is also deprecated and subject to removal. There is no replacement for
-// *       the Security Manager or this class.
-// */
 @SuppressWarnings("removal")
-//@Deprecated(since="17", forRemoval=true)
 public class SubjectDomainCombiner implements java.security.DomainCombiner {
 
     private final Subject subject;
     private final int hashCode;
-    private final Principal[] principals;
+    private final Principal[] principals; // cached if subject is read-only
 
     private static final sun.security.util.Debug debug =
         sun.security.util.Debug.getInstance("combiner",
@@ -78,9 +85,10 @@ public class SubjectDomainCombiner implements java.security.DomainCombiner {
         this.subject = subject;
 
         if (subject.isReadOnly()) {
+            // Cache ACC Subject principals only (not SCOPED_SUBJECT —
+            // that changes per request and must be read in combine())
             Set<Principal> principalSet = subject.getPrincipals();
-            principals = principalSet.toArray
-                        (new Principal[principalSet.size()]);
+            principals = principalSet.toArray(new Principal[principalSet.size()]);
             this.hashCode = subject.hashCode();
         } else {
             principals = null;
@@ -211,19 +219,8 @@ public class SubjectDomainCombiner implements java.security.DomainCombiner {
     
         Set<ProtectionDomain> domainSet = new HashSet<>(cLen + aLen);
 
-        Principal [] principals;
-        if (subject.isReadOnly()){
-            principals = this.principals;
-        } else { // Mutable Subject, got to check it every time.
-            Set<Principal> newSet = subject.getPrincipals();
-
-            principals = newSet.toArray
-                    (new Principal[newSet.size()]);
-
-            if (debug != null) {
-                debug.println("Subject is mutable");
-            }
-        }
+        // Build merged principal array from ACC Subject + SCOPED_SUBJECT
+        Principal[] mergedPrincipals = getMergedPrincipals();
 
         for (int i = 0; i < cLen; i++) {
             ProtectionDomain pd = currentDomains[i];
@@ -237,7 +234,7 @@ public class SubjectDomainCombiner implements java.security.DomainCombiner {
                 subjectPd = new DomainIdentity(pd.getCodeSource(),
                                         pd.getPermissions(),
                                         pd.getClassLoader(),
-                                        principals);
+                                        mergedPrincipals);
             }
             domainSet.add(subjectPd);
         }
@@ -282,6 +279,54 @@ public class SubjectDomainCombiner implements java.security.DomainCombiner {
         } else {
             return newDomains;
         }
+    }
+
+    /**
+     * Builds a merged principal array from the ACC Subject (workload identity)
+     * and the SCOPED_SUBJECT (human user identity, if present).
+     *
+     * <p>This method is called on every {@code combine()} invocation (hot path).
+     * Principals are merged additively — both SPIFFE workload principals and
+     * human user principals appear in the result.
+     *
+     * <p>No {@code AuthPermission("getSubject")} check is performed here —
+     * this is trusted {@code java.base} infrastructure. The permission guard
+     * exists at the public API boundary ({@link Subject#current()}).
+     *
+     * @return array of merged principals (ACC + SCOPED_SUBJECT)
+     */
+    private Principal[] getMergedPrincipals() {
+        Set<Principal> merged = new HashSet<>();
+
+        // 1. Add ACC Subject principals (eg SPIFFE workload identity)
+        if (subject.isReadOnly()) {
+            // Use cached array (constructed in constructor)
+            for (int i = 0; i < principals.length; i++) {
+                merged.add(principals[i]);
+            }
+        } else {
+            // Mutable Subject — must read on every call
+            Set<Principal> accPrincipals = subject.getPrincipals();
+            merged.addAll(accPrincipals);
+
+            if (debug != null) {
+                debug.println("ACC Subject is mutable");
+            }
+        }
+
+        // 2. Add SCOPED_SUBJECT principals (eg human user identity, if bound)
+        //    No AuthPermission check — combiner is trusted java.base code
+        Subject scopedSubject = SCOPED_SUBJECT.isBound() ? SCOPED_SUBJECT.get() : null;
+        if (scopedSubject != null) {
+            Set<Principal> userPrincipals = scopedSubject.getPrincipals();
+            merged.addAll(userPrincipals);
+
+            if (debug != null) {
+                debug.println("SCOPED_SUBJECT present with " + userPrincipals.size() + " principals");
+            }
+        }
+
+        return merged.toArray(new Principal[merged.size()]);
     }
 
     private static void printInputDomains(ProtectionDomain[] currentDomains,

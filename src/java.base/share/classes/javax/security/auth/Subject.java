@@ -25,6 +25,7 @@
 
 package javax.security.auth;
 
+import au.zeus.jdk.authorization.spire.SpiffeCredentialManager;
 import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
@@ -91,10 +92,10 @@ import sun.security.util.ResourcesMgr;
  * {@code Principal} implementations associated with Subjects
  * must implement {@code Serializable}.
  *
- * <h2>Deprecated Methods and Replacements</h2>
+ * <h2>Identity Model — Workload and User Subjects</h2>
  *
  * <p> The following methods in this class for user-based authorization
- * that are dependent on Security Manager APIs are deprecated for removal:
+ * that are dependent on Security Manager APIs are deprecated:
  * <ul>
  *     <li>{@link #getSubject(AccessControlContext)}
  *     <li>{@link #doAs(Subject, PrivilegedAction)}
@@ -107,24 +108,6 @@ import sun.security.util.ResourcesMgr;
  * is mostly equivalent to {@code getSubject(AccessController.getContext())}
  * and {@code callAs} is similar to {@code doAs} except that the
  * input type and exceptions thrown are slightly different.
- *
- * <p id="sm-allowed"><b>These methods behave differently depending on
- * whether a security manager is
- * {@linkplain SecurityManager##set-security-manager allowed or disallowed}</b>:
- * <ul>
- * <li>If a security manager is allowed, which means it is either already set
- * or allowed to be set dynamically, a {@code Subject} object is associated
- * with an {@code AccessControlContext} through a {@code doAs} or
- * {@code callAs} call, and the subject can then be retrieved using the
- * {@code getSubject(AccessControlContext)} or {@code current} method.
-*  <li>If a security manager is not allowed, which means it is not set and
- * not allowed to be set dynamically, a {@code doAs} or {@code callAs} call
- * binds a {@code Subject} object to the period of execution of an action,
- * and the subject can be retrieved using the {@code current} method inside
- * the action. This subject can be inherited by child threads if they are
- * started and terminate within the execution of its parent thread using
- * structured concurrency.
- * </ul>
  *
  * @since 1.4
  * @see java.security.Principal
@@ -320,14 +303,6 @@ public final class Subject implements java.io.Serializable {
      * @throws NullPointerException if the provided
      *          {@code AccessControlContext} is {@code null}.
      */
-//     * @deprecated This method depends on {@link AccessControlContext}
-//     *       which, in conjunction with
-//     *       {@linkplain SecurityManager the Security Manager}, is deprecated
-//     *       and subject to removal in a future release. However,
-//     *       obtaining a Subject is useful independent of the Security Manager.
-//     *       Thus, a replacement API named {@link #current()} has been added
-//     *       which can be used to obtain the current subject.
-//     */
     @SuppressWarnings("removal")
 //    @Deprecated(since="17", forRemoval=true)
     public static Subject getSubject(final AccessControlContext acc) {
@@ -341,7 +316,7 @@ public final class Subject implements java.io.Serializable {
                 ("invalid.null.AccessControlContext.provided"));
 
             // return the Subject from the DomainCombiner of the provided context
-            return AccessController.doPrivileged
+            Subject subject = AccessController.doPrivileged
                     (new java.security.PrivilegedAction<>() {
                         public Subject run() {
                             DomainCombiner dc = acc.getDomainCombiner();
@@ -352,13 +327,25 @@ public final class Subject implements java.io.Serializable {
                             return sdc.getSubject();
                         }
                     });
+            if (subject == null) {
+                try {
+                    subject = SpiffeCredentialManager.getInstance().getSubject();
+                } catch (IOException e){
+                    // Ignore don't leak information.
+                }
+            }
+            return subject;
     }
 
-    private static final ScopedValue<Subject> SCOPED_SUBJECT =
+    static final ScopedValue<Subject> SCOPED_SUBJECT =
             ScopedValue.newInstance();
 
     /**
-     * Returns the current subject.
+     * Returns the {@code Subject} bound to the period of the execution of the current
+     * thread.
+     * 
+     * <p> This method is recommended for obtaining user Subject's originating from
+     * {@code LoginContext}.
      *
      * <p> The current subject is installed by the {@link #callAs} method.
      * When {@code callAs(subject, action)} is called, {@code action} is
@@ -367,47 +354,46 @@ public final class Subject implements java.io.Serializable {
      * subject is reset to its previous value. The current
      * subject is {@code null} before the first call of {@code callAs()}.
      *
-     * <p> If a security manager is <a href=#sm-allowed>allowed</a>, this
-     * method is equivalent to calling {@link #getSubject} with the current
+     * <p> Throws SecurityException if a security manager is installed and the
+     *  caller does not have an {@link AuthPermission#AuthPermission(String)
+     *  AuthPermission("getSubject")} permission to get the {@code Subject}.
+     * 
+     * If the subject bound to the current {@code Thread} is null this method
+     * is equivalent to calling {@link #getSubject} with the current
      * {@code AccessControlContext}.
-     *
-     * <p> If a security manager is not allowed, this method returns the
-     * {@code Subject} bound to the period of the execution of the current
-     * thread.
      *
      * @return the current subject, or {@code null} if a current subject is
      *      not installed or the current subject is set to {@code null}.
+     * @throws SecurityException if a security manager is installed and the
+     *          caller does not have an
+     *          {@link AuthPermission#AuthPermission(String)
+     *          AuthPermission("getSubject")} permission to get the
+     *          {@code Subject}.
      * @see #callAs(Subject, Callable)
      * @since 18
      */
     @SuppressWarnings("removal")
     public static Subject current() {
-        if (!SharedSecrets.getJavaLangAccess().allowSecurityManager()) {
-            return SCOPED_SUBJECT.isBound() ? SCOPED_SUBJECT.get() : null;
-        } else {
-            return getSubject(AccessController.getContext());
+        java.lang.SecurityManager sm = System.getSecurityManager();
+        if (sm != null) {
+            sm.checkPermission(AuthPermissionHolder.GET_SUBJECT_PERMISSION);
         }
+        return SCOPED_SUBJECT.isBound() ? SCOPED_SUBJECT.get() : getSubject(AccessController.getContext());
     }
 
     /**
      * Executes a {@code Callable} with {@code subject} as the
-     * current subject.
+     * current subject. This is the recommended method of calling with a
+     * logged in user {@code LoginContext}.
      *
-     * <p> If a security manager is <a href=#sm-allowed>allowed</a>,
-     * this method first retrieves the current Thread's
-     * {@code AccessControlContext} via
-     * {@code AccessController.getContext},
-     * and then instantiates a new {@code AccessControlContext}
-     * using the retrieved context along with a new
-     * {@code SubjectDomainCombiner} (constructed using
-     * the provided {@code Subject}).
-     * Finally, this method invokes {@code AccessController.doPrivileged},
-     * passing it the provided {@code PrivilegedAction},
-     * as well as the newly constructed {@code AccessControlContext}.
-     *
-     * <p> If a security manager is not allowed,
-     * this method launches {@code action} and binds {@code subject} to the
-     * period of its execution.
+     * This method launches {@code action} and binds {@code subject} to the
+     * period of its execution on the current Thread.
+     * 
+     * This method should not be used to create {@code ThreadFactory} or
+     * {@code ThreadBuilder}.
+     * 
+     * The {@code Subject} principals will be included with {@SubjectDomainCombiner}
+     * when created with the current thread.
      *
      * @param subject the {@code Subject} that the specified {@code action}
      *               will run as.  This parameter may be {@code null}.
@@ -426,23 +412,14 @@ public final class Subject implements java.io.Serializable {
     public static <T> T callAs(final Subject subject,
             final Callable<T> action) throws CompletionException {
         Objects.requireNonNull(action);
-        if (!SharedSecrets.getJavaLangAccess().allowSecurityManager()) {
-            try {
-                return ScopedValue.where(SCOPED_SUBJECT, subject).call(action::call);
-            } catch (Exception e) {
-                throw new CompletionException(e);
-            }
-        } else {
-            try {
-                PrivilegedExceptionAction<T> pa = () -> action.call();
-                @SuppressWarnings("removal")
-                var result = doAs(subject, pa);
-                return result;
-            } catch (PrivilegedActionException e) {
-                throw new CompletionException(e.getCause());
-            } catch (Exception e) {
-                throw new CompletionException(e);
-            }
+        java.lang.SecurityManager sm = System.getSecurityManager();
+        if (sm != null) {
+            sm.checkPermission(AuthPermissionHolder.DO_AS_PERMISSION);
+        }
+        try {
+            return ScopedValue.where(SCOPED_SUBJECT, subject).call(action::call);
+        } catch (Exception e) {
+            throw new CompletionException(e);
         }
     }
 
@@ -460,7 +437,7 @@ public final class Subject implements java.io.Serializable {
      * passing it the provided {@code PrivilegedAction},
      * as well as the newly constructed {@code AccessControlContext}.
      * 
-     * <p> Deprecated since 18, removed or disabled since 24,
+     * <p> Deprecated since 18, disabled since 24,
      * retained and maintained operational for Authorization.
      *
      * @param subject the {@code Subject} that the specified
@@ -485,14 +462,6 @@ public final class Subject implements java.io.Serializable {
      *                  AuthPermission("doAs")} permission to invoke this
      *                  method.
      */
-//     * @deprecated This method depends on {@link AccessControlContext}
-//     *       which, in conjunction with
-//     *       {@linkplain SecurityManager the Security Manager}, is deprecated
-//     *       and subject to removal in a future release. However, performing
-//     *       work as a Subject is useful independent of the Security Manager.
-//     *       Thus, a replacement API named {@link #callAs} has been added
-//     *       which can be used to perform the same work.
-//     */
     @SuppressWarnings("removal")
 //    @Deprecated(since="18", forRemoval=true)
     public static <T> T doAs(final Subject subject,
@@ -564,14 +533,6 @@ public final class Subject implements java.io.Serializable {
      *                  AuthPermission("doAs")} permission to invoke this
      *                  method.
      */
-//     * @deprecated This method depends on {@link AccessControlContext}
-//     *       which, in conjunction with
-//     *       {@linkplain SecurityManager the Security Manager}, is deprecated
-//     *       and subject to removal in a future release. However, performing
-//     *       work as a Subject is useful independent of the Security Manager.
-//     *       Thus, a replacement API named {@link #callAs} has been added
-//     *       which can be used to perform the same work.
-//     */
     @SuppressWarnings("removal")
 //    @Deprecated(since="18", forRemoval=true)
     public static <T> T doAs(final Subject subject,
@@ -637,13 +598,6 @@ public final class Subject implements java.io.Serializable {
      *                  AuthPermission("doAsPrivileged")} permission to invoke
      *                  this method.
      */
-//     * @deprecated This method is only useful in conjunction with
-//     *       {@linkplain SecurityManager the Security Manager}, which is
-//     *       deprecated and subject to removal in a future release.
-//     *       Consequently, this method is also deprecated and subject to
-//     *       removal. There is no replacement for the Security Manager or this
-//     *       method.
-//     */
     @SuppressWarnings("removal")
 //    @Deprecated(since="17", forRemoval=true)
     public static <T> T doAsPrivileged(final Subject subject,
