@@ -1619,7 +1619,7 @@ public final class Subject implements java.io.Serializable {
         ClassSet(int which, Class<T> c) {
             this.which = which;
             this.c = c;
-            set = new HashSet<>();
+            set = new LinkedHashSet<>();
 
             switch (which) {
             case Subject.PRINCIPAL_SET:

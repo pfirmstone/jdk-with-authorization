@@ -39,10 +39,11 @@ import java.security.spec.PKCS8EncodedKeySpec;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.function.IntUnaryOperator;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * Singleton manager for SPIFFE credentials obtained from the SPIRE Workload API.
@@ -99,9 +100,8 @@ public final class SpiffeCredentialManager {
   }
 
   private final SpireWorkloadApiClient client;
-  private volatile Subject currentSubject;
-  private volatile String currentSpiffeId;
-  private volatile X509Certificate[] trustBundle;
+  AtomicReference<R> subjectBundle = new AtomicReference<R>();
+  
   private final List<SvidRotationListener> listeners;
   private final Object listenerLock = new Object();
   
@@ -111,6 +111,19 @@ public final class SpiffeCredentialManager {
   private final int maxReconnectAttempts;
   private final long initialBackoffMs;
   private final long maxBackoffMs;
+  
+  private static final class R {
+
+        private final Subject currentSubject;
+        private final String currentSpiffeId;
+        private final X509Certificate[] trustBundle;
+        
+      R(Subject s, String id, X509Certificate [] certs){
+          this.currentSubject = s;
+          this.currentSpiffeId = id;
+          this. trustBundle = certs;
+      }
+  }
 
   /**
    * Private constructor for singleton. Connects to SPIRE agent and performs
@@ -178,7 +191,7 @@ public final class SpiffeCredentialManager {
    * @return current SPIFFE Subject, never {@code null}
    */
   public Subject getSubject() {
-    return currentSubject;
+    return subjectBundle.get().currentSubject;
   }
 
   /**
@@ -187,7 +200,7 @@ public final class SpiffeCredentialManager {
    * @return SPIFFE ID (e.g., "spiffe://jgdms.example.org/host/policy")
    */
   public String getSpiffeId() {
-    return currentSpiffeId;
+    return subjectBundle.get().currentSpiffeId;
   }
 
   /**
@@ -201,7 +214,7 @@ public final class SpiffeCredentialManager {
    * @return defensive copy of trust bundle, never {@code null} but may be empty
    */
   public X509Certificate[] getTrustBundle() {
-    X509Certificate[] bundle = trustBundle; // Read volatile once
+    X509Certificate[] bundle = subjectBundle.get().trustBundle; // Read volatile once
     if (bundle == null) {
       return new X509Certificate[0];
     }
@@ -237,7 +250,7 @@ public final class SpiffeCredentialManager {
     // Option 2: derive from SPIFFE ID
     // spiffe://jgdms.example.org/host/policy
     // → https://policy.jgdms.example.org/bootstrap/policy
-    String spiffeId = currentSpiffeId;
+    String spiffeId = subjectBundle.get().currentSpiffeId;
     if (spiffeId == null || !spiffeId.startsWith("spiffe://")) {
       throw new MalformedURLException("Invalid SPIFFE ID: " + spiffeId);
     }
@@ -294,6 +307,7 @@ public final class SpiffeCredentialManager {
   private void updateSubject(SpireProtobuf.X509SVIDResponse response)
       throws IOException {
     if (response == null || response.svids.isEmpty()) {
+        subjectBundle.set(new R(new Subject(), null, new X509Certificate[0]));
       throw new IOException(
           "SPIRE returned empty SVID list — workload may not be registered");
     }
@@ -324,15 +338,15 @@ public final class SpiffeCredentialManager {
       PrivateKey privateKey = keyFactory.generatePrivate(keySpec);
 
       // Build Subject
-      Set<Object> publicCreds = new HashSet<Object>();
+      Set<Object> publicCreds = new LinkedHashSet<Object>();
       for (int i = 0; i < certList.size(); i++) {
         publicCreds.add(certList.get(i));
       }
 
-      Set<Object> privateCreds = new HashSet<Object>();
+      Set<Object> privateCreds = new LinkedHashSet<Object>();
       privateCreds.add(privateKey);
 
-      Set<X500Principal> principals = new HashSet<X500Principal>();
+      Set<X500Principal> principals = new LinkedHashSet<X500Principal>();
       principals.add(leafCert.getSubjectX500Principal());
 
       Subject subject = new Subject(
@@ -358,9 +372,7 @@ public final class SpiffeCredentialManager {
       }
 
       // Atomic update
-      this.currentSubject = subject;
-      this.currentSpiffeId = svid.spiffeId;
-      this.trustBundle = bundle;
+      subjectBundle.set(new R(subject, svid.spiffeId, bundle));
 
     } catch (CertificateException e) {
       throw new IOException("Failed to parse SVID certificates", e);

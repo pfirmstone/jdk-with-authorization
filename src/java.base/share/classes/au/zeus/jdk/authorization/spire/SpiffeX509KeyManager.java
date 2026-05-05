@@ -55,7 +55,7 @@ public final class SpiffeX509KeyManager implements X509KeyManager {
     
     @Override
     public String chooseClientAlias(String[] keyType, Principal[] issuers, Socket socket) {
-        // Always return "spiffe" � we have exactly one credential source
+        // Always return "spiffe" -> we have exactly one credential source
         for (int i = 0; keyType != null && i < keyType.length; i++) {
             if ("RSA".equals(keyType[i]) || "EC".equals(keyType[i])) {
                 return "spiffe";
@@ -86,7 +86,7 @@ public final class SpiffeX509KeyManager implements X509KeyManager {
             return null;
         }
         
-        Subject subject = credentialManager.getSubject(); // Credential manager unavailable � return null (JSSE will fail handshake)
+        Subject subject = credentialManager.getSubject(); // Credential manager unavailable -> return null (JSSE will fail handshake)
         Set<X509Certificate> certs = subject.getPublicCredentials(X509Certificate.class);
         // SPIRE returns certificates in order: leaf, intermediate, ...
         // Convert to array preserving order

@@ -75,15 +75,15 @@ public final class SpiffeX509TrustManager implements X509TrustManager {
         
         // 2. Verify trust domain matches (optional — can cross-trust)
         // Uncomment to enforce same-trust-domain requirement:
-        // String ourSpiffeId = credentialManager.getSpiffeId();
-        // if (ourSpiffeId != null && ourSpiffeId.startsWith("spiffe://")) {
-        //     String ourTrustDomain = extractTrustDomain(ourSpiffeId);
-        //     String peerTrustDomain = extractTrustDomain(spiffeId);
-        //     if (!ourTrustDomain.equals(peerTrustDomain)) {
-        //         throw new CertificateException("SPIFFE ID trust domain mismatch: peer=" + 
-        //                                       peerTrustDomain + ", ours=" + ourTrustDomain);
-        //     }
-        // }
+         String ourSpiffeId = credentialManager.getSpiffeId();
+         if (ourSpiffeId != null && ourSpiffeId.startsWith("spiffe://")) {
+             String ourTrustDomain = extractTrustDomain(ourSpiffeId);
+             String peerTrustDomain = extractTrustDomain(spiffeId);
+             if (!ourTrustDomain.equals(peerTrustDomain)) {
+                 throw new CertificateException("SPIFFE ID trust domain mismatch: peer=" + 
+                                               peerTrustDomain + ", ours=" + ourTrustDomain);
+             }
+         }
         
         // 3. Verify signature chain against trust bundle
         try {
