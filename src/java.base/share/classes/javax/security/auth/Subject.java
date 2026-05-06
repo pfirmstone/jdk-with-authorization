@@ -349,10 +349,6 @@ public final class Subject implements java.io.Serializable {
      * <p> Throws SecurityException if a security manager is installed and the
      *  caller does not have an {@link AuthPermission#AuthPermission(String)
      *  AuthPermission("getSubject")} permission to get the {@code Subject}.
-     * 
-     * If the subject bound to the current {@code Thread} is null this method
-     * is equivalent to calling {@link #getSubject} with the current
-     * {@code AccessControlContext}.
      *
      * @return the current subject, or {@code null} if a current subject is
      *      not installed or the current subject is set to {@code null}.
@@ -370,7 +366,7 @@ public final class Subject implements java.io.Serializable {
         if (sm != null) {
             sm.checkPermission(AuthPermissionHolder.GET_SUBJECT_PERMISSION);
         }
-        return SCOPED_SUBJECT.isBound() ? SCOPED_SUBJECT.get() : getSubject(AccessController.getContext());
+        return SCOPED_SUBJECT.isBound() ? SCOPED_SUBJECT.get() : null;
     }
 
     /**
