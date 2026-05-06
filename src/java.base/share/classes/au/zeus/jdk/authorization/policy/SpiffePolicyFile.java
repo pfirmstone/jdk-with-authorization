@@ -25,6 +25,7 @@ import java.io.IOException;
 
 import javax.security.auth.Subject;
 import java.net.MalformedURLException;
+import java.net.URISyntaxException;
 import java.net.URL;
 
 /**
@@ -176,6 +177,9 @@ public class SpiffePolicyFile extends ConcurrentPolicyFile
     } catch (MalformedURLException e) {
       throw new PolicyInitializationException(
           "Failed to derive bootstrap policy URL from SPIFFE ID", e);
-    }
+    } catch (URISyntaxException e) {
+          throw new PolicyInitializationException(
+          "Failed to derive bootstrap policy URL from SPIFFE ID", e);
+      }
   }
 }

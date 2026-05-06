@@ -21,11 +21,13 @@
 package au.zeus.jdk.authorization.spire;
 
 
+import au.zeus.jdk.net.Uri;
 import javax.security.auth.Subject;
 import javax.security.auth.x500.X500Principal;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.net.MalformedURLException;
+import java.net.URISyntaxException;
 import java.net.URL;
 import java.nio.file.Path;
 import java.security.KeyFactory;
@@ -241,12 +243,15 @@ public final class SpiffeCredentialManager {
    *
    * @return bootstrap policy URL
    * @throws MalformedURLException if the URL cannot be constructed
+   * @throws UIRSyntaxException if the URL string cannot be parsed, 
+   * or is not URI3986 compliant.
    */
-  public URL getPolicyUrl() throws MalformedURLException {
+  public URL getPolicyUrl() throws MalformedURLException, URISyntaxException {
     // Option 1: explicit system property
     String explicitUrl = System.getProperty(POLICY_URL_PROPERTY);
+    
     if (explicitUrl != null) {
-      return new URL(explicitUrl);
+      return Uri.parseAndCreate(explicitUrl).toURL();
     }
 
     // Option 2: derive from SPIFFE ID
@@ -267,7 +272,7 @@ public final class SpiffeCredentialManager {
     }
 
     // Construct: https://policy.<trust-domain>/bootstrap/policy
-    return new URL("https://policy." + trustDomain + "/bootstrap/policy");
+    return Uri.parseAndCreate("https://policy." + trustDomain + "/bootstrap/policy").toURL();
   }
 
   /**
