@@ -321,18 +321,10 @@ public final class Subject implements java.io.Serializable {
         Objects.requireNonNull(acc, ResourcesMgr.getString
                 ("invalid.null.AccessControlContext.provided"));
 
-            // return the Subject from the DomainCombiner of the provided context
-            return AccessController.doPrivileged
-                    (new java.security.PrivilegedAction<>() {
-                        public Subject run() {
-                            DomainCombiner dc = acc.getDomainCombiner();
-                            if (!(dc instanceof SubjectDomainCombiner)) {
-                                return null;
-                            }
-                            SubjectDomainCombiner sdc = (SubjectDomainCombiner) dc;
-                            return sdc.getSubject();
-                        }
-                    });
+        // return the Subject from the DomainCombiner of the provided context
+        DomainCombiner dc = Context.combiner(acc);
+        if (dc instanceof SubjectDomainCombiner sdc) return sdc.subject();
+        return null;
     }
 
     private static final ScopedValue<Subject> SCOPED_SUBJECT =
@@ -392,26 +384,64 @@ public final class Subject implements java.io.Serializable {
     }
 
     /**
-     * Executes a {@code Callable} with {@code subject} as the
-     * current subject. This is the recommended method of calling with a
-     * logged in user {@code LoginContext}.  Permission's are not elevated by
-     * this method, it is intended for software to make user based role decisions.
+     * Executes a {@code Callable} with {@code subject} as the current subject
+     * for the duration of the call on the current thread.
      *
-     * This method launches {@code action} and binds {@code subject} to the
-     * period of its execution on the current Thread.
+     * <p> This is the recommended method for executing code under the identity
+     * of a user {@code Subject} obtained from a {@link javax.security.auth.login.LoginContext}.
+     * When a {@link java.security.Policy} grants permissions based on both code source
+     * and {@code Principal}s, binding a {@code Subject} via this method will affect
+     * the permissions available during the execution of {@code action} — grants that
+     * require the presence of specific {@code Principal}s will apply only when a
+     * matching {@code Subject} is current. 
+     * 
+     * <p> Unlike {@link #doAs(Subject, PrivilegedAction)},
+     * this method does not establish a privileged execution boundary; no
+     * {@code AccessControlContext} snapshot is taken and the current subject is
+     * carried as a {@link ScopedValue} for the duration of {@code action}, remaining
+     * available across any {@code doPrivileged} calls made within {@code action}.
+     * Calls to {@code callAs} may be nested with different {@code Subject}s; each
+     * nested call shadows the previous current subject for its duration, restoring
+     * it when {@code action} completes, whether normally or exceptionally.
+     * 
+     * <p> Any threads spawned during the execution of {@code action} will inherit an
+     * {@code AccessControlContext} containing a {@link SubjectDomainCombiner} for
+     * the current {@code subject}, ensuring that principal-scoped policy grants
+     * apply consistently to child threads without requiring explicit propagation
+     * by the caller. Note that tasks submitted to an {@link java.util.concurrent.Executor}
+     * do not inherit the current subject; the {@code ScopedValue} binding is not
+     * in effect in the worker thread, and the submitted task should explicitly
+     * call {@code callAs} if it requires the same subject to be current.
      *
-     * @param subject the {@code Subject} that the specified {@code action}
-     *               will run as.  This parameter may be {@code null}.
-     * @param action the code to be run with {@code subject} as its current
-     *               subject. Must not be {@code null}.
-     * @param <T> the type of value returned by the {@code call} method
-     *            of {@code action}
-     * @return the value returned by the {@code call} method of {@code action}
+     * <p> The current subject is available to code executing within {@code action}
+     * via {@link #current()}. When {@code action} completes, the current subject
+     * is restored to its previous value, even if {@code action} throws an exception.
+     * Calls to {@code callAs} may be nested; each nested call shadows the previous
+     * current subject for its duration.
+     *
+     * <p> If a security manager is installed, the caller must have
+     * {@link AuthPermission}{@code ("doAs")} to invoke this method.
+     *
+     * <p> If {@code subject} is read-only, its identity is efficiently available
+     * to authorization checks without synchronization overhead.
+     *
+     * @param subject the {@code Subject} to associate with the execution of
+     *                {@code action}, or {@code null} to execute with no current
+     *                subject.
+     * @param action  the code to execute as {@code subject}. Must not be
+     *                {@code null}.
+     * @param <T>     the type of value returned by {@code action.call()}
+     *
+     * @return the value returned by {@code action.call()}
+     *
      * @throws NullPointerException if {@code action} is {@code null}
-     * @throws CompletionException if {@code action.call()} throws an exception.
-     *      The cause of the {@code CompletionException} is set to the exception
-     *      thrown by {@code action.call()}.
+     * @throws SecurityException if a security manager is installed and the caller
+     *         does not have {@link AuthPermission}{@code ("callAs")}
+     * @throws CompletionException if {@code action.call()} throws any exception;
+     *         the thrown exception is available via {@link CompletionException#getCause()}
+     *
      * @see #current()
+     * @see #doAs(Subject, PrivilegedAction)
      * @since 18
      */
     public static <T> T callAs(final Subject subject,
@@ -419,7 +449,7 @@ public final class Subject implements java.io.Serializable {
         Objects.requireNonNull(action);
         java.lang.SecurityManager sm = System.getSecurityManager();
         if (sm != null) {
-            sm.checkPermission(AuthPermissionHolder.DO_AS_PERMISSION);
+            sm.checkPermission(AuthPermissionHolder.CALL_AS_PERMISSION);
         }
         try {
             return ScopedValue.where(SCOPED_SUBJECT, subject).call(action::call);
@@ -429,182 +459,230 @@ public final class Subject implements java.io.Serializable {
     }
 
     /**
-     * Perform work as a particular {@code Subject}.
+     * Performs work as a particular {@code Subject}.
      *
-     * <p> This method first retrieves the current Thread's
-     * {@code AccessControlContext} via
-     * {@code AccessController.getContext},
-     * and then instantiates a new {@code AccessControlContext}
-     * using the retrieved context along with a new
-     * {@code SubjectDomainCombiner} (constructed using
-     * the provided {@code Subject}).
-     * Finally, this method invokes {@code AccessController.doPrivileged},
-     * passing it the provided {@code PrivilegedAction},
-     * as well as the newly constructed {@code AccessControlContext}.
-     * 
-     * <p> Deprecated since 18, disabled since 24,
-     * retained and maintained operational for Authorization.
+     * <p> This method is intended for establishing a <em>workload</em> identity —
+     * the identity of a service or principal under which dispatched work executes.
+     * It snapshots the current thread's {@code AccessControlContext} via
+     * {@link AccessController#getContext()}, associates the provided {@code subject}
+     * with it via a {@link SubjectDomainCombiner}, and invokes
+     * {@link AccessController#doPrivileged(PrivilegedAction, AccessControlContext)},
+     * establishing a privileged execution boundary.
      *
-     * @param subject the {@code Subject} that the specified
-     *                  {@code action} will run as.  This parameter
-     *                  may be {@code null}.
+     * <p> Because a privileged boundary is established, only the snapshotted
+     * {@code AccessControlContext} and the {@code Subject}'s {@code Principal}s
+     * participate in permission checks within {@code action} — the caller's
+     * stack beyond the {@code doPrivileged} boundary is not consulted. When a
+     * {@link java.security.Policy} grants permissions based on both code source
+     * and {@code Principal}s, the {@code Subject}'s principals will enable
+     * principal-scoped grants for all code executing within {@code action}.
      *
-     * @param <T> the type of the value returned by the PrivilegedAction's
-     *                  {@code run} method.
+     * <p> The {@link SubjectDomainCombiner} established by this method is not
+     * preserved across nested {@link AccessController#doPrivileged(PrivilegedAction)}
+     * calls within {@code action} — the combiner associated with the current
+     * {@code AccessControlContext} is silently dropped at each such boundary.
+     * To preserve the workload identity across a nested privileged boundary, use
+     * {@link AccessController#doPrivilegedWithCombiner(PrivilegedAction)}, which
+     * explicitly retrieves and carries forward the current {@link DomainCombiner}.
+     * Alternatively, an explicit {@code AccessControlContext} carrying the
+     * {@link SubjectDomainCombiner} may be passed to
+     * {@link AccessController#doPrivileged(PrivilegedAction, AccessControlContext)},
+     * though this requires the caller to manage the context explicitly.
      *
-     * @param action the code to be run as the specified
-     *                  {@code Subject}.
+     * <p> Any threads spawned within {@code action} inherit the
+     * {@code AccessControlContext} containing the {@link SubjectDomainCombiner},
+     * ensuring the workload identity propagates to child threads automatically.
+     * Tasks submitted to an {@link java.util.concurrent.Executor} do not inherit
+     * this context and must explicitly re-establish the workload identity if required.
      *
-     * @return the value returned by the PrivilegedAction's
-     *                  {@code run} method.
+     * <p> This method is intended for workload identity. For user identity in a
+     * two-Subject model, use {@link #callAs(Subject, Callable)} instead, which
+     * carries the user {@code Subject} as a {@link ScopedValue} without
+     * establishing a privileged boundary, remains available across nested
+     * {@code doPrivileged} calls, and correctly shadows across nested invocations
+     * with different {@code Subject}s.
      *
-     * @throws NullPointerException if the {@code PrivilegedAction}
-     *                  is {@code null}.
+     * @param subject the {@code Subject} to associate with the execution of
+     *                {@code action}. May be {@code null}.
+     * @param action  the code to be run as the specified {@code Subject}.
+     *                Must not be {@code null}.
+     * @param <T>     the type of the value returned by {@code action.run()}
      *
-     * @throws SecurityException if a security manager is installed and the
-     *                  caller does not have an
-     *                  {@link AuthPermission#AuthPermission(String)
-     *                  AuthPermission("doAs")} permission to invoke this
-     *                  method.
+     * @return the value returned by {@code action.run()}
+     *
+     * @throws NullPointerException if {@code action} is {@code null}
+     * @throws SecurityException if a security manager is installed and the caller
+     *         does not have {@link AuthPermission}{@code ("doAs")}
+     *
+     * @see #callAs(Subject, Callable)
+     * @see #doAsPrivileged(Subject, PrivilegedAction, AccessControlContext)
+     * @see AccessController#doPrivilegedWithCombiner(PrivilegedAction)
      */
     @SuppressWarnings("removal")
-//    @Deprecated(since="18", forRemoval=true)
     public static <T> T doAs(final Subject subject,
-                        final java.security.PrivilegedAction<T> action) {
-
+                             final java.security.PrivilegedAction<T> action) {
         java.lang.SecurityManager sm = System.getSecurityManager();
-        if (sm != null) {
-            sm.checkPermission(AuthPermissionHolder.DO_AS_PERMISSION);
-        }
-
-        Objects.requireNonNull(action,
-                ResourcesMgr.getString("invalid.null.action.provided"));
-
-            // set up the new Subject-based AccessControlContext
-            // for doPrivileged
-            final AccessControlContext currentAcc = AccessController.getContext();
-
-            // call doPrivileged and push this new context on the stack
-            return java.security.AccessController.doPrivileged
-                    (action,
-                            createContext(subject, currentAcc));
+        if (sm != null) sm.checkPermission(AuthPermissionHolder.DO_AS_PERMISSION);
+        Objects.requireNonNull(action, ResourcesMgr.getString("invalid.null.action.provided"));
+        return java.security.AccessController.doPrivileged(
+                action, createContext(subject, AccessController.getContext()));
     }
 
     /**
-     * Perform work as a particular {@code Subject}.
+     * Performs work as a particular {@code Subject}.
      *
-     * <p> This method first retrieves the current Thread's
-     * {@code AccessControlContext} via
-     * {@code AccessController.getContext},
-     * and then instantiates a new {@code AccessControlContext}
-     * using the retrieved context along with a new
-     * {@code SubjectDomainCombiner} (constructed using
-     * the provided {@code Subject}).
-     * Finally, this method invokes {@code AccessController.doPrivileged},
-     * passing it the provided {@code PrivilegedExceptionAction},
-     * as well as the newly constructed {@code AccessControlContext}.
+     * <p> This method is identical to
+     * {@link #doAs(Subject, PrivilegedAction)} except that the action
+     * is expressed as a {@link PrivilegedExceptionAction}, permitting
+     * the action to throw checked exceptions. Any checked exception
+     * thrown by {@code action.run()} is wrapped in a
+     * {@link PrivilegedActionException} and re-thrown from this method.
      *
-     * <p> If a security manager is not allowed,
-     * this method launches {@code action} and binds {@code subject} to the
-     * period of its execution.
-     * 
-     * <p> Deprecated since 18, removed or disabled since 24,
-     * retained and maintained operational for Authorization.
-     * 
-     * @param subject the {@code Subject} that the specified
-     *                  {@code action} will run as.  This parameter
-     *                  may be {@code null}.
+     * <p> This method is intended for establishing a <em>workload</em> identity —
+     * the identity of a service or principal under which dispatched work executes.
+     * It snapshots the current thread's {@code AccessControlContext} via
+     * {@link AccessController#getContext()}, associates the provided {@code subject}
+     * with it via a {@link SubjectDomainCombiner}, and invokes
+     * {@link AccessController#doPrivileged(PrivilegedExceptionAction, AccessControlContext)},
+     * establishing a privileged execution boundary.
      *
-     * @param <T> the type of the value returned by the
-     *                  PrivilegedExceptionAction's {@code run} method.
+     * <p> Because a privileged boundary is established, only the snapshotted
+     * {@code AccessControlContext} and the {@code Subject}'s {@code Principal}s
+     * participate in permission checks within {@code action} — the caller's
+     * stack beyond the {@code doPrivileged} boundary is not consulted. When a
+     * {@link java.security.Policy} grants permissions based on both code source
+     * and {@code Principal}s, the {@code Subject}'s principals will enable
+     * principal-scoped grants for all code executing within {@code action}.
      *
-     * @param action the code to be run as the specified
-     *                  {@code Subject}.
+     * <p> The {@link SubjectDomainCombiner} established by this method is not
+     * preserved across nested {@link AccessController#doPrivileged(PrivilegedExceptionAction)}
+     * calls within {@code action} — the combiner associated with the current
+     * {@code AccessControlContext} is silently dropped at each such boundary.
+     * To preserve the workload identity across a nested privileged boundary, use
+     * {@link AccessController#doPrivilegedWithCombiner(PrivilegedExceptionAction)},
+     * which explicitly retrieves and carries forward the current
+     * {@link DomainCombiner}. Alternatively, an explicit {@code AccessControlContext}
+     * carrying the {@link SubjectDomainCombiner} may be passed to
+     * {@link AccessController#doPrivileged(PrivilegedExceptionAction, AccessControlContext)},
+     * though this requires the caller to manage the context explicitly.
      *
-     * @return the value returned by the
-     *                  PrivilegedExceptionAction's {@code run} method.
+     * <p> Any threads spawned within {@code action} inherit the
+     * {@code AccessControlContext} containing the {@link SubjectDomainCombiner},
+     * ensuring the workload identity propagates to child threads automatically.
+     * Tasks submitted to an {@link java.util.concurrent.Executor} do not inherit
+     * this context and must explicitly re-establish the workload identity if required.
      *
-     * @throws PrivilegedActionException if the
-     *                  {@code PrivilegedExceptionAction.run}
-     *                  method throws a checked exception.
+     * <p> This method is intended for workload identity. For user identity in a
+     * two-Subject model, use {@link #callAs(Subject, Callable)} instead, which
+     * carries the user {@code Subject} as a {@link ScopedValue} without
+     * establishing a privileged boundary, remains available across nested
+     * {@code doPrivileged} calls, and correctly shadows across nested invocations
+     * with different {@code Subject}s.
      *
-     * @throws NullPointerException if the specified
-     *                  {@code PrivilegedExceptionAction} is
-     *                  {@code null}.
+     * @param subject the {@code Subject} to associate with the execution of
+     *                {@code action}. May be {@code null}.
+     * @param action  the code to be run as the specified {@code Subject}.
+     *                Must not be {@code null}.
+     * @param <T>     the type of the value returned by {@code action.run()}
      *
-     * @throws SecurityException if a security manager is installed and the
-     *                  caller does not have an
-     *                  {@link AuthPermission#AuthPermission(String)
-     *                  AuthPermission("doAs")} permission to invoke this
-     *                  method.
+     * @return the value returned by {@code action.run()}
+     *
+     * @throws NullPointerException if {@code action} is {@code null}
+     * @throws PrivilegedActionException if {@code action.run()} throws a
+     *         checked exception. The thrown exception is available via
+     *         {@link PrivilegedActionException#getException()}
+     * @throws SecurityException if a security manager is installed and the caller
+     *         does not have {@link AuthPermission}{@code ("doAs")}
+     *
+     * @see #doAs(Subject, PrivilegedAction)
+     * @see #callAs(Subject, Callable)
+     * @see #doAsPrivileged(Subject, PrivilegedExceptionAction, AccessControlContext)
+     * @see AccessController#doPrivilegedWithCombiner(PrivilegedExceptionAction)
      */
     @SuppressWarnings("removal")
-//    @Deprecated(since="18", forRemoval=true)
     public static <T> T doAs(final Subject subject,
                         final java.security.PrivilegedExceptionAction<T> action)
                         throws java.security.PrivilegedActionException {
-
         java.lang.SecurityManager sm = System.getSecurityManager();
-        if (sm != null) {
-            sm.checkPermission(AuthPermissionHolder.DO_AS_PERMISSION);
-        }
-
-        Objects.requireNonNull(action,
-                ResourcesMgr.getString("invalid.null.action.provided"));
-
-            // set up the new Subject-based AccessControlContext for doPrivileged
-            final AccessControlContext currentAcc = AccessController.getContext();
-
-            // call doPrivileged and push this new context on the stack
-            return java.security.AccessController.doPrivileged
-                    (action,
-                            createContext(subject, currentAcc));
+        if (sm != null) sm.checkPermission(AuthPermissionHolder.DO_AS_PERMISSION);
+        Objects.requireNonNull(action, ResourcesMgr.getString("invalid.null.action.provided"));
+        return java.security.AccessController.doPrivileged(
+                action, createContext(subject, AccessController.getContext()));
     }
 
     /**
-     * Perform privileged work as a particular {@code Subject}.
+     * Performs work as a particular {@code Subject} using an explicitly
+     * provided {@code AccessControlContext}.
      *
-     * <p> This method behaves exactly as {@code Subject.doAs},
-     * except that instead of retrieving the current Thread's
-     * {@code AccessControlContext}, it uses the provided
-     * {@code AccessControlContext}.  If the provided
-     * {@code AccessControlContext} is {@code null},
-     * this method instantiates a new {@code AccessControlContext}
-     * with an empty collection of ProtectionDomains.
+     * <p> This method behaves identically to
+     * {@link #doAs(Subject, PrivilegedAction)} except that rather than
+     * snapshotting the current thread's {@code AccessControlContext}, it
+     * uses the explicitly provided {@code acc} as the base context. This
+     * allows the caller to control precisely which stack context participates
+     * in permission checks within {@code action}, enabling delegation patterns
+     * where the security context must be constructed or constrained explicitly
+     * rather than inherited from the current thread.
      *
-     * <p> If a security manager is not allowed,
-     * this method ignores the {@code acc} argument, launches {@code action},
-     * and binds {@code subject} to the period of its execution.
-     * <p> Deprecated since 17, removed or disabled since 24,
-     * retained and maintained operational for Authorization.
+     * <p> If {@code acc} is {@code null}, the action is executed with an
+     * empty {@code AccessControlContext} containing no {@code ProtectionDomain}s.
+     * This discards all caller stack context entirely, producing a stronger
+     * privilege boundary than {@link #doAs(Subject, PrivilegedAction)} —
+     * only the {@code Subject}'s principals and the permissions of code
+     * executing within {@code action} itself will be considered. This should
+     * be used deliberately and with care, as it eliminates all constraints
+     * from the calling context.
      *
-     * @param subject the {@code Subject} that the specified
-     *                  {@code action} will run as.  This parameter
-     *                  may be {@code null}.
+     * <p> When a {@link java.security.Policy} grants permissions based on
+     * both code source and {@code Principal}s, the {@code Subject}'s principals
+     * will enable principal-scoped grants for all code executing within
+     * {@code action}.
      *
-     * @param <T> the type of the value returned by the PrivilegedAction's
-     *                  {@code run} method.
+     * <p> The {@link SubjectDomainCombiner} established by this method is not
+     * preserved across nested {@link AccessController#doPrivileged(PrivilegedAction)}
+     * calls within {@code action} — the combiner associated with the current
+     * {@code AccessControlContext} is silently dropped at each such boundary.
+     * To preserve the workload identity across a nested privileged boundary, use
+     * {@link AccessController#doPrivilegedWithCombiner(PrivilegedAction)}, which
+     * explicitly retrieves and carries forward the current {@link DomainCombiner}.
+     * Alternatively, an explicit {@code AccessControlContext} carrying the
+     * {@link SubjectDomainCombiner} may be passed to
+     * {@link AccessController#doPrivileged(PrivilegedAction, AccessControlContext)},
+     * though this requires the caller to manage the context explicitly.
      *
-     * @param action the code to be run as the specified
-     *                  {@code Subject}.
+     * <p> Any threads spawned within {@code action} inherit the
+     * {@code AccessControlContext} containing the {@link SubjectDomainCombiner},
+     * ensuring the workload identity propagates to child threads automatically.
+     * Tasks submitted to an {@link java.util.concurrent.Executor} do not inherit
+     * this context and must explicitly re-establish the workload identity if required.
      *
-     * @param acc the {@code AccessControlContext} to be tied to the
-     *                  specified <i>subject</i> and <i>action</i>.
+     * <p> This method is intended for workload identity. For user identity in a
+     * two-Subject model, use {@link #callAs(Subject, Callable)} instead, which
+     * carries the user {@code Subject} as a {@link ScopedValue} without
+     * establishing a privileged boundary, remains available across nested
+     * {@code doPrivileged} calls, and correctly shadows across nested invocations
+     * with different {@code Subject}s.
      *
-     * @return the value returned by the PrivilegedAction's
-     *                  {@code run} method.
+     * @param subject the {@code Subject} to associate with the execution of
+     *                {@code action}. May be {@code null}.
+     * @param action  the code to be run as the specified {@code Subject}.
+     *                Must not be {@code null}.
+     * @param acc     the {@code AccessControlContext} to use as the base context
+     *                for permission checks within {@code action}. If {@code null},
+     *                an empty context is used, discarding all caller stack context.
+     * @param <T>     the type of the value returned by {@code action.run()}
      *
-     * @throws NullPointerException if the {@code PrivilegedAction}
-     *                  is {@code null}.
+     * @return the value returned by {@code action.run()}
      *
-     * @throws SecurityException if a security manager is installed and the
-     *                  caller does not have a
-     *                  {@link AuthPermission#AuthPermission(String)
-     *                  AuthPermission("doAsPrivileged")} permission to invoke
-     *                  this method.
+     * @throws NullPointerException if {@code action} is {@code null}
+     * @throws SecurityException if a security manager is installed and the caller
+     *         does not have {@link AuthPermission}{@code ("doAsPrivileged")}
+     *
+     * @see #doAs(Subject, PrivilegedAction)
+     * @see #callAs(Subject, Callable)
+     * @see #doAsPrivileged(Subject, PrivilegedExceptionAction, AccessControlContext)
+     * @see AccessController#doPrivilegedWithCombiner(PrivilegedAction)
      */
     @SuppressWarnings("removal")
-//    @Deprecated(since="17", forRemoval=true)
     public static <T> T doAsPrivileged(final Subject subject,
                         final java.security.PrivilegedAction<T> action,
                         final java.security.AccessControlContext acc) {
@@ -631,80 +709,88 @@ public final class Subject implements java.io.Serializable {
     }
     
     /**
-     * Builds AccessControlContext instances or obtains from cache, without
-     * permission checks.
+     * Performs work as a particular {@code Subject} using an explicitly
+     * provided {@code AccessControlContext}.
+     *
+     * <p> This method is identical to
+     * {@link #doAsPrivileged(Subject, PrivilegedAction, AccessControlContext)}
+     * except that the action is expressed as a {@link PrivilegedExceptionAction},
+     * permitting the action to throw checked exceptions. Any checked exception
+     * thrown by {@code action.run()} is wrapped in a
+     * {@link PrivilegedActionException} and rethrown from this method.
+     *
+     * <p> This method behaves identically to
+     * {@link #doAs(Subject, PrivilegedExceptionAction)} except that rather than
+     * snapshotting the current thread's {@code AccessControlContext}, it
+     * uses the explicitly provided {@code acc} as the base context. This
+     * allows the caller to control precisely which stack context participates
+     * in permission checks within {@code action}, enabling delegation patterns
+     * where the security context must be constructed or constrained explicitly
+     * rather than inherited from the current thread.
+     *
+     * <p> If {@code acc} is {@code null}, the action is executed with an
+     * empty {@code AccessControlContext} containing no {@code ProtectionDomain}s.
+     * This discards all caller stack context entirely, producing a stronger
+     * privilege boundary than {@link #doAs(Subject, PrivilegedExceptionAction)} —
+     * only the {@code Subject}'s principals and the permissions of code
+     * executing within {@code action} itself will be considered. This should
+     * be used deliberately and with care, as it eliminates all constraints
+     * from the calling context.
+     *
+     * <p> When a {@link java.security.Policy} grants permissions based on
+     * both code source and {@code Principal}s, the {@code Subject}'s principals
+     * will enable principal-scoped grants for all code executing within
+     * {@code action}.
+     *
+     * <p> The {@link SubjectDomainCombiner} established by this method is not
+     * preserved across nested {@link AccessController#doPrivileged(PrivilegedExceptionAction)}
+     * calls within {@code action} — the combiner associated with the current
+     * {@code AccessControlContext} is silently dropped at each such boundary.
+     * To preserve the workload identity across a nested privileged boundary, use
+     * {@link AccessController#doPrivilegedWithCombiner(PrivilegedExceptionAction)},
+     * which explicitly retrieves and carries forward the current
+     * {@link DomainCombiner}. Alternatively, an explicit {@code AccessControlContext}
+     * carrying the {@link SubjectDomainCombiner} may be passed to
+     * {@link AccessController#doPrivileged(PrivilegedExceptionAction, AccessControlContext)},
+     * though this requires the caller to manage the context explicitly.
+     *
+     * <p> Any threads spawned within {@code action} inherit the
+     * {@code AccessControlContext} containing the {@link SubjectDomainCombiner},
+     * ensuring the workload identity propagates to child threads automatically.
+     * Tasks submitted to an {@link java.util.concurrent.Executor} do not inherit
+     * this context and must explicitly re-establish the workload identity if required.
+     *
+     * <p> This method is intended for workload identity. For user identity in a
+     * two-Subject model, use {@link #callAs(Subject, Callable)} instead, which
+     * carries the user {@code Subject} as a {@link ScopedValue} without
+     * establishing a privileged boundary, remains available across nested
+     * {@code doPrivileged} calls, and correctly shadows across nested invocations
+     * with different {@code Subject}s.
+     *
+     * @param subject the {@code Subject} to associate with the execution of
+     *                {@code action}. May be {@code null}.
+     * @param action  the code to be run as the specified {@code Subject}.
+     *                Must not be {@code null}.
+     * @param acc     the {@code AccessControlContext} to use as the base context
+     *                for permission checks within {@code action}. If {@code null},
+     *                an empty context is used, discarding all caller stack context.
+     * @param <T>     the type of the value returned by {@code action.run()}
+     *
+     * @return the value returned by {@code action.run()}
+     *
+     * @throws NullPointerException if {@code action} is {@code null}
+     * @throws PrivilegedActionException if {@code action.run()} throws a
+     *         checked exception. The thrown exception is available via
+     *         {@link PrivilegedActionException#getException()}
+     * @throws SecurityException if a security manager is installed and the caller
+     *         does not have {@link AuthPermission}{@code ("doAsPrivileged")}
+     *
+     * @see #doAsPrivileged(Subject, PrivilegedAction, AccessControlContext)
+     * @see #doAs(Subject, PrivilegedExceptionAction)
+     * @see #callAs(Subject, Callable)
+     * @see AccessController#doPrivilegedWithCombiner(PrivilegedExceptionAction)
      */
-    public final static class Context extends AccessControlContext.ContextBuilder{
-        
-        Context(){
-        }
-        
-        static final AccessControlContext.ContextBuilder builder = new Context();
-        
-        static AccessControlContext create(ProtectionDomain [] context){
-            return builder.build(context);
-        }
-        
-        static AccessControlContext create(AccessControlContext acc,
-                                             DomainCombiner combiner) {
-            return builder.build(acc, combiner);
-        }
-        
-    }
-
-    /**
-     * Perform privileged work as a particular {@code Subject}.
-     *
-     * <p> This method behaves exactly as {@code Subject.doAs},
-     * except that instead of retrieving the current Thread's
-     * {@code AccessControlContext}, it uses the provided
-     * {@code AccessControlContext}.  If the provided
-     * {@code AccessControlContext} is {@code null},
-     * this method instantiates a new {@code AccessControlContext}
-     * with an empty collection of ProtectionDomains.
-     *
-     * <p> Deprecated since 17, removed or disabled since 24,
-     * retained and maintained operational for Authorization.
-     *
-     * @param subject the {@code Subject} that the specified
-     *                  {@code action} will run as.  This parameter
-     *                  may be {@code null}.
-     *
-     * @param <T> the type of the value returned by the
-     *                  PrivilegedExceptionAction's {@code run} method.
-     *
-     * @param action the code to be run as the specified
-     *                  {@code Subject}.
-     *
-     * @param acc the {@code AccessControlContext} to be tied to the
-     *                  specified <i>subject</i> and <i>action</i>.
-     *
-     * @return the value returned by the
-     *                  PrivilegedExceptionAction's {@code run} method.
-     *
-     * @throws PrivilegedActionException if the
-     *                  {@code PrivilegedExceptionAction.run}
-     *                  method throws a checked exception.
-     *
-     * @throws NullPointerException if the specified
-     *                  {@code PrivilegedExceptionAction} is
-     *                  {@code null}.
-     *
-     * @throws SecurityException if a security manager is installed and the
-     *                  caller does not have a
-     *                  {@link AuthPermission#AuthPermission(String)
-     *                  AuthPermission("doAsPrivileged")} permission to invoke
-     *                  this method.
-     */
-//     * @deprecated This method is only useful in conjunction with
-//     *       {@linkplain SecurityManager the Security Manager}, which is
-//     *       deprecated and subject to removal in a future release.
-//     *       Consequently, this method is also deprecated and subject to
-//     *       removal. There is no replacement for the Security Manager or this
-//     *       method.
-//     */
     @SuppressWarnings("removal")
-//    @Deprecated(since="17", forRemoval=true)
     public static <T> T doAsPrivileged(final Subject subject,
                         final java.security.PrivilegedExceptionAction<T> action,
                         final java.security.AccessControlContext acc)
@@ -732,9 +818,40 @@ public final class Subject implements java.io.Serializable {
 
     @SuppressWarnings("removal")
     private static AccessControlContext createContext(final Subject subject,
-                                        final AccessControlContext acc) {
+                                                      final AccessControlContext acc) {
         if (subject == null) return Context.create(acc, null);
-        else return Context.create(acc, new SubjectDomainCombiner(subject));
+        // Reuse existing combiner if it already wraps the same Subject,
+        // avoiding a redundant SubjectDomainCombiner instance and cache miss.
+        DomainCombiner existing = Context.combiner(acc);
+        if (existing instanceof SubjectDomainCombiner sdc
+                && subject.equals(sdc.getSubject())) {
+            return acc;
+        }
+        return Context.create(acc, new SubjectDomainCombiner(subject));
+    }
+    
+    /**
+     * Builds AccessControlContext instances or obtains from cache, without
+     * permission checks.
+     */
+    public final static class Context extends AccessControlContext.ContextBuilder {
+        
+        Context(){}
+        
+        static final AccessControlContext.ContextBuilder builder = new Context();
+        
+        static AccessControlContext create(ProtectionDomain [] context){
+            return builder.build(context);
+        }
+        
+        static AccessControlContext create(AccessControlContext acc,
+                                             DomainCombiner combiner) {
+            return builder.build(acc, combiner);
+        }
+        
+        static DomainCombiner combiner(AccessControlContext acc){
+            return builder.getCombiner(acc);
+        }
     }
 
     /**
@@ -1151,6 +1268,7 @@ public final class Subject implements java.io.Serializable {
                         (new SecureSet<>(this, PUB_CREDENTIAL_SET));
         this.privCredentials = Collections.synchronizedSet
                         (new SecureSet<>(this, PRIV_CREDENTIAL_SET));
+        if (readOnly) hashCode = computeHashCode();
     }
 
     /**
@@ -1716,6 +1834,9 @@ public final class Subject implements java.io.Serializable {
     }
 
     static final class AuthPermissionHolder {
+        static final AuthPermission CALL_AS_PERMISSION =
+            new AuthPermission("callAs");
+        
         static final AuthPermission DO_AS_PERMISSION =
             new AuthPermission("doAs");
 

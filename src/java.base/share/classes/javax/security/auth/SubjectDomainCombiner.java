@@ -123,6 +123,10 @@ public class SubjectDomainCombiner implements java.security.DomainCombiner {
         return subject;
     }
     
+    Subject subject(){
+        return subject;
+    }
+    
     @Override
     public boolean equals(Object o) {
         if (this == o) return true;

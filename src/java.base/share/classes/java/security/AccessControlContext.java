@@ -1000,6 +1000,16 @@ public final class AccessControlContext {
             return AccessControlContext.create(acc, combiner, true); // Skips check authorized.
         }
         
+        /**
+         * Allows access to the DomainCombiner without a permission check.
+         * 
+         * @param acc the AccessControlContext
+         * @return DomainCombiner or null.
+         */
+        public DomainCombiner getCombiner(AccessControlContext acc){
+            return acc.getCombiner();
+        }
+        
         
     }
 }
