@@ -30,6 +30,8 @@ import java.net.MalformedURLException;
 import java.net.URISyntaxException;
 import java.net.URL;
 import java.net.URI;
+import javax.security.auth.Subject;
+import javax.security.auth.SubjectDomainCombiner;
 
 import jdk.internal.vm.annotation.Hidden;
 import sun.security.util.Debug;
@@ -985,9 +987,35 @@ public final class AccessController {
             // getContext implementation.
             return AccessControlContext.create(null, true);
         } else {
-            return acc.optimize();
+            acc = acc.optimize();
+            // If we want scoped subjects to be first class participants
+            // If this context is used in Subject.doAs, the SubjectDomainCombiner
+            // will be replaced.
+            Subject subject = SubjectAccess.SCOPED.get();
+            if (subject != null && subject.isReadOnly()){
+                DomainCombiner dc = new SubjectDomainCombiner(subject);
+                acc = AccessControlContext.create(acc, dc, true); // true to skip permission check.
+            }
+            return acc;
         }
     }
+    
+    /**
+     * Non Standard API
+     * 
+     * Helper class to capture SCOPED_SUBJECT.
+     */
+    public static final class SubjectAccess extends Subject.NoCheck {
+        
+        private final static SubjectAccess SCOPED = new SubjectAccess();
+        
+        private SubjectAccess(){}
+        
+        private Subject get(){
+            return current();
+        }
+    }
+    
 
     /**
      * Determines whether the access request indicated by the

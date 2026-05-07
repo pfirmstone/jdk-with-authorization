@@ -25,7 +25,7 @@
 
 package javax.security.auth;
 
-import au.zeus.jdk.authorization.spire.SpiffeCredentialManager;
+import au.zeus.jdk.authorization.sm.CombinerSecurityManager;
 import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
@@ -142,6 +142,7 @@ public final class Subject implements java.io.Serializable {
      * @serial
      */
     private volatile boolean readOnly;
+    private volatile int hashCode;
 
     private static final int PRINCIPAL_SET = 1;
     private static final int PUB_CREDENTIAL_SET = 2;
@@ -233,6 +234,7 @@ public final class Subject implements java.io.Serializable {
         this.privCredentials = Collections.synchronizedSet(
                 new SecureSet<>(this, PRIV_CREDENTIAL_SET, privCredsList));
         this.readOnly = readOnly;
+        if (readOnly) hashCode = computeHashCode();
     }
 
     /**
@@ -262,8 +264,12 @@ public final class Subject implements java.io.Serializable {
         if (sm != null) {
             sm.checkPermission(AuthPermissionHolder.SET_READ_ONLY_PERMISSION);
         }
-
-        this.readOnly = true;
+        synchronized (this){
+            if (readOnly) return;
+            this.readOnly = true;
+            this.hashCode = computeHashCode();
+        }
+        
     }
 
     /**
@@ -367,6 +373,22 @@ public final class Subject implements java.io.Serializable {
             sm.checkPermission(AuthPermissionHolder.GET_SUBJECT_PERMISSION);
         }
         return SCOPED_SUBJECT.isBound() ? SCOPED_SUBJECT.get() : null;
+    }
+    
+    /**
+     * Internal implementation class that provides access to SCOPED_SUBJECT
+     * without permission checks.
+     */
+    public static abstract sealed class NoCheck permits AccessController.SubjectAccess {
+        
+        /**
+         * Static method that returns the current Subject if set.
+         * @return the Scoped Subject
+         */
+        protected static Subject current(){
+            return SCOPED_SUBJECT.isBound() ? SCOPED_SUBJECT.get() : null;
+        }
+        
     }
 
     /**
@@ -1032,6 +1054,11 @@ public final class Subject implements java.io.Serializable {
      */
     @Override
     public int hashCode() {
+        if ( readOnly) return hashCode;
+        return computeHashCode();
+    }
+    
+    private int computeHashCode(){
 
         /*
          * The hashcode is derived exclusive or-ing the

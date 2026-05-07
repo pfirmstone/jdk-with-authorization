@@ -924,7 +924,7 @@ public final class AccessControlContext {
                 if (this.isPrivileged != that.isPrivileged) return false;
                 if (!Objects.equals(this.combiner,that.combiner)) return false;
                 if (!Objects.equals(this.context, that.context)) return false;
-                return !Objects.equals(this.privilegedContext, that.privilegedContext);
+                return Objects.equals(this.privilegedContext, that.privilegedContext);
             }
             return false;
         }
@@ -997,7 +997,7 @@ public final class AccessControlContext {
          */
         public AccessControlContext build(AccessControlContext acc,
                                              DomainCombiner combiner) {
-            return AccessControlContext.create(acc, combiner);
+            return AccessControlContext.create(acc, combiner, true); // Skips check authorized.
         }
         
         

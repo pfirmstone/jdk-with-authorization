@@ -33,6 +33,7 @@ import java.security.DomainIdentity;
 import java.util.Set;
 import java.util.HashSet;
 import java.util.Iterator;
+import java.util.Objects;
 import sun.security.util.SecurityConstants;
 
 /**
@@ -120,6 +121,18 @@ public class SubjectDomainCombiner implements java.security.DomainCombiner {
                 ("getSubjectFromDomainCombiner"));
         }
         return subject;
+    }
+    
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (!(o instanceof SubjectDomainCombiner other)) return false;
+        return Objects.equals(this.subject, other.subject);
+    }
+
+    @Override
+    public int hashCode() {
+        return hashCode; // already computed as Subject.hashCode() in constructor
     }
 
     /**
