@@ -33,7 +33,6 @@ import java.security.DomainIdentity;
 import java.util.Set;
 import java.util.HashSet;
 import java.util.Iterator;
-import static javax.security.auth.Subject.SCOPED_SUBJECT;
 import sun.security.util.SecurityConstants;
 
 /**
@@ -311,18 +310,6 @@ public class SubjectDomainCombiner implements java.security.DomainCombiner {
 
             if (debug != null) {
                 debug.println("ACC Subject is mutable");
-            }
-        }
-
-        // 2. Add SCOPED_SUBJECT principals (eg human user identity, if bound)
-        //    No AuthPermission check — combiner is trusted java.base code
-        Subject scopedSubject = SCOPED_SUBJECT.isBound() ? SCOPED_SUBJECT.get() : null;
-        if (scopedSubject != null) {
-            Set<Principal> userPrincipals = scopedSubject.getPrincipals();
-            merged.addAll(userPrincipals);
-
-            if (debug != null) {
-                debug.println("SCOPED_SUBJECT present with " + userPrincipals.size() + " principals");
             }
         }
 

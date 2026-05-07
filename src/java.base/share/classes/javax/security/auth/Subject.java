@@ -329,7 +329,7 @@ public final class Subject implements java.io.Serializable {
                     });
     }
 
-    static final ScopedValue<Subject> SCOPED_SUBJECT =
+    private static final ScopedValue<Subject> SCOPED_SUBJECT =
             ScopedValue.newInstance();
 
     /**
@@ -372,16 +372,11 @@ public final class Subject implements java.io.Serializable {
     /**
      * Executes a {@code Callable} with {@code subject} as the
      * current subject. This is the recommended method of calling with a
-     * logged in user {@code LoginContext}.
+     * logged in user {@code LoginContext}.  Permission's are not elevated by
+     * this method, it is intended for software to make user based role decisions.
      *
      * This method launches {@code action} and binds {@code subject} to the
      * period of its execution on the current Thread.
-     * 
-     * This method should not be used to create {@code ThreadFactory} or
-     * {@code ThreadBuilder}.
-     * 
-     * The {@code Subject} principals will be included with {@SubjectDomainCombiner}
-     * when created with the current thread.
      *
      * @param subject the {@code Subject} that the specified {@code action}
      *               will run as.  This parameter may be {@code null}.
