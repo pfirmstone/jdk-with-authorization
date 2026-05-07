@@ -374,6 +374,11 @@ public final class Subject implements java.io.Serializable {
     public static abstract sealed class NoCheck permits AccessController.SubjectAccess {
         
         /**
+         * Protected constructor.
+         */
+        protected NoCheck(){}
+        
+        /**
          * Static method that returns the current Subject if set.
          * @return the Scoped Subject
          */
