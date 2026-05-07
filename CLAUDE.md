@@ -490,7 +490,7 @@ src/
 | GCC / G++ | `/usr/bin/gcc`, `/usr/bin/g++` | 10 |
 | Boot JDK | `$BOOTJDK_HOME` | OpenJDK 25 linux-x64 |
 | JTReg | `$JTREG_HOME` | 8.1+1 |
-| System build libs | system paths | libasound2, libcups2, libfontconfig1, libx11, … |
+| System build libs | system paths | libasound2-dev, libcups2-dev, libfontconfig1-dev, libx11-dev, … |
 
 ### Step 1 — Configure
 

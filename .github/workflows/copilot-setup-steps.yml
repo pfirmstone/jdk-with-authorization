@@ -64,6 +64,8 @@ jobs:
 
       # Export stable paths so the agent can run configure, build, and tests
       # without having to locate these directories itself.
+      # Note: build-jtreg always installs to `jtreg/installed` relative to the
+      # workspace (this path is hardcoded in .github/actions/build-jtreg/action.yml).
       - name: Export environment variables for agent
         run: |
           echo "BOOTJDK_HOME=${{ steps.bootjdk.outputs.path }}" >> "$GITHUB_ENV"
