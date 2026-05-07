@@ -29,6 +29,7 @@ import java.lang.ref.Reference;
 import java.lang.reflect.Field;
 import java.security.AccessController;
 import java.security.AccessControlContext;
+import java.security.DomainCombiner;
 import java.security.Permission;
 import java.security.PrivilegedAction;
 import java.security.ProtectionDomain;
@@ -36,6 +37,8 @@ import java.time.Duration;
 import java.util.Map;
 import java.util.HashMap;
 import java.util.Objects;
+import java.util.concurrent.Callable;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.StructureViolationException;
 import java.util.concurrent.locks.LockSupport;
@@ -57,6 +60,8 @@ import sun.nio.ch.Interruptible;
 import sun.security.util.SecurityConstants;
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
 import static java.util.concurrent.TimeUnit.NANOSECONDS;
+import javax.security.auth.Subject;
+import javax.security.auth.SubjectDomainCombiner;
 
 /**
  * A <i>thread</i> is a thread of execution in a program. The Java
@@ -307,6 +312,7 @@ public class Thread implements Runnable {
     // inherited AccessControlContext, this could be moved to FieldHolder
     @SuppressWarnings("removal")
     private AccessControlContext inheritedAccessControlContext;
+    private Subject scopedSubject;
 
     // Additional fields for platform threads.
     // All fields, except task and terminatingThreadLocals, are accessed directly by the VM.
@@ -836,6 +842,8 @@ public class Thread implements Runnable {
         } else {
             this.inheritedAccessControlContext = AccessController.getContext();
         }
+        
+        this.scopedSubject = VM.isBooted() ? SubjectAccess.scoped() : null;
 
         // thread locals
         if (!attached) {
@@ -882,6 +890,8 @@ public class Thread implements Runnable {
             // default CCL to the system class loader when not inheriting
             this.contextClassLoader = ClassLoader.getSystemClassLoader();
         }
+        
+        this.scopedSubject = VM.isBooted() ? SubjectAccess.scoped() : null;
 
         // special value to indicate this is a newly-created Thread
         this.scopedValueBindings = NEW_THREAD_BINDINGS;
@@ -1700,9 +1710,54 @@ public class Thread implements Runnable {
     @Hidden
     @ForceInline
     final void runWith(Object bindings, Runnable op) {
-        ensureMaterializedForStackWalk(bindings);
-        op.run();
+        if (scopedSubject != null) {
+            ensureMaterializedForStackWalk(bindings);
+            SubjectAccess.callNoCheck(scopedSubject, () -> {
+                op.run();
+                return null;
+            });
+        } else {
+            ensureMaterializedForStackWalk(bindings);
+            op.run();
+        }
         Reference.reachabilityFence(bindings);
+    }
+    
+    /**
+     * Not Public API provides access to DomainCombiner.
+     */
+    public static final class SubjectAccess extends Subject.NoCheck {
+        
+        private SubjectAccess(){}
+        
+        private static Subject scoped() {
+            return current();
+        } 
+        
+        private static <T> T callNoCheck(final Subject subject,
+            final Callable<T> action) throws CompletionException {
+            return callAs(subject, action);
+        }
+    }
+    
+    /**
+     * Builds AccessControlContext instances or obtains from cache, without
+     * permission checks.
+     */
+    public final static class Context extends AccessControlContext.ContextBuilder {
+        
+        Context(){}
+        
+        private static final AccessControlContext.ContextBuilder builder = new Context();
+        
+        private static AccessControlContext create(AccessControlContext acc,
+                                             DomainCombiner combiner) {
+            return builder.build(acc, combiner);
+        }
+        
+        private static DomainCombiner combiner(AccessControlContext acc){
+            return builder.getCombiner(acc);
+        }
     }
 
     /**

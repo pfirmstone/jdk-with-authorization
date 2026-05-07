@@ -537,6 +537,10 @@ public final class AccessControlContext {
     ProtectionDomain[] getContext() {
         return context;
     }
+    
+    AccessControlContext privilegedContext() {
+        return privilegedContext;
+    }
 
     /**
      * Returns {@code true} if this context captures the scope from a 
@@ -954,7 +958,7 @@ public final class AccessControlContext {
      */
     public static abstract sealed class ContextBuilder 
             permits ClassLoader.Context, ForkJoinPool.Context,
-            MethodHandles.Context, Subject.Context {
+            MethodHandles.Context, Subject.Context, Thread.Context {
         
         /**
          * Creates a new ContextBuilder instance;

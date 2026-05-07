@@ -993,8 +993,21 @@ public final class AccessController {
             // will be replaced.
             Subject subject = SubjectAccess.SCOPED.get();
             if (subject != null && subject.isReadOnly()){
-                DomainCombiner dc = new SubjectDomainCombiner(subject);
-                acc = AccessControlContext.create(acc, dc, true); // true to skip permission check.
+                DomainCombiner existing = acc.getCombiner();
+                SubjectDomainCombiner sdc = new SubjectDomainCombiner(subject);
+                ProtectionDomain[] combined = sdc.combine(acc.getContext(), acc.getContext());
+
+                // Also inject into privilegedContext if present
+                AccessControlContext privileged = acc.privilegedContext();
+                if (privileged != null) {
+                    ProtectionDomain[] combinedPrivileged = sdc.combine(
+                        privileged.getContext(), privileged.getContext());
+                    privileged = AccessControlContext.create(
+                        combinedPrivileged, privileged.privilegedContext(),
+                        privileged.getCombiner(), privileged.isPrivileged());
+                }
+
+                acc = AccessControlContext.create(combined, privileged, existing, acc.isPrivileged());
             }
             return acc;
         }

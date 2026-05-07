@@ -142,7 +142,7 @@ public final class Subject implements java.io.Serializable {
      * @serial
      */
     private volatile boolean readOnly;
-    private volatile int hashCode;
+    private transient volatile int hashCode;
 
     private static final int PRINCIPAL_SET = 1;
     private static final int PUB_CREDENTIAL_SET = 2;
@@ -371,7 +371,8 @@ public final class Subject implements java.io.Serializable {
      * Internal implementation class that provides access to SCOPED_SUBJECT
      * without permission checks.
      */
-    public static abstract sealed class NoCheck permits AccessController.SubjectAccess {
+    public static abstract sealed class NoCheck permits AccessController.SubjectAccess, 
+            Thread.SubjectAccess {
         
         /**
          * Protected constructor.
@@ -386,6 +387,30 @@ public final class Subject implements java.io.Serializable {
             return SCOPED_SUBJECT.isBound() ? SCOPED_SUBJECT.get() : null;
         }
         
+        /**
+         * Static method that returns getSubject from SubjectDomainCombiner
+         * @param sdc - SubjectDomainCombiner
+         * @return Subject
+         */
+        protected static Subject getSubject(SubjectDomainCombiner sdc){
+            return sdc.subject();
+        }
+        
+        /**
+         * Performs callAs without a permission check.
+         * 
+         * @param <T> - the result of the action.
+         * @param subject the Subject
+         * @param action - the Callable action
+         * @return the result.
+         * @throws CompletionException if {@code action.call()} throws any exception;
+         *         the thrown exception is available via {@link CompletionException#getCause()}
+         */
+        protected static <T> T callAs(final Subject subject,
+            final Callable<T> action) throws CompletionException {
+            return callNoCheck(subject, action);
+        }
+        
     }
 
     /**
@@ -394,35 +419,49 @@ public final class Subject implements java.io.Serializable {
      *
      * <p> This is the recommended method for executing code under the identity
      * of a user {@code Subject} obtained from a {@link javax.security.auth.login.LoginContext}.
-     * When a {@link java.security.Policy} grants permissions based on both code source
-     * and {@code Principal}s, binding a {@code Subject} via this method will affect
-     * the permissions available during the execution of {@code action} — grants that
-     * require the presence of specific {@code Principal}s will apply only when a
-     * matching {@code Subject} is current. 
-     * 
-     * <p> Unlike {@link #doAs(Subject, PrivilegedAction)},
-     * this method does not establish a privileged execution boundary; no
-     * {@code AccessControlContext} snapshot is taken and the current subject is
-     * carried as a {@link ScopedValue} for the duration of {@code action}, remaining
+     * When a {@link java.security.Policy} grants permissions based on both code
+     * source and {@code Principal}s, binding a {@code Subject} via this method
+     * will affect the permissions available during the execution of {@code action}
+     * — grants that require the presence of specific {@code Principal}s will apply
+     * only when a matching {@code Subject} is current.
+     *
+     * <p> Unlike {@link #doAs(Subject, PrivilegedAction)}, this method does not
+     * establish a privileged execution boundary; no {@code AccessControlContext}
+     * snapshot is taken and the current subject is carried as a
+     * {@link ScopedValue} for the duration of {@code action}, remaining
      * available across any {@code doPrivileged} calls made within {@code action}.
      * Calls to {@code callAs} may be nested with different {@code Subject}s; each
      * nested call shadows the previous current subject for its duration, restoring
      * it when {@code action} completes, whether normally or exceptionally.
-     * 
-     * <p> Any threads spawned during the execution of {@code action} will inherit an
-     * {@code AccessControlContext} containing a {@link SubjectDomainCombiner} for
-     * the current {@code subject}, ensuring that principal-scoped policy grants
-     * apply consistently to child threads without requiring explicit propagation
-     * by the caller. Note that tasks submitted to an {@link java.util.concurrent.Executor}
-     * do not inherit the current subject; the {@code ScopedValue} binding is not
-     * in effect in the worker thread, and the submitted task should explicitly
-     * call {@code callAs} if it requires the same subject to be current.
      *
-     * <p> The current subject is available to code executing within {@code action}
-     * via {@link #current()}. When {@code action} completes, the current subject
-     * is restored to its previous value, even if {@code action} throws an exception.
-     * Calls to {@code callAs} may be nested; each nested call shadows the previous
-     * current subject for its duration.
+     * <p> This method is intended for user identity. For workload identity in a
+     * two-Subject model, use {@link #doAs(Subject, PrivilegedAction)} instead,
+     * which establishes a privileged execution boundary and embeds the
+     * {@code Subject} structurally in the {@code AccessControlContext} via a
+     * {@link SubjectDomainCombiner}.
+     *
+     * <strong>Thread propagation</strong>
+     *
+     * <p> Any threads spawned during the execution of {@code action} will
+     * inherit the current subject, which is re-established as a
+     * {@link ScopedValue} binding for the duration of the spawned thread's
+     * task. This ensures that principal-scoped policy grants apply consistently
+     * to child threads without requiring explicit propagation by the caller.
+     * The inherited subject is active for exactly the lifetime of the spawned
+     * task and cannot leak beyond it.
+     *
+     * <p> Note that this propagation behaviour differs from the OpenJDK
+     * reference implementation, in which the user {@code Subject} established
+     * by {@code callAs} is not propagated to threads started with
+     * {@code new Thread(...).start()} outside of a
+     * {@link java.util.concurrent.StructuredTaskScope}. In this implementation,
+     * propagation occurs for all spawned threads regardless of whether structured
+     * concurrency is used.
+     *
+     * <p> Tasks submitted to an {@link java.util.concurrent.Executor} do not
+     * inherit the current subject; the {@link ScopedValue} binding is not in
+     * effect in the worker thread, and the submitted task should explicitly call
+     * {@code callAs} if it requires the same subject to be current.
      *
      * <p> If a security manager is installed, the caller must have
      * {@link AuthPermission}{@code ("doAs")} to invoke this method.
@@ -441,12 +480,14 @@ public final class Subject implements java.io.Serializable {
      *
      * @throws NullPointerException if {@code action} is {@code null}
      * @throws SecurityException if a security manager is installed and the caller
-     *         does not have {@link AuthPermission}{@code ("callAs")}
+     *         does not have {@link AuthPermission}{@code ("doAs")}
      * @throws CompletionException if {@code action.call()} throws any exception;
-     *         the thrown exception is available via {@link CompletionException#getCause()}
+     *         the thrown exception is available via
+     *         {@link CompletionException#getCause()}
      *
      * @see #current()
      * @see #doAs(Subject, PrivilegedAction)
+     * @see #doAs(Subject, PrivilegedExceptionAction)
      * @since 18
      */
     public static <T> T callAs(final Subject subject,
@@ -456,6 +497,11 @@ public final class Subject implements java.io.Serializable {
         if (sm != null) {
             sm.checkPermission(AuthPermissionHolder.CALL_AS_PERMISSION);
         }
+        return callNoCheck(subject, action);
+    }
+    
+    private static <T> T callNoCheck(final Subject subject,
+            final Callable<T> action) throws CompletionException {
         try {
             return ScopedValue.where(SCOPED_SUBJECT, subject).call(action::call);
         } catch (Exception e) {
