@@ -476,6 +476,107 @@ src/
 
 ---
 
+## Building and Testing DirtyChai
+
+> **Environment note:** The Copilot cloud agent setup steps pre-install everything
+> needed to build and test. The environment variables `$BOOTJDK_HOME` and
+> `$JTREG_HOME` are set automatically. You do not need to install anything
+> manually before running the commands below.
+
+### What the setup steps provide
+
+| Tool | Location | Version |
+|------|----------|---------|
+| GCC / G++ | `/usr/bin/gcc`, `/usr/bin/g++` | 10 |
+| Boot JDK | `$BOOTJDK_HOME` | OpenJDK 25 linux-x64 |
+| JTReg | `$JTREG_HOME` | 8.1+1 |
+| System build libs | system paths | libasound2, libcups2, libfontconfig1, libx11, … |
+
+### Step 1 — Configure
+
+Run once per clean workspace. Takes about 2–5 minutes.
+
+```bash
+bash configure \
+  --with-conf-name=linux-x64 \
+  --with-debug-level=fastdebug \
+  --with-version-opt=local \
+  --with-boot-jdk=$BOOTJDK_HOME \
+  --with-jtreg=$JTREG_HOME \
+  --with-zlib=system \
+  --with-jmod-compress=zip-1 \
+  --with-external-symbols-in-bundles=none \
+  --with-native-debug-symbols-level=1
+```
+
+If `configure` fails, it prints a summary and dumps `config.log`. Check that log
+for the root cause before retrying.
+
+### Step 2 — Build
+
+Build the product and test images (needed before running tests). Takes 30–60
+minutes on a standard GitHub-hosted runner.
+
+```bash
+make product-bundles test-bundles
+```
+
+To build just the JDK images (skips test image; faster for smoke checks):
+
+```bash
+make images
+```
+
+### Step 3 — Run tests
+
+After a successful build, run the JDK tier-1 test suites. Use `test-prebuilt`
+so make does not trigger a rebuild.
+
+**Run all jdk/tier1 part 1 tests:**
+
+```bash
+make test-prebuilt \
+  TEST='test/jdk/:tier1_part1' \
+  BOOT_JDK=$BOOTJDK_HOME \
+  JT_HOME=$JTREG_HOME \
+  JDK_IMAGE_DIR=build/linux-x64/images/jdk \
+  SYMBOLS_IMAGE_DIR=build/linux-x64/images/jdk \
+  TEST_IMAGE_DIR=build/linux-x64/images/test \
+  JTREG='JAVA_OPTIONS=-XX:-CreateCoredumpOnCrash;VERBOSE=fail,error,time;KEYWORDS=!headful'
+```
+
+**Run a single test file (fastest feedback loop):**
+
+```bash
+make test-prebuilt \
+  TEST='test/jdk/java/lang/SecurityManager/CheckPackageAccess.java' \
+  BOOT_JDK=$BOOTJDK_HOME \
+  JT_HOME=$JTREG_HOME \
+  JDK_IMAGE_DIR=build/linux-x64/images/jdk \
+  TEST_IMAGE_DIR=build/linux-x64/images/test \
+  JTREG='VERBOSE=fail,error,time'
+```
+
+Test results land in `build/run-test-prebuilt/test-results/`. Generate a
+human-readable summary with:
+
+```bash
+bash ./.github/scripts/gen-test-summary.sh /dev/stdout /dev/null
+```
+
+### Build tips
+
+- **Incremental rebuilds** after editing Java sources: `make java` (much faster
+  than a full `make images`).
+- **Hotspot-only rebuild**: `make hotspot`.
+- **Parallel make** is on by default; use `LOG=info` to see what is being
+  compiled: `make images LOG=info`.
+- **Disk space**: a full fastdebug build needs roughly 10–12 GB. The
+  `ubuntu-24.04` runner has ~14 GB free; builds should fit but leave little
+  headroom. Use `make clean` or delete the `build/` directory if you run out.
+
+---
+
 ## Security Model
 
 ### Conditional Validation Strategy
@@ -1506,12 +1607,13 @@ When in doubt, ask one or more of these:
 
 ### For AI Assistants Working on This Project
 
-1. **Conditional Strategy Questions?** → Review the "Conditional Validation Strategy" section
-2. **Security Questions?** → Check `SECURITY_ANALYSIS.md`
-3. **Code Format?** → Check `.editorconfig` requirements
-4. **API Design?** → Look at existing `*Permission` classes
-5. **Stack Inspection?** → See `System.setSecurityManager()` implementation
-6. **Policy Matching?** → Study `ConcurrentPolicyFile.implies()`
+1. **Build / test commands?** → See "Building and Testing DirtyChai" section
+2. **Conditional Strategy Questions?** → Review the "Conditional Validation Strategy" section
+3. **Security Questions?** → Check `SECURITY_ANALYSIS.md`
+4. **Code Format?** → Check `.editorconfig` requirements
+5. **API Design?** → Look at existing `*Permission` classes
+6. **Stack Inspection?** → See `System.setSecurityManager()` implementation
+7. **Policy Matching?** → Study `ConcurrentPolicyFile.implies()`
 
 ### Decision Tree for SecurityManager Changes
 
@@ -1532,6 +1634,7 @@ Modifying setSecurityManager()?
 
 | Version | Date | Changes |
 |---------|------|---------|
+| 1.4 | 2026-05-07 | Added "Building and Testing DirtyChai" section; updated copilot-setup-steps.yml to install toolchain, Boot JDK, and JTReg; added build/test entry to Getting Help |
 | 1.3 | 2026-04-12 | Added AI agent sections: Quick Reference Card, Operating Parameters, Hard Constraints, Pre-Implementation Checklist, Pattern Recognition Reference, Code Search Hints, Failure Modes and Prevention, PR Creation Boundaries, Request Interpretation Guide |
 | 1.2 | 2026-04-10 | Fixed Authorization Framework Architecture diagram - moved setSecurityManager() to System.java, checkPermission() to SecurityManager.java |
 | 1.1 | 2026-04-09 | Added conditional validation strategy documentation |
@@ -1539,6 +1642,6 @@ Modifying setSecurityManager()?
 
 ---
 
-**Last Updated:** April 12, 2026  
+**Last Updated:** May 7, 2026  
 **Maintained By:** Project Security Team  
 **Status:** Active

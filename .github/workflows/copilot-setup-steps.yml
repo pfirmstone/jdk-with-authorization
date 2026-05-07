@@ -12,7 +12,8 @@ on:
 jobs:
   # The job MUST be called `copilot-setup-steps` or it will not be picked up by Copilot.
   copilot-setup-steps:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
     # Permissions needed by Copilot's own token for its operations.
     # contents:write  — commit and push changes to the working branch
     # pull-requests:write — open / update pull requests
@@ -22,9 +23,49 @@ jobs:
       pull-requests: write
       issues: write
     steps:
-      # Copilot will check out the repository automatically after setup steps
-      # complete; an explicit checkout is only needed if a setup step itself
-      # must read repo files.
       - name: Checkout code
         uses: actions/checkout@v4
+
+      # Install GCC 10, G++ 10, and all system libraries required to configure
+      # and build the JDK on Linux x64.
+      - name: Install toolchain and dependencies
+        run: |
+          sudo apt update
+          sudo apt install -y --only-upgrade apt
+          sudo apt install -y \
+            gcc-10 \
+            g++-10 \
+            libasound2-dev \
+            libcups2-dev \
+            libfontconfig1-dev \
+            libx11-dev \
+            libxext-dev \
+            libxrandr-dev \
+            libxrender-dev \
+            libxt-dev \
+            libxtst-dev
+          sudo update-alternatives \
+            --install /usr/bin/gcc gcc /usr/bin/gcc-10 100 \
+            --slave   /usr/bin/g++ g++ /usr/bin/g++-10
+
+      # Download and cache the Boot JDK (OpenJDK 25 linux-x64).
+      # The path is exported as $BOOTJDK_HOME for use during the agent session.
+      - name: Get the BootJDK
+        id: bootjdk
+        uses: ./.github/actions/get-bootjdk
+        with:
+          platform: linux-x64
+
+      # Build JTReg from source (cached after the first run).
+      # The installed tree is placed at jtreg/installed in the workspace.
+      # The path is exported as $JTREG_HOME for use during the agent session.
+      - name: Build JTReg
+        uses: ./.github/actions/build-jtreg
+
+      # Export stable paths so the agent can run configure, build, and tests
+      # without having to locate these directories itself.
+      - name: Export environment variables for agent
+        run: |
+          echo "BOOTJDK_HOME=${{ steps.bootjdk.outputs.path }}" >> "$GITHUB_ENV"
+          echo "JTREG_HOME=$(pwd)/jtreg/installed"              >> "$GITHUB_ENV"
 
