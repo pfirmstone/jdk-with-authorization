@@ -48,13 +48,12 @@ jobs:
             --install /usr/bin/gcc gcc /usr/bin/gcc-10 100 \
             --slave   /usr/bin/g++ g++ /usr/bin/g++-10
 
-      # Download and cache the Boot JDK (OpenJDK 25 linux-x64).
-      # The path is exported as $BOOTJDK_HOME for use during the agent session.
-      - name: Get the BootJDK
-        id: bootjdk
-        uses: ./.github/actions/get-bootjdk
+      - name: Set up Java 25
+        id: setup-java
+        uses: actions/setup-java@v4
         with:
-          platform: linux-x64
+          distribution: 'temurin'
+          java-version: '25'
 
       # Build JTReg from source (cached after the first run).
       # The installed tree is placed at jtreg/installed in the workspace.
@@ -68,6 +67,5 @@ jobs:
       # workspace (this path is hardcoded in .github/actions/build-jtreg/action.yml).
       - name: Export environment variables for agent
         run: |
-          echo "BOOTJDK_HOME=${{ steps.bootjdk.outputs.path }}" >> "$GITHUB_ENV"
+          echo "BOOTJDK_HOME=${{ steps.setup-java.outputs.path }}" >> "$GITHUB_ENV"
           echo "JTREG_HOME=$(pwd)/jtreg/installed"              >> "$GITHUB_ENV"
-
