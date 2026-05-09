@@ -93,7 +93,7 @@ jobs:
           --with-zlib=system
           --with-jmod-compress=zip-1
           --with-external-symbols-in-bundles=none
-          --with-native-debug-symbols-level=none
+          --with-native-debug-symbols=none
           ${{ github.event.inputs.configure-arguments }} || (
           echo "Dumping config.log:" &&
           cat config.log &&
