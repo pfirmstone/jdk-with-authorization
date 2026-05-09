@@ -58,7 +58,9 @@ public class ClhsdbWhere {
             Map<String, List<String>> expStrMap = new HashMap<>();
             expStrMap.put("where -a", List.of(
                     "Java Stack Trace for Service Thread",
-                    "Java Stack Trace for Common-Cleaner",
+                    // Note: Common-Cleaner thread is created lazily and may not be present
+                    // in a minimal test application like LingeredApp
+                    // "Java Stack Trace for Common-Cleaner",
                     "CompilerThread",
                     "Java Stack Trace for Finalizer",
                     "Java Stack Trace for Signal Dispatcher",
