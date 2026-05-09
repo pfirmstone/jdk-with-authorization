@@ -152,7 +152,7 @@ jobs:
             --title "DirtyChai latest linux-x64 JDK (${commit_sha})" \
             --notes "Rolling release of the DirtyChai linux-x64 JDK bundle.
 
-This artifact is intended for JGDMS agents testing JGDMS on DirtyChai.
+#This artifact is intended for JGDMS agents testing JGDMS on DirtyChai.
 
 **Built from commit:** \`${GITHUB_SHA}\`
 **SHA-256:** \`$(awk '{print $1}' staging/jdk-linux-x64.tar.gz.sha256)\`
