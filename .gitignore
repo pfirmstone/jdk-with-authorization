@@ -36,4 +36,3 @@ test/benchmarks/**/target
 /src/hotspot/.cache/
 /src/hotspot/.idea/
 bootjdk/
-jtreg/installed/
