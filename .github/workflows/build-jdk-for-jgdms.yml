@@ -70,8 +70,8 @@ jobs:
           sudo apt update
           sudo apt install -y --only-upgrade apt
           sudo apt install -y \
-            gcc-10 \
-            g++-10 \
+            gcc-13 \
+            g++-13 \
             libasound2-dev \
             libcups2-dev \
             libfontconfig1-dev \
@@ -81,7 +81,7 @@ jobs:
             libxrender-dev \
             libxt-dev \
             libxtst-dev
-          sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-10 100 --slave /usr/bin/g++ g++ /usr/bin/g++-10
+          sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-13 100 --slave /usr/bin/g++ g++ /usr/bin/g++-13
 
       - name: 'Configure'
         run: >
