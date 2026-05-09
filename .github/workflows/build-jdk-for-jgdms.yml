@@ -94,7 +94,7 @@ jobs:
           --with-zlib=system
           --with-jmod-compress=zip-1
           --with-external-symbols-in-bundles=none
-          --with-native-debug-symbols-level=none
+          --with-native-debug-symbols=none
           ${{ github.event.inputs.configure-arguments }} || (
           echo "Dumping config.log:" &&
           cat config.log &&
@@ -105,11 +105,11 @@ jobs:
         run: >
           make -k LOG=info product-bundles
           ${{ github.event.inputs.make-arguments }}
-          || bash ./.github/scripts/gen-build-failure-report.sh "$GITHUB_STEP_SUMMARY"
+          || (bash ./.github/scripts/gen-build-failure-report.sh "$GITHUB_STEP_SUMMARY" && exit 1)
 
       - name: 'Check for build failure'
         run: |
-          build_dir="$(ls -d build/*)"
+          build_dir="$(find build -maxdepth 1 -mindepth 1 -type d | head -1)"
           if [[ -e $build_dir/build-failure ]]; then
             echo "Build failed — see summary for details."
             exit 1
@@ -118,7 +118,11 @@ jobs:
       - name: 'Stage bundle'
         id: stage
         run: |
-          bundle="$(ls build/*/bundles/jdk-*_bin.tar.gz)"
+          bundle="$(find build -maxdepth 3 -name 'jdk-*_bin.tar.gz' | head -1)"
+          if [[ -z "$bundle" ]]; then
+            echo "ERROR: No JDK bundle found." >&2
+            exit 1
+          fi
           mkdir -p staging
           cp "$bundle" staging/jdk-linux-x64.tar.gz
           echo "bundle=staging/jdk-linux-x64.tar.gz" >> $GITHUB_OUTPUT
