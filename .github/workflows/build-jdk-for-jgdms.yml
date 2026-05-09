@@ -69,20 +69,23 @@ jobs:
         run: |
           sudo apt update
           sudo apt install -y --only-upgrade apt
-          sudo apt install -y \
-            gcc-10 \
-            g++-10 \
-            libasound2-dev \
-            libcups2-dev \
-            libfontconfig1-dev \
-            libx11-dev \
-            libxext-dev \
-            libxrandr-dev \
-            libxrender-dev \
-            libxt-dev \
-            libxtst-dev
-          sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-10 100 --slave /usr/bin/g++ g++ /usr/bin/g++-10
-
+      - name: 'Install toolchain and dependencies'
+           run: |
+             sudo apt update
+             sudo apt install -y --only-upgrade apt
+             sudo apt install -y \
+               gcc-12 \
+               g++-12 \
+               libasound2-dev \
+               libcups2-dev \
+               libfontconfig1-dev \
+               libx11-dev \
+               libxext-dev \
+               libxrandr-dev \
+               libxrender-dev \
+               libxt-dev \
+               libxtst-dev
+             sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-12 100 --slave /usr/bin/g++ g++ /usr/bin/g++-12 
       - name: 'Configure'
         run: >
           bash configure
