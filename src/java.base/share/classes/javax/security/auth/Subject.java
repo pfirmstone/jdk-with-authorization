@@ -25,7 +25,7 @@
 
 package javax.security.auth;
 
-import au.zeus.jdk.authorization.sm.CombinerSecurityManager;
+import au.zeus.jdk.authorization.spire.SpiffeCredentialManager;
 import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
@@ -36,7 +36,6 @@ import java.util.*;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CompletionException;
 
-import jdk.internal.access.SharedSecrets;
 import sun.security.util.ResourcesMgr;
 
 /**
@@ -113,7 +112,8 @@ import sun.security.util.ResourcesMgr;
  * @see java.security.Principal
  * @see java.security.DomainCombiner
  */
-public final class Subject implements java.io.Serializable {
+public sealed class Subject implements java.io.Serializable permits 
+        WorkerSubject, UserSubject {
 
     @java.io.Serial
     private static final long serialVersionUID = -8308522755600156056L;
@@ -280,6 +280,27 @@ public final class Subject implements java.io.Serializable {
     public boolean isReadOnly() {
         return this.readOnly;
     }
+    
+    /**
+     * Non standard JAVA API.
+     * 
+     * Returns the Spiffe system process WorkerSubject.  Note that this Subject will
+     * expire, it should be obtained each time it's needed, it should not be
+     * relied upon for long running processes.
+     * 
+     * @return the system process WorkerSubject.
+     */
+    public Subject processWorker() {
+        java.lang.SecurityManager sm = System.getSecurityManager();
+        if (sm != null) {
+            sm.checkPermission(AuthPermissionHolder.GET_SUBJECT_PERMISSION);
+        }
+        return processWorkerNoCheck();
+    }
+    
+    private Subject processWorkerNoCheck(){
+        return SpiffeCredentialManager.getInstance().getSubject();
+    }
 
     /**
      * Get the {@code Subject} associated with the provided
@@ -327,7 +348,7 @@ public final class Subject implements java.io.Serializable {
         return null;
     }
 
-    private static final ScopedValue<Subject> SCOPED_SUBJECT =
+    private static final ScopedValue<Subject []> SCOPED_SUBJECT =
             ScopedValue.newInstance();
 
     /**
@@ -364,7 +385,47 @@ public final class Subject implements java.io.Serializable {
         if (sm != null) {
             sm.checkPermission(AuthPermissionHolder.GET_SUBJECT_PERMISSION);
         }
-        return SCOPED_SUBJECT.isBound() ? SCOPED_SUBJECT.get() : null;
+        Subject [] subject = NoCheck.current();
+        return subject != null && subject.length > 0 ? subject[0] : null;
+    }
+    
+    /**
+     * Non standard Java API.
+     * 
+     * Returns the {@code Subject} bound to the period of the execution of the current
+     * thread.
+     * 
+     * <p> This method is recommended for obtaining user Subject's originating from
+     * {@code LoginContext}.
+     *
+     * <p> The current subjects are installed by the {@link #callAs} method.
+     * When {@code callAs(action, subject)} is called, {@code action} is
+     * executed with {@code subject} as its current subject which can be
+     * retrieved by this method. After {@code action} is finished, the current
+     * subject is reset to its previous value. The current
+     * subject is {@code null} before the first call of {@code callAs()}.
+     *
+     * <p> Throws SecurityException if a security manager is installed and the
+     *  caller does not have an {@link AuthPermission#AuthPermission(String)
+     *  AuthPermission("getSubject")} permission to get the {@code Subject}.
+     *
+     * @return an array containing the current subjects, or an empty array
+     *      if a current subject is not installed or the current subject is
+     *      set to {@code null}.
+     * @throws SecurityException if a security manager is installed and the
+     *          caller does not have an
+     *          {@link AuthPermission#AuthPermission(String)
+     *          AuthPermission("getSubject")} permission to get the
+     *          {@code Subject}.
+     * @see #callAs
+     * @since 27
+     */
+    public static Subject [] currentAll() {
+        java.lang.SecurityManager sm = System.getSecurityManager();
+        if (sm != null) {
+            sm.checkPermission(AuthPermissionHolder.GET_SUBJECT_PERMISSION);
+        }
+        return NoCheck.current().clone();
     }
     
     /**
@@ -383,8 +444,8 @@ public final class Subject implements java.io.Serializable {
          * Static method that returns the current Subject if set.
          * @return the Scoped Subject
          */
-        protected static Subject current(){
-            return SCOPED_SUBJECT.isBound() ? SCOPED_SUBJECT.get() : null;
+        protected static Subject [] current(){
+            return SCOPED_SUBJECT.isBound() ? SCOPED_SUBJECT.get() : new Subject[0];
         }
         
         /**
@@ -406,9 +467,8 @@ public final class Subject implements java.io.Serializable {
          * @throws CompletionException if {@code action.call()} throws any exception;
          *         the thrown exception is available via {@link CompletionException#getCause()}
          */
-        protected static <T> T callAs(final Subject subject,
-            final Callable<T> action) throws CompletionException {
-            return callNoCheck(subject, action);
+        protected static <T> T callAs(final Callable<T> action, final Subject ... subject) throws CompletionException {
+            return callNoCheck(action, subject);
         }
         
     }
@@ -493,15 +553,59 @@ public final class Subject implements java.io.Serializable {
     public static <T> T callAs(final Subject subject,
             final Callable<T> action) throws CompletionException {
         Objects.requireNonNull(action);
+        if (subject instanceof WorkerSubject)
+                throw new IllegalArgumentException(
+                    "LocalWorkerSubject must not be passed to callAs() — " +
+                    "local process identity is ambient");
         java.lang.SecurityManager sm = System.getSecurityManager();
         if (sm != null) {
             sm.checkPermission(AuthPermissionHolder.CALL_AS_PERMISSION);
         }
-        return callNoCheck(subject, action);
+        return callNoCheck(action, subject);
     }
-    
-    private static <T> T callNoCheck(final Subject subject,
-            final Callable<T> action) throws CompletionException {
+
+    /**
+     * Executes a {@code Callable} with the provided subjects as the current
+     * scoped identity for the duration of the call on the current thread.
+     * 
+     * <p> Supports multi-party transactions — multiple UserSubjects may be bound
+     * simultaneously. Subject.current() returns subject[0] (the primary user).
+     *
+     * <p> WorkerSubject cannot be passed — the type parameter enforces this at
+     * compile time. WorkerSubject process identity is ambient, baked into
+     * ProtectionDomains at class load time by SecureClassLoader.
+     *
+     * @param action  the code to execute; must not be null
+     * @param subject zero or more UserSubject instances; must not be null;
+     *                no element may be null, the array may be empty so
+     *                no subject is set.
+     *
+     * @param <T>     the type of value returned by {@code action.call()}
+     *
+     * @return the value returned by {@code action.call()}
+     *
+     * @throws NullPointerException if action is null, subject is null,
+     *         or any element of subject is null
+     * @throws IllegalArgumentException if any element of {@code subjects}
+     *         is a {@code WorkerSubject}
+     */
+    public static <T> T callAs(Callable<T> action, UserSubject... subject)
+        throws CompletionException {
+        Objects.requireNonNull(action, "action");
+        Objects.requireNonNull(subject, "subjects");
+        for (int i = 0; i < subject.length; i++) {
+            Objects.requireNonNull(subject[i],
+                "subjects[" + i + "] must not be null");
+        }
+        java.lang.SecurityManager sm = System.getSecurityManager();
+        if (sm != null) {
+            sm.checkPermission(AuthPermissionHolder.CALL_AS_PERMISSION);
+        }
+        return callNoCheck(action, subject);
+    }
+
+    private static <T> T callNoCheck(final Callable<T> action,
+            final Subject ... subject) throws CompletionException {
         try {
             return ScopedValue.where(SCOPED_SUBJECT, subject).call(action::call);
         } catch (Exception e) {
@@ -572,6 +676,13 @@ public final class Subject implements java.io.Serializable {
     @SuppressWarnings("removal")
     public static <T> T doAs(final Subject subject,
                              final java.security.PrivilegedAction<T> action) {
+        if (subject instanceof WorkerSubject)
+            throw new IllegalArgumentException(
+                "WorkerSubject is established by SPIRE infrastructure");
+        if (subject instanceof UserSubject)
+            throw new IllegalArgumentException(
+                "UserSubject must use Subject.callAs()");
+        
         java.lang.SecurityManager sm = System.getSecurityManager();
         if (sm != null) sm.checkPermission(AuthPermissionHolder.DO_AS_PERMISSION);
         Objects.requireNonNull(action, ResourcesMgr.getString("invalid.null.action.provided"));
@@ -654,6 +765,12 @@ public final class Subject implements java.io.Serializable {
     public static <T> T doAs(final Subject subject,
                         final java.security.PrivilegedExceptionAction<T> action)
                         throws java.security.PrivilegedActionException {
+        if (subject instanceof WorkerSubject)
+            throw new IllegalArgumentException(
+                "WorkerSubject is established by SPIRE infrastructure");
+        if (subject instanceof UserSubject)
+            throw new IllegalArgumentException(
+                "UserSubject must use Subject.callAs()");
         java.lang.SecurityManager sm = System.getSecurityManager();
         if (sm != null) sm.checkPermission(AuthPermissionHolder.DO_AS_PERMISSION);
         Objects.requireNonNull(action, ResourcesMgr.getString("invalid.null.action.provided"));
@@ -737,7 +854,12 @@ public final class Subject implements java.io.Serializable {
     public static <T> T doAsPrivileged(final Subject subject,
                         final java.security.PrivilegedAction<T> action,
                         final java.security.AccessControlContext acc) {
-
+        if (subject instanceof WorkerSubject)
+            throw new IllegalArgumentException(
+                "WorkerSubject is established by SPIRE infrastructure");
+        if (subject instanceof UserSubject)
+            throw new IllegalArgumentException(
+                "UserSubject must use Subject.callAs()");
         java.lang.SecurityManager sm = System.getSecurityManager();
         if (sm != null) {
             sm.checkPermission(AuthPermissionHolder.DO_AS_PRIVILEGED_PERMISSION);
@@ -846,7 +968,12 @@ public final class Subject implements java.io.Serializable {
                         final java.security.PrivilegedExceptionAction<T> action,
                         final java.security.AccessControlContext acc)
                         throws java.security.PrivilegedActionException {
-
+        if (subject instanceof WorkerSubject)
+            throw new IllegalArgumentException(
+                "WorkerSubject is established by SPIRE infrastructure");
+        if (subject instanceof UserSubject)
+            throw new IllegalArgumentException(
+                "UserSubject must use Subject.callAs()");
         java.lang.SecurityManager sm = System.getSecurityManager();
         if (sm != null) {
             sm.checkPermission(AuthPermissionHolder.DO_AS_PRIVILEGED_PERMISSION);

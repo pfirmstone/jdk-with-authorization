@@ -26,13 +26,16 @@
 package java.security;
 
 import au.zeus.jdk.authorization.guards.LoadClassPermission;
+import au.zeus.jdk.authorization.spire.SpiffeCredentialManager;
 import java.security.Permissions;
 import sun.security.util.Debug;
 
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
+import javax.security.auth.Subject;
 import jdk.internal.misc.CDS;
 
 /**
@@ -243,8 +246,14 @@ public class SecureClassLoader extends ClassLoader {
         if (domain != null) return domain;
         PermissionCollection<Permission> perms
                 = SecureClassLoader.this.getPermissions(key.cs);
+        Subject sub = SpiffeCredentialManager.getInstance().getSubject();
+        Principal [] pals = null;
+        if (sub != null && sub.isReadOnly()){
+            Set<Principal> prin = sub.getPrincipals();
+            pals = prin.toArray(new Principal[prin.size()]);
+        }
         ProtectionDomain pd = new ProtectionDomain(
-                key.cs, perms, SecureClassLoader.this, null);
+                key.cs, perms, SecureClassLoader.this, pals);
         SecurityManager sm = System.getSecurityManager();
         if (sm != null){
             sm.checkPermission(LOAD_CLASS_ALLOW,

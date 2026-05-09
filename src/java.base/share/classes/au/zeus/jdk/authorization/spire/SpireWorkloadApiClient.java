@@ -28,13 +28,27 @@ import java.nio.file.Path;
  * and provides methods for fetching and watching X.509 SVIDs.
  *
  * <p>Bootstrap-safe: no lambdas, method references, or invokedynamic constructs.
+ * Uses {@code sun.security.util.Debug} for diagnostic output rather than
+ * {@code System.getLogger()} which is not available during bootstrap.
+ *
+ * <p>This class is non-final to permit {@code SpiffeCredentialManager.UnavailableClient}
+ * to extend it as a null-object stand-in when the SPIRE agent is unreachable at
+ * startup.  The {@code skipConnect} constructor parameter is provided for this
+ * purpose — it skips the {@link SpireConnection} construction entirely.
+ * No other subclassing is intended or supported.
  *
  * @author Peter Firmstone
  * @since 3.1.1
  */
-final class SpireWorkloadApiClient {
+class SpireWorkloadApiClient implements AutoCloseable {
 
+  // Bootstrap-safe debug channel — controlled by -Djava.security.debug=spiffe
+  private static final sun.security.util.Debug debug =
+      sun.security.util.Debug.getInstance("spiffe", "SPIFFE/SPIRE Workload API Client");
+
+  // Null when constructed via the skipConnect path (UnavailableClient).
   private final SpireConnection conn;
+
   private volatile SvidWatcher watcher;
 
   /**
@@ -45,6 +59,24 @@ final class SpireWorkloadApiClient {
    */
   SpireWorkloadApiClient(Path socketPath) throws SpiffeConnectionException {
     this.conn = new SpireConnection(socketPath);
+    if (debug != null) debug.println("Connected to SPIRE agent socket: " + socketPath);
+  }
+
+  /**
+   * Skip-connect constructor for use by null-object subclasses only.
+   * No {@link SpireConnection} is created — {@code conn} is {@code null}.
+   * Subclasses must override all methods that would dereference {@code conn}.
+   *
+   * @param socketPath  retained for diagnostic messages
+   * @param skipConnect must be {@code true}; documents intent at call site
+   */
+  SpireWorkloadApiClient(Path socketPath, boolean skipConnect) {
+    if (!skipConnect) throw new IllegalArgumentException(
+        "Use SpireWorkloadApiClient(Path) for normal construction");
+    this.conn = null;
+    if (debug != null) debug.println(
+        "UnavailableClient created for socket: " + socketPath +
+        " — no connection established");
   }
 
   /**
@@ -55,6 +87,7 @@ final class SpireWorkloadApiClient {
    * @throws SpiffeConnectionException if the fetch fails
    */
   SpireProtobuf.X509SVIDResponse fetchSVID() throws SpiffeConnectionException {
+    if (debug != null) debug.println("Fetching X.509 SVID");
     return conn.fetchX509SVID();
   }
 
@@ -65,10 +98,11 @@ final class SpireWorkloadApiClient {
    * <p>Only one watcher can be active at a time. Calling this method
    * again stops the previous watcher.
    *
-   * @param callback invoked when a new SVID is received or on error
+   * @param callback invoked when a new SVID is received or on error;
+   *                 must not be {@code null}
    */
   void startWatching(SvidUpdateCallback callback) {
-    stopWatching(); // Stop any existing watcher
+    stopWatching(); // stop any existing watcher first
 
     try {
       int streamId = conn.startFetchX509SVIDStream();
@@ -77,7 +111,9 @@ final class SpireWorkloadApiClient {
       Thread watcherThread = new Thread(newWatcher, "SPIRE-SVID-Watcher");
       watcherThread.setDaemon(true);
       watcherThread.start();
+      if (debug != null) debug.println("SVID watcher started on stream " + streamId);
     } catch (IOException e) {
+      if (debug != null) debug.println("Failed to start SVID watcher: " + e);
       callback.onError(new SpiffeConnectionException(
           "Failed to start SVID watcher", e));
     }
@@ -91,20 +127,25 @@ final class SpireWorkloadApiClient {
     if (w != null) {
       w.stop();
       this.watcher = null;
+      if (debug != null) debug.println("SVID watcher stopped");
     }
   }
 
   /**
    * Closes the connection and stops any active watcher.
    */
-  void close() {
+  @Override
+  public void close() {
     stopWatching();
-    conn.close();
+    if (conn != null) {
+            conn.close();
+      if (debug != null) debug.println("SPIRE connection closed");
+    }
   }
 
   /**
-   * Callback interface for SVID updates. Bootstrap-safe: no default methods,
-   * no functional interface annotation.
+   * Callback interface for SVID updates.
+   * Bootstrap-safe: no default methods, no {@code @FunctionalInterface}.
    */
   interface SvidUpdateCallback {
     /**
@@ -116,7 +157,7 @@ final class SpireWorkloadApiClient {
 
     /**
      * Invoked when the watcher encounters an error. The watcher stops
-     * after this callback.
+     * after this callback is invoked.
      *
      * @param error the error that occurred
      */
@@ -125,15 +166,17 @@ final class SpireWorkloadApiClient {
 
   /**
    * Background thread that watches for SVID updates on a streaming gRPC call.
+   * Reads responses in a loop until {@link #stop()} is called or an error
+   * occurs.
    */
   private static final class SvidWatcher implements Runnable {
-    private final SpireConnection conn;
-    private final int streamId;
+    private final SpireConnection    conn;
+    private final int                streamId;
     private final SvidUpdateCallback callback;
-    private volatile boolean running = true;
+    private volatile boolean         running = true;
 
     SvidWatcher(SpireConnection conn, int streamId, SvidUpdateCallback callback) {
-      this.conn = conn;
+      this.conn     = conn;
       this.streamId = streamId;
       this.callback = callback;
     }
@@ -143,18 +186,21 @@ final class SpireWorkloadApiClient {
       try {
         while (running) {
           SpireProtobuf.X509SVIDResponse response = conn.readX509SVIDResponse(streamId);
-          if (running) { // Check again in case stop() was called
+          if (running) { // check again in case stop() was called during the read
             callback.onUpdate(response);
           }
         }
       } catch (IOException e) {
-        if (running) { // Only report error if not stopped intentionally
-          callback.onError(new SpiffeConnectionException(
-              "SVID watcher failed", e));
+        if (running) { // only report error if not stopped intentionally
+          callback.onError(new SpiffeConnectionException("SVID watcher failed", e));
         }
       }
     }
 
+    /**
+     * Signals the watcher loop to exit.  The watcher thread will stop
+     * after the current {@code readX509SVIDResponse} call returns or throws.
+     */
     void stop() {
       running = false;
     }

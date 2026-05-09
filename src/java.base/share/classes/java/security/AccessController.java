@@ -32,6 +32,7 @@ import java.net.URL;
 import java.net.URI;
 import javax.security.auth.Subject;
 import javax.security.auth.SubjectDomainCombiner;
+import javax.security.auth.WorkerSubject;
 
 import jdk.internal.vm.annotation.Hidden;
 import sun.security.util.Debug;
@@ -991,23 +992,26 @@ public final class AccessController {
             // If we want scoped subjects to be first class participants
             // If this context is used in Subject.doAs, the SubjectDomainCombiner
             // will be replaced.
-            Subject subject = SubjectAccess.SCOPED.get();
-            if (subject != null && subject.isReadOnly()){
+            Subject [] subject = SubjectAccess.SCOPED.get();
+            if (subject != null){              
                 DomainCombiner existing = acc.getCombiner();
-                SubjectDomainCombiner sdc = new SubjectDomainCombiner(subject);
-                ProtectionDomain[] combined = sdc.combine(acc.getContext(), acc.getContext());
+                for (int i = 0, l = subject.length; i < l; i++){ // The last ACC created will contain all the Principals.
+                    if (subject[i] instanceof WorkerSubject) continue;
+                    SubjectDomainCombiner sdc = new SubjectDomainCombiner(subject[i]);
+                    ProtectionDomain[] combined = sdc.combine(acc.getContext(), acc.getContext());
+                
+                    // Also inject into privilegedContext if present
+                    AccessControlContext privileged = acc.privilegedContext();
+                    if (privileged != null) {
+                        ProtectionDomain[] combinedPrivileged = sdc.combine(
+                            privileged.getContext(), privileged.getContext());
+                        privileged = AccessControlContext.create(
+                            combinedPrivileged, privileged.privilegedContext(),
+                            privileged.getCombiner(), privileged.isPrivileged());
+                    }
 
-                // Also inject into privilegedContext if present
-                AccessControlContext privileged = acc.privilegedContext();
-                if (privileged != null) {
-                    ProtectionDomain[] combinedPrivileged = sdc.combine(
-                        privileged.getContext(), privileged.getContext());
-                    privileged = AccessControlContext.create(
-                        combinedPrivileged, privileged.privilegedContext(),
-                        privileged.getCombiner(), privileged.isPrivileged());
+                    acc = AccessControlContext.create(combined, privileged, existing, acc.isPrivileged());
                 }
-
-                acc = AccessControlContext.create(combined, privileged, existing, acc.isPrivileged());
             }
             return acc;
         }
@@ -1024,7 +1028,7 @@ public final class AccessController {
         
         private SubjectAccess(){}
         
-        private Subject get(){
+        private Subject [] get(){
             return current();
         }
     }

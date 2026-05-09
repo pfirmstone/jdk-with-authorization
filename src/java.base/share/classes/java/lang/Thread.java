@@ -312,7 +312,7 @@ public class Thread implements Runnable {
     // inherited AccessControlContext, this could be moved to FieldHolder
     @SuppressWarnings("removal")
     private AccessControlContext inheritedAccessControlContext;
-    private Subject scopedSubject;
+    private Subject [] scopedSubject;
 
     // Additional fields for platform threads.
     // All fields, except task and terminatingThreadLocals, are accessed directly by the VM.
@@ -1712,10 +1712,10 @@ public class Thread implements Runnable {
     final void runWith(Object bindings, Runnable op) {
         if (scopedSubject != null) {
             ensureMaterializedForStackWalk(bindings);
-            SubjectAccess.callNoCheck(scopedSubject, () -> {
+            SubjectAccess.callNoCheck(() -> {
                 op.run();
                 return null;
-            });
+            }, scopedSubject);
         } else {
             ensureMaterializedForStackWalk(bindings);
             op.run();
@@ -1730,13 +1730,13 @@ public class Thread implements Runnable {
         
         private SubjectAccess(){}
         
-        private static Subject scoped() {
+        private static Subject[] scoped() {
             return current();
         } 
         
-        private static <T> T callNoCheck(final Subject subject,
-            final Callable<T> action) throws CompletionException {
-            return callAs(subject, action);
+        private static <T> T callNoCheck(final Callable<T> action, final Subject ... subject
+            ) throws CompletionException {
+            return callAs(action, subject);
         }
     }
     
