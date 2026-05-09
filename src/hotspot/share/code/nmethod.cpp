@@ -2557,7 +2557,10 @@ void nmethod::post_compiled_method_load_event(JvmtiThreadState* state) {
     // With AOT-linked classes, we could compile wrappers for native methods before the
     // ServiceThread has been started, so we must delay the events to be posted later.
     assert(state == nullptr, "must be");
-    add_delayed_compiled_method_load_event(this);
+    if (CDSConfig::is_using_aot_linked_classes()) {
+      add_delayed_compiled_method_load_event(this);
+    }
+    // If not using AOT-linked classes, skip posting the event entirely
     return;
   }
 #endif
