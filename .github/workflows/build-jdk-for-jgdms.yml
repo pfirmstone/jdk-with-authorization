@@ -66,10 +66,6 @@ jobs:
         uses: ./.github/actions/get-gtest
 
       - name: 'Install toolchain and dependencies'
-        run: |
-          sudo apt update
-          sudo apt install -y --only-upgrade apt
-      - name: 'Install toolchain and dependencies'
            run: |
              sudo apt update
              sudo apt install -y --only-upgrade apt
