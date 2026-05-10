@@ -60,17 +60,17 @@ public class CodeSource implements java.io.Serializable {
      *
      * @serial
      */
-    private final URL location;
+    URL location;
 
     /*
      * The code signers.
      */
-    private transient CodeSigner[] signers = null;
+    transient CodeSigner[] signers = null;
 
     /*
      * The code signers. Certificate chains are concatenated.
      */
-    private transient java.security.cert.Certificate[] certs = null;
+    transient java.security.cert.Certificate[] certs = null;
 
     // cached SocketPermission used for matchLocation
     private transient SocketPermission sp;
@@ -86,6 +86,14 @@ public class CodeSource implements java.io.Serializable {
      * fragment is not considered.
      */
     private transient String locationNoFragString;
+    
+    @Override
+    protected CodeSource clone() throws CloneNotSupportedException {
+        CodeSource result = (CodeSource) super.clone();
+        result.signers = result.signers.clone();
+        result.certs = result.certs.clone();
+        return result;
+    }
 
     /**
      * Constructs a {@code CodeSource} and associates it with the specified

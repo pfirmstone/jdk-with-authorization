@@ -52,11 +52,15 @@ DigestCodeSource(CodeSource cs, String digestAlgorithm, byte[] digest)
   conversion throws.
 * `getDigestAlgorithm()` / `getDigest()` – public accessors; `getDigest()`
   returns a defensive copy.
-* **Serialization** – participates in `CodeSource`'s existing
-  `writeObject`/`readObject` protocol; adds two extra fields (`algorithm`
-  string + digest length + digest bytes) written after the existing certificate
-  block so the format remains backward-readable (unknown trailing bytes are
-  ignored by older code).
+* **Serialization** – implements Externalizable, providing custom read/write
+  methods for the digest fields, including those of CodeSource.
+  The digest fields are appended to the stream after the CodeSource fields.
+  Fields must be written out as byte arrays (not hex strings) to avoid unnecessary encoding overhead.
+  Fields may be null, a suitable header must be written to the stream to indicate presence/absence of fields,
+  including those in CodeSource.
+  JGDMS JERI must be able to reconstruct a `DigestCodeSource` from the stream, so the format must be stable across versions.
+  Standard Java Serialization (i.e. `Serializable`) is not supported, @AtomicSerial does support Externalizable classes, that do not
+  that only send primitive data, String's or byte arrays.  Serializable objects are not supported by @AtomicSerial.
 * `implies(CodeSource)` – if the argument is also a `DigestCodeSource` with the
   same algorithm, equality of digest is required in addition to the normal
   location/cert checks; otherwise delegates to `super.implies()`.
