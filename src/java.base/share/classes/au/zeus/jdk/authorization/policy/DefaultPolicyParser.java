@@ -200,20 +200,19 @@ public class DefaultPolicyParser implements PolicyParser {
      */
     PermissionGrant resolveGrant(DefaultPolicyScanner.GrantEntry ge,
             KeyStore ks, Properties system, boolean resolve) throws Exception {
-        if ( ge == null ) return null;
+        if (ge == null) return null;
         List<String> codebases = new ArrayList<String>(8);
         Certificate[] signers = null;
         Set<Principal> principals = new HashSet<Principal>();
         Set<Permission> permissions = new HashSet<Permission>();
         String cb = ge.getCodebase(null);
         String signerString = ge.getSigners();
-        if ( cb != null ) {
-            if ( resolve ) {
+        if (cb != null) {
+            if (resolve) {
                 try {
                     Collection<String> cbstr = expandURLs(cb, system);
-                    Iterator<String> it = cbstr.iterator();
-                    while (it.hasNext()){
-                        codebases.add(getURI(it.next()));
+                    for (String s : cbstr) {
+                        codebases.add(getURI(s));
                     }
                 } catch (ExpansionFailedException e) {
                     if (DEBUG != null) log("security.1A7", new Object[]{e.getMessage()});
@@ -222,286 +221,82 @@ public class DefaultPolicyParser implements PolicyParser {
                 codebases.add(getURI(cb));
             }
         }
-	String[] aliases = new String[0];
-        if ( signerString != null) {
-	    try {
-		if (resolve) {
-		    signerString = PolicyUtils.expand(signerString, system);
-		}
-	    } catch (ExpansionFailedException e){
-		if (DEBUG != null) log("security.1A6", new Object[]{e.getMessage()});
-	    }
-            
-	    StringTokenizer snt = new StringTokenizer(signerString, ",");
-	    List<String> alias = new ArrayList<String>(snt.countTokens());
-	    while (snt.hasMoreTokens()){
-		alias.add(snt.nextToken().trim());
-	    }
-	    aliases = alias.toArray(new String[alias.size()]);
-	    signers = resolveSigners(ks, aliases);
+        String[] aliases = new String[0];
+        if (signerString != null) {
+            try {
+                if (resolve) {
+                    signerString = PolicyUtils.expand(signerString, system);
+                }
+            } catch (ExpansionFailedException e) {
+                if (DEBUG != null) log("security.1A6", new Object[]{e.getMessage()});
+            }
+            StringTokenizer snt = new StringTokenizer(signerString, ",");
+            List<String> alias = new ArrayList<String>(snt.countTokens());
+            while (snt.hasMoreTokens()) {
+                alias.add(snt.nextToken().trim());
+            }
+            aliases = alias.toArray(new String[alias.size()]);
+            signers = resolveSigners(ks, aliases);
         }
         if (ge.getPrincipals(null) != null) {
-            String principalName;
-            String principalClass;
-	    for (PrincipalEntry pe : ge.getPrincipals(system)) {
-		principalName = pe.getName();
-		principalClass = pe.getKlass();
-		try {
-		    if (resolve) {
-			principalName = PolicyUtils.expand(principalName, system);
-		    }
-		} catch (ExpansionFailedException e){
-		    if (DEBUG != null) log("security.1A4", new Object[]{e.getMessage()});
-		}
-		if (principalClass == null) {
-		    principals.add(getPrincipalByAlias(ks, principalName));
-		} else {
-		    principals.add(new UnresolvedPrincipal(principalClass, principalName));
-		}
-	    }
+            for (PrincipalEntry pe : ge.getPrincipals(system)) {
+                String principalName = pe.getName();
+                String principalClass = pe.getKlass();
+                try {
+                    if (resolve) {
+                        principalName = PolicyUtils.expand(principalName, system);
+                    }
+                } catch (ExpansionFailedException e) {
+                    if (DEBUG != null) log("security.1A4", new Object[]{e.getMessage()});
+                }
+                if (principalClass == null) {
+                    principals.add(getPrincipalByAlias(ks, principalName));
+                } else {
+                    principals.add(new UnresolvedPrincipal(principalClass, principalName));
+                }
+            }
         }
         Collection<PermissionEntry> pec = ge.getPermissions();
         if (pec != null) {
-            Iterator<PermissionEntry> iter = pec.iterator();
-            while ( iter.hasNext()) {
-                DefaultPolicyScanner.PermissionEntry pe = iter.next();
+            for (PermissionEntry pe : pec) {
                 try {
                     permissions.add(resolvePermission(pe, ge, ks, system, resolve));
-                } catch (ExpansionFailedException e){
-		    if (DEBUG != null) log("security.1A5", new Object[]{pe.toString(),e.getMessage()});
-		} catch (Exception e) {
-                    if ( e instanceof SecurityException ) throw (SecurityException) e;
-                    if (DEBUG != null) log("security.1A5", new Object[]{pe.toString(),e.getMessage()});
+                } catch (ExpansionFailedException e) {
+                    if (DEBUG != null) log("security.1A5", new Object[]{pe.toString(), e.getMessage()});
+                } catch (Exception e) {
+                    if (e instanceof SecurityException) throw (SecurityException) e;
+                    if (DEBUG != null) log("security.1A5", new Object[]{pe.toString(), e.getMessage()});
                 }
             }
         }
+
         PermissionGrantBuilder pgb = PermissionGrantBuilder.newBuilder();
-        Iterator<String> iter = codebases.iterator();
-        while (iter.hasNext()){
-            pgb.uri(iter.next());
+        for (String uri : codebases) {
+            pgb.uri(uri);
         }
-	
-        return pgb
-            .certificates(signers, aliases)
-            .principals(principals.toArray(new Principal[principals.size()]))
-            .permissions(permissions.toArray(new Permission[permissions.size()]))
-            .context(PermissionGrantBuilder.URI)
-            .build();
-    }
-    
-    String getURI(String uriString) throws MalformedURLException, URISyntaxException{
-        // We do this to support windows, this is to ensure that path
-        // capitalisation is correct and illegal strings are escaped correctly.
-        if (uriString == null) return null;
-        return Uri.fixWindowsURI(uriString);
-    }
-    
-    Segment segment(String s, Properties p) throws ExpansionFailedException{
-        final String ARRAY_START_MARK = "${{";
-        final String ARRAY_END_MARK = "}}";
-        final String ARRAY_SEPARATOR = p.getProperty("path.separator");
-        final String START_MARK = "${"; //$NON-NLS-1$
-        final String END_MARK = "}"; //$NON-NLS-1$
-        Segment primary = new Segment(s, null);
-        primary.divideAndReplace(ARRAY_START_MARK, ARRAY_END_MARK,
-                ARRAY_SEPARATOR, p);
-        primary.divideAndReplace(START_MARK, END_MARK, null, p);
-        // Repeat twice for nested properties
-        primary.divideAndReplace(START_MARK, END_MARK, null, p);
-        primary.divideAndReplace(START_MARK, END_MARK, null, p);
-        return primary;
-    }
-    
-    Collection<String> expandURLs(String s, Properties p) throws ExpansionFailedException{
-        Segment seg = segment(s,p);
-        Collection<String> urls = new ArrayList<String>();
-        while ( seg.hasNext() ){
-//            urls.add(seg.next().replace(File.separatorChar, '/'));
-            urls.add(seg.next());
-        }
-        return urls;
-    }   
+        pgb.certificates(signers, aliases)
+           .principals(principals.toArray(new Principal[principals.size()]))
+           .permissions(permissions.toArray(new Permission[permissions.size()]));
 
-    /**
-     * Translates PermissionEntry token to Permission object.
-     * First, it performs general expansion for non-null <code>name</code> and
-     * properties expansion for non-null <code>name</code>, <code>action</code> 
-     * and <code>signers</code>.
-     * Then, it obtains signing Certificates(if any), tries to find a class specified by 
-     * <code>klass</code> name and instantiate a corresponding permission object.
-     * If class is not found or it is signed improperly, returns UnresolvedPermission.
-     *
-     * @param pe PermissionEntry token to be resolved
-     * @param ge parental GrantEntry of the PermissionEntry 
-     * @param ks KeyStore for resolving Certificates, may be <code>null</code>
-     * @param system system properties, used for property expansion
-     * @param resolve flag enabling/disabling property expansion
-     * @return resolved Permission object, either of concrete class or UnresolvedPermission
-     * @throws Exception if failed to expand properties, 
-     * or to get a Certificate, 
-     * or to newBuilder an instance of a successfully found class 
-     */
-    Permission resolvePermission(
-            DefaultPolicyScanner.PermissionEntry pe,
-            DefaultPolicyScanner.GrantEntry ge, KeyStore ks, Properties system,
-            boolean resolve) throws Exception {
-        String className = pe.getKlass(), name=pe.getName(), 
-                actions=pe.getActions(), signer=pe.getSigners();
-        if (name != null) {
-            name = PolicyUtils.expandGeneral(name, new PermissionExpander(ge, ks));
-        }
-        if (resolve) {
-            if (name != null) {
-                name = PolicyUtils.expand(name, system);
+        // If a digest clause was present, decode it and produce a DigestGrant.
+        // Otherwise fall back to a plain URIGrant.
+        String rawDigest = ge.getDigest();
+        if (rawDigest != null) {
+            int colon = rawDigest.indexOf(':');
+            if (colon < 1) {
+                throw new DefaultPolicyScanner.InvalidFormatException(
+                        "Invalid digest format (expected \"algorithm:hexValue\"): "
+                        + rawDigest);
             }
-            if (actions != null) {
-                actions = PolicyUtils.expand(actions, system);
-            }
-            if (signer != null) {
-                signer = PolicyUtils.expand(signer, system);
-            }
-        }
-        Certificate[] signers = (signer == null) ? null : resolveSigners(
-                ks, signer);
-        try {
-            Class<?> klass = Class.forName(className);
-            if (PolicyUtils.matchSubset(signers, klass.getSigners())) {
-                return PolicyUtils.instantiatePermission(klass, name, actions);
-            }
-        }
-        catch (ClassNotFoundException cnfe) {}
-        //maybe properly signed class will be loaded later
-        return new UnresolvedPermission(className, name, actions, signers);
-    }
-
-    /** 
-     * Specific handler for expanding <i>self</i> and <i>alias</i> protocols. 
-     */
-    class PermissionExpander implements PolicyUtils.GeneralExpansionHandler {
-
-        // Store KeyStore
-        private final KeyStore ks;
-
-        // Store GrantEntry
-        private final DefaultPolicyScanner.GrantEntry ge;
-
-        /** 
-         * Combined setter of all required fields. 
-         */
-        PermissionExpander(DefaultPolicyScanner.GrantEntry ge,
-                KeyStore ks) {
-            this.ge = ge;
-            this.ks = ks;
+            String algorithm = rawDigest.substring(0, colon);
+            String hexValue   = rawDigest.substring(colon + 1);
+            pgb.digest(algorithm, hexDecode(hexValue))
+               .context(PermissionGrantBuilder.DIGEST);
+        } else {
+            pgb.context(PermissionGrantBuilder.URI);
         }
 
-        /**
-         * Resolves the following protocols:
-         * <dl>
-         * <dt>self
-         * <dd>Denotes substitution to a principal information of the parental 
-         * GrantEntry. Returns a space-separated list of resolved Principals 
-         * (including wildcarded), formatting each as <b>class &quot;name&quot;</b>.
-         * If parental GrantEntry has no Principals, throws ExpansionFailedException.
-         * <dt>alias:<i>name</i>
-         * <dd>Denotes substitution of a KeyStore alias. Namely, if a KeyStore has 
-         * an X.509 certificate associated with the specified name, then returns 
-         * <b>javax.security.auth.x500.X500Principal &quot;<i>DN</i>&quot;</b> string, 
-         * where <i>DN</i> is a certificate's subject distinguished name.  
-         * </dl>
-         * @throws ExpansionFailedException - if protocol is other than 
-         * <i>self</i> or <i>alias</i>, or if data resolution failed 
-         */
-        public String resolve(String protocol, String data)
-                throws PolicyUtils.ExpansionFailedException {
-
-            if ("self".equals(protocol)) { //$NON-NLS-1$
-                //need expanding to list of principals in grant clause 
-                if (ge.getPrincipals(null) != null && !ge.getPrincipals(null).isEmpty()) {
-                    StringBuilder sb = new StringBuilder();
-		    for (DefaultPolicyScanner.PrincipalEntry pr : ge.getPrincipals(null)) {
-			if (pr.getKlass() == null) {
-			    // aliased X500Principal
-			    try {
-				sb.append(pc2str(getPrincipalByAlias(ks, pr.getName())));
-			    }
-			    catch (KeyStoreException e) {
-				throw new PolicyUtils.ExpansionFailedException(
-					Messages.getString("security.143", pr.getName()), e); //$NON-NLS-1$
-			    } catch (CertificateException e) {
-				throw new PolicyUtils.ExpansionFailedException(
-					Messages.getString("security.143", pr.getName()), e); //$NON-NLS-1$
-			    }
-			} else {
-			    sb.append(pr.getKlass()).append(" \"").append(pr.getName()) //$NON-NLS-1$
-				    .append("\" "); //$NON-NLS-1$
-			}
-		    }
-                    return sb.toString();
-                } else {
-                    throw new PolicyUtils.ExpansionFailedException(
-                            Messages.getString("security.144")); //$NON-NLS-1$
-                }
-            }
-            if ("alias".equals(protocol)) { //$NON-NLS-1$
-                try {
-                    return pc2str(getPrincipalByAlias(ks, data));
-                }
-                catch (KeyStoreException e) {
-                    throw new PolicyUtils.ExpansionFailedException(
-                            Messages.getString("security.143", data), e); //$NON-NLS-1$
-                } catch (CertificateException e) {
-		    throw new PolicyUtils.ExpansionFailedException(
-			    Messages.getString("security.143", data), e); //$NON-NLS-1$
-		}
-            }
-            throw new PolicyUtils.ExpansionFailedException(
-                    Messages.getString("security.145", protocol)); //$NON-NLS-1$
-        }
-
-        // Formats a string describing the passed Principal. 
-        private String pc2str(Principal pc) {
-            String klass = pc.getClass().getName();
-            String name = pc.getName();
-            StringBuilder sb = new StringBuilder(klass.length() + name.length()
-                    + 5);
-            return sb.append(klass).append(" \"").append(name).append("\"") //$NON-NLS-1$ //$NON-NLS-2$
-                    .toString();
-        }
-    }
-
-    /**
-     * Takes a comma-separated list of aliases and obtains corresponding 
-     * certificates.
-     * @param ks KeyStore for resolving Certificates, may be <code>null</code> 
-     * @param signers comma-separated list of certificate aliases, 
-     * must be not <code>null</code>
-     * @return an array of signing Certificates
-     * @throws Exception if KeyStore is <code>null</code> 
-     * or if it failed to provide a certificate  
-     */
-    Certificate[] resolveSigners(KeyStore ks, String signers)
-            throws Exception {
-        if (ks == null) {
-            throw new KeyStoreException(Messages.getString("security.146", //$NON-NLS-1$
-                    signers));
-        }
-
-        Collection<Certificate> certs = new ArrayList<Certificate>();
-        StringTokenizer snt = new StringTokenizer(signers, ","); //$NON-NLS-1$
-        while (snt.hasMoreTokens()) {
-            //XXX cache found certs ??
-            certs.add(ks.getCertificate(snt.nextToken().trim()));
-        }
-        return certs.toArray(new Certificate[certs.size()]);
-    }
-    
-    Certificate[] resolveSigners(KeyStore ks, String[] signers) throws KeyStoreException{
-	if (signers == null || signers.length == 0) return new Certificate[0];
-	Collection<Certificate> certs = new ArrayList<Certificate>(signers.length);
-	for (int i=0,l=signers.length; i<l; i++){
-	    certs.add(ks.getCertificate(signers[i]));
-	}
-	return certs.toArray(new Certificate[certs.size()]);
+        return pgb.build();
     }
 
     /**
@@ -589,6 +384,179 @@ public class DefaultPolicyParser implements PolicyParser {
 	    }
 	}
         return null;
+    }
+    
+    /**
+     * Decodes a lowercase or uppercase hexadecimal string to a byte array.
+     *
+     * @param hex even-length hex string
+     * @return decoded bytes
+     * @throws DefaultPolicyScanner.InvalidFormatException if the string is
+     *         not valid hex or has an odd length
+     */
+    private static byte[] hexDecode(String hex)
+            throws DefaultPolicyScanner.InvalidFormatException {
+        int len = hex.length();
+        if ((len & 1) != 0) {
+            throw new DefaultPolicyScanner.InvalidFormatException(
+                    "Digest hex value must have even length: " + hex);
+        }
+        byte[] result = new byte[len / 2];
+        for (int i = 0; i < len; i += 2) {
+            int hi = Character.digit(hex.charAt(i),     16);
+            int lo = Character.digit(hex.charAt(i + 1), 16);
+            if (hi < 0 || lo < 0) {
+                throw new DefaultPolicyScanner.InvalidFormatException(
+                        "Invalid hex character in digest value: " + hex);
+            }
+            result[i / 2] = (byte) ((hi << 4) | lo);
+        }
+        return result;
+    }
+
+    String getURI(String uriString) throws MalformedURLException, URISyntaxException {
+        if (uriString == null) return null;
+        return Uri.fixWindowsURI(uriString);
+    }
+
+    Segment segment(String s, Properties p) throws ExpansionFailedException {
+        final String ARRAY_START_MARK = "${{";
+        final String ARRAY_END_MARK = "}}";
+        final String ARRAY_SEPARATOR = p.getProperty("path.separator");
+        final String START_MARK = "${";
+        final String END_MARK = "}";
+        Segment primary = new Segment(s, null);
+        primary.divideAndReplace(ARRAY_START_MARK, ARRAY_END_MARK, ARRAY_SEPARATOR, p);
+        primary.divideAndReplace(START_MARK, END_MARK, null, p);
+        primary.divideAndReplace(START_MARK, END_MARK, null, p);
+        primary.divideAndReplace(START_MARK, END_MARK, null, p);
+        return primary;
+    }
+
+    Collection<String> expandURLs(String s, Properties p) throws ExpansionFailedException {
+        Segment seg = segment(s, p);
+        Collection<String> urls = new ArrayList<String>();
+        while (seg.hasNext()) {
+            urls.add(seg.next());
+        }
+        return urls;
+    }
+
+    /**
+     * Translates PermissionEntry token to Permission object.
+     */
+    Permission resolvePermission(
+            DefaultPolicyScanner.PermissionEntry pe,
+            DefaultPolicyScanner.GrantEntry ge, KeyStore ks, Properties system,
+            boolean resolve) throws Exception {
+        String className = pe.getKlass(), name = pe.getName(),
+                actions = pe.getActions(), signer = pe.getSigners();
+        if (name != null) {
+            name = PolicyUtils.expandGeneral(name, new PermissionExpander(ge, ks));
+        }
+        if (resolve) {
+            if (name != null) {
+                name = PolicyUtils.expand(name, system);
+            }
+            if (actions != null) {
+                actions = PolicyUtils.expand(actions, system);
+            }
+            if (signer != null) {
+                signer = PolicyUtils.expand(signer, system);
+            }
+        }
+        Certificate[] signers = (signer == null) ? null : resolveSigners(ks, signer);
+        try {
+            Class<?> klass = Class.forName(className);
+            if (PolicyUtils.matchSubset(signers, klass.getSigners())) {
+                return PolicyUtils.instantiatePermission(klass, name, actions);
+            }
+        } catch (ClassNotFoundException cnfe) {}
+        return new UnresolvedPermission(className, name, actions, signers);
+    }
+
+    /** Specific handler for expanding <i>self</i> and <i>alias</i> protocols. */
+    class PermissionExpander implements PolicyUtils.GeneralExpansionHandler {
+
+        private final KeyStore ks;
+        private final DefaultPolicyScanner.GrantEntry ge;
+
+        PermissionExpander(DefaultPolicyScanner.GrantEntry ge, KeyStore ks) {
+            this.ge = ge;
+            this.ks = ks;
+        }
+
+        public String resolve(String protocol, String data)
+                throws PolicyUtils.ExpansionFailedException {
+            if ("self".equals(protocol)) {
+                if (ge.getPrincipals(null) != null && !ge.getPrincipals(null).isEmpty()) {
+                    StringBuilder sb = new StringBuilder();
+                    for (DefaultPolicyScanner.PrincipalEntry pr : ge.getPrincipals(null)) {
+                        if (pr.getKlass() == null) {
+                            try {
+                                sb.append(pc2str(getPrincipalByAlias(ks, pr.getName())));
+                            } catch (KeyStoreException e) {
+                                throw new PolicyUtils.ExpansionFailedException(
+                                        Messages.getString("security.143", pr.getName()), e);
+                            } catch (CertificateException e) {
+                                throw new PolicyUtils.ExpansionFailedException(
+                                        Messages.getString("security.143", pr.getName()), e);
+                            }
+                        } else {
+                            sb.append(pr.getKlass()).append(" \"").append(pr.getName()).append("\" ");
+                        }
+                    }
+                    return sb.toString();
+                } else {
+                    throw new PolicyUtils.ExpansionFailedException(
+                            Messages.getString("security.144"));
+                }
+            }
+            if ("alias".equals(protocol)) {
+                try {
+                    return pc2str(getPrincipalByAlias(ks, data));
+                } catch (KeyStoreException e) {
+                    throw new PolicyUtils.ExpansionFailedException(
+                            Messages.getString("security.143", data), e);
+                } catch (CertificateException e) {
+                    throw new PolicyUtils.ExpansionFailedException(
+                            Messages.getString("security.143", data), e);
+                }
+            }
+            throw new PolicyUtils.ExpansionFailedException(
+                    Messages.getString("security.145", protocol));
+        }
+
+        private String pc2str(Principal pc) {
+            String klass = pc.getClass().getName();
+            String name = pc.getName();
+            StringBuilder sb = new StringBuilder(klass.length() + name.length() + 5);
+            return sb.append(klass).append(" \"").append(name).append("\"").toString();
+        }
+    }
+
+    /**
+     * Takes a comma-separated list of aliases and obtains corresponding certificates.
+     */
+    Certificate[] resolveSigners(KeyStore ks, String signers) throws Exception {
+        if (ks == null) {
+            throw new KeyStoreException(Messages.getString("security.146", signers));
+        }
+        Collection<Certificate> certs = new ArrayList<Certificate>();
+        StringTokenizer snt = new StringTokenizer(signers, ",");
+        while (snt.hasMoreTokens()) {
+            certs.add(ks.getCertificate(snt.nextToken().trim()));
+        }
+        return certs.toArray(new Certificate[certs.size()]);
+    }
+
+    Certificate[] resolveSigners(KeyStore ks, String[] signers) throws KeyStoreException {
+        if (signers == null || signers.length == 0) return new Certificate[0];
+        Collection<Certificate> certs = new ArrayList<Certificate>(signers.length);
+        for (int i = 0, l = signers.length; i < l; i++) {
+            certs.add(ks.getCertificate(signers[i]));
+        }
+        return certs.toArray(new Certificate[certs.size()]);
     }
     
     void log(String message){

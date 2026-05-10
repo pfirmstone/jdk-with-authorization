@@ -27,14 +27,17 @@ package java.security;
 
 import au.zeus.jdk.authorization.guards.LoadClassPermission;
 import au.zeus.jdk.authorization.spire.SpiffeCredentialManager;
-import java.security.Permissions;
+import au.zeus.jdk.net.Uri;
+import java.io.IOException;
+import java.net.URISyntaxException;
+import java.net.URL;
+import java.net.URLPermission;
+import java.util.Arrays;
 import sun.security.util.Debug;
 
 import java.util.Map;
-import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.function.Function;
 import javax.security.auth.Subject;
 import jdk.internal.misc.CDS;
 
@@ -241,23 +244,50 @@ public class SecureClassLoader extends ClassLoader {
         // same manner as the CodeSource when compared for equality except
         // that no nameservice lookup is done on the hostname (String comparison
         // only), and the fragment is not considered.
-        CodeSourceKey key = new CodeSourceKey(cs);
+        CodeSourceKey key;
+        try {
+            key = new CodeSourceKey(cs);
+        } catch (URISyntaxException ex) {
+            throw new SecurityException("URI Syntax error: ", ex);
+        }
         ProtectionDomain domain = pdcache.get(key);
         if (domain != null) return domain;
         PermissionCollection<Permission> perms
-                = SecureClassLoader.this.getPermissions(key.cs);
+                = SecureClassLoader.this.getPermissions(cs);
         Subject sub = SpiffeCredentialManager.getInstance().getSubject();
         Principal [] pals = null;
         if (sub != null && sub.isReadOnly()){
             Set<Principal> prin = sub.getPrincipals();
-            pals = prin.toArray(new Principal[prin.size()]);
+            pals = prin.toArray(new Principal[0]);
         }
         ProtectionDomain pd = new ProtectionDomain(
-                key.cs, perms, SecureClassLoader.this, pals);
+                cs, perms, SecureClassLoader.this, pals);
         SecurityManager sm = System.getSecurityManager();
         if (sm != null){
+            URL codebase = cs.getLocation();
+            if (codebase != null){
+                Permission checkURL;
+                // RFC3986 Uri is normalized.
+                checkURL = new URLPermission(key.uri.toString(),"GET:");
+                sm.checkPermission(checkURL,
+                        AccessControlContext.create(new ProtectionDomain []{pd}, false));
+                DigestCodeSource digest;
+                try {
+                    // Reuse the already-normalised URI from the cache key.
+                    // Algorithm is "SHA-256" for now; will be made configurable
+                    digest = new DigestCodeSource(key.uri, key.certs, "SHA-256"); 
+                    perms = SecureClassLoader.this.getPermissions(digest);
+                } catch (IOException ex) {
+                    throw new SecurityException("Unable to contact URL: ", ex);
+                } catch (NoSuchAlgorithmException ex) {
+                    throw new SecurityException ("URL Provider not loaded or unknown algorithm: ", ex);
+                }
+                pd = new ProtectionDomain(digest, perms, SecureClassLoader.this, pals);
+                
+            }
             sm.checkPermission(LOAD_CLASS_ALLOW,
                     AccessControlContext.create(new ProtectionDomain []{pd}, false));
+            
         }
         if (DebugHolder.debug != null) {
             DebugHolder.debug.println(" getPermissions " + pd);
@@ -268,23 +298,36 @@ public class SecureClassLoader extends ClassLoader {
         return pd;
     }
 
-    private record CodeSourceKey(CodeSource cs) {
-
-        @Override
-        public int hashCode() {
-            return Objects.hashCode(cs.getLocationNoFragString());
+    private static class CodeSourceKey {
+        
+        private final Uri uri;
+        private final java.security.cert.Certificate [] certs;
+        private final int hashCode;
+        final CodeSource cs; // package-private: used by resetArchivedStates
+        
+        private CodeSourceKey(CodeSource cs) throws URISyntaxException {
+            this.cs = cs;
+            certs = cs.getCertificates();
+            this.uri = cs.getLocation() != null ? Uri.urlToUri(cs.getLocation()) : null;
+            int hash = 7;
+            hash = 23 * hash + (uri != null ? uri.hashCode() :0);
+            hash = 23 * hash + (certs != null ? Arrays.hashCode(certs) : 0);
+            hashCode = hash; // 7 if everything is null;
         }
 
         @Override
-        public boolean equals(Object obj) {
-            if (obj == this) {
-                return true;
-            }
+        public int hashCode() {
+            return hashCode;
+        }
 
-            return obj instanceof CodeSourceKey other
-                    && Objects.equals(cs.getLocationNoFragString(),
-                                other.cs.getLocationNoFragString())
-                    && cs.matchCerts(other.cs, true);
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) return true;
+            if (!(o instanceof CodeSourceKey that)) return false;
+            // URI equality (RFC 3986, no DNS): handles null on both sides.
+            if (uri == null ? that.uri != null : !uri.equals(that.uri)) return false;
+            // Certificate equality.
+            return Arrays.equals(certs, that.certs);
         }
     }
 

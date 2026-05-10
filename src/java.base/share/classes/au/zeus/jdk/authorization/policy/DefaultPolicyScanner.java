@@ -208,47 +208,55 @@ class DefaultPolicyScanner {
      */
     GrantEntry readGrantEntry(StreamTokenizer st) throws IOException,
             InvalidFormatException {
-        String signer = null, codebase = null;
+        String signer = null, codebase = null, digest = null;
         Collection<PrincipalEntry> principals = new ArrayList<PrincipalEntry>();
         Collection<PermissionEntry> permissions = null;
-        
+
         parsing: while (true) {
             switch (st.nextToken()) {
 
             case StreamTokenizer.TT_WORD:
-                if (Util.equalsIgnoreCase("signedby", st.sval)) { //$NON-NLS-1$
+                if (Util.equalsIgnoreCase("signedby", st.sval)) {
                     if (st.nextToken() == '"') {
                         signer = st.sval;
                     } else {
-                        handleUnexpectedToken(st, Messages.getString("security.8B")); //$NON-NLS-1$
+                        handleUnexpectedToken(st, Messages.getString("security.8B"));
                     }
-                } else if (Util.equalsIgnoreCase("codebase", st.sval)) { //$NON-NLS-1$
+                } else if (Util.equalsIgnoreCase("codebase", st.sval)) {
                     if (st.nextToken() == '"') {
                         codebase = st.sval;
                     } else {
-                        handleUnexpectedToken(st, Messages.getString("security.8C")); //$NON-NLS-1$
+                        handleUnexpectedToken(st, Messages.getString("security.8C"));
                     }
-                } else if (Util.equalsIgnoreCase("principal", st.sval)) { //$NON-NLS-1$
+                } else if (Util.equalsIgnoreCase("digest", st.sval)) {
+                    // Syntax: digest "SHA-256:a1b2c3..."
+                    if (st.nextToken() == '"') {
+                        digest = st.sval;
+                    } else {
+                        handleUnexpectedToken(st,
+                                "Expected quoted digest value, e.g. digest \"SHA-256:a1b2c3...\"");
+                    }
+                } else if (Util.equalsIgnoreCase("principal", st.sval)) {
                     principals.add(readPrincipalEntry(st));
                 } else {
                     handleUnexpectedToken(st);
                 }
                 break;
 
-            case ',': //just delimiter of entries
+            case ',':
                 break;
 
             case '{':
                 permissions = readPermissionEntries(st);
                 break parsing;
 
-            default: // handle token in the main loop
+            default:
                 st.pushBack();
                 break parsing;
             }
         }
 
-        return new GrantEntry(signer, codebase, principals, permissions);
+        return new GrantEntry(signer, codebase, digest, principals, permissions);
     }
 
     /**
@@ -483,6 +491,13 @@ class DefaultPolicyScanner {
         private final String codebase;
 
         /**
+         * Optional content digest in {@code "algorithm:hexEncodedValue"} form,
+         * e.g. {@code "SHA-256:a1b2c3..."}.  {@code null} when no digest clause
+         * was present in the grant entry.
+         */
+        private final String digest;
+
+        /**
          * Collection of PrincipalEntries of grant clause.
          */
         private final Collection<PrincipalEntry> principals;
@@ -492,22 +507,29 @@ class DefaultPolicyScanner {
          */
         private final Collection<PermissionEntry> permissions;
         
-        GrantEntry(String signers, String codebase, 
-                    Collection<PrincipalEntry> pe,
-                    Collection<PermissionEntry> perms){
+        GrantEntry(String signers, String codebase, String digest,
+                   Collection<PrincipalEntry> pe,
+                   Collection<PermissionEntry> perms) {
             this.signers = signers;
             this.codebase = codebase;
+            this.digest = digest;
             this.principals = pe;
             this.permissions = perms;
+        }
+        
+        /** Returns the raw {@code "algorithm:hexValue"} digest string, or {@code null}. */
+        String getDigest() {
+            return digest;
         }
         
         public String toString(){
             String newline = "\n";
             StringBuilder sb = new StringBuilder(400);
-            if (signers != null ) sb.append(signers).append(newline);
-            if (codebase != null ) sb.append(codebase).append(newline);
-            if (principals != null ) sb.append(principals).append(newline);
-            if (permissions != null ) sb.append(permissions).append(newline);
+            if (signers != null)    sb.append("signedBy: ").append(signers).append(newline);
+            if (codebase != null)   sb.append("codebase: ").append(codebase).append(newline);
+            if (digest != null)     sb.append("digest: ").append(digest).append(newline);
+            if (principals != null) sb.append(principals).append(newline);
+            if (permissions != null) sb.append(permissions).append(newline);
             return sb.toString();
         }
 

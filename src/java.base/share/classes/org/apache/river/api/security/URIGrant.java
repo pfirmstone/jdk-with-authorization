@@ -48,10 +48,10 @@ class URIGrant extends CertificateGrant {
     
     @SuppressWarnings("unchecked")
     URIGrant(String[] uri,
-	    Certificate[] certs,
-	    String[] aliases,
-	    Principal[] pals,
-	    Permission[] perm)
+	        Certificate[] certs,
+	        String[] aliases,
+	        Principal[] pals,
+	        Permission[] perm)
     {
         super(certs, aliases, pals, perm);
         int l = uri.length;

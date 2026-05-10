@@ -40,6 +40,7 @@ import java.net.URLPermission;
 import java.net.URLConnection;
 import java.security.AllPermission;
 import java.security.CodeSource;
+import java.security.DigestCodeSource;
 import java.security.GeneralSecurityException;
 import java.security.KeyStore;
 import java.security.KeyStoreException;
@@ -454,73 +455,81 @@ public class SecurityPolicyWriter extends CombinerSecurityManager{
                                 String codebaseStr = replaceValuesWithProperties(codebase.toString());
                                 pw.print(codebaseStr);
                                 pw.print("\"");
-                                if (principals != null && principals.length >0) pw.print(",\n");
+                                boolean hasDigest = cs instanceof DigestCodeSource dcs
+                                        && dcs.getDigestAlgorithm() != null
+                                        && dcs.getDigest() != null;
+                                boolean hasPrincipals = principals != null
+                                        && principals.length > 0;
+                                if (hasDigest || hasPrincipals) pw.print(",\n");
                             }
-                            if (principals != null && principals.length > 0){
-                                for (int i=0, l=principals.length; i<l; i++){
-                                    if (i!=0 || codebase != null) pw.print("    ");
-                                    pw.print("principal ");
-                                    pw.print(principals[i].getClass().getCanonicalName());
-                                    pw.print(" \"");
-                                    pw.print(principals[i].getName());
-                                    if (i<l-1) pw.print("\",\n");
-                                    else pw.print("\"\n");
-                                }
-                            } else {
-                                pw.print("\n");
-                            }
-                            pw.print("{\n");
-
-                            Iterator<Permission> permIt = permsToPrint.iterator();
-                            while (permIt.hasNext()){
-                                Permission p = permIt.next();
-                                pw.print("    permission ");
-                                pw.print(p.getClass().getCanonicalName());
-                                pw.print(" \"");
-                                if (p instanceof PrivateCredentialPermission){
-                                    PrivateCredentialPermission pcp = (PrivateCredentialPermission) p;
-                                    String credential = pcp.getCredentialClass();
-                                    String [][] princpals = pcp.getPrincipals();
-                                    StringBuilder sb = new StringBuilder();
-                                    sb.append(credential);
-                                    sb.append(" ");
-                                    for (int i=0,l=princpals.length; i<l; i++){
-                                        String [] pals = princpals [i];
-                                        for (int j=0,m=pals.length; j<m; j++){
-                                            sb.append(pals[j]);
-                                            if (j < m-1) sb.append(" \\\"");
-                                            else sb.append("\\\"");
-                                        }
-                                        if (i < l-1) sb.append(" ");
-                                    }
-                                    pw.print(sb.toString());
-                                } else {
-                                    /* Some complex permissions have quoted strings embedded or
-                                    literal carriage returns that must be escaped.  */
-                                    String name = p.getName();
-                                    if (p instanceof FilePermission){
-                                        name = replaceValuesWithProperties(name);
-                                        name = name.replace("/", "${/}");
-                                    } else if (p instanceof SocketPermission || p instanceof URLPermission){
-                                        name = name.replace(hostname, "${HOST}");
-                                    } else {
-                                        name = name.replace("\\\"", "\\\\\"").replace("\"","\\\"").replace("\r","\\\r");
-                                    }
-                                    pw.print(name);
-                                }
-                                String actions = p.getActions();
-                                if (actions != null && !"".equals(actions)){
-                                    pw.print("\", \"");
-                                    pw.print(actions);
+                            // Emit digest clause for DigestCodeSource.
+                            if (cs instanceof DigestCodeSource dcs) {
+                                String algorithm = dcs.getDigestAlgorithm();
+                                byte[] digestBytes = dcs.getDigest();
+                                if (algorithm != null && digestBytes != null) {
+                                    pw.print("    digest \"");
+                                    pw.print(algorithm);
+                                    pw.print(':');
+                                    pw.print(hexEncode(digestBytes));
                                     pw.print("\"");
-                                } else {
-                                    pw.print("\"");
+                                    if (principals != null && principals.length > 0) pw.print(",\n");
+                                    else pw.print("\n");
                                 }
-                                // REMIND signedBy?
-                                pw.print(";\n");
                             }
-                            pw.print("};\n\n");
+                        } else {
+                            pw.print("\n");
                         }
+                        pw.print("{\n");
+
+                        Iterator<Permission> permIt = permsToPrint.iterator();
+                        while (permIt.hasNext()){
+                            Permission p = permIt.next();
+                            pw.print("    permission ");
+                            pw.print(p.getClass().getCanonicalName());
+                            pw.print(" \"");
+                            if (p instanceof PrivateCredentialPermission){
+                                PrivateCredentialPermission pcp = (PrivateCredentialPermission) p;
+                                String credential = pcp.getCredentialClass();
+                                String [][] princpals = pcp.getPrincipals();
+                                StringBuilder sb = new StringBuilder();
+                                sb.append(credential);
+                                sb.append(" ");
+                                for (int i=0,l=princpals.length; i<l; i++){
+                                    String [] pals = princpals [i];
+                                    for (int j=0,m=pals.length; j<m; j++){
+                                        sb.append(pals[j]);
+                                        if (j < m-1) sb.append(" \\\"");
+                                        else sb.append("\\\"");
+                                    }
+                                    if (i < l-1) sb.append(" ");
+                                }
+                                pw.print(sb.toString());
+                            } else {
+                                /* Some complex permissions have quoted strings embedded or
+                                literal carriage returns that must be escaped.  */
+                                String name = p.getName();
+                                if (p instanceof FilePermission){
+                                    name = replaceValuesWithProperties(name);
+                                    name = name.replace("/", "${/}");
+                                } else if (p instanceof SocketPermission || p instanceof URLPermission){
+                                    name = name.replace(hostname, "${HOST}");
+                                } else {
+                                    name = name.replace("\\\"", "\\\\\"").replace("\"","\\\"").replace("\r","\\\r");
+                                }
+                                pw.print(name);
+                            }
+                            String actions = p.getActions();
+                            if (actions != null && !"".equals(actions)){
+                                pw.print("\", \"");
+                                pw.print(actions);
+                                pw.print("\"");
+                            } else {
+                                pw.print("\"");
+                            }
+                            // REMIND signedBy?
+                            pw.print(";\n");
+                        }
+                        pw.print("};\n\n");
                     }
                     getLogger().log(Level.INFO, "Finished writing additional permissions, if any, to policy file.");
                 } catch (IOException ex) {
@@ -565,6 +574,16 @@ public class SecurityPolicyWriter extends CombinerSecurityManager{
             }
         }
         return s;
+    }
+    
+    /** Encodes {@code bytes} as a lowercase hexadecimal string. */
+    private static String hexEncode(byte[] bytes) {
+        StringBuilder sb = new StringBuilder(bytes.length * 2);
+        for (byte b : bytes) {
+            sb.append(Character.forDigit((b >>> 4) & 0xF, 16));
+            sb.append(Character.forDigit(b & 0xF, 16));
+        }
+        return sb.toString();
     }
     
     private class Cert implements Function<Certificate,String> {

@@ -73,10 +73,10 @@ public class CodeSource implements java.io.Serializable {
     transient java.security.cert.Certificate[] certs = null;
 
     // cached SocketPermission used for matchLocation
-    private transient SocketPermission sp;
+    transient SocketPermission sp;
 
     // for generating cert paths
-    private transient CertificateFactory factory = null;
+    transient CertificateFactory factory = null;
 
     /**
      * A {@code String} form of the URL for use as a key in HashMaps/Sets.
@@ -85,7 +85,7 @@ public class CodeSource implements java.io.Serializable {
      * lookup is done on the hostname (only string comparison), and the
      * fragment is not considered.
      */
-    private transient String locationNoFragString;
+    transient String locationNoFragString;
     
     @Override
     protected CodeSource clone() throws CloneNotSupportedException {

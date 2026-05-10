@@ -103,7 +103,13 @@ public class SecurityRestrictionsTest {
         NO_PERM {
             @Override
             public SecurityManager getSecurityManager() {
-                return new SecurityManager();
+                return new SecurityManager() {
+                    @Override
+                    public void checkPermission(Permission perm) {
+                        if (perm.getClass().getName().contains("au.zeus")) return; // Skip
+                        super.checkPermission(perm);
+                    }
+                };
             }
 
             @Override

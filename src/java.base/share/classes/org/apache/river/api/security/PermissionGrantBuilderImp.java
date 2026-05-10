@@ -66,6 +66,10 @@ class PermissionGrantBuilderImp extends PermissionGrantBuilder implements
     private boolean hasDomain;
     /*@serial */
     private String[] aliases;
+    // New serial state fields (alongside the existing @serial fields):
+    /* @serial */ private String digestAlgorithm;
+    /* @serial */ private byte[] digest;
+
     // Transient Fields
     private transient Collection<String> uris;
     private transient WeakReference<ProtectionDomain> domain;
@@ -88,6 +92,8 @@ class PermissionGrantBuilderImp extends PermissionGrantBuilder implements
         hasDomain = false;
         principals = null;
         permissions = null;
+        digestAlgorithm = null;
+        digest = null;
         context = -1;
         return this;
     }
@@ -96,8 +102,8 @@ class PermissionGrantBuilderImp extends PermissionGrantBuilder implements
         if (context < 0) {
             throw new IllegalStateException("context must be >= 0");
         }
-        if (context > 5) {
-            throw new IllegalStateException("context must be <= 5");
+        if (context > 6) {
+            throw new IllegalStateException("context must be <= 6");
         }
         this.context = context;
         return this;
@@ -151,6 +157,14 @@ class PermissionGrantBuilderImp extends PermissionGrantBuilder implements
         return this;
     }
 
+    // New method implementation:
+    @Override
+    public PermissionGrantBuilder digest(String algorithm, byte[] value) {
+        this.digestAlgorithm = algorithm;
+        this.digest = value != null ? value.clone() : null;
+        return this;
+    }
+
     public PermissionGrant build() {
         switch (context) {
             case CLASSLOADER: //Dynamic grant
@@ -160,13 +174,18 @@ class PermissionGrantBuilderImp extends PermissionGrantBuilder implements
             case URI:
                 if (uris != null && !uris.isEmpty() ) uri = uris.toArray(new String[uris.size()]);
                 if (uri == null ) uri = new String[0];
-                return new URIGrant(uri, certs, aliases, principals, permissions);              
+                return new URIGrant(uri, certs,
+                                    aliases, principals, permissions);              
             case CODESOURCE_CERTS:
                 return new CertificateGrant(certs, aliases, principals, permissions);
-                case PROTECTIONDOMAIN: //Dynamic grant
+            case PROTECTIONDOMAIN: //Dynamic grant
                 return new ProtectionDomainGrant(domain, principals, permissions );
             case PRINCIPAL:
                 return new PrincipalGrant(principals, permissions);
+            // New case for DIGEST:
+            case DIGEST:
+                return new DigestGrant(uri, digestAlgorithm, digest,
+                                       certs, aliases, principals, permissions);
             default:
                 return nullGrant;
         }
