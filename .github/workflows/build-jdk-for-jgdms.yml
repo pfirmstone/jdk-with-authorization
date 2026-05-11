@@ -121,7 +121,7 @@ jobs:
           mkdir -p staging
           cp "$bundle" staging/jdk-linux-x64.tar.gz
           echo "bundle=staging/jdk-linux-x64.tar.gz" >> $GITHUB_OUTPUT
-          sha256sum staging/jdk-linux-x64.tar.gz > staging/jdk-linux-x64.tar.gz.sha256
+          ( cd staging && sha256sum jdk-linux-x64.tar.gz ) > staging/jdk-linux-x64.tar.gz.sha256
           echo "SHA256: $(awk '{print $1}' staging/jdk-linux-x64.tar.gz.sha256)"
 
       - name: 'Upload workflow artifact'
