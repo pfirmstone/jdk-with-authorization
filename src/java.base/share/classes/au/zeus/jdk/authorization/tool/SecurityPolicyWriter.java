@@ -451,7 +451,7 @@ public class SecurityPolicyWriter extends CombinerSecurityManager{
                                 }
                             }
                             if (codebase != null){
-                                pw.print("codebase \"");
+                                pw.print("// codebase \"");
                                 String codebaseStr = replaceValuesWithProperties(codebase.toString());
                                 pw.print(codebaseStr);
                                 pw.print("\"");
