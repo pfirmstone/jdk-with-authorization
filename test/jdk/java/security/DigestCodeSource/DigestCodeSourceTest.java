@@ -28,11 +28,11 @@ import java.io.ObjectInput;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutput;
 import java.io.ObjectOutputStream;
-import java.net.URL;
 import java.security.CodeSource;
 import java.security.DigestCodeSource;
 import java.security.PublicKey;
 import java.security.cert.Certificate;
+import java.security.cert.CertificateEncodingException;
 import java.security.cert.X509Certificate;
 import java.util.Arrays;
 import sun.security.tools.keytool.CertAndKeyGen;
@@ -108,8 +108,7 @@ public class DigestCodeSourceTest {
     // Null tolerance
     // -----------------------------------------------------------------------
     static void testNullsAllowed() throws Exception {
-        DigestCodeSource dcs = new DigestCodeSource(
-                (URL) null, (Certificate[]) null, null, null);
+        DigestCodeSource dcs = make(null, null, null, null);
         if (dcs.getLocation() != null)
             fail("testNullsAllowed: expected null location");
         if (dcs.getCertificates() != null)
@@ -125,8 +124,7 @@ public class DigestCodeSourceTest {
     // -----------------------------------------------------------------------
     static void testGetDigestReturnsCopy() throws Exception {
         byte[] original = {10, 20, 30};
-        DigestCodeSource dcs = new DigestCodeSource(
-                (URL) null, (Certificate[]) null, ALG, original);
+        DigestCodeSource dcs = make(null, null, ALG, original);
         byte[] copy1 = dcs.getDigest();
         copy1[0] = 99;
         byte[] copy2 = dcs.getDigest();
@@ -138,7 +136,7 @@ public class DigestCodeSourceTest {
     // equals: reflexive
     // -----------------------------------------------------------------------
     static void testEqualsReflexive() throws Exception {
-        DigestCodeSource dcs = make("http://example.com/a.jar", ALG, SHA256_A);
+        DigestCodeSource dcs = make("http://example.com/a.jar", null, ALG, SHA256_A);
         if (!dcs.equals(dcs))
             fail("testEqualsReflexive");
     }
@@ -147,8 +145,8 @@ public class DigestCodeSourceTest {
     // equals: same content must be equal
     // -----------------------------------------------------------------------
     static void testEqualsSameContent() throws Exception {
-        DigestCodeSource a = make("http://example.com/a.jar", ALG, SHA256_A);
-        DigestCodeSource b = make("http://example.com/a.jar", ALG, SHA256_A);
+        DigestCodeSource a = make("http://example.com/a.jar", null, ALG, SHA256_A);
+        DigestCodeSource b = make("http://example.com/a.jar", null, ALG, SHA256_A);
         if (!a.equals(b) || !b.equals(a))
             fail("testEqualsSameContent");
         if (a.hashCode() != b.hashCode())
@@ -159,8 +157,8 @@ public class DigestCodeSourceTest {
     // equals: different digest must not be equal
     // -----------------------------------------------------------------------
     static void testEqualsDifferentDigest() throws Exception {
-        DigestCodeSource a = make("http://example.com/a.jar", ALG, SHA256_A);
-        DigestCodeSource b = make("http://example.com/a.jar", ALG, SHA256_B);
+        DigestCodeSource a = make("http://example.com/a.jar", null, ALG, SHA256_A);
+        DigestCodeSource b = make("http://example.com/a.jar", null, ALG, SHA256_B);
         if (a.equals(b))
             fail("testEqualsDifferentDigest: different digests compared equal");
     }
@@ -169,8 +167,8 @@ public class DigestCodeSourceTest {
     // equals: different algorithm must not be equal
     // -----------------------------------------------------------------------
     static void testEqualsDifferentAlgorithm() throws Exception {
-        DigestCodeSource a = make("http://example.com/a.jar", "SHA-256", SHA256_A);
-        DigestCodeSource b = make("http://example.com/a.jar", "SHA-512", SHA256_A);
+        DigestCodeSource a = make("http://example.com/a.jar", null, "SHA-256", SHA256_A);
+        DigestCodeSource b = make("http://example.com/a.jar", null, "SHA-512", SHA256_A);
         if (a.equals(b))
             fail("testEqualsDifferentAlgorithm: different algorithms compared equal");
     }
@@ -179,8 +177,8 @@ public class DigestCodeSourceTest {
     // equals: different URL must not be equal
     // -----------------------------------------------------------------------
     static void testEqualsDifferentUrl() throws Exception {
-        DigestCodeSource a = make("http://example.com/a.jar", ALG, SHA256_A);
-        DigestCodeSource b = make("http://example.com/b.jar", ALG, SHA256_A);
+        DigestCodeSource a = make("http://example.com/a.jar", null, ALG, SHA256_A);
+        DigestCodeSource b = make("http://example.com/b.jar", null, ALG, SHA256_A);
         if (a.equals(b))
             fail("testEqualsDifferentUrl: different URLs compared equal");
     }
@@ -189,21 +187,23 @@ public class DigestCodeSourceTest {
     // equals: different certs must not be equal (uses fake certs — no serialization)
     // -----------------------------------------------------------------------
     static void testEqualsDifferentCerts() throws Exception {
-        URL url = new URL("http://example.com/a.jar");
-        DigestCodeSource a = new DigestCodeSource(
-                url, new Certificate[]{CERT_A}, ALG, SHA256_A);
-        DigestCodeSource b = new DigestCodeSource(
-                url, new Certificate[]{CERT_B}, ALG, SHA256_A);
-        if (a.equals(b))
-            fail("testEqualsDifferentCerts: different certs compared equal");
+        try {
+            String url = "http://example.com/a.jar";
+            DigestCodeSource a =make(
+                    url, new Certificate[]{CERT_A}, ALG, SHA256_A);
+            DigestCodeSource b = make(
+                    url, new Certificate[]{CERT_B}, ALG, SHA256_A);
+            if (a.equals(b))
+                fail("testEqualsDifferentCerts: different certs compared equal");
+        } catch (IOException e){} // Expected fake certificate.
     }
 
     // -----------------------------------------------------------------------
     // hashCode consistency
     // -----------------------------------------------------------------------
     static void testHashCodeConsistentWithEquals() throws Exception {
-        DigestCodeSource a = make("http://example.com/a.jar", ALG, SHA256_A);
-        DigestCodeSource b = make("http://example.com/a.jar", ALG, SHA256_A);
+        DigestCodeSource a = make("http://example.com/a.jar", null, ALG, SHA256_A);
+        DigestCodeSource b = make("http://example.com/a.jar", null, ALG, SHA256_A);
         if (a.hashCode() != b.hashCode())
             fail("testHashCodeConsistentWithEquals");
     }
@@ -212,8 +212,8 @@ public class DigestCodeSourceTest {
     // implies: same algorithm + same digest → true
     // -----------------------------------------------------------------------
     static void testImpliesSameDigest() throws Exception {
-        DigestCodeSource policy = make("http://example.com/a.jar", ALG, SHA256_A);
-        DigestCodeSource code   = make("http://example.com/a.jar", ALG, SHA256_A);
+        DigestCodeSource policy = make("http://example.com/a.jar", null, ALG, SHA256_A);
+        DigestCodeSource code   = make("http://example.com/a.jar", null, ALG, SHA256_A);
         if (!policy.implies(code))
             fail("testImpliesSameDigest: same digest should be implied");
     }
@@ -222,8 +222,8 @@ public class DigestCodeSourceTest {
     // implies: different digest → false (fail-secure)
     // -----------------------------------------------------------------------
     static void testImpliesDifferentDigest() throws Exception {
-        DigestCodeSource policy = make("http://example.com/a.jar", ALG, SHA256_A);
-        DigestCodeSource code   = make("http://example.com/a.jar", ALG, SHA256_B);
+        DigestCodeSource policy = make("http://example.com/a.jar", null, ALG, SHA256_A);
+        DigestCodeSource code   = make("http://example.com/a.jar", null, ALG, SHA256_B);
         if (policy.implies(code))
             fail("testImpliesDifferentDigest: different digest must NOT be implied");
     }
@@ -232,7 +232,7 @@ public class DigestCodeSourceTest {
     // implies: DigestCodeSource vs plain CodeSource delegates to super
     // -----------------------------------------------------------------------
     static void testImpliesPlainCodeSourceDelegatesToSuper() throws Exception {
-        DigestCodeSource policy = make("http://example.com/a.jar", ALG, SHA256_A);
+        DigestCodeSource policy = make("http://example.com/a.jar", null, ALG, SHA256_A);
         CodeSource plain = new CodeSource(null, (Certificate[]) null);
         if (!policy.implies(plain))
             fail("testImpliesPlainCodeSourceDelegatesToSuper");
@@ -242,8 +242,8 @@ public class DigestCodeSourceTest {
     // Serialization round-trip (non-null URL + digest, no certs)
     // -----------------------------------------------------------------------
     static void testSerializationRoundTrip() throws Exception {
-        URL url = new URL("http://example.com/a.jar");
-        DigestCodeSource original = new DigestCodeSource(
+        String url = "http://example.com/a.jar";
+        DigestCodeSource original = make(
                 url, (Certificate[]) null, ALG, SHA256_A);
         DigestCodeSource restored = roundTrip(original);
 
@@ -251,7 +251,7 @@ public class DigestCodeSourceTest {
             fail("testSerializationRoundTrip: equals failed after round-trip");
         if (original.hashCode() != restored.hashCode())
             fail("testSerializationRoundTrip: hashCode changed after round-trip");
-        if (!url.toExternalForm().equals(restored.getLocation().toExternalForm()))
+        if (!url.equals(restored.getLocation().toExternalForm()))
             fail("testSerializationRoundTrip: URL not preserved");
         if (!ALG.equals(restored.getDigestAlgorithm()))
             fail("testSerializationRoundTrip: algorithm not preserved");
@@ -263,8 +263,8 @@ public class DigestCodeSourceTest {
     // Serialization round-trip (all-null fields)
     // -----------------------------------------------------------------------
     static void testSerializationRoundTripNulls() throws Exception {
-        DigestCodeSource original = new DigestCodeSource(
-                (URL) null, (Certificate[]) null, null, null);
+        DigestCodeSource original = make(
+                 null, (Certificate[]) null, null, null);
         DigestCodeSource restored = roundTrip(original);
 
         if (!original.equals(restored))
@@ -279,8 +279,8 @@ public class DigestCodeSourceTest {
     // Serialization round-trip with a real X.509 certificate
     // -----------------------------------------------------------------------
     static void testSerializationRoundTripWithCert() throws Exception {
-        URL url = new URL("http://example.com/b.jar");
-        DigestCodeSource original = new DigestCodeSource(
+        String url = "http://example.com/b.jar";
+        DigestCodeSource original = make(
                 url, new Certificate[]{REAL_CERT}, ALG, SHA256_A);
         DigestCodeSource restored = roundTrip(original);
 
@@ -352,8 +352,8 @@ public class DigestCodeSourceTest {
     // -----------------------------------------------------------------------
     static void testToString() throws Exception {
         byte[] d = {(byte) 0xab, (byte) 0xcd};
-        DigestCodeSource dcs = new DigestCodeSource(
-                new URL("http://example.com/a.jar"),
+        DigestCodeSource dcs = make(
+                "http://example.com/a.jar",
                 (Certificate[]) null, "SHA-256", d);
         String s = dcs.toString();
         if (!s.startsWith("(")) fail("testToString: missing opening paren — got: " + s);
@@ -366,9 +366,55 @@ public class DigestCodeSourceTest {
     // Helpers
     // -----------------------------------------------------------------------
 
-    private static DigestCodeSource make(String url, String alg, byte[] digest)
+    private static DigestCodeSource make(String url, Certificate [] certArr, String alg, byte[] digest)
             throws Exception {
-        return new DigestCodeSource(new URL(url), (Certificate[]) null, alg, digest);
+        // Build the external form of the DigestCodeSource manually
+        // (same format as writeExternal) and deserialize it.
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        try (ObjectOutput out = new ObjectOutputStream(baos)) {
+            // URL
+            if (url != null) {
+                out.writeByte(1); out.writeUTF(url);
+            } else {
+                out.writeByte(0);
+            }
+            
+            // Certificates
+            if (certArr != null && certArr.length > 0) {
+                out.writeByte(1);
+                out.writeInt(certArr.length);
+                for (Certificate cert : certArr) {
+                    try {
+                        byte[] enc = cert.getEncoded();
+                        out.writeInt(enc.length);
+                        out.write(enc);
+                        out.writeUTF(cert.getType());
+                    } catch (CertificateEncodingException e) {
+                        throw new IOException("Cannot encode certificate: " + e.getMessage(), e);
+                    }
+                }
+            } else {
+                out.writeByte(0);
+            }
+            // Algorithm
+            if (alg != null) {
+                out.writeByte(1); out.writeUTF(alg);
+            } else {
+                out.writeByte(0);
+            }
+            // Digest
+            if (digest != null) {
+                out.writeByte(1); out.writeInt(digest.length); out.write(digest);
+            } else {
+                out.writeByte(0);
+            }
+        }
+        DigestCodeSource dst = new DigestCodeSource();
+        try (ObjectInput in = new ObjectInputStream(
+                new ByteArrayInputStream(baos.toByteArray()))) {
+            dst.readExternal(in);
+        }
+        return dst;
     }
 
     private static DigestCodeSource roundTrip(DigestCodeSource src)

@@ -87,6 +87,19 @@ public final class DigestCodeSource extends CodeSource implements Externalizable
      * compute the digest themselves and use the pre-computed-digest constructor.
      */
     static final long MAX_STREAM_BYTES = 512L * 1024 * 1024;
+    
+    private static final String [] ALLOWED = new String []{
+        "SHA-256", "SHA-384", "SHA-512", 
+        "SHA-512/256", "SHA3-256", "SHA3-384", "SHA3-512"
+    };
+    
+    private static String checkAlgorithm(String digestAlgorithm){
+        if (digestAlgorithm == null) throw new NullPointerException("Digest Algorithm cannot be null");
+        for (int i =0, l = ALLOWED.length; i < l; i++){
+            if (ALLOWED[i].equals(digestAlgorithm)) return ALLOWED[i];
+        }
+        throw new IllegalArgumentException("Insecure or unknown digest algorithm: "+digestAlgorithm );
+    }
 
     // Instance fields — all transient; the full stream is owned by
     // writeExternal / readExternal.
@@ -141,40 +154,6 @@ public final class DigestCodeSource extends CodeSource implements Externalizable
     }
 
     /**
-     * Creates a {@code DigestCodeSource} with a pre-computed digest.
-     *
-     * @param url             the code location (may be {@code null})
-     * @param certs           the certificates (may be {@code null})
-     * @param digestAlgorithm the hash algorithm name (may be {@code null})
-     * @param digest          the raw digest bytes (defensively copied; may be {@code null})
-     */
-    public DigestCodeSource(URL url, Certificate[] certs,
-                            String digestAlgorithm, byte[] digest) {
-        super(url, certs);
-        this.digestAlgorithm = digestAlgorithm;
-        this.digest = digest != null ? digest.clone() : null;
-        this.uri = uriFromUrl(url);
-        this.cachedHashCode = computeHashCode();
-    }
-
-    /**
-     * Creates a {@code DigestCodeSource} with a pre-computed digest.
-     *
-     * @param url             the code location (may be {@code null})
-     * @param signers         the code signers (may be {@code null})
-     * @param digestAlgorithm the hash algorithm name (may be {@code null})
-     * @param digest          the raw digest bytes (defensively copied; may be {@code null})
-     */
-    public DigestCodeSource(URL url, CodeSigner[] signers,
-                            String digestAlgorithm, byte[] digest) {
-        super(url, signers);
-        this.digestAlgorithm = digestAlgorithm;
-        this.digest = digest != null ? digest.clone() : null;
-        this.uri = uriFromUrl(url);
-        this.cachedHashCode = computeHashCode();
-    }
-
-    /**
      * Promotes a plain {@link CodeSource} to a {@code DigestCodeSource},
      * attaching a pre-computed digest.  Used by SecureClassLoader
      *
@@ -182,37 +161,25 @@ public final class DigestCodeSource extends CodeSource implements Externalizable
      * @param digestAlgorithm the hash algorithm name (may be {@code null})
      * @throws IOException if a connection cannot be established.
      * @throws NoSuchAlgorithmException if the provider isn't available.
+     * @throws URISyntaxException if the CodeSource URL is not RFC3986 compliant.
      */
     public DigestCodeSource(CodeSource cs,
-                            String digestAlgorithm ) throws IOException, NoSuchAlgorithmException {
-        this(cs.getLocation(), cs.getCertificates(), digestAlgorithm, computeDigest(cs.getLocation(), digestAlgorithm));
-    }
-    
-    /**
-     * Promotes a plain {@link CodeSource} to a {@code DigestCodeSource},
-     * attaching a pre-computed digest. Here for testing.
-     *
-     * @param cs              the source to promote (must not be {@code null})
-     * @param digestAlgorithm the hash algorithm name (may be {@code null})
-     * @param digest          the raw digest bytes (defensively copied; may be {@code null})
-     * @throws IOException if a connection cannot be established.
-     * @throws NoSuchAlgorithmException if the provider isn't available.
-     */
-    public DigestCodeSource(CodeSource cs,
-                            String digestAlgorithm, byte [] digest ) throws IOException, NoSuchAlgorithmException {
-        this(cs.getLocation(), cs.getCertificates(), digestAlgorithm, digest);
+                            String digestAlgorithm ) throws IOException, NoSuchAlgorithmException, URISyntaxException {
+        this(Uri.urlToUri(cs.getLocation()), cs.getCertificates(), digestAlgorithm, computeDigest(cs.getLocation(), digestAlgorithm));
     }
 
     // Package-private auto-compute helpers used in Phase 2 of SecureClassLoader.
 
     DigestCodeSource(Uri uri, Certificate[] certs, String digestAlgorithm)
             throws MalformedURLException, IOException, NoSuchAlgorithmException {
-        this(uri, certs, digestAlgorithm, computeDigest(uriToUrl(uri), digestAlgorithm));
+        this(uri, certs, checkAlgorithm(digestAlgorithm),
+                computeDigest(uriToUrl(uri), digestAlgorithm));
     }
 
     DigestCodeSource(Uri uri, CodeSigner[] signers, String digestAlgorithm)
             throws MalformedURLException, IOException, NoSuchAlgorithmException {
-        this(uri, signers, digestAlgorithm, computeDigest(uriToUrl(uri), digestAlgorithm));
+        this(uri, signers, checkAlgorithm(digestAlgorithm),
+                computeDigest(uriToUrl(uri), digestAlgorithm));
     }
 
     private DigestCodeSource(Uri uri, Certificate[] certs,
@@ -469,8 +436,14 @@ public final class DigestCodeSource extends CodeSource implements Externalizable
 
         // --- Digest algorithm ---
         digestAlgorithm = null;
-        if (in.readByte() == FIELD_PRESENT) {
-            digestAlgorithm = in.readUTF();
+        try {
+            if (in.readByte() == FIELD_PRESENT) {
+                digestAlgorithm = checkAlgorithm(in.readUTF());
+            }
+        } catch (IllegalArgumentException e){
+            throw new IOException("Algorithm not allowed here: ",e);
+        } catch (NullPointerException e){
+            throw new IOException("No digest algorithm: ", e);
         }
 
         // --- Digest bytes ---
