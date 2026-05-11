@@ -32,8 +32,9 @@ import java.lang.ref.WeakReference;
 import java.util.AbstractMap;
 import java.util.Collection;
 import java.util.HashMap;
-import java.util.Objects;
+import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Supplier;
@@ -116,6 +117,18 @@ public final class ReferencedKeyMap<K, V> implements Map<K, V> {
     }
 
     /**
+     * Global registry of all {@link ReferencedKeyMap} instances created with
+     * {@link SoftReference} keys ({@code isSoft == true}).  Each entry is a
+     * {@link WeakReference} so that maps which become unreachable are not
+     * retained solely by this list.
+     * <p>
+     * Used by {@link #prepareAllForAOTCache()} to ensure that every
+     * soft-reference map visible in the AOT heap is stabilised before archiving.
+     */
+    private static final List<WeakReference<ReferencedKeyMap<?, ?>>> softMaps =
+        new java.util.concurrent.CopyOnWriteArrayList<>();
+
+    /**
      * Private constructor.
      *
      * @param isSoft          true if {@link SoftReference} keys are to
@@ -127,6 +140,9 @@ public final class ReferencedKeyMap<K, V> implements Map<K, V> {
         this.isSoft = isSoft;
         this.map = map;
         this.stale = stale;
+        if (isSoft) {
+            softMaps.add(new WeakReference<>(this));
+        }
     }
 
     /**
@@ -361,6 +377,16 @@ public final class ReferencedKeyMap<K, V> implements Map<K, V> {
                 // state into the CDS archive.
                 //
                 // See aotReferenceObjSupport.cpp for more info.
+                //
+                // For SoftReference keys (isSoft==true), the Reference object has a
+                // non-null queue (the stale queue), so aotReferenceObjSupport.cpp will
+                // perform the check:
+                //   if (needs_special_cleanup && (referent == null || !keepAlive_table.contains(referent)))
+                // Registering the referent here is sufficient to satisfy that check.
+                // Do NOT call CDS.keepAlive(key) — doing so would force the SoftReferenceKey
+                // itself into the archived heap as a live soft-reference object, which the GC
+                // reference processor then processes at runtime against a stale/archived queue,
+                // corrupting the reference machinery (crash in linkToTargetMethod).
                 CDS.keepAlive(referent);
             }
             Reference.reachabilityFence(referent);
@@ -498,5 +524,39 @@ public final class ReferencedKeyMap<K, V> implements Map<K, V> {
             return false;
         }
      }
+    /**
+     * Prepares every soft-reference {@link ReferencedKeyMap} that has ever
+     * been created for inclusion in an AOT cache.
+     * <p>
+     * This is called during the AOT assembly phase (via
+     * {@code MethodType.assemblySetup()}) to ensure that <em>all</em>
+     * maps using {@link SoftReference} keys — including those held inside
+     * {@code LazyConstantImpl} fields or other containers not individually
+     * known to the AOT subsystem — have their live referents registered with
+     * {@code CDS.keepAlive()} and their dead entries enqueued.
+     * <p>
+     * The registry is cleared after processing so that the {@link WeakReference}
+     * wrappers (whose {@code queue} field points to the static field
+     * {@code ReferenceQueue.NULL}) are not retained in the archived heap,
+     * which would be flagged by {@code cdsHeapVerifier.cpp}.
+     * At runtime, any newly created soft-reference maps will re-register
+     * themselves automatically via the constructor.
+     *
+     * @see #prepareForAOTCache()
+     */
+    public static void prepareAllForAOTCache() {
+        assert CDS.isSingleThreadVM();
+        for (WeakReference<ReferencedKeyMap<?, ?>> ref : softMaps) {
+            ReferencedKeyMap<?, ?> softMap = ref.get();
+            if (softMap != null) {
+                softMap.prepareForAOTCache();
+            }
+        }
+        // Clear after use: the WeakReference<ReferencedKeyMap> entries each
+        // have queue == ReferenceQueue.NULL (a static field). Leaving them in
+        // the archived heap causes cdsHeapVerifier to flag them as pointing to
+        // a static field that may hold a different value at runtime.
+        softMaps.clear();
+    }
 
 }

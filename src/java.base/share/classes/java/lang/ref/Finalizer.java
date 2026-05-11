@@ -185,10 +185,19 @@ final class Finalizer extends FinalReference<Object> { /* Package-private; must 
      */
     static void startFinalizerThread(ThreadGroup tg) {
         if (ENABLED) {
-            Thread finalizer = AccessController.doPrivileged(
-                (PrivilegedAction<Thread>)()->{ 
+            // Use a named PrivilegedAction class (not a lambda) to avoid creating
+            // a hidden lambda class (Finalizer$$Lambda+0x...) during the AOT assembly
+            // phase. Such hidden classes produce a DirectMethodHandle$Constructor whose
+            // vmentry cannot be re-initialised from the AOT archive, causing an
+            // EXCEPTION_ACCESS_VIOLATION (RAX=0) in linkToTargetMethod at production startup.
+            PrivilegedAction<Thread> action = new PrivilegedAction<Thread>() {
+                @Override
+                public Thread run() {
                     return new FinalizerThread(tg);
-                    }, AccessControlContext.neverPrivileged());
+                }
+            };
+            Thread finalizer = AccessController.doPrivileged(action,
+                    AccessControlContext.neverPrivileged());
             finalizer.setPriority(Thread.MAX_PRIORITY - 2);
             finalizer.setDaemon(true);
             finalizer.start();

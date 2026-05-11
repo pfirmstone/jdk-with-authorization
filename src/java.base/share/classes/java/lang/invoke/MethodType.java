@@ -54,6 +54,7 @@ import sun.security.util.SecurityConstants;
 
 import static java.lang.invoke.MethodHandleStatics.UNSAFE;
 import static java.lang.invoke.MethodHandleStatics.newIllegalArgumentException;
+import jdk.internal.util.ReferencedKeyMap;
 
 /**
  * A method type represents the arguments and return type accepted and
@@ -1395,5 +1396,6 @@ s.writeObject(this.parameterArray());
     // during the AOT cache assembly phase.
     private static void assemblySetup() {
         internTable.prepareForAOTCache();
+        ReferencedKeyMap.prepareAllForAOTCache();
     }
 }
