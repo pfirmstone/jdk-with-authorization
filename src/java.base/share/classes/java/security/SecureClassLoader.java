@@ -40,6 +40,7 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import javax.security.auth.Subject;
 import jdk.internal.misc.CDS;
+import jdk.internal.misc.VM;
 
 /**
  * This class extends {@code ClassLoader} with additional support for defining
@@ -254,7 +255,11 @@ public class SecureClassLoader extends ClassLoader {
         if (domain != null) return domain;
         PermissionCollection<Permission> perms
                 = SecureClassLoader.this.getPermissions(cs);
-        Subject sub = SpiffeCredentialManager.getInstance().getSubject();
+        // SpiffeCredentialManager.getInstance() opens a SocketChannel which
+        // calls SelectorProvider.provider() → getSystemClassLoader().  During
+        // initPhase3 the system class loader is not yet ready, so defer the
+        // SPIFFE subject lookup until the VM is fully booted.
+        Subject sub = VM.isBooted() ? SpiffeCredentialManager.getInstance().getSubject() : null;
         Principal [] pals = null;
         if (sub != null && sub.isReadOnly()){
             Set<Principal> prin = sub.getPrincipals();
