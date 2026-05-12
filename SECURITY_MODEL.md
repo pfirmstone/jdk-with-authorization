@@ -1,10 +1,10 @@
 # Dirty Chai Security Model
 
-**Version:** 2.2<br>
-**Date:** 2026-05-12<br>
-**Last Reviewed:** 2026-05-12<br>
-**Project:** Dirty Chai<br>
-**Repository:** https://github.com/pfirmstone/DirtyChai
+- **Version:** 2.2
+- **Date:** 2026-05-12
+- **Last Reviewed:** 2026-05-12
+- **Project:** Dirty Chai
+- **Repository:** https://github.com/pfirmstone/DirtyChai
 
 ---
 
@@ -220,8 +220,8 @@ System.setSecurityManager(sm)
        Layer 1 (@CallerSensitive)
          Reflection.getCallerClass() → null caller → SecurityException
         Layer 2 (StackWalker, limit 50 frames)
-          rejects: java.lang.reflect.*, sun.reflect.*
-                   java.lang.reflect.AccessibleObject.setAccessible
+          rejects: java.lang.reflect.* / sun.reflect.* frames,
+                   including java.lang.reflect.AccessibleObject.setAccessible
                    sun.misc.Unsafe, jdk.internal.misc.Unsafe
                    non-whitelisted java.lang.invoke.* runtime frames
                    $$Lambda$, $Proxy, GeneratedMethodAccessor*
