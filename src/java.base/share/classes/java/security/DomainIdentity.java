@@ -116,7 +116,7 @@ public final class DomainIdentity extends ProtectionDomain {
     private final int hashcode;
     private final Set<Principal> principals;
     private final SortedSet<Permission> permissions;
-    private final UriCodeSource uriCS;
+    private final CodeSource uriCS;
     
     /**
      * Creates a new {@code ProtectionDomain} qualified by the given
@@ -156,7 +156,8 @@ public final class DomainIdentity extends ProtectionDomain {
         this.principals = principals != null ? 
                 new HashSet<>(Arrays.asList(principals)) : null;
         this.permissions = permissions != null ? permissionsToSet(permissions) : null;
-        this.uriCS = codesource!= null ? new UriCodeSource(codesource) : null;
+        this.uriCS = codesource instanceof DigestCodeSource ? codesource : 
+                codesource!= null ? new UriCodeSource(codesource) : null;
         int hash = 7;
         hash = 7 * hash + (hasAllPerm() ? 1231 : 1237);
         hash = 7 * hash + getClass().hashCode();
@@ -187,7 +188,8 @@ public final class DomainIdentity extends ProtectionDomain {
         super(codesource, permissions);
         this.principals = null;
         this.permissions = permissions != null ? permissionsToSet(permissions) : null;
-        this.uriCS = codesource!= null ? new UriCodeSource(codesource) : null;
+        this.uriCS = codesource instanceof DigestCodeSource ? codesource : 
+                codesource!= null ? new UriCodeSource(codesource) : null;
         int hash = 5;
         hash = 5 * hash + (hasAllPerm() ? 1231 : 1237);
         hash = 5 * hash + getClass().hashCode();
