@@ -550,37 +550,22 @@ public class SecurityManager {
         }
     }
     /**
-     * Throws a {@code SecurityException} if the
-     * calling thread is not allowed to modify the thread group argument.
+     * In the past, this method threw a {@code SecurityException} if the
+     * calling thread was not allowed to modify the thread group argument.
      * <p>
      * This method is invoked for the current security manager when a
      * new child thread or child thread group is created, and by the
      * {@code setDaemon} and {@code setMaxPriority} methods of class
      * {@code ThreadGroup}.
      * <p>
-     * If the thread group argument is the system thread group (
-     * has a {@code null} parent) then
-     * this method calls {@code checkPermission} with the
-     * {@code RuntimePermission("modifyThreadGroup")} permission.
-     * If the thread group argument is <i>not</i> the system thread group,
-     * this method just returns silently.
+     * This method only performs a null check to ensure ThreadGroup is not null.
      * <p>
      * Applications that want a stricter policy should override this
-     * method. If this method is overridden, the method that overrides
-     * it should additionally check to see if the calling thread has the
-     * {@code RuntimePermission("modifyThreadGroup")} permission, and
-     * if so, return silently. This is to ensure that code granted
-     * that permission (such as the JDK itself) is allowed to
-     * manipulate any thread.
-     * <p>
-     * If this method is overridden, then
-     * {@code super.checkAccess} should
-     * be called by the first statement in the overridden method, or the
-     * equivalent security check should be placed in the overridden method.
+     * method. This method remains for compatibility, no permissions are checked
+     * by default.
+     * 
      *
      * @param      g   the thread group to be checked.
-     * @throws     SecurityException  if the calling thread does not have
-     *             permission to modify the thread group.
      * @throws     NullPointerException if the thread group argument is
      *             {@code null}.
      * @see        java.lang.ThreadGroup#setDaemon(boolean) setDaemon
@@ -590,11 +575,6 @@ public class SecurityManager {
     public void checkAccess(ThreadGroup g) {
         if (g == null) {
             throw new NullPointerException("thread group can't be null");
-        }
-        if (g == rootGroup) {
-            checkPermission(SecurityConstants.MODIFY_THREADGROUP_PERMISSION);
-        } else {
-            // just return
         }
     }
 

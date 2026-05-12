@@ -189,14 +189,6 @@ import java.lang.module.ModuleFinder;
  * <td>This allows an attacker to modify the behaviour of
  * any thread in the system.</td>
  * </tr>
- *
- * <tr>
- *   <th scope="row">modifyThreadGroup</th>
- *   <td>modification of thread groups, e.g., via calls to ThreadGroup
- * {@code getParent}, {@code setDaemon}, and {@code setMaxPriority} methods</td>
- *   <td>This allows an attacker to create thread groups and
- * set their run priority.</td>
- * </tr>
  * 
  * <tr>
  *   <th scope="row">createPlatformThread</th>

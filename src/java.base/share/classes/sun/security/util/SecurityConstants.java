@@ -112,10 +112,6 @@ public final class SecurityConstants {
     public static final RuntimePermission MODIFY_THREAD_PERMISSION =
         new RuntimePermission("modifyThread");
 
-    // java.lang.SecurityManager
-    public static final RuntimePermission MODIFY_THREADGROUP_PERMISSION =
-        new RuntimePermission("modifyThreadGroup");
-
     // java.lang.Class
     public static final RuntimePermission GET_PD_PERMISSION =
         new RuntimePermission("getProtectionDomain");

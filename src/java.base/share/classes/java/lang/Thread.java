@@ -2583,9 +2583,8 @@ public class Thread implements Runnable {
      * no stack trace information about a thread.
      *
      * <p>If there is a security manager, then the security manager's
-     * {@code checkPermission} method is called with a
-     * {@code RuntimePermission("getStackTrace")} permission as well as
-     * {@code RuntimePermission("modifyThreadGroup")} permission
+     * {@code checkPermission} method is called with
+     * {@code RuntimePermission("getStackTrace")} permission
      * to see if it is ok to get the stack trace of all threads.
      *
      * @return a {@code Map} from {@code Thread} to an array of
@@ -2607,7 +2606,6 @@ public class Thread implements Runnable {
         SecurityManager security = System.getSecurityManager();
         if (security != null) {
             security.checkPermission(SecurityConstants.GET_STACK_TRACE_PERMISSION);
-            security.checkPermission(SecurityConstants.MODIFY_THREADGROUP_PERMISSION);
         }
 
         // Get a snapshot of the list of all threads
