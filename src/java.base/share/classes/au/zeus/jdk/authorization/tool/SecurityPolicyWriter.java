@@ -447,9 +447,9 @@ public class SecurityPolicyWriter extends CombinerSecurityManager{
                                            pw.print(alia.get(i));
                                         }
                                         pw.print("\", ");
+                                        pw.print("\n");
                                     }
                                 }
-                                pw.print("\n");
                             }
                             if (codebase != null){
                                 pw.print("// codebase \"");
