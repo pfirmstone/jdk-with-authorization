@@ -449,6 +449,7 @@ public class SecurityPolicyWriter extends CombinerSecurityManager{
                                         pw.print("\", ");
                                     }
                                 }
+                                pw.print("\n");
                             }
                             if (codebase != null){
                                 pw.print("// codebase \"");
@@ -460,7 +461,8 @@ public class SecurityPolicyWriter extends CombinerSecurityManager{
                                         && dcs.getDigest() != null;
                                 boolean hasPrincipals = principals != null
                                         && principals.length > 0;
-                                if (hasDigest || hasPrincipals) pw.print(",\n");
+                                if (hasDigest || hasPrincipals) pw.print(",");
+                                pw.print("\n");
                             }
                             // Emit digest clause for DigestCodeSource.
                             if (cs instanceof DigestCodeSource dcs) {
@@ -472,8 +474,8 @@ public class SecurityPolicyWriter extends CombinerSecurityManager{
                                     pw.print(':');
                                     pw.print(hexEncode(digestBytes));
                                     pw.print("\"");
-                                    if (principals != null && principals.length > 0) pw.print(",\n");
-                                    else pw.print("\n");
+                                    if (principals != null && principals.length > 0) pw.print(",");
+                                    pw.print("\n");
                                 }
                             }
                         } else {
@@ -534,10 +536,8 @@ public class SecurityPolicyWriter extends CombinerSecurityManager{
                     getLogger().log(Level.INFO, "Finished writing additional permissions, if any, to policy file.");
                 } catch (IOException ex) {
                     getLogger().log(Level.ERROR, "unable to write to policy file ", ex);
-                    return;
                 } catch (URISyntaxException ex) {
                     getLogger().log(Level.ERROR, "unable to write to policy file ", ex);
-                    return;
                 } finally {
                     if (pw != null) {
                         pw.flush();
