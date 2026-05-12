@@ -1,10 +1,10 @@
 # Dirty Chai Security Model
 
-**Version:** 2.1  
-**Date:** 2026-04-22  
-**Last Reviewed:** 2026-04-22  
-**Project:** Dirty Chai  
-**Repository:** https://github.com/pfirmstone/DirtyChai
+- **Version:** 2.2
+- **Date:** 2026-05-12
+- **Last Reviewed:** 2026-05-12
+- **Project:** Dirty Chai
+- **Repository:** https://github.com/pfirmstone/DirtyChai
 
 ---
 
@@ -58,7 +58,7 @@ Manual policy authoring is error-prone in real systems. `polpAudit` activates `S
 
 ## 3) Simple Mental Model
 
-1. **Who is calling?** (`Subject`, caller context)
+1. **Who is calling?** (active `Subject` scope from `Subject.callAs(...)`, plus caller context)
 2. **What code is running?** (`CodeSource`, signer, module/path)
 3. **What does policy grant?** (`ConcurrentPolicyFile` matching + permission implication)
 4. **Does execution stay bounded?** (`AccessController` context boundaries, fail-secure on mismatch)
@@ -82,7 +82,7 @@ If any required condition does not match, the operation is denied.
 
 1. Application invokes security-sensitive operation.
 2. `SecurityManager.checkPermission(...)` delegates to policy evaluation.
-3. `AccessController` computes effective context (stack + inherited + explicit context).
+3. `AccessController` computes effective context (stack + inherited + explicit context, plus active scoped user subjects when present).
 4. `ConcurrentPolicyFile` resolves grants by code source, signer, principal, and permission implication.
 5. Permission decision is enforced (allow/deny).
 
@@ -150,9 +150,32 @@ AccessController.getStackAccessControlContext()  [native]
   → stops at doPrivileged() boundary (privilege elevation point)
   → returns effective AccessControlContext
 
+AccessController.getContext()
+  → getStackAccessControlContext()
+  → optimize()
+  → SubjectAccess.SCOPED.get()
+      → for each scoped Subject that is not a WorkerSubject:
+           SubjectDomainCombiner.combine(acc.getContext(), acc.getContext())
+           also combine privilegedContext when present
+  → return effective AccessControlContext
+
 AccessControlContext.checkPermission(perm)
   → for each domain in context: policy.implies(domain, perm)
   → deny if any domain lacks the permission
+```
+
+### Limited-privilege `doPrivileged(..., perms)` / `doPrivilegedWithCombiner(..., perms)`
+
+```
+AccessController.doPrivileged(action, context, perms)
+  → Reflection.getCallerClass()
+  → getResource(caller)
+      → named module? construct jrt:/<module>/<class> CodeSource
+      → non-module code? use callerLoader.getResource(clazz.getName())
+      → URI construction failure? return null CodeSource (fail-secure)
+  → new DomainIdentity(codeSource, perms, null, null)
+  → intersect with supplied AccessControlContext
+  → execute privileged action with limited scope
 ```
 
 ### `ConcurrentPolicyFile.implies`
@@ -196,11 +219,12 @@ System.setSecurityManager(sm)
   └─ NO (custom/untrusted) ──────────────────────────────────────►
        Layer 1 (@CallerSensitive)
          Reflection.getCallerClass() → null caller → SecurityException
-       Layer 2 (StackWalker, limit 50 frames)
-         rejects: java.lang.reflect.*, sun.reflect.*
-                  sun.misc.Unsafe, jdk.internal.misc.Unsafe
-                  non-whitelisted java.lang.invoke.* runtime frames
-                  $$Lambda$, $Proxy, GeneratedMethodAccessor*
+        Layer 2 (StackWalker, limit 50 frames)
+          rejects: java.lang.reflect.* / sun.reflect.* frames,
+                   including java.lang.reflect.AccessibleObject.setAccessible
+                   sun.misc.Unsafe, jdk.internal.misc.Unsafe
+                   non-whitelisted java.lang.invoke.* runtime frames
+                   $$Lambda$, $Proxy, GeneratedMethodAccessor*
        Layer 3 (ProtectionDomain)
          caller.getProtectionDomain() == null → SecurityException
        Layer 4 (generated/synthetic caller name check)
@@ -229,7 +253,7 @@ For these classes, Dirty Chai applies the trusted path and avoids full custom-st
 For non-trusted classes, Dirty Chai applies layered checks before installation:
 
 1. Direct caller check (`@CallerSensitive` + caller lookup)
-2. Stack inspection via `StackWalker` (reflection/method-handle/generated-frame detection)
+2. Stack inspection via `StackWalker` (reflection/method-handle/generated-frame detection, including `AccessibleObject.setAccessible`)
 3. Caller `ProtectionDomain` validation
 4. Generated/synthetic caller rejection
 
@@ -250,6 +274,20 @@ Dirty Chai keeps `AccessController` and `doPrivileged` semantics active for auth
 - Effective permissions are constrained by the active `AccessControlContext` and policy grants.
 
 Security depends on minimizing privileged blocks and scoping them to the smallest operation necessary.
+
+### `AccessController.getContext()` scoped-subject injection
+
+`AccessController.getContext()` no longer returns only a stack/intersection snapshot. After optimizing the current stack context, it reads the active scoped subject array from `SubjectAccess.SCOPED.get()` and injects each non-`WorkerSubject` into the returned `AccessControlContext` with a `SubjectDomainCombiner`.
+
+This means `Subject.callAs(...)` participates in authorization through `ScopedValue`-backed subject injection at every `getContext()` call, not only at a `doPrivileged` boundary. If a privileged context is present, the same injection is applied to that nested privileged context before the final `AccessControlContext` is returned.
+
+### Limited-privilege `doPrivileged(..., context, Permission...)`
+
+For the limited-privilege overloads of `doPrivileged(...)` and `doPrivilegedWithCombiner(...)`, Dirty Chai does not reuse the caller's existing `ProtectionDomain` directly. Instead it builds a `DomainIdentity` from the caller class and the requested permissions.
+
+For named-module callers, `AccessController.getResource(Class<?>)` constructs a module-aware `CodeSource` URI of the form `jrt:/<module>/<class>`. For non-module code, it falls back to the caller class loader's resource URL. Policy grants that are meant to match these limited-privilege blocks therefore need to match the `jrt:/...` `CodeSource` for named-module callers; grants written only against the caller's original `file:` or `http:` location will not match this `DomainIdentity`.
+
+If `getResource(Class<?>)` cannot construct the URI because of `MalformedURLException` or `URISyntaxException`, it returns `null` so the synthetic `DomainIdentity` cannot match any grant.
 
 ---
 
@@ -289,9 +327,26 @@ Security posture assumes:
 
 ## 10) Virtual Threads and Subject Context
 
-Dirty Chai preserves authorization behavior with virtual threads by carrying effective context through standard Java security context mechanisms.
+Dirty Chai preserves authorization behavior with virtual threads by carrying effective context through standard Java security context mechanisms, including `ScopedValue`-backed subject injection in `AccessController.getContext()`.
 
 `Subject.callAs(...)` and `Subject.doAs(...)` remain available and participate in principal-aware authorization flows where policy requires principals.
+
+### 10.1) UserSubject, WorkerSubject, and `callAs(...)`
+
+- `UserSubject` represents human/client identity and can be bound with `Subject.callAs(...)`.
+- `WorkerSubject` represents service/process identity and is ambient; `Subject.callAs(Subject, Callable)` rejects a `WorkerSubject` with `IllegalArgumentException`.
+- The multi-subject overload `Subject.callAs(Callable<T>, UserSubject...)` binds zero or more `UserSubject` instances simultaneously. `Subject.current()` returns `subject[0]` when multiple subjects are bound.
+- `WorkerSubject` is excluded from this overload by the parameter type and is also skipped by `AccessController.getContext()` when scoped subjects are injected into an `AccessControlContext`.
+
+### 10.2) `callAs()` vs `doAs()` propagation model
+
+- `Subject.callAs(...)` binds subjects in a `ScopedValue`. Any code path that later calls `AccessController.getContext()` inside that scope receives an `AccessControlContext` with those scoped user subjects injected automatically.
+- `Subject.doAs(...)` follows the older model: it snapshots the current `AccessControlContext`, associates the subject with a `SubjectDomainCombiner`, and establishes that subject-bearing context at the `doPrivileged` boundary.
+- The two APIs therefore no longer have identical propagation semantics. `callAs()` is ambient within the lexical scope through `getContext()`, while `doAs()` remains tied to the snapshotted ACC / privileged-boundary path.
+
+### 10.3) Thread builders inside `callAs(...)`
+
+`Thread.Builder` and builder-produced `ThreadFactory` instances created inside `Subject.callAs(...)` automatically capture the active scoped user subject because the builder `unstarted()` and `factory()` paths call `AccessController.getContext()` at creation time. A separate `doAs()` wrapper is not required to carry the `callAs()` subject into the inherited `AccessControlContext` captured by those thread-building APIs.
 
 ---
 
@@ -310,10 +365,12 @@ These checks are applied in builder paths (`ThreadBuilders`) and in public platf
 
 The implementation distinguishes context capture behavior:
 
-- **`Thread.ofPlatform()` / `Thread.ofVirtual()` builders** capture an `AccessControlContext` at builder unstarted/factory creation points and propagate that captured context to created threads/factories.
-- **Traditional public `Thread(...)` constructors** create platform threads through constructor flow where Subject-specific capture is not preserved the same way as the builder flow.
+- **`Thread.ofPlatform()` / `Thread.ofVirtual()` builders** capture an `AccessControlContext` at builder `unstarted()` / `factory()` creation points and propagate that captured context to created threads/factories.
+- **Inside `Subject.callAs(...)`**, that captured context includes the active scoped `UserSubject` values because the builders call `AccessController.getContext()`.
+- **Public platform-thread constructors** also default to `AccessController.getContext()` when no explicit inherited `AccessControlContext` is supplied, so constructor-created platform threads capture the active scoped subject at creation time too.
+- **Inside `Subject.doAs(...)`**, propagation still depends on the older subject-bearing ACC snapshot established at the `doPrivileged` boundary.
 
-In this codebase, the builder path is explicitly documented and implemented to preserve Subject-bearing authorization context more predictably for thread/factory creation workflows.
+In this codebase, the builder path remains the explicit mechanism for thread-factory workflows, but both builders and public platform-thread constructors rely on `AccessController.getContext()` capture for `callAs()`-scoped user subjects.
 
 ### 11.3 Platform thread builder behavior
 
@@ -321,8 +378,9 @@ For platform builders:
 
 1. Permission check for `createPlatformThread`
 2. Capture caller context with `AccessController.getContext()`
-3. Create thread/factory with captured inherited security context
-4. Apply group/priority/daemon/UEH builder options
+3. If inside `Subject.callAs(...)`, inject active scoped non-`WorkerSubject` identities into the captured ACC
+4. Create thread/factory with captured inherited security context
+5. Apply group/priority/daemon/UEH builder options
 
 ### 11.4 Virtual thread builder behavior
 
@@ -330,12 +388,13 @@ For virtual builders:
 
 1. Permission check for `createVirtualThread`
 2. Capture caller context with `AccessController.getContext()`
-3. Create virtual thread/factory with captured inherited security context
-4. Preserve configured characteristics and exception handler
+3. If inside `Subject.callAs(...)`, inject active scoped non-`WorkerSubject` identities into the captured ACC
+4. Create virtual thread/factory with captured inherited security context
+5. Preserve configured characteristics and exception handler
 
 ### 11.5 Security implication
 
-For Subject-aware authorization, prefer `Thread.Builder` / builder-produced `ThreadFactory` created inside the intended Subject scope (for example within `Subject.callAs(...)`) so downstream thread creation consistently inherits the intended authorization context.
+For Subject-aware authorization, prefer `Thread.Builder` / builder-produced `ThreadFactory` created inside the intended Subject scope. Inside `Subject.callAs(...)`, builder capture automatically includes the active scoped user subject through `AccessController.getContext()`. `Subject.doAs(...)` remains available, but it follows the older ACC-snapshot path rather than the newer scoped-subject injection path.
 
 ### 11.6 Executors, ThreadFactory, Thread, and AccessControlContext
 
@@ -357,13 +416,13 @@ This section mirrors the thread-creation analysis for adjacent APIs that define 
 
 #### 11.6.3 `Thread` (constructors and builders)
 
-- Public platform-thread constructors perform platform-thread permission/checkAccess flow and set inherited context from either an explicit `AccessControlContext` parameter or `AccessController.getContext()`.
+- Public platform-thread constructors perform platform-thread permission/checkAccess flow and set inherited context from either an explicit `AccessControlContext` parameter or `AccessController.getContext()`, so `Subject.callAs(...)`-scoped user subjects are captured there as well.
 - `Thread.ofPlatform()` / `Thread.ofVirtual()` builder paths document and implement explicit inherited-context capture behavior used by both `unstarted/start` and `factory`.
 - In this codebase, builder flows are the recommended mechanism when consistent Subject-bearing context inheritance is required.
 
 #### 11.6.4 `AccessControlContext` and `AccessController.getContext()`
 
-- `AccessController.getContext()` snapshots current effective context (including inherited context and limited-privilege scope) and returns an optimized `AccessControlContext`.
+- `AccessController.getContext()` snapshots current effective context (including inherited context and limited-privilege scope), then injects any active scoped non-`WorkerSubject` identities from `Subject.callAs(...)` before returning the optimized `AccessControlContext`.
 - `AccessControlContext.checkPermission(...)` evaluates against the encapsulated context (not merely the current thread at check site), enabling safe handoff to worker execution paths.
 - Dirty Chai retains authorization-focused ACC behavior and hardens context construction so unauthorized context creation does not result in privilege escalation.
 
@@ -385,6 +444,11 @@ This section mirrors the thread-creation analysis for adjacent APIs that define 
 - Privilege escalation via overly broad or inherited permission assumptions
 - Policy bypass through malformed/ambiguous code source handling
 - Unauthorized execution through missing grant constraints
+- Ordinary-object deserialization via `ObjectInputStream.readOrdinaryObject()` is
+  guarded by `SerialObjectPermission` before object instantiation
+- Proxy-class descriptor deserialization via `ObjectInputStream.readProxyDesc()` is
+  not covered by `SerialObjectPermission`; proxy-deserialization gadget chains are
+  therefore not blocked by the current guard placement (see G-3 in section 13)
 
 ---
 
@@ -404,6 +468,10 @@ This section mirrors the thread-creation analysis for adjacent APIs that define 
   constraint must be enforced at construction time or through an explicit `close()`
   pattern.  Process isolation is the mitigation for this residual gap (see
   `PROCESS_ISOLATION.md`, N-9 analysis).
+- **G-3 confirmed — proxy deserialization gap:** `SerialObjectPermission` currently guards
+  `ObjectInputStream.readOrdinaryObject()` but not `readProxyDesc()`. Streams that reach
+  object creation through `TC_PROXYCLASSDESC` therefore do not hit the current
+  `SerialObjectPermission` guard placement.
 
 ---
 
@@ -423,6 +491,7 @@ This section mirrors the thread-creation analysis for adjacent APIs that define 
 3. Privileged execution must remain caller-sensitive and context-bounded.
 4. Policy evaluation must remain deny-by-default.
 5. Validation failures must remain fail-secure.
+6. `WorkerSubject` is never injected via scoped-subject handling into an `AccessControlContext`; process identity remains ambient via `ProtectionDomain`.
 
 ---
 
