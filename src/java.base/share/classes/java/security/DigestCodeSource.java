@@ -15,9 +15,11 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package java.security;
 
+import au.zeus.jdk.concurrent.RC;
+import au.zeus.jdk.concurrent.Ref;
+import au.zeus.jdk.concurrent.Referrer;
 import au.zeus.jdk.net.Uri;
 import java.io.BufferedInputStream;
 import java.io.ByteArrayInputStream;
@@ -29,27 +31,33 @@ import java.io.ObjectOutput;
 import java.net.MalformedURLException;
 import java.net.URISyntaxException;
 import java.net.URL;
+import java.net.URLConnection;
 import java.security.cert.Certificate;
 import java.security.cert.CertificateEncodingException;
 import java.security.cert.CertificateException;
 import java.security.cert.CertificateFactory;
 import java.util.Arrays;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
+import java.util.function.Function;
 import sun.net.util.URLUtil;
 
 /**
  * Non Standard API.
- * 
+ *
  * A {@link CodeSource} that additionally identifies a code artifact by its
  * content digest, enabling DNS-free, content-addressed equality checks.
  *
- * <p>Equality and hashing use the RFC 3986 URI form of the location (avoiding
- * DNS lookups), the certificates, the digest algorithm name, and the digest
- * bytes.  {@link #getDigest()} always returns a defensive copy.
+ * <p>
+ * Equality and hashing use the RFC 3986 URI form of the location (avoiding DNS
+ * lookups), the certificates, the digest algorithm name, and the digest bytes.
+ * {@link #getDigest()} always returns a defensive copy.
  *
- * <p>Serialization uses {@link Externalizable} with a stable binary layout
- * containing only primitives, {@code String}s, and byte arrays, compatible
- * with {@code @AtomicSerial} in JGDMS.  Standard Java {@code Serializable}
- * object graphs are never written to the stream.
+ * <p>
+ * Serialization uses {@link Externalizable} with a stable binary layout
+ * containing only primitives, {@code String}s, and byte arrays, compatible with
+ * {@code @AtomicSerial} in JGDMS. Standard Java {@code Serializable} object
+ * graphs are never written to the stream.
  *
  * @author Peter Firmstone
  */
@@ -58,60 +66,65 @@ public final class DigestCodeSource extends CodeSource implements Externalizable
     @java.io.Serial
     private static final long serialVersionUID = 1L;
 
-    /** Written before every nullable field to signal presence or absence. */
-    private static final byte FIELD_NULL    = 0;
+    /**
+     * Written before every nullable field to signal presence or absence.
+     */
+    private static final byte FIELD_NULL = 0;
     private static final byte FIELD_PRESENT = 1;
 
     // DOS-defence limits applied during readExternal and computeDigest.
-
-    /** Maximum number of certificates in a single DigestCodeSource stream. */
+    /**
+     * Maximum number of certificates in a single DigestCodeSource stream.
+     */
     private static final int MAX_CERT_COUNT = 100;
 
     /**
-     * Maximum encoded size of a single certificate (DER bytes).
-     * X.509 end-entity certificates are typically 1–4 KiB; 64 KiB is generous.
+     * Maximum encoded size of a single certificate (DER bytes). X.509
+     * end-entity certificates are typically 1–4 KiB; 64 KiB is generous.
      */
     private static final int MAX_CERT_BYTES = 64 * 1024;
 
     /**
-     * Maximum digest length in bytes.
-     * SHA-512 produces 64 bytes; 512 bytes is a very conservative ceiling
-     * that accommodates any foreseeable algorithm.
+     * Maximum digest length in bytes. SHA-512 produces 64 bytes; 512 bytes is a
+     * very conservative ceiling that accommodates any foreseeable algorithm.
      */
     private static final int MAX_DIGEST_BYTES = 512;
 
     /**
      * Maximum bytes consumed when computing a digest from a URL stream.
-     * Protects against infinite / very large HTTP responses.
-     * Default: 512 MiB.  Callers that need a different limit should
-     * compute the digest themselves and use the pre-computed-digest constructor.
+     * Protects against infinite / very large HTTP responses. Default: 512 MiB.
+     * Callers that need a different limit should compute the digest themselves
+     * and use the pre-computed-digest constructor.
      */
     static final long MAX_STREAM_BYTES = 512L * 1024 * 1024;
-    
-    private static final String [] ALLOWED = new String []{
-        "SHA-256", "SHA-384", "SHA-512", 
+
+    private static final String[] ALLOWED = new String[]{
+        "SHA-256", "SHA-384", "SHA-512",
         "SHA-512/256", "SHA3-256", "SHA3-384", "SHA3-512"
     };
-    
-    private static String checkAlgorithm(String digestAlgorithm){
-        if (digestAlgorithm == null) throw new NullPointerException("Digest Algorithm cannot be null");
-        for (int i =0, l = ALLOWED.length; i < l; i++){
-            if (ALLOWED[i].equals(digestAlgorithm)) return ALLOWED[i];
+
+    private static String checkAlgorithm(String digestAlgorithm) {
+        if (digestAlgorithm == null) {
+            throw new NullPointerException("Digest Algorithm cannot be null");
         }
-        throw new IllegalArgumentException("Insecure or unknown digest algorithm: "+digestAlgorithm );
+        for (int i = 0, l = ALLOWED.length; i < l; i++) {
+            if (ALLOWED[i].equals(digestAlgorithm)) {
+                return ALLOWED[i];
+            }
+        }
+        throw new IllegalArgumentException("Insecure or unknown digest algorithm: " + digestAlgorithm);
     }
 
     // Instance fields — all transient; the full stream is owned by
     // writeExternal / readExternal.
     private transient String digestAlgorithm;
     private transient byte[] digest;
-    private transient Uri    uri;           // RFC 3986 form; avoids DNS in equals/hashCode
-    private transient int    cachedHashCode;
-
+    private transient Uri uri;           // RFC 3986 form; avoids DNS in equals/hashCode
+    private transient int cachedHashCode;
 
     /**
-     * No-arg constructor required by {@link Externalizable}.
-     * All fields are populated by {@link #readExternal}.
+     * No-arg constructor required by {@link Externalizable}. All fields are
+     * populated by {@link #readExternal}.
      */
     public DigestCodeSource() {
         super(null, (Certificate[]) null);
@@ -121,17 +134,17 @@ public final class DigestCodeSource extends CodeSource implements Externalizable
      * Creates a {@code DigestCodeSource} from a URL string, downloading the
      * artifact and computing its digest.
      *
-     * @param url             the code location as a string (may be {@code null})
-     * @param certs           the certificates (may be {@code null})
+     * @param url the code location as a string (may be {@code null})
+     * @param certs the certificates (may be {@code null})
      * @param digestAlgorithm the hash algorithm, e.g. {@code "SHA-256"}
-     * @throws URISyntaxException       if {@code url} is not a valid URI
-     * @throws MalformedURLException    if the URI cannot be converted to a URL
-     * @throws IOException              if the artifact cannot be read
+     * @throws URISyntaxException if {@code url} is not a valid URI
+     * @throws MalformedURLException if the URI cannot be converted to a URL
+     * @throws IOException if the artifact cannot be read
      * @throws NoSuchAlgorithmException if the algorithm is unavailable
      */
     public DigestCodeSource(String url, Certificate[] certs, String digestAlgorithm)
             throws URISyntaxException, MalformedURLException,
-                   IOException, NoSuchAlgorithmException {
+            IOException, NoSuchAlgorithmException {
         this(parseUri(url), certs, digestAlgorithm);
     }
 
@@ -139,88 +152,98 @@ public final class DigestCodeSource extends CodeSource implements Externalizable
      * Creates a {@code DigestCodeSource} from a URL string, downloading the
      * artifact and computing its digest.
      *
-     * @param url             the code location as a string (may be {@code null})
-     * @param signers         the code signers (may be {@code null})
+     * @param url the code location as a string (may be {@code null})
+     * @param signers the code signers (may be {@code null})
      * @param digestAlgorithm the hash algorithm, e.g. {@code "SHA-256"}
-     * @throws URISyntaxException       if {@code url} is not a valid URI
-     * @throws MalformedURLException    if the URI cannot be converted to a URL
-     * @throws IOException              if the artifact cannot be read
+     * @throws URISyntaxException if {@code url} is not a valid URI
+     * @throws MalformedURLException if the URI cannot be converted to a URL
+     * @throws IOException if the artifact cannot be read
      * @throws NoSuchAlgorithmException if the algorithm is unavailable
      */
     public DigestCodeSource(String url, CodeSigner[] signers, String digestAlgorithm)
             throws URISyntaxException, MalformedURLException,
-                   IOException, NoSuchAlgorithmException {
+            IOException, NoSuchAlgorithmException {
         this(parseUri(url), signers, digestAlgorithm);
     }
 
     /**
      * Promotes a plain {@link CodeSource} to a {@code DigestCodeSource},
-     * attaching a pre-computed digest.  Used by SecureClassLoader
+     * attaching a pre-computed digest. Used by SecureClassLoader
      *
-     * @param cs              the source to promote (must not be {@code null})
+     * @param cs the source to promote (must not be {@code null})
      * @param digestAlgorithm the hash algorithm name (may be {@code null})
      * @throws IOException if a connection cannot be established.
      * @throws NoSuchAlgorithmException if the provider isn't available.
-     * @throws URISyntaxException if the CodeSource URL is not RFC3986 compliant.
+     * @throws URISyntaxException if the CodeSource URL is not RFC3986
+     * compliant.
      */
     public DigestCodeSource(CodeSource cs,
-                            String digestAlgorithm ) throws IOException, NoSuchAlgorithmException, URISyntaxException {
-        this(Uri.urlToUri(cs.getLocation()), cs.getCertificates(), digestAlgorithm, computeDigest(cs.getLocation(), digestAlgorithm));
+            String digestAlgorithm) throws IOException, NoSuchAlgorithmException, URISyntaxException {
+        this(cs.location, Uri.urlToUri(cs.location), cs.getCertificates(), digestAlgorithm);
     }
 
     // Package-private auto-compute helpers used in Phase 2 of SecureClassLoader.
-
     DigestCodeSource(Uri uri, Certificate[] certs, String digestAlgorithm)
             throws MalformedURLException, IOException, NoSuchAlgorithmException {
-        this(uri, certs, checkAlgorithm(digestAlgorithm),
-                computeDigest(uriToUrl(uri), digestAlgorithm));
+        this(uriToUrl(uri), uri, certs, digestAlgorithm);
     }
 
     DigestCodeSource(Uri uri, CodeSigner[] signers, String digestAlgorithm)
             throws MalformedURLException, IOException, NoSuchAlgorithmException {
-        this(uri, signers, checkAlgorithm(digestAlgorithm),
-                computeDigest(uriToUrl(uri), digestAlgorithm));
+        this(uriToUrl(uri), uri, signers, digestAlgorithm);
     }
 
-    private DigestCodeSource(Uri uri, Certificate[] certs,
-                             String digestAlgorithm, byte[] digest)
+    private DigestCodeSource(URL url, Uri uri, CodeSigner[] signers, String digestAlgorithm)
+            throws MalformedURLException, IOException, NoSuchAlgorithmException {
+        this(url, uri, signers, checkAlgorithm(digestAlgorithm), computeDigest(uri, url, digestAlgorithm));
+    }
+
+    private DigestCodeSource(URL url, Uri uri, Certificate[] certs, String digestAlgorithm)
+            throws MalformedURLException, IOException, NoSuchAlgorithmException {
+        this(url, uri, certs, checkAlgorithm(digestAlgorithm), computeDigest(uri, url, digestAlgorithm));
+    }
+
+    private DigestCodeSource(URL url, Uri uri, Certificate[] certs, String digestAlgorithm, byte[] digest)
             throws MalformedURLException {
-        super(uriToUrl(uri), certs);
+        super(url, certs);
         this.digestAlgorithm = digestAlgorithm;
         this.digest = digest;   // already a fresh array from computeDigest
         this.uri = uri;
         this.cachedHashCode = computeHashCode();
     }
 
-    private DigestCodeSource(Uri uri, CodeSigner[] signers,
-                             String digestAlgorithm, byte[] digest)
+    private DigestCodeSource(URL url, Uri uri, CodeSigner[] signers,
+            String digestAlgorithm, byte[] digest)
             throws MalformedURLException {
-        super(uriToUrl(uri), signers);
+        super(url, signers);
         this.digestAlgorithm = digestAlgorithm;
         this.digest = digest;
         this.uri = uri;
         this.cachedHashCode = computeHashCode();
     }
-    
+
     /**
      * Performs a clone for defensive copying following unmarshaling.
-     * 
+     *
      * @return clone of this DigestCodeSource.
      */
     @Override
-    public DigestCodeSource clone(){
+    public DigestCodeSource clone() {
         DigestCodeSource result = null;
         try {
             result = (DigestCodeSource) super.clone();
             result.digest = digest == null ? null : digest.clone();
-        } catch (CloneNotSupportedException ex) {} // ignore.
+        } catch (CloneNotSupportedException ex) {
+        } // ignore.
         return result;
     }
 
-    /** 
-     * Returns the digest algorithm name, e.g. {@code "SHA-256"}, or {@code null}. 
-     * 
-     * @return the digest algorithm name, e.g. {@code "SHA-256"}, or {@code null}.
+    /**
+     * Returns the digest algorithm name, e.g. {@code "SHA-256"}, or
+     * {@code null}.
+     *
+     * @return the digest algorithm name, e.g. {@code "SHA-256"}, or
+     * {@code null}.
      */
     public String getDigestAlgorithm() {
         return digestAlgorithm;
@@ -229,7 +252,7 @@ public final class DigestCodeSource extends CodeSource implements Externalizable
     /**
      * Returns a defensive copy of the content digest, or {@code null} if none
      * was provided.
-     * 
+     *
      * @return a defensive copy of the content digest, or {@code null} if none
      * was provided.
      */
@@ -244,25 +267,35 @@ public final class DigestCodeSource extends CodeSource implements Externalizable
 
     @Override
     public boolean equals(Object o) {
-        if (this == o) return true;
-        if (!(o instanceof DigestCodeSource that)) return false;
+        if (this == o) {
+            return true;
+        }
+        if (!(o instanceof DigestCodeSource that)) {
+            return false;
+        }
         // Compare location via RFC 3986 URI to avoid DNS resolution.
         if (uri != null && that.uri != null) {
-            if (!uri.equals(that.uri)) return false;
+            if (!uri.equals(that.uri)) {
+                return false;
+            }
         } else if (uri == null ^ that.uri == null) {
             // One null, one non-null: URI conversion failed on one side;
             // fall back to super which handles null URL equality safely.
             return super.equals(o);
         }
         // Both URIs null or both equal: continue with cert + digest checks.
-        if (!Arrays.equals(getCertificates(), that.getCertificates())) return false;
-        if (!stringsEqual(digestAlgorithm, that.digestAlgorithm)) return false;
+        if (!Arrays.equals(getCertificates(), that.getCertificates())) {
+            return false;
+        }
+        if (!stringsEqual(digestAlgorithm, that.digestAlgorithm)) {
+            return false;
+        }
         return Arrays.equals(digest, that.digest);
     }
-    
-        /**
-     * Returns a string describing this {@code DigestCodeSource}, including
-     * its URL, certificates, digest algorithm, and digest value.
+
+    /**
+     * Returns a string describing this {@code DigestCodeSource}, including its
+     * URL, certificates, digest algorithm, and digest value.
      * <p>
      * Format: {@code (url [cert ...] algorithm:hexDigest)}
      *
@@ -290,7 +323,9 @@ public final class DigestCodeSource extends CodeSource implements Externalizable
         return sb.toString();
     }
 
-    /** Encodes a byte array as a lowercase hex string. */
+    /**
+     * Encodes a byte array as a lowercase hex string.
+     */
     private static String hexEncode(byte[] bytes) {
         StringBuilder sb = new StringBuilder(bytes.length * 2);
         for (byte b : bytes) {
@@ -301,9 +336,9 @@ public final class DigestCodeSource extends CodeSource implements Externalizable
     }
 
     // Externalizable
-
     /**
-     * Binary stream layout — each nullable field is preceded by a presence byte:
+     * Binary stream layout — each nullable field is preceded by a presence
+     * byte:
      * <pre>
      *   byte  urlPresent        (FIELD_NULL | FIELD_PRESENT)
      *   if present: UTF  url.toExternalForm()
@@ -376,7 +411,8 @@ public final class DigestCodeSource extends CodeSource implements Externalizable
     /**
      * Restores all fields from the stream written by {@link #writeExternal}.
      *
-     * <p>DOS defence: array lengths read from the stream are validated against
+     * <p>
+     * DOS defence: array lengths read from the stream are validated against
      * hard ceilings ({@link #MAX_CERT_COUNT}, {@link #MAX_CERT_BYTES},
      * {@link #MAX_DIGEST_BYTES}) before any allocation is performed.
      */
@@ -415,8 +451,12 @@ public final class DigestCodeSource extends CodeSource implements Externalizable
                 in.readFully(enc);
                 String type = in.readUTF();
                 if (type.length() > 64)// no legitimate cert type is longer than this
+                {
                     throw new IOException("Certificate type string too long: " + type.length());
-                if (!"X.509".equals(type)) throw new IOException("Unknown Certificate Type: " + type);
+                }
+                if (!"X.509".equals(type)) {
+                    throw new IOException("Unknown Certificate Type: " + type);
+                }
                 try {
                     CertificateFactory cf = CertificateFactory.getInstance(type);
                     restoredCerts[i] = cf.generateCertificate(
@@ -440,9 +480,9 @@ public final class DigestCodeSource extends CodeSource implements Externalizable
             if (in.readByte() == FIELD_PRESENT) {
                 digestAlgorithm = checkAlgorithm(in.readUTF());
             }
-        } catch (IllegalArgumentException e){
-            throw new IOException("Algorithm not allowed here: ",e);
-        } catch (NullPointerException e){
+        } catch (IllegalArgumentException e) {
+            throw new IOException("Algorithm not allowed here: ", e);
+        } catch (NullPointerException e) {
             throw new IOException("No digest algorithm: ", e);
         }
 
@@ -464,36 +504,76 @@ public final class DigestCodeSource extends CodeSource implements Externalizable
     }
 
     // Static helpers
-
     /**
      * Computes the content digest of the artifact at the given URL.
      *
-     * <p>DOS defence: throws {@link IOException} if the stream exceeds
+     * <p>
+     * DOS defence: throws {@link IOException} if the stream exceeds
      * {@link #MAX_STREAM_BYTES} (default 512 MiB).
      *
-     * @param url       the data location (must not be {@code null})
+     * @param url the data location (must not be {@code null})
      * @param algorithm the digest algorithm (e.g. {@code "SHA-256"})
      * @return the raw digest bytes
-     * @throws IOException              if the URL cannot be read or the
-     *                                  stream exceeds {@code MAX_STREAM_BYTES}
+     * @throws IOException if the URL cannot be read or the stream exceeds
+     * {@code MAX_STREAM_BYTES}
      * @throws NoSuchAlgorithmException if the algorithm is unavailable
      */
-    public static byte[] computeDigest(URL url, String algorithm)
+    private static byte[] computeDigest(Uri uri, URL url, String algorithm)
             throws IOException, NoSuchAlgorithmException {
-        try (InputStream raw = url.openStream()) {
+        Result result = cache.computeIfAbsent(uri, new Function<>(){
+            @Override
+            public Result apply(Uri t) {
+                URLConnection connection = null;
+                IOException thrown = null;
+                try {
+                    connection = url.openConnection();
+                    connection.setUseCaches(true);
+                } catch (IOException ex) {
+                    thrown = ex;
+                }
+                Result result = new Result(connection, thrown);
+                return result;
+            }
+            
+        });
+        
+        try (InputStream raw = result.getConnection().getInputStream()) {
             InputStream in = raw instanceof BufferedInputStream
                     ? raw : new BufferedInputStream(raw, 8192);
-            return computeDigest(in, algorithm);
+            return computeDigest(uri, in, algorithm);
         }
     }
+    
+    private static final class Result {
+        private final URLConnection connection;
+        private final IOException thrown;
+        private Result(URLConnection c, IOException e){
+            connection = c;
+            thrown = e;
+        }
+        
+        private URLConnection getConnection() throws IOException {
+            if (thrown != null) throw thrown;
+            return connection;
+        }
+    }
+    
+    /*
+     * Cached URLConnection's.
+     */
+    private static final ConcurrentMap<Uri, Result> cache = 
+        RC.concurrentMap(
+                new ConcurrentHashMap<>(),
+                Ref.WEAK, Ref.STRONG, 5000L, 5000L);
 
     /**
      * Computes the digest from an already-open stream (stream is not closed).
      *
-     * <p>DOS defence: aborts with {@link IOException} after
+     * <p>
+     * DOS defence: aborts with {@link IOException} after
      * {@link #MAX_STREAM_BYTES} have been read.
      */
-    static byte[] computeDigest(InputStream in, String algorithm)
+    private static byte[] computeDigest(Uri uri, InputStream in, String algorithm)
             throws IOException, NoSuchAlgorithmException {
         MessageDigest md = MessageDigest.getInstance(algorithm);
         byte[] buf = new byte[8192];
@@ -512,7 +592,6 @@ public final class DigestCodeSource extends CodeSource implements Externalizable
     }
 
     // Private helpers
-
     private static Uri parseUri(String url) throws URISyntaxException {
         return url == null ? null : Uri.parseAndCreate(url);
     }
@@ -522,7 +601,9 @@ public final class DigestCodeSource extends CodeSource implements Externalizable
     }
 
     private static Uri uriFromUrl(URL url) {
-        if (url == null) return null;
+        if (url == null) {
+            return null;
+        }
         try {
             return Uri.urlToUri(url);
         } catch (URISyntaxException e) {
