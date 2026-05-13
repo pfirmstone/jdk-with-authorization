@@ -9,7 +9,7 @@
  * 
  *      http://www.apache.org/licenses/LICENSE-2.0
  * 
- * Unless required by applicable law or agreed to in writing, software
+ * Unless required by applicable law or agreed in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
@@ -269,7 +269,7 @@ public final class DigestCodeSource extends CodeSource implements Externalizable
                             baos.write(b, off, len);
                         }
                         @Override
-                        public void close() {
+    public void close() {
                             if (!aborted) {
                                 store.put(uri.toString(),
                                     new Entry(baos.toByteArray(), responseHeaders));
@@ -300,7 +300,20 @@ public final class DigestCodeSource extends CodeSource implements Externalizable
     private static final JarResponseCache JAR_CACHE = new JarResponseCache();
 
     static {
-        ResponseCache.setDefault(JAR_CACHE);
+        // ResponseCache.setDefault() requires NetPermission("setResponseCache").
+        // DigestCodeSource is a privileged JDK class (java.security package), so
+        // the call is made inside doPrivileged to assert that privilege explicitly.
+        // Without this, the static initialiser throws SecurityException under a
+        // SecurityManager that has not granted the permission to application code,
+        // which would cause a NoClassDefFoundError on every subsequent use of this
+        // class — self-defeating in the very environment it is designed for.
+        @SuppressWarnings("removal")
+        var unused = AccessController.doPrivileged(
+            (PrivilegedAction<Void>) () -> {
+                ResponseCache.setDefault(JAR_CACHE);
+                return null;
+            }
+        );
     }
 
     // -----------------------------------------------------------------------
@@ -945,15 +958,30 @@ public final class DigestCodeSource extends CodeSource implements Externalizable
     }
 
     /**
+     * Sentinel stored in {@link #cachedCerts} when {@link #getCertificates()}
+     * returns {@code null} (no certificates).  Distinguishes "not yet computed"
+     * ({@code cachedCerts == null}) from "computed and empty"
+     * ({@code cachedCerts == NO_CERTS}), preventing the cache from being
+     * permanently bypassed in the common no-certificate case.
+     */
+    private static final Certificate[] NO_CERTS = new Certificate[0];
+
+    /**
      * Returns the cached certificate array, computing and caching it on the
      * first call.  Avoids repeated defensive copies from
      * {@link CodeSource#getCertificates()} in {@link #equals} and
      * {@link #computeHashCode}.
+     *
+     * <p>{@code null} is returned (and stored as {@link #NO_CERTS}) when the
+     * underlying {@code CodeSource} carries no certificates, preserving the
+     * contract of {@link #getCertificates()}.
      */
     private Certificate[] cachedCerts() {
-        if (cachedCerts == null) {
-            cachedCerts = getCertificates(); // one defensive copy, then reused
+        Certificate[] c = cachedCerts;          // single volatile read
+        if (c == null) {
+            Certificate[] got = getCertificates();
+            cachedCerts = c = (got == null) ? NO_CERTS : got;
         }
-        return cachedCerts;
+        return (c == NO_CERTS) ? null : c;
     }
 }

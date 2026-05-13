@@ -248,9 +248,13 @@ public class SecureClassLoader extends ClassLoader {
             throw new SecurityException("URI Syntax error: ", ex);
         }
 
-        // Always check the cache first — avoids redundant digest computation,
-        // ProtectionDomain construction, and (in the plain-CS + location path)
-        // an unnecessary DigestCodeSource download on every defineClass call.
+        // Always check the cache first — permission checks (URLPermission and
+        // LOAD_CLASS_ALLOW) are performed only on the first construction of a
+        // ProtectionDomain for a given CodeSource key.  Subsequent defineClass
+        // calls for the same source return the already-vetted domain directly.
+        // This is safe: the pdcache is an instance field of this ClassLoader and
+        // cannot be externally mutated; an entry is only ever placed here after
+        // all permission checks have already passed.
         ProtectionDomain domain = pdcache.get(key);
         if (domain != null) return domain;
 
@@ -259,6 +263,10 @@ public class SecureClassLoader extends ClassLoader {
         ProtectionDomain pd;
         DigestCodeSource digest = null;
         if (sm != null) {
+            // SpiffeCredentialManager.getInstance() opens a SocketChannel which
+            // calls SelectorProvider.provider() → getSystemClassLoader().  During
+            // initPhase3 the system class loader is not yet ready, so defer the
+            // SPIFFE subject lookup until the VM is fully booted.
             Subject sub = VM.isBooted() ? SpiffeCredentialManager.getInstance().getSubject() : null;
             Principal[] pals = null;
             if (sub != null && sub.isReadOnly()) {
@@ -270,6 +278,10 @@ public class SecureClassLoader extends ClassLoader {
                 Permission checkURL = new URLPermission(key.uri.toString(), "GET:");
                 sm.checkPermission(checkURL,
                         AccessControlContext.create(new ProtectionDomain[]{pd}, false));
+                // Promote plain CodeSource to DigestCodeSource by downloading the
+                // artifact and computing its content digest.  The algorithm is
+                // hard-coded to "SHA-256" for now; making it configurable is a
+                // planned follow-up.
                 try {
                     digest = new DigestCodeSource(key.uri, key.certs, "SHA-256");
                     perms = SecureClassLoader.this.getPermissions(digest);
