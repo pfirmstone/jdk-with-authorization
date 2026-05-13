@@ -129,6 +129,16 @@ public final class DigestCodeSource extends CodeSource implements Externalizable
     private transient byte[] digest;
     private transient Uri uri;           // RFC 3986 form; avoids DNS in equals/hashCode
     private transient int cachedHashCode;
+    /**
+     * Cached defensive copy of the certificate array returned by
+     * {@link #getCertificates()}.  {@code getCertificates()} allocates a new
+     * array on every call; caching the result here avoids repeated allocation
+     * in the hot paths of {@link #equals} and {@link #computeHashCode}.
+     *
+     * <p>Populated lazily on the first call to {@link #cachedCerts()}.
+     * {@code null} means "not yet computed", not "no certificates".
+     */
+    private transient Certificate[] cachedCerts;
 
     // -----------------------------------------------------------------------
     // Layer 1 — Network cache: JarResponseCache + ResponseCache.setDefault()
@@ -390,18 +400,42 @@ public final class DigestCodeSource extends CodeSource implements Externalizable
 
     /**
      * Promotes a plain {@link CodeSource} to a {@code DigestCodeSource},
-     * attaching a pre-computed digest. Used by SecureClassLoader
+     * attaching a pre-computed digest. Used by SecureClassLoader.
      *
      * @param cs the source to promote (must not be {@code null})
-     * @param digestAlgorithm the hash algorithm name (may be {@code null})
+     * @param digestAlgorithm the hash algorithm name
+     * @throws IllegalArgumentException if {@code cs.getLocation()} is {@code null};
+     *         a {@code DigestCodeSource} requires a non-null location to
+     *         download and hash the artifact.
      * @throws IOException if a connection cannot be established.
      * @throws NoSuchAlgorithmException if the provider isn't available.
-     * @throws URISyntaxException if the CodeSource URL is not RFC3986
-     * compliant.
+     * @throws URISyntaxException if the CodeSource URL is not RFC 3986 compliant.
      */
     public DigestCodeSource(CodeSource cs,
             String digestAlgorithm) throws IOException, NoSuchAlgorithmException, URISyntaxException {
-        this(cs.location, Uri.urlToUri(cs.location), cs.getCertificates(), digestAlgorithm);
+        this(cs, requireLocation(cs), digestAlgorithm);
+    }
+
+    /** Shim that receives the already-validated location so it is only resolved once. */
+    private DigestCodeSource(CodeSource cs, URL loc, String digestAlgorithm)
+            throws IOException, NoSuchAlgorithmException, URISyntaxException {
+        this(loc, Uri.urlToUri(loc), cs.getCertificates(), digestAlgorithm);
+    }
+
+    /**
+     * Guards against a {@code null} location in the CodeSource-promotion
+     * constructor.  Returns {@code cs.getLocation()} when non-null.
+     *
+     * @throws IllegalArgumentException if {@code cs.getLocation()} is {@code null}
+     */
+    private static URL requireLocation(CodeSource cs) {
+        URL loc = cs.getLocation();
+        if (loc == null) {
+            throw new IllegalArgumentException(
+                    "Cannot promote a CodeSource with a null location to a"
+                    + " DigestCodeSource: no URL to download and hash");
+        }
+        return loc;
     }
 
     // Package-private auto-compute helpers used in Phase 2 of SecureClassLoader.
@@ -491,6 +525,37 @@ public final class DigestCodeSource extends CodeSource implements Externalizable
         return cachedHashCode;
     }
 
+    /**
+     * Compares this {@code DigestCodeSource} to {@code o} for equality.
+     *
+     * <h4>No DNS — URI comparison only</h4>
+     * <p>
+     * Location equality is determined by RFC 3986 {@link Uri} comparison, which
+     * never performs a DNS lookup.  {@link CodeSource#equals} is intentionally
+     * <em>never</em> called; that method resolves hostnames and must be avoided
+     * in security-sensitive paths.
+     *
+     * <h4>Invariant: {@code uri} is non-null whenever {@code location} is non-null</h4>
+     * <p>
+     * Every constructor either accepts a pre-validated {@link Uri} or calls
+     * {@link Uri#urlToUri} / {@link Uri#parseAndCreate}, both of which throw
+     * {@link URISyntaxException} on failure.  {@link #readExternal} similarly
+     * throws {@link IOException} if the URL cannot be converted.  Therefore a
+     * successfully constructed instance always satisfies
+     * {@code (location == null) == (uri == null)}.
+     *
+     * <h4>Intentional incompatibility with plain {@link CodeSource}</h4>
+     * <p>
+     * {@code false} is returned whenever {@code o} is not also a
+     * {@code DigestCodeSource}.  A plain {@code CodeSource} and a
+     * {@code DigestCodeSource} that share the same URL and certificates are
+     * deliberately <em>not</em> considered equal, because equality without a
+     * matching digest would undermine the content-addressed identity guarantee.
+     *
+     * @param o the object to compare
+     * @return {@code true} if {@code o} is a {@code DigestCodeSource} with
+     *         equal URI, certificates, digest algorithm, and digest bytes
+     */
     @Override
     public boolean equals(Object o) {
         if (this == o) {
@@ -499,18 +564,17 @@ public final class DigestCodeSource extends CodeSource implements Externalizable
         if (!(o instanceof DigestCodeSource that)) {
             return false;
         }
-        // Compare location via RFC 3986 URI to avoid DNS resolution.
-        if (uri != null && that.uri != null) {
-            if (!uri.equals(that.uri)) {
-                return false;
-            }
-        } else if (uri == null ^ that.uri == null) {
-            // One null, one non-null: URI conversion failed on one side;
-            // fall back to super which handles null URL equality safely.
-            return super.equals(o);
+        // URI comparison — never null on a successfully constructed instance
+        // when location is non-null, so XOR here means one has a location and
+        // the other does not: they are not equal.
+        if (uri == null ^ that.uri == null) {
+            return false;
         }
-        // Both URIs null or both equal: continue with cert + digest checks.
-        if (!Arrays.equals(getCertificates(), that.getCertificates())) {
+        if (uri != null && !uri.equals(that.uri)) {
+            return false;
+        }
+        // Both URIs are null (both have null location) or both are equal.
+        if (!Arrays.equals(cachedCerts(), that.cachedCerts())) {
             return false;
         }
         if (!stringsEqual(digestAlgorithm, that.digestAlgorithm)) {
@@ -529,14 +593,15 @@ public final class DigestCodeSource extends CodeSource implements Externalizable
      */
     @Override
     public String toString() {
-        // Start from CodeSource's representation, which ends with ')'.
+        // Start from CodeSource's representation, which ends with ')'..
         String base = super.toString();
         if (digestAlgorithm == null && digest == null) {
             return base;
         }
-        // Strip the trailing ')' so we can append digest info.
+        // super.toString() closes its output with ')'.  Strip that trailing
+        // character so we can append digest info inside the same pair of parens.
         StringBuilder sb = new StringBuilder(base.length() + 72);
-        sb.append(base);
+        sb.append(base, 0, base.length() - 1);   // exclude the closing ')'
         sb.append(' ');
         sb.append(digestAlgorithm != null ? digestAlgorithm : "<null-algorithm>");
         sb.append(':');
@@ -728,7 +793,7 @@ public final class DigestCodeSource extends CodeSource implements Externalizable
             in.readFully(digest);
         }
 
-        uri = uriFromUrl(loc);
+        uri = uriFromUrl(loc);   // throws IOException if loc is non-null but unparseable
         cachedHashCode = computeHashCode();
     }
 
@@ -792,10 +857,12 @@ public final class DigestCodeSource extends CodeSource implements Externalizable
         DigestCacheKey key = new DigestCacheKey(uri, algorithm);
         byte[] trusted = digestCache.putIfAbsent(key, computed.clone());
         if (trusted != null && !Arrays.equals(trusted, computed)) {
-            // Artifact has changed since first load — evict stale entries and
-            // refuse to proceed (fail-secure).
-            digestCache.remove(key);
-            JAR_CACHE.invalidate(Uri.uriToURI(uri)); // uri is already a validated Uri; toURI() should not fail.
+            // The artifact has changed since the digest was first trusted.
+            // Evict only the raw-bytes cache entry so the next access re-downloads
+            // fresh content; the trusted digest entry is deliberately kept so that
+            // any concurrent thread that also downloaded the malicious version
+            // cannot silently re-establish it as trusted after this remove.
+            JAR_CACHE.invalidate(Uri.uriToURI(uri));
             throw new SecurityException(
                     "Remote artifact digest has changed since first load; "
                     + "refusing to load from: " + uri);
@@ -841,21 +908,33 @@ public final class DigestCodeSource extends CodeSource implements Externalizable
         return uri == null ? null : uri.toURL();
     }
 
-    private static Uri uriFromUrl(URL url) {
+    /**
+     * Converts a {@link URL} to a {@link Uri}, throwing {@link IOException}
+     * if the conversion fails.
+     *
+     * <p>Called from {@link #readExternal} where a parse failure indicates a
+     * malformed stream and must not be silently swallowed.
+     *
+     * @throws IOException if {@code url} is non-null but cannot be represented
+     *                     as a valid RFC 3986 URI
+     */
+    private static Uri uriFromUrl(URL url) throws IOException {
         if (url == null) {
             return null;
         }
         try {
             return Uri.urlToUri(url);
         } catch (URISyntaxException e) {
-            return null;    // equals/implies fall back to super when uri == null
+            throw new IOException(
+                    "Cannot convert URL to RFC 3986 URI in DigestCodeSource stream: "
+                    + url, e);
         }
     }
 
     private int computeHashCode() {
         int h = 7;
         h = 31 * h + (uri != null ? uri.hashCode() : 0);
-        h = 31 * h + Arrays.hashCode(getCertificates());
+        h = 31 * h + Arrays.hashCode(cachedCerts());   // use cached copy
         h = 31 * h + (digestAlgorithm != null ? digestAlgorithm.hashCode() : 0);
         h = 31 * h + Arrays.hashCode(digest);
         return h;
@@ -863,5 +942,18 @@ public final class DigestCodeSource extends CodeSource implements Externalizable
 
     private static boolean stringsEqual(String a, String b) {
         return a == b || (a != null && a.equals(b));
+    }
+
+    /**
+     * Returns the cached certificate array, computing and caching it on the
+     * first call.  Avoids repeated defensive copies from
+     * {@link CodeSource#getCertificates()} in {@link #equals} and
+     * {@link #computeHashCode}.
+     */
+    private Certificate[] cachedCerts() {
+        if (cachedCerts == null) {
+            cachedCerts = getCertificates(); // one defensive copy, then reused
+        }
+        return cachedCerts;
     }
 }
