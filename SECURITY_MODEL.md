@@ -1,8 +1,8 @@
 # Dirty Chai Security Model
 
-- **Version:** 2.2
-- **Date:** 2026-05-12
-- **Last Reviewed:** 2026-05-12
+- **Version:** 2.3
+- **Date:** 2026-05-13
+- **Last Reviewed:** 2026-05-13
 - **Project:** Dirty Chai
 - **Repository:** https://github.com/pfirmstone/DirtyChai
 
@@ -17,6 +17,8 @@ This document covers the active model implemented in:
 
 - `java.lang.System`
 - `java.security.AccessController`
+- `java.security.DigestCodeSource`
+- `java.security.SecureClassLoader`
 - `org.apache.river.api.security.*` (JGDMS compatibility contracts)
 - `au.zeus.jdk.authorization.policy.ConcurrentPolicyFile`
 - `au.zeus.jdk.authorization.sm.CombinerSecurityManager`
@@ -75,6 +77,7 @@ If any required condition does not match, the operation is denied.
 4. **Policy-driven principal enforcement**: principal checks apply when grants include `principal` clauses.
 5. **Caller-sensitive privilege boundaries**: privileged APIs retain caller-sensitive behavior.
 6. **URI-validated code source matching**: policy matching relies on RFC 3986 URI handling.
+7. **Content-hash code source integrity**: when a `SecurityManager` is active, `SecureClassLoader` promotes every network-loaded `CodeSource` to a `DigestCodeSource` (SHA-256 by default) before computing the `ProtectionDomain`.  Policy grants that use a `digest` clause are only matched by `DigestCodeSource`-backed domains, enforcing content-addressed trust.
 
 ---
 
@@ -193,6 +196,10 @@ ConcurrentPolicyFile.implies(ProtectionDomain pd, Permission perm)
   └─ for each PermissionGrant:
          ├─ CodeSource match? (RFC 3986 URI string compare, no DNS)
          │     via Uri.java — normalized at parse time
+         ├─ Digest match? (DigestGrant only)
+         │     pd.getCodeSource() must be DigestCodeSource
+         │     algorithm and digest bytes must match exactly
+         │     plain CodeSource never implies a DigestGrant (fail-secure)
          ├─ Principal match? (Subject principal class + name exact match)
          └─ grant.getPermissions().implies(perm)?
                 └─ Permission.implies() per permission type
@@ -296,6 +303,7 @@ If `getResource(Class<?>)` cannot construct the URI because of `MalformedURLExce
 Policy decisions are computed from:
 
 - **CodeSource** (location/signer)
+- **Content digest** (when grant clauses use a `digest` selector — see §8.1)
 - **Principals** (when grant clauses require them)
 - **Permission implication rules**
 
@@ -304,12 +312,106 @@ Policy decisions are computed from:
 - No matching grant => denied.
 - Invalid or unmatched inputs do not gain privileges.
 
+### Grant clause selectors
+
+A policy `grant` block may combine any of:
+
+| Selector | Syntax | Effect |
+|---|---|---|
+| `codebase` | `codebase "https://example.com/lib.jar"` | URI prefix/wildcard match against the `CodeSource` location |
+| `signedby` | `signedby "alice,bob"` | Certificate signer aliases must all be present |
+| `digest` | `digest "SHA-256:a1b2c3..."` | Content-hash match; only `DigestCodeSource`-backed domains qualify |
+| `principal` | `principal com.example.MyPrincipal "name"` | Subject principal class + name exact match |
+
+Selectors are ANDed: all present selectors must match for the grant to apply.
+
 ### Principal semantics
 
 - Grants **without** principal clauses can apply without authenticated Subject identity.
 - Grants **with** principal clauses require matching Subject principals.
 
 This makes principal enforcement configurable by policy rather than globally forced.
+
+---
+
+## 8.1) Content-Addressed Trust (`DigestCodeSource` and `DigestGrant`)
+
+### Overview
+
+`DigestCodeSource` extends `CodeSource` with a cryptographic content digest of the artifact at the code location. When a `SecurityManager` is active, `SecureClassLoader.getProtectionDomain(CodeSource)` automatically promotes every network-`CodeSource` to a `DigestCodeSource` before assigning a `ProtectionDomain`, so the loaded class is always bound to the artifact's hash rather than merely to its URL.
+
+### `SecureClassLoader` promotion flow
+
+```
+SecureClassLoader.defineClass(name, bytes, cs)
+  │
+  ├─ cs already a DigestCodeSource? → use pdcache directly (skip re-download)
+  │
+  ├─ Compute CodeSourceKey(cs) [URI + certs + digest]
+  │
+  ├─ pdcache hit? → return cached ProtectionDomain
+  │
+  ├─ SecurityManager active and codebase != null?
+  │   ├─ check URLPermission("GET:") — must be granted to the new domain
+  │   ├─ download artifact; compute SHA-256 digest
+  │   │     (served via JarResponseCache on subsequent loads)
+  │   ├─ promote cs → DigestCodeSource(uri, certs, "SHA-256")
+  │   └─ recompute permissions from DigestCodeSource
+  │
+  ├─ check LoadClassPermission.LOAD_CLASS_ALLOW
+  └─ pdcache.putIfAbsent(key, pd) → return ProtectionDomain
+```
+
+### `DigestCodeSource` equality and hashing
+
+Equality uses RFC 3986 URI form (no DNS lookup), certificates, digest algorithm name, and digest bytes. A plain `CodeSource` and a `DigestCodeSource` for the same URL are **never equal**, preventing cached plain-CS lookups from bypassing the digest check.
+
+### Allowed digest algorithms
+
+`DigestCodeSource` accepts only the following algorithms; all others throw `IllegalArgumentException`:
+
+```
+SHA-256, SHA-384, SHA-512, SHA-512/256, SHA3-256, SHA3-384, SHA3-512
+```
+
+### `DigestGrant` implication rules
+
+A `DigestGrant` (produced by a policy `digest` clause) implies a `ProtectionDomain` only when **all** of the following hold:
+
+1. URI / codebase match (delegated to `URIGrant`).
+2. Certificate / signer match (delegated to `CertificateGrant`).
+3. Principal match (delegated to `URIGrant`).
+4. `pd.getCodeSource()` is a `DigestCodeSource` instance.
+5. The algorithm name matches exactly (case-sensitive).
+6. The digest bytes match exactly (`Arrays.equals`).
+
+A `DigestGrant` always returns `false` for a plain `ClassLoader` argument (digest is indeterminate without a `CodeSource`).
+
+### Network caching (JarResponseCache)
+
+`DigestCodeSource` installs a JVM-wide `ResponseCache` (`JarResponseCache`) during class initialization via `AccessController.doPrivileged`. This cache stores complete JAR/resource response bodies keyed by URI, avoiding repeated network downloads when the same artifact is loaded multiple times within a JVM lifetime. The `doPrivileged` call is required because `ResponseCache.setDefault()` demands `NetPermission("setResponseCache")`, which application code may not hold; `DigestCodeSource` is a `java.base` class and asserts that privilege explicitly.
+
+### DOS defences
+
+| Limit | Value | Purpose |
+|---|---|---|
+| `MAX_STREAM_BYTES` | 512 MiB | Abort digest computation on abnormally large responses |
+| `MAX_CERT_COUNT` | 100 | Bound certificate array size during deserialization |
+| `MAX_CERT_BYTES` | 64 KiB | Bound per-certificate DER size during deserialization |
+| `MAX_DIGEST_BYTES` | 512 bytes | Bound digest field size during deserialization |
+
+### Policy file example
+
+```
+grant codebase "https://trusted.example.com/lib.jar",
+      digest "SHA-256:3a7bd3e2360a3d29eea436fcfb7e44c735d117c42d1c1835420b6b9942dd4f1b"
+{
+    permission java.io.FilePermission "/tmp/-", "read,write";
+};
+```
+
+The grant is matched **only** if the artifact at `https://trusted.example.com/lib.jar`
+produces the stated SHA-256 digest. Any URL pointing to a different artifact — even if the URL is identical — will not match.
 
 ---
 
@@ -449,6 +551,10 @@ This section mirrors the thread-creation analysis for adjacent APIs that define 
 - Proxy-class descriptor deserialization via `ObjectInputStream.readProxyDesc()` is
   not covered by `SerialObjectPermission`; proxy-deserialization gadget chains are
   therefore not blocked by the current guard placement (see G-3 in section 13)
+- **Content substitution / dependency confusion**: an attacker serving a different artifact
+  at a trusted URL cannot satisfy a `digest`-constrained grant — the policy will not match
+  unless the artifact's SHA-256 (or other allowed algorithm) matches the pinned value in the
+  `digest` clause
 
 ---
 
@@ -492,6 +598,8 @@ This section mirrors the thread-creation analysis for adjacent APIs that define 
 4. Policy evaluation must remain deny-by-default.
 5. Validation failures must remain fail-secure.
 6. `WorkerSubject` is never injected via scoped-subject handling into an `AccessControlContext`; process identity remains ambient via `ProtectionDomain`.
+7. A `DigestGrant` never implies a domain whose `CodeSource` is a plain `CodeSource` — the `CodeSource` must be a `DigestCodeSource` with a matching algorithm and digest; otherwise the grant does not apply.
+8. `SecureClassLoader` stores a `ProtectionDomain` in `pdcache` only after all permission checks have passed and the digest has been computed; a plain `CodeSource` key is never stored, so no cache hit can bypass the digest requirement on a subsequent `defineClass` call.
 
 ---
 
