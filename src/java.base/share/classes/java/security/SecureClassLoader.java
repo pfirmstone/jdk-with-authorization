@@ -247,12 +247,13 @@ public class SecureClassLoader extends ClassLoader {
         // only), and the fragment is not considered.
         CodeSourceKey key = null;
         ProtectionDomain domain;
+        DigestCodeSource digest = null;
+        try {
+            key = new CodeSourceKey(cs);
+        } catch (URISyntaxException ex) {
+            throw new SecurityException("URI Syntax error: ", ex);
+        }
         if (cs instanceof DigestCodeSource){
-            try {
-                key = new CodeSourceKey(cs);
-            } catch (URISyntaxException ex) {
-                throw new SecurityException("URI Syntax error: ", ex);
-            }
             domain = pdcache.get(key);
             if (domain != null) return domain;
         }
@@ -279,7 +280,7 @@ public class SecureClassLoader extends ClassLoader {
                         AccessControlContext.create(new ProtectionDomain[]{pd}, false));
                 // Plain CodeSource: download the artifact and compute its digest.
                 // Algorithm is "SHA-256" for now; will be made configurable.
-                DigestCodeSource digest;
+                
                 try {
                     digest = new DigestCodeSource(key.uri, key.certs, "SHA-256");
                     perms = SecureClassLoader.this.getPermissions(digest);
@@ -298,9 +299,13 @@ public class SecureClassLoader extends ClassLoader {
             DebugHolder.debug.println(" getPermissions " + pd);
             DebugHolder.debug.println("");
         }
-        ProtectionDomain existed = pdcache.putIfAbsent(key, pd);
-        if (existed != null) return existed;
-        return pd;
+        if (digest instanceof DigestCodeSource){
+            ProtectionDomain existed = pdcache.putIfAbsent(key, pd);
+            if (existed != null) return existed;
+            return pd;
+        } else {
+            throw new SecurityException("Unable to determine Digest of CodeSource URL");
+        }
     }
 
     private static class CodeSourceKey {
