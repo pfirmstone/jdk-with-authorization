@@ -182,8 +182,9 @@ class PermissionGrantBuilderImp extends PermissionGrantBuilder implements
                 return new ProtectionDomainGrant(domain, principals, permissions );
             case PRINCIPAL:
                 return new PrincipalGrant(principals, permissions);
-            // New case for DIGEST:
             case DIGEST:
+                if (uris != null && !uris.isEmpty()) uri = uris.toArray(new String[uris.size()]);
+                if (uri == null) uri = new String[0];
                 return new DigestGrant(uri, digestAlgorithm, digest,
                                        certs, aliases, principals, permissions);
             default:
