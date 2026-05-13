@@ -245,14 +245,17 @@ public class SecureClassLoader extends ClassLoader {
         // same manner as the CodeSource when compared for equality except
         // that no nameservice lookup is done on the hostname (String comparison
         // only), and the fragment is not considered.
-        CodeSourceKey key;
-        try {
-            key = new CodeSourceKey(cs);
-        } catch (URISyntaxException ex) {
-            throw new SecurityException("URI Syntax error: ", ex);
+        CodeSourceKey key = null;
+        ProtectionDomain domain;
+        if (cs instanceof DigestCodeSource){
+            try {
+                key = new CodeSourceKey(cs);
+            } catch (URISyntaxException ex) {
+                throw new SecurityException("URI Syntax error: ", ex);
+            }
+            domain = pdcache.get(key);
+            if (domain != null) return domain;
         }
-        ProtectionDomain domain = pdcache.get(key);
-        if (domain != null) return domain;
         PermissionCollection<Permission> perms
                 = SecureClassLoader.this.getPermissions(cs);
         // SpiffeCredentialManager.getInstance() opens a SocketChannel which
@@ -274,29 +277,19 @@ public class SecureClassLoader extends ClassLoader {
                 Permission checkURL = new URLPermission(key.uri.toString(), "GET:");
                 sm.checkPermission(checkURL,
                         AccessControlContext.create(new ProtectionDomain[]{pd}, false));
-
-                if (cs instanceof DigestCodeSource) {
-                    // The caller already supplies a content-addressed DigestCodeSource.
-                    // Its digest IS its code identity; re-downloading the URL is not
-                    // required.  The LoadClassPermission check below still enforces
-                    // the security gate before any class is defined.
-                    perms = SecureClassLoader.this.getPermissions(cs);
-                    pd = new ProtectionDomain(cs, perms, SecureClassLoader.this, pals);
-                } else {
-                    // Plain CodeSource: download the artifact and compute its digest.
-                    // Algorithm is "SHA-256" for now; will be made configurable.
-                    DigestCodeSource digest;
-                    try {
-                        digest = new DigestCodeSource(key.uri, key.certs, "SHA-256");
-                        perms = SecureClassLoader.this.getPermissions(digest);
-                    } catch (IOException ex) {
-                        throw new SecurityException("Unable to contact URL: ", ex);
-                    } catch (NoSuchAlgorithmException ex) {
-                        throw new SecurityException(
-                                "URL Provider not loaded or unknown algorithm: ", ex);
-                    }
-                    pd = new ProtectionDomain(digest, perms, SecureClassLoader.this, pals);
+                // Plain CodeSource: download the artifact and compute its digest.
+                // Algorithm is "SHA-256" for now; will be made configurable.
+                DigestCodeSource digest;
+                try {
+                    digest = new DigestCodeSource(key.uri, key.certs, "SHA-256");
+                    perms = SecureClassLoader.this.getPermissions(digest);
+                } catch (IOException ex) {
+                    throw new SecurityException("Unable to contact URL: ", ex);
+                } catch (NoSuchAlgorithmException ex) {
+                    throw new SecurityException(
+                            "URL Provider not loaded or unknown algorithm: ", ex);
                 }
+                pd = new ProtectionDomain(digest, perms, SecureClassLoader.this, pals);
             }
             sm.checkPermission(LOAD_CLASS_ALLOW,
             AccessControlContext.create(new ProtectionDomain[]{pd}, false));
