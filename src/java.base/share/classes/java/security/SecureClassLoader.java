@@ -241,44 +241,35 @@ public class SecureClassLoader extends ClassLoader {
             return null;
         }
 
-        // Use a CodeSourceKey object key. It should behave in the
-        // same manner as the CodeSource when compared for equality except
-        // that no nameservice lookup is done on the hostname (String comparison
-        // only), and the fragment is not considered.
-        CodeSourceKey key = null;
-        DigestCodeSource digest = null;
+        CodeSourceKey key;
         try {
             key = new CodeSourceKey(cs);
         } catch (URISyntaxException ex) {
             throw new SecurityException("URI Syntax error: ", ex);
         }
+
+        // Always check the cache first — avoids redundant digest computation,
+        // ProtectionDomain construction, and (in the plain-CS + location path)
+        // an unnecessary DigestCodeSource download on every defineClass call.
+        ProtectionDomain domain = pdcache.get(key);
+        if (domain != null) return domain;
+
         SecurityManager sm = System.getSecurityManager();
-        if (cs instanceof DigestCodeSource || cs.location == null || sm == null){
-            ProtectionDomain domain = pdcache.get(key);
-            if (domain != null) return domain;
-        }
-        PermissionCollection<Permission> perms
-                = SecureClassLoader.this.getPermissions(cs);
+        PermissionCollection<Permission> perms = SecureClassLoader.this.getPermissions(cs);
         ProtectionDomain pd;
+        DigestCodeSource digest = null;
         if (sm != null) {
-            // SpiffeCredentialManager.getInstance() opens a SocketChannel which
-            // calls SelectorProvider.provider() → getSystemClassLoader().  During
-            // initPhase3 the system class loader is not yet ready, so defer the
-            // SPIFFE subject lookup until the VM is fully booted.
             Subject sub = VM.isBooted() ? SpiffeCredentialManager.getInstance().getSubject() : null;
-            Principal [] pals = null;
-            if (sub != null && sub.isReadOnly()){
+            Principal[] pals = null;
+            if (sub != null && sub.isReadOnly()) {
                 Set<Principal> prin = sub.getPrincipals();
                 pals = prin.toArray(new Principal[0]);
             }
             pd = new ProtectionDomain(cs, perms, SecureClassLoader.this, pals);
-            if (cs.location != null){
+            if (cs.location != null) {
                 Permission checkURL = new URLPermission(key.uri.toString(), "GET:");
                 sm.checkPermission(checkURL,
                         AccessControlContext.create(new ProtectionDomain[]{pd}, false));
-                // Plain CodeSource: download the artifact and compute its digest.
-                // Algorithm is "SHA-256" for now; will be made configurable.
-
                 try {
                     digest = new DigestCodeSource(key.uri, key.certs, "SHA-256");
                     perms = SecureClassLoader.this.getPermissions(digest);
@@ -290,10 +281,10 @@ public class SecureClassLoader extends ClassLoader {
                 }
                 pd = new ProtectionDomain(digest, perms, SecureClassLoader.this, pals);
                 sm.checkPermission(LOAD_CLASS_ALLOW,
-                    AccessControlContext.create(new ProtectionDomain[]{pd}, false));
+                        AccessControlContext.create(new ProtectionDomain[]{pd}, false));
             } else {
                 sm.checkPermission(LOAD_CLASS_ALLOW,
-                    AccessControlContext.create(new ProtectionDomain[]{pd}, false));
+                        AccessControlContext.create(new ProtectionDomain[]{pd}, false));
             }
         } else {
             pd = new ProtectionDomain(cs, perms, SecureClassLoader.this, null);

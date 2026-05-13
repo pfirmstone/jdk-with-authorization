@@ -138,7 +138,7 @@ public final class DigestCodeSource extends CodeSource implements Externalizable
      * <p>Populated lazily on the first call to {@link #cachedCerts()}.
      * {@code null} means "not yet computed", not "no certificates".
      */
-    private transient Certificate[] cachedCerts;
+    private volatile transient Certificate[] cachedCerts;
 
     // -----------------------------------------------------------------------
     // Layer 1 — Network cache: JarResponseCache + ResponseCache.setDefault()
