@@ -246,33 +246,32 @@ public class SecureClassLoader extends ClassLoader {
         // that no nameservice lookup is done on the hostname (String comparison
         // only), and the fragment is not considered.
         CodeSourceKey key = null;
-        ProtectionDomain domain;
         DigestCodeSource digest = null;
         try {
             key = new CodeSourceKey(cs);
         } catch (URISyntaxException ex) {
             throw new SecurityException("URI Syntax error: ", ex);
         }
-        if (cs instanceof DigestCodeSource || cs.location == null){
-            domain = pdcache.get(key);
+        SecurityManager sm = System.getSecurityManager();
+        if (cs instanceof DigestCodeSource || cs.location == null || sm == null){
+            ProtectionDomain domain = pdcache.get(key);
             if (domain != null) return domain;
         }
         PermissionCollection<Permission> perms
                 = SecureClassLoader.this.getPermissions(cs);
-        // SpiffeCredentialManager.getInstance() opens a SocketChannel which
-        // calls SelectorProvider.provider() → getSystemClassLoader().  During
-        // initPhase3 the system class loader is not yet ready, so defer the
-        // SPIFFE subject lookup until the VM is fully booted.
-        Subject sub = VM.isBooted() ? SpiffeCredentialManager.getInstance().getSubject() : null;
-        Principal [] pals = null;
-        if (sub != null && sub.isReadOnly()){
-            Set<Principal> prin = sub.getPrincipals();
-            pals = prin.toArray(new Principal[0]);
-        }
-        ProtectionDomain pd = new ProtectionDomain(
-                cs, perms, SecureClassLoader.this, pals);
-        SecurityManager sm = System.getSecurityManager();
+        ProtectionDomain pd;
         if (sm != null) {
+            // SpiffeCredentialManager.getInstance() opens a SocketChannel which
+            // calls SelectorProvider.provider() → getSystemClassLoader().  During
+            // initPhase3 the system class loader is not yet ready, so defer the
+            // SPIFFE subject lookup until the VM is fully booted.
+            Subject sub = VM.isBooted() ? SpiffeCredentialManager.getInstance().getSubject() : null;
+            Principal [] pals = null;
+            if (sub != null && sub.isReadOnly()){
+                Set<Principal> prin = sub.getPrincipals();
+                pals = prin.toArray(new Principal[0]);
+            }
+            pd = new ProtectionDomain(cs, perms, SecureClassLoader.this, pals);
             if (cs.location != null){
                 Permission checkURL = new URLPermission(key.uri.toString(), "GET:");
                 sm.checkPermission(checkURL,
@@ -296,7 +295,9 @@ public class SecureClassLoader extends ClassLoader {
                 sm.checkPermission(LOAD_CLASS_ALLOW,
                     AccessControlContext.create(new ProtectionDomain[]{pd}, false));
             }
-        } 
+        } else {
+            pd = new ProtectionDomain(cs, perms, SecureClassLoader.this, null);
+        }
         if (DebugHolder.debug != null) {
             DebugHolder.debug.println(" getPermissions " + pd);
             DebugHolder.debug.println("");
