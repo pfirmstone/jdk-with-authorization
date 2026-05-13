@@ -268,31 +268,38 @@ public class SecureClassLoader extends ClassLoader {
         ProtectionDomain pd = new ProtectionDomain(
                 cs, perms, SecureClassLoader.this, pals);
         SecurityManager sm = System.getSecurityManager();
-        if (sm != null){
+        if (sm != null) {
             URL codebase = cs.getLocation();
-            if (codebase != null){
-                Permission checkURL;
-                // RFC3986 Uri is normalized.
-                checkURL = new URLPermission(key.uri.toString(),"GET:");
+            if (codebase != null) {
+                Permission checkURL = new URLPermission(key.uri.toString(), "GET:");
                 sm.checkPermission(checkURL,
-                        AccessControlContext.create(new ProtectionDomain []{pd}, false));
-                DigestCodeSource digest;
-                try {
-                    // Reuse the already-normalised URI from the cache key.
-                    // Algorithm is "SHA-256" for now; will be made configurable
-                    digest = new DigestCodeSource(key.uri, key.certs, "SHA-256"); 
-                    perms = SecureClassLoader.this.getPermissions(digest);
-                } catch (IOException ex) {
-                    throw new SecurityException("Unable to contact URL: ", ex);
-                } catch (NoSuchAlgorithmException ex) {
-                    throw new SecurityException ("URL Provider not loaded or unknown algorithm: ", ex);
+                        AccessControlContext.create(new ProtectionDomain[]{pd}, false));
+
+                if (cs instanceof DigestCodeSource) {
+                    // The caller already supplies a content-addressed DigestCodeSource.
+                    // Its digest IS its code identity; re-downloading the URL is not
+                    // required.  The LoadClassPermission check below still enforces
+                    // the security gate before any class is defined.
+                    perms = SecureClassLoader.this.getPermissions(cs);
+                    pd = new ProtectionDomain(cs, perms, SecureClassLoader.this, pals);
+                } else {
+                    // Plain CodeSource: download the artifact and compute its digest.
+                    // Algorithm is "SHA-256" for now; will be made configurable.
+                    DigestCodeSource digest;
+                    try {
+                        digest = new DigestCodeSource(key.uri, key.certs, "SHA-256");
+                        perms = SecureClassLoader.this.getPermissions(digest);
+                    } catch (IOException ex) {
+                        throw new SecurityException("Unable to contact URL: ", ex);
+                    } catch (NoSuchAlgorithmException ex) {
+                        throw new SecurityException(
+                                "URL Provider not loaded or unknown algorithm: ", ex);
+                    }
+                    pd = new ProtectionDomain(digest, perms, SecureClassLoader.this, pals);
                 }
-                pd = new ProtectionDomain(digest, perms, SecureClassLoader.this, pals);
-                
             }
             sm.checkPermission(LOAD_CLASS_ALLOW,
-                    AccessControlContext.create(new ProtectionDomain []{pd}, false));
-            
+            AccessControlContext.create(new ProtectionDomain[]{pd}, false));
         }
         if (DebugHolder.debug != null) {
             DebugHolder.debug.println(" getPermissions " + pd);
@@ -307,6 +314,9 @@ public class SecureClassLoader extends ClassLoader {
         
         private final Uri uri;
         private final java.security.cert.Certificate [] certs;
+         // Populated only when the incoming CodeSource is a DigestCodeSource.
+        private final String digestAlgorithm;
+        private final byte[] digest;
         private final int hashCode;
         final CodeSource cs; // package-private: used by resetArchivedStates
         
@@ -314,9 +324,18 @@ public class SecureClassLoader extends ClassLoader {
             this.cs = cs;
             certs = cs.getCertificates();
             this.uri = cs.getLocation() != null ? Uri.urlToUri(cs.getLocation()) : null;
+            if (cs instanceof DigestCodeSource dcs) {
+                this.digestAlgorithm = dcs.getDigestAlgorithm();
+                this.digest = dcs.getDigest();   // defensive copy already made by getDigest()
+            } else {
+                this.digestAlgorithm = null;
+                this.digest = null;
+            }
             int hash = 7;
             hash = 23 * hash + (uri != null ? uri.hashCode() :0);
             hash = 23 * hash + (certs != null ? Arrays.hashCode(certs) : 0);
+            hash = 23 * hash + (digestAlgorithm != null ? digestAlgorithm.hashCode() : 0);
+            hash = 23 * hash + Arrays.hashCode(digest);
             hashCode = hash; // 7 if everything is null;
         }
 
@@ -332,7 +351,12 @@ public class SecureClassLoader extends ClassLoader {
             // URI equality (RFC 3986, no DNS): handles null on both sides.
             if (uri == null ? that.uri != null : !uri.equals(that.uri)) return false;
             // Certificate equality.
-            return Arrays.equals(certs, that.certs);
+            if (!Arrays.equals(certs, that.certs)) return false;
+            // Digest equality: a plain-CS key (null digest) is NOT equal to a
+            // DigestCS key (non-null digest) — they represent different identities.
+            if (digestAlgorithm == null ? that.digestAlgorithm != null
+                                        : !digestAlgorithm.equals(that.digestAlgorithm)) return false;
+            return Arrays.equals(digest, that.digest);
         }
     }
 
