@@ -293,7 +293,7 @@ public class SecureClassLoader extends ClassLoader {
                 pd = new ProtectionDomain(digest, perms, SecureClassLoader.this, pals);
             }
             sm.checkPermission(LOAD_CLASS_ALLOW,
-            AccessControlContext.create(new ProtectionDomain[]{pd}, false));
+                AccessControlContext.create(new ProtectionDomain[]{pd}, false));
         }
         if (DebugHolder.debug != null) {
             DebugHolder.debug.println(" getPermissions " + pd);
