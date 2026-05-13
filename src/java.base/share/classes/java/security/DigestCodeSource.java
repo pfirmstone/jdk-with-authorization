@@ -17,18 +17,22 @@
  */
 package java.security;
 
-import au.zeus.jdk.concurrent.RC;
-import au.zeus.jdk.concurrent.Ref;
-import au.zeus.jdk.concurrent.Referrer;
 import au.zeus.jdk.net.Uri;
 import java.io.BufferedInputStream;
 import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.Externalizable;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.ObjectInput;
 import java.io.ObjectOutput;
+import java.io.OutputStream;
+import java.net.CacheRequest;
+import java.net.CacheResponse;
+import java.net.HttpURLConnection;
 import java.net.MalformedURLException;
+import java.net.ResponseCache;
+import java.net.URI;
 import java.net.URISyntaxException;
 import java.net.URL;
 import java.net.URLConnection;
@@ -37,9 +41,13 @@ import java.security.cert.CertificateEncodingException;
 import java.security.cert.CertificateException;
 import java.security.cert.CertificateFactory;
 import java.util.Arrays;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
-import java.util.function.Function;
 import sun.net.util.URLUtil;
 
 /**
@@ -121,6 +129,220 @@ public final class DigestCodeSource extends CodeSource implements Externalizable
     private transient byte[] digest;
     private transient Uri uri;           // RFC 3986 form; avoids DNS in equals/hashCode
     private transient int cachedHashCode;
+
+    // -----------------------------------------------------------------------
+    // Layer 1 — Network cache: JarResponseCache + ResponseCache.setDefault()
+    //
+    // JarResponseCache stores full response bodies (JAR bytes) keyed by URI
+    // string.  Any URLConnection caller that uses setUseCaches(true) — inside
+    // or outside DigestCodeSource — will be served from this cache, avoiding
+    // redundant network traffic across the whole JVM process.
+    //
+    // Layer 2 — Security guard: digestCache
+    //
+    // digestCache records the first-trusted digest for each (URI, algorithm)
+    // pair.  Every subsequent computation — whether served by JarResponseCache
+    // or a fresh network download after cache eviction — is compared against
+    // this record.  A mismatch means the artifact has changed and the load is
+    // rejected with SecurityException (fail-secure).
+    // -----------------------------------------------------------------------
+
+    /**
+     * A JVM-wide {@link ResponseCache} implementation that stores complete
+     * HTTP(S) and {@code file:} response bodies in memory, keyed by URI string.
+     *
+     * <p>
+     * Only HTTP 200 (OK) responses are stored; all other status codes are
+     * passed through without caching.  Non-HTTP connections (e.g. {@code file:})
+     * are always cached because they carry no status code.
+     *
+     * <p>
+     * The response body is captured by the {@link CacheRequest} returned from
+     * {@link #put}: the JDK HTTP client writes the response bytes to the
+     * {@link OutputStream} supplied by {@link CacheRequest#getBody()} and
+     * closes it when the transfer is complete.  Closing the stream commits the
+     * entry to the store.
+     *
+     * <p>
+     * The store is unbounded but lives only for the JVM lifetime, which is
+     * appropriate for code-source artifacts that are loaded once (or a small
+     * number of times) per process.
+     */
+    private static final class JarResponseCache extends ResponseCache {
+
+        /**
+         * Immutable snapshot of a single cached HTTP response.
+         */
+        private static final class Entry {
+            /** Full response body. */
+            final byte[] body;
+            /** Unmodifiable copy of the original response headers. */
+            final Map<String, List<String>> headers;
+
+            Entry(byte[] body, Map<String, List<String>> headers) {
+                this.body = body;
+                Map<String, List<String>> copy = new HashMap<>(headers);
+                copy.replaceAll((k, v) -> v == null ? List.of() : List.copyOf(v));
+                this.headers = Collections.unmodifiableMap(copy);
+            }
+        }
+
+        /** URI-string → cached response entry. */
+        private final ConcurrentMap<String, Entry> store = new ConcurrentHashMap<>();
+
+        /**
+         * Returns a {@link CacheResponse} for {@code uri} if one has been
+         * stored, or {@code null} to indicate a cache miss (triggering a
+         * normal network fetch by the HTTP client).
+         */
+        @Override
+        public CacheResponse get(URI uri, String rqstMethod,
+                Map<String, List<String>> rqstHeaders) throws IOException {
+            Entry entry = store.get(uri.toString());
+            if (entry == null) {
+                return null;    // cache miss — let the HTTP client fetch
+            }
+            final Entry e = entry;
+            return new CacheResponse() {
+                @Override
+                public Map<String, List<String>> getHeaders() {
+                    return e.headers;
+                }
+                @Override
+                public InputStream getBody() {
+                    return new ByteArrayInputStream(e.body);
+                }
+            };
+        }
+
+        /**
+         * Returns a {@link CacheRequest} that captures the response body as
+         * the HTTP client streams it, committing the entry to the store when
+         * the stream is closed.
+         *
+         * <p>
+         * Returns {@code null} (do not cache) for any HTTP response whose
+         * status code is not 200 OK.
+         */
+        @Override
+        public CacheRequest put(URI uri, URLConnection conn) throws IOException {
+            // Skip non-success HTTP responses.
+            if (conn instanceof HttpURLConnection http) {
+                try {
+                    if (http.getResponseCode() != HttpURLConnection.HTTP_OK) {
+                        return null;
+                    }
+                } catch (IOException ex) {
+                    return null;
+                }
+            }
+            Map<String, List<String>> responseHeaders = conn.getHeaderFields();
+            return new CacheRequest() {
+                private final ByteArrayOutputStream baos =
+                    new ByteArrayOutputStream(65536);
+                private volatile boolean aborted = false;
+
+                /**
+                 * Returns an {@link OutputStream} to which the HTTP client
+                 * writes the response body.  Closing the stream (after a
+                 * complete, non-aborted transfer) commits the entry.
+                 */
+                @Override
+                public OutputStream getBody() {
+                    return new OutputStream() {
+                        @Override
+                        public void write(int b) {
+                            baos.write(b);
+                        }
+                        @Override
+                        public void write(byte[] b, int off, int len) {
+                            baos.write(b, off, len);
+                        }
+                        @Override
+                        public void close() {
+                            if (!aborted) {
+                                store.put(uri.toString(),
+                                    new Entry(baos.toByteArray(), responseHeaders));
+                            }
+                        }
+                    };
+                }
+
+                @Override
+                public void abort() {
+                    aborted = true;
+                }
+            };
+        }
+
+        /**
+         * Removes any cached response for {@code uri}, forcing the next
+         * access to perform a fresh network fetch.
+         *
+         * @param uri the URI whose entry should be evicted
+         */
+        void invalidate(URI uri) {
+            store.remove(uri.toString());
+        }
+    }
+
+    /** Singleton response cache installed as the JVM-wide default. */
+    private static final JarResponseCache JAR_CACHE = new JarResponseCache();
+
+    static {
+        ResponseCache.setDefault(JAR_CACHE);
+    }
+
+    // -----------------------------------------------------------------------
+    // Layer 2 — digest security guard
+    // -----------------------------------------------------------------------
+
+    /**
+     * Composite cache key: (URI, algorithm).
+     *
+     * <p>Two keys are equal when both their {@link Uri} and algorithm string
+     * are equal, ensuring that different algorithms for the same URI produce
+     * independent cache entries.
+     */
+    private static final class DigestCacheKey {
+        private final Uri uri;
+        private final String algorithm;
+        private final int hashCode;
+
+        DigestCacheKey(Uri uri, String algorithm) {
+            this.uri = uri;
+            this.algorithm = algorithm;
+            this.hashCode = Objects.hash(uri, algorithm);
+        }
+
+        @Override
+        public int hashCode() {
+            return hashCode;
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (!(o instanceof DigestCacheKey that)) return false;
+            return Objects.equals(uri, that.uri)
+                    && Objects.equals(algorithm, that.algorithm);
+        }
+    }
+
+    /**
+     * Records the first-trusted digest for each (URI, algorithm) pair.
+     *
+     * <p>Values are kept alive for the JVM lifetime (strong references) so
+     * that a GC-triggered eviction cannot silently re-establish trust for a
+     * URI whose artifact has changed.  The number of distinct code-source URLs
+     * in a JVM process is small, so unbounded growth is not a practical
+     * concern.
+     */
+    private static final ConcurrentMap<DigestCacheKey, byte[]> digestCache =
+        new ConcurrentHashMap<>();
+
+    // -----------------------------------------------------------------------
+    // Constructors
+    // -----------------------------------------------------------------------
 
     /**
      * No-arg constructor required by {@link Externalizable}. All fields are
@@ -221,6 +443,10 @@ public final class DigestCodeSource extends CodeSource implements Externalizable
         this.uri = uri;
         this.cachedHashCode = computeHashCode();
     }
+
+    // -----------------------------------------------------------------------
+    // Public API
+    // -----------------------------------------------------------------------
 
     /**
      * Performs a clone for defensive copying following unmarshaling.
@@ -335,7 +561,10 @@ public final class DigestCodeSource extends CodeSource implements Externalizable
         return sb.toString();
     }
 
+    // -----------------------------------------------------------------------
     // Externalizable
+    // -----------------------------------------------------------------------
+
     /**
      * Binary stream layout — each nullable field is preceded by a presence
      * byte:
@@ -503,68 +732,77 @@ public final class DigestCodeSource extends CodeSource implements Externalizable
         cachedHashCode = computeHashCode();
     }
 
-    // Static helpers
+    // -----------------------------------------------------------------------
+    // Digest computation — two-layer cache
+    // -----------------------------------------------------------------------
+
     /**
-     * Computes the content digest of the artifact at the given URL.
+     * Returns the content digest of the artifact at the given URI/URL.
      *
-     * <p>
-     * DOS defence: throws {@link IOException} if the stream exceeds
+     * <h4>Two-layer caching strategy</h4>
+     * <ol>
+     *   <li><b>Layer 1 — {@link JarResponseCache}:</b> {@code setUseCaches(true)}
+     *       directs the JDK {@link URLConnection} machinery to consult the
+     *       JVM-wide {@link ResponseCache} before opening a network connection.
+     *       On a cache hit the response body (JAR bytes) is served from memory;
+     *       on a miss the bytes are downloaded and the cache is populated for
+     *       future callers — including any code outside {@code DigestCodeSource}
+     *       that loads from the same URL.</li>
+     *   <li><b>Layer 2 — {@code digestCache} (TOCTOU defence):</b> the digest
+     *       computed from the stream (cached or fresh) is compared against the
+     *       first-trusted value recorded for this {@code (URI, algorithm)} pair.
+     *       If the values differ the remote artifact has changed since it was
+     *       first loaded; the stale entries are evicted from both caches and a
+     *       {@link SecurityException} is thrown (fail-secure).</li>
+     * </ol>
+     *
+     * <p>DOS defence: throws {@link IOException} if the stream exceeds
      * {@link #MAX_STREAM_BYTES} (default 512 MiB).
      *
-     * @param url the data location (must not be {@code null})
-     * @param algorithm the digest algorithm (e.g. {@code "SHA-256"})
-     * @return the raw digest bytes
-     * @throws IOException if the URL cannot be read or the stream exceeds
-     * {@code MAX_STREAM_BYTES}
+     * @param uri       RFC 3986 URI used as the cache key (must not be {@code null})
+     * @param url       URL opened on a cache miss
+     * @param algorithm digest algorithm (e.g. {@code "SHA-256"})
+     * @return a fresh defensive copy of the raw digest bytes
+     * @throws IOException              if the URL cannot be read or the stream
+     *                                  exceeds {@code MAX_STREAM_BYTES}
      * @throws NoSuchAlgorithmException if the algorithm is unavailable
+     * @throws SecurityException        if the artifact content has changed
+     *                                  since its digest was first computed
      */
     private static byte[] computeDigest(Uri uri, URL url, String algorithm)
             throws IOException, NoSuchAlgorithmException {
-        Result result = cache.computeIfAbsent(uri, new Function<>(){
-            @Override
-            public Result apply(Uri t) {
-                URLConnection connection = null;
-                IOException thrown = null;
-                try {
-                    connection = url.openConnection();
-                    connection.setUseCaches(true);
-                } catch (IOException ex) {
-                    thrown = ex;
-                }
-                Result result = new Result(connection, thrown);
-                return result;
-            }
-            
-        });
-        
-        try (InputStream raw = result.getConnection().getInputStream()) {
-            InputStream in = raw instanceof BufferedInputStream
+        // Layer 1: URLConnection consults JarResponseCache automatically via
+        // setUseCaches(true).  On a cache hit no network connection is opened;
+        // on a miss the response is downloaded and stored by JarResponseCache.
+        URLConnection conn = url.openConnection();
+        conn.setUseCaches(true);
+
+        byte[] computed;
+        try (InputStream raw = conn.getInputStream()) {
+            InputStream buffered = raw instanceof BufferedInputStream
                     ? raw : new BufferedInputStream(raw, 8192);
-            return computeDigest(uri, in, algorithm);
+            computed = computeDigestFromStream(buffered, algorithm);
+        } finally {
+            if (conn instanceof HttpURLConnection http) {
+                http.disconnect();
+            }
         }
+
+        // Layer 2: compare against the first-trusted digest for this URI.
+        DigestCacheKey key = new DigestCacheKey(uri, algorithm);
+        byte[] trusted = digestCache.putIfAbsent(key, computed.clone());
+        if (trusted != null && !Arrays.equals(trusted, computed)) {
+            // Artifact has changed since first load — evict stale entries and
+            // refuse to proceed (fail-secure).
+            digestCache.remove(key);
+            JAR_CACHE.invalidate(Uri.uriToURI(uri)); // uri is already a validated Uri; toURI() should not fail.
+            throw new SecurityException(
+                    "Remote artifact digest has changed since first load; "
+                    + "refusing to load from: " + uri);
+        }
+
+        return computed;    // fresh array; caller may store or use directly
     }
-    
-    private static final class Result {
-        private final URLConnection connection;
-        private final IOException thrown;
-        private Result(URLConnection c, IOException e){
-            connection = c;
-            thrown = e;
-        }
-        
-        private URLConnection getConnection() throws IOException {
-            if (thrown != null) throw thrown;
-            return connection;
-        }
-    }
-    
-    /*
-     * Cached URLConnection's.
-     */
-    private static final ConcurrentMap<Uri, Result> cache = 
-        RC.concurrentMap(
-                new ConcurrentHashMap<>(),
-                Ref.WEAK, Ref.STRONG, 5000L, 5000L);
 
     /**
      * Computes the digest from an already-open stream (stream is not closed).
@@ -573,7 +811,7 @@ public final class DigestCodeSource extends CodeSource implements Externalizable
      * DOS defence: aborts with {@link IOException} after
      * {@link #MAX_STREAM_BYTES} have been read.
      */
-    private static byte[] computeDigest(Uri uri, InputStream in, String algorithm)
+    private static byte[] computeDigestFromStream(InputStream in, String algorithm)
             throws IOException, NoSuchAlgorithmException {
         MessageDigest md = MessageDigest.getInstance(algorithm);
         byte[] buf = new byte[8192];
@@ -591,7 +829,10 @@ public final class DigestCodeSource extends CodeSource implements Externalizable
         return md.digest();
     }
 
+    // -----------------------------------------------------------------------
     // Private helpers
+    // -----------------------------------------------------------------------
+
     private static Uri parseUri(String url) throws URISyntaxException {
         return url == null ? null : Uri.parseAndCreate(url);
     }
