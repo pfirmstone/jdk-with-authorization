@@ -253,7 +253,7 @@ public class SecureClassLoader extends ClassLoader {
         } catch (URISyntaxException ex) {
             throw new SecurityException("URI Syntax error: ", ex);
         }
-        if (cs instanceof DigestCodeSource){
+        if (cs instanceof DigestCodeSource || cs.location == null){
             domain = pdcache.get(key);
             if (domain != null) return domain;
         }
@@ -273,14 +273,13 @@ public class SecureClassLoader extends ClassLoader {
                 cs, perms, SecureClassLoader.this, pals);
         SecurityManager sm = System.getSecurityManager();
         if (sm != null) {
-            URL codebase = cs.getLocation();
-            if (codebase != null) {
+            if (cs.location != null){
                 Permission checkURL = new URLPermission(key.uri.toString(), "GET:");
                 sm.checkPermission(checkURL,
                         AccessControlContext.create(new ProtectionDomain[]{pd}, false));
                 // Plain CodeSource: download the artifact and compute its digest.
                 // Algorithm is "SHA-256" for now; will be made configurable.
-                
+
                 try {
                     digest = new DigestCodeSource(key.uri, key.certs, "SHA-256");
                     perms = SecureClassLoader.this.getPermissions(digest);
@@ -291,21 +290,20 @@ public class SecureClassLoader extends ClassLoader {
                             "URL Provider not loaded or unknown algorithm: ", ex);
                 }
                 pd = new ProtectionDomain(digest, perms, SecureClassLoader.this, pals);
+                sm.checkPermission(LOAD_CLASS_ALLOW,
+                    AccessControlContext.create(new ProtectionDomain[]{pd}, false));
+            } else {
+                sm.checkPermission(LOAD_CLASS_ALLOW,
+                    AccessControlContext.create(new ProtectionDomain[]{pd}, false));
             }
-            sm.checkPermission(LOAD_CLASS_ALLOW,
-                AccessControlContext.create(new ProtectionDomain[]{pd}, false));
-        }
+        } 
         if (DebugHolder.debug != null) {
             DebugHolder.debug.println(" getPermissions " + pd);
             DebugHolder.debug.println("");
         }
-        if (digest instanceof DigestCodeSource){
-            ProtectionDomain existed = pdcache.putIfAbsent(key, pd);
-            if (existed != null) return existed;
-            return pd;
-        } else {
-            throw new SecurityException("Unable to determine Digest of CodeSource URL");
-        }
+        ProtectionDomain existed = pdcache.putIfAbsent(key, pd);
+        if (existed != null) return existed;
+        return pd;
     }
 
     private static class CodeSourceKey {
