@@ -79,7 +79,7 @@ If any required condition does not match, the operation is denied.
 5. **Caller-sensitive privilege boundaries**: privileged APIs retain caller-sensitive behavior.
 6. **URI-validated code source matching**: policy matching relies on RFC 3986 URI handling.
 7. **Content-hash code source integrity**: when a `SecurityManager` is active, `SecureClassLoader` promotes every network-loaded `CodeSource` to a `DigestCodeSource` (SHA-256 by default) before computing the `ProtectionDomain`.  Policy grants that use a `digest` clause are only matched by `DigestCodeSource`-backed domains, enforcing content-addressed trust.
-8. **SPIFFE workload identity binding**: when a `SecurityManager` is active, `SecureClassLoader` stamps network-loaded `ProtectionDomain`s with the current SPIFFE workload principals obtained from the SPIRE-managed `SpiffeSubject`. This lets policy `principal` clauses match both code identity and verified infrastructure identity. Injection is deferred until `VM.isBooted()` and skipped if the SPIFFE Verifiable Identity Document (SVID) is not yet available (fail-secure: under-privilege rather than over-privilege).
+8. **SPIFFE workload identity binding**: when a `SecurityManager` is active, `SecureClassLoader` stamps `ProtectionDomain`s for code with a non-null codebase, including network-loaded code, with the current SPIFFE workload principals obtained from the SPIRE-managed `SpiffeSubject`. This lets policy `principal` clauses match both code identity and verified infrastructure identity. Injection is deferred until `VM.isBooted()` and skipped if the SPIFFE Verifiable Identity Document (SVID) is not yet available (fail-secure: under-privilege rather than over-privilege).
 
 ---
 
@@ -425,11 +425,11 @@ produces the stated SHA-256 digest. Any URL pointing to a different artifact —
 
 ### Mechanism
 
-When a `SecurityManager` is active, `SecureClassLoader.getProtectionDomain()` consults `SpiffeCredentialManager.getInstance().getSubject()` on the `ProtectionDomain` construction path, but only after `VM.isBooted()` is true. This lets Dirty Chai bind loaded code to the current SPIFFE-managed workload identity without risking bootstrap recursion during `initPhase3`.
+When a `SecurityManager` is active, `SecureClassLoader.getProtectionDomain()` consults `SpiffeCredentialManager.getInstance().getSubject()` on the `ProtectionDomain` construction path, but only after `VM.isBooted()` is true. This lets Dirty Chai bind loaded code to the current SPIFFE-managed workload identity without risking bootstrap deadlock during `initPhase3`.
 
 ### Principal stamping
 
-If the returned `SpiffeSubject` is non-null and read-only, `SecureClassLoader` extracts the `X500Principal` set from the current SVID leaf certificate and passes those principals as the `pals` array to the `ProtectionDomain` constructor. The resulting domain therefore carries both the code identity (`CodeSource` / `DigestCodeSource`) and the verified workload identity asserted by SPIRE.
+If the returned `SpiffeSubject` is non-null and read-only, `SecureClassLoader` extracts the `X500Principal` set from the current SVID leaf certificate and passes those principals as the `pals` array to the `ProtectionDomain` constructor. The read-only check happens before principal extraction. The resulting domain therefore carries both the code identity (`CodeSource` / `DigestCodeSource`) and the verified workload identity asserted by SPIRE.
 
 ### Policy integration
 
@@ -497,7 +497,7 @@ When the SVID rotates, `SpiffeCredentialManager` atomically replaces its current
 
 ### `SubjectDomainCombiner` principal composition
 
-SPIFFE workload identity remains ambient through the subject-bearing `AccessControlContext` established by `Subject.doAs(...)`. Human/user identity is introduced separately through `Subject.callAs(...)` and `AccessController.getContext()` scoped-subject injection. This lets policy `principal` matching evaluate workload identity (`WorkerSubject` / SPIFFE `X500Principal`) alongside active user identity without allowing the workload identity itself to become a scoped `callAs(...)` subject.
+SPIFFE workload identity is ambient through `ProtectionDomain` stamping at class-load time and can also be carried in subject-bearing ACC state established by `Subject.doAs(...)`. Human/user identity is introduced separately through `Subject.callAs(...)` and `AccessController.getContext()` scoped-subject injection. This lets policy `principal` matching evaluate workload identity (`WorkerSubject` / SPIFFE `X500Principal`) alongside active user identity without allowing the workload identity itself to become a scoped `callAs(...)` subject.
 
 ---
 
