@@ -79,7 +79,7 @@ If any required condition does not match, the operation is denied.
 5. **Caller-sensitive privilege boundaries**: privileged APIs retain caller-sensitive behavior.
 6. **URI-validated code source matching**: policy matching relies on RFC 3986 URI handling.
 7. **Content-hash code source integrity**: when a `SecurityManager` is active, `SecureClassLoader` promotes every network-loaded `CodeSource` to a `DigestCodeSource` (SHA-256 by default) before computing the `ProtectionDomain`.  Policy grants that use a `digest` clause are only matched by `DigestCodeSource`-backed domains, enforcing content-addressed trust.
-8. **SPIFFE workload identity binding**: when a `SecurityManager` is active, `SecureClassLoader` stamps network-loaded `ProtectionDomain`s with the current SPIFFE workload principals obtained from the SPIRE-managed `SpiffeSubject`. This lets policy `principal` clauses match both code identity and verified infrastructure identity. Injection is deferred until `VM.isBooted()` and skipped if the SVID is not yet available (fail-secure: under-privilege rather than over-privilege).
+8. **SPIFFE workload identity binding**: when a `SecurityManager` is active, `SecureClassLoader` stamps network-loaded `ProtectionDomain`s with the current SPIFFE workload principals obtained from the SPIRE-managed `SpiffeSubject`. This lets policy `principal` clauses match both code identity and verified infrastructure identity. Injection is deferred until `VM.isBooted()` and skipped if the SPIFFE Verifiable Identity Document (SVID) is not yet available (fail-secure: under-privilege rather than over-privilege).
 
 ---
 
@@ -355,7 +355,7 @@ SecureClassLoader.defineClass(name, bytes, cs)
   │
   ├─ SecurityManager active and codebase != null?
   │   ├─ VM.isBooted()? → SpiffeCredentialManager.getInstance().getSubject()
-  │   │   ├─ non-null and read-only? → pals[] = X500Principals from SpiffeSubject
+  │   │   ├─ non-null and read-only? → pals[] = X500Principal[] from SpiffeSubject
   │   │   └─ otherwise? → pals = null (SPIRE not yet connected, or pre-boot)
   │   ├─ new ProtectionDomain(cs, perms, loader, pals)   ← SPIFFE principals embedded
   │   ├─ check URLPermission("GET:") — must be granted to the new domain
@@ -483,14 +483,14 @@ When the SVID rotates, `SpiffeCredentialManager` atomically replaces its current
 `SpiffeSubject extends WorkerSubject` is the sealed credential carrier for the current workload identity:
 
 - `private` constructor — only `SpiffeCredentialManager` can construct one, preventing identity forgery.
-- `WorkerSubject` subtype — `Subject.callAs(...)` rejects it and `AccessController.getContext()` does not inject it as a scoped subject.
+- `WorkerSubject` subtype — `Subject.callAs(...)` rejects it, and the scoped-subject injection path described in §10.1 excludes it when building an `AccessControlContext`.
 - Read-only at construction time (`SpiffeSubject(true, ...)`) — downstream code cannot mutate its principal set.
 
 ### `SpiffePolicyFile`
 
 `SpiffePolicyFile extends ConcurrentPolicyFile` provides SPIFFE-authenticated bootstrap policy:
 
-- Fetches bootstrap policy from an HTTPS endpoint using the SVID for mutual TLS client authentication (`HttpsClientAuthPolicyParser` under `Subject.doAs(...)`).
+- Fetches bootstrap policy from an HTTPS endpoint using the SVID for mutual TLS client authentication; `HttpsClientAuthPolicyParser` performs the HTTPS fetch inside `Subject.doAs(...)`.
 - Derives the default policy URL from the SPIFFE ID trust domain (`spiffe://trust-domain/...` → `https://policy.trust-domain/bootstrap/policy`), unless overridden by `spiffe.policy.url`.
 - Registers as an `SvidRotationListener`, so `refresh()` runs automatically on SVID rotation through `RefreshingParserDecorator`, which obtains fresh credentials from `SpiffeCredentialManager` on each parse.
 - Fail-secure: if bootstrap policy fetch fails, the HTTPS server is unreachable, or a non-200 response / parse failure prevents initialization, `PolicyInitializationException` is thrown and startup does not proceed with an untrusted policy state.
