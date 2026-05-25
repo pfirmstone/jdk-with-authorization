@@ -23,6 +23,7 @@ This document covers the active model implemented in:
 - `au.zeus.jdk.authorization.policy.ConcurrentPolicyFile`
 - `au.zeus.jdk.authorization.sm.CombinerSecurityManager`
 - `au.zeus.jdk.authorization.guards.*`
+- `au.zeus.jdk.authorization.spire.*`
 
 ---
 
@@ -78,6 +79,7 @@ If any required condition does not match, the operation is denied.
 5. **Caller-sensitive privilege boundaries**: privileged APIs retain caller-sensitive behavior.
 6. **URI-validated code source matching**: policy matching relies on RFC 3986 URI handling.
 7. **Content-hash code source integrity**: when a `SecurityManager` is active, `SecureClassLoader` promotes every network-loaded `CodeSource` to a `DigestCodeSource` (SHA-256 by default) before computing the `ProtectionDomain`.  Policy grants that use a `digest` clause are only matched by `DigestCodeSource`-backed domains, enforcing content-addressed trust.
+8. **SPIFFE workload identity binding**: when a `SecurityManager` is active, every `ProtectionDomain` created by `SecureClassLoader` for network-loaded code is stamped with the current SPIFFE workload principals obtained from the SPIRE-managed `SpiffeSubject`. This enables policy `principal` clauses to match both code identity and verified infrastructure identity simultaneously. Injection is deferred until `VM.isBooted()` to avoid bootstrap deadlock, and is skipped if the SVID is not yet available (fail-secure: under-privilege rather than over-privilege).
 
 ---
 
@@ -352,6 +354,10 @@ SecureClassLoader.defineClass(name, bytes, cs)
   ├─ pdcache hit? → return cached ProtectionDomain
   │
   ├─ SecurityManager active and codebase != null?
+  │   ├─ VM.isBooted()? → SpiffeCredentialManager.getInstance().getSubject()
+  │   │     non-null and read-only → pals[] = X500Principals from SpiffeSubject
+  │   │     null (SPIRE not yet connected, or pre-boot) → pals = null
+  │   ├─ new ProtectionDomain(cs, perms, loader, pals)   ← SPIFFE principals embedded
   │   ├─ check URLPermission("GET:") — must be granted to the new domain
   │   ├─ download artifact; compute SHA-256 digest
   │   │     (served via JarResponseCache on subsequent loads)
@@ -415,6 +421,86 @@ produces the stated SHA-256 digest. Any URL pointing to a different artifact —
 
 ---
 
+## 8.2) SPIFFE Workload Identity and `ProtectionDomain` Stamping
+
+### Mechanism
+
+When a `SecurityManager` is active, `SecureClassLoader.getProtectionDomain()` consults `SpiffeCredentialManager.getInstance().getSubject()` on the `ProtectionDomain` construction path, but only after `VM.isBooted()` is true. This lets Dirty Chai bind loaded code to the current SPIFFE-managed workload identity without risking bootstrap recursion during `initPhase3`.
+
+### Principal stamping
+
+If the returned `SpiffeSubject` is non-null and read-only, `SecureClassLoader` extracts the `X500Principal` set from the current SVID leaf certificate and passes those principals as the `pals` array to the `ProtectionDomain` constructor. The resulting domain therefore carries both the code identity (`CodeSource` / `DigestCodeSource`) and the verified workload identity asserted by SPIRE.
+
+### Policy integration
+
+`ConcurrentPolicyFile` grants can combine `codebase`, `digest`, and `principal` selectors. In practice, SPIFFE-aware grants match on the stamped `javax.security.auth.x500.X500Principal` name derived from the current SVID leaf certificate, allowing policy to restrict permissions to code running under a specific verified workload identity as well as a specific artifact.
+
+### Fail-secure posture
+
+If SPIRE has not connected yet, `SpiffeCredentialManager.getSubject()` returns `null`. In that case `pals = null`, so the `ProtectionDomain` is created without SPIFFE principals. Grants that require SPIFFE `principal` clauses therefore do not match until a valid SVID is available: the failure mode is under-privilege rather than over-privilege.
+
+### Bootstrap deferral (`VM.isBooted()` guard)
+
+The `VM.isBooted()` guard is mandatory. `SpiffeCredentialManager` opens a `SocketChannel`, which reaches `SelectorProvider.provider()` and then `getSystemClassLoader()`. Performing that lookup before the VM is fully booted would deadlock during `initPhase3`, so SPIFFE principal injection is deferred until bootstrap is complete.
+
+### Identity forgery prevention
+
+`SpiffeSubject` is a sealed `WorkerSubject` subtype with a `private` constructor. Only `SpiffeCredentialManager` can construct one, so external code cannot fabricate a `SpiffeSubject` and feed forged SPIFFE principals into `SecureClassLoader`.
+
+### SVID rotation and `pdcache`
+
+When the SVID rotates, `SpiffeCredentialManager` atomically replaces its current subject snapshot. New `ProtectionDomain` constructions from that point onward use the rotated principals. Existing cached domains in `SecureClassLoader.pdcache` retain the principals they had at creation time; policy refresh via `SvidRotationListener` and `SpiffePolicyFile.refresh()` ensures grant evaluation is refreshed against the current policy and identity state.
+
+---
+
+## 8.3) SPIFFE Credential Lifecycle (`SpiffeCredentialManager` and `SpiffePolicyFile`)
+
+### `SpiffeCredentialManager`
+
+- JVM-wide singleton, constructed at class initialization.
+- Connects to the SPIRE Workload API over a Unix domain socket. The default socket path is `/run/spire/sockets/agent.sock`, overridden by the `spiffe.workload.socket` system property.
+- Stores the current X.509 SVID as an atomic snapshot containing:
+  - the read-only `SpiffeSubject` (`WorkerSubject`)
+  - the SPIFFE ID URI string
+  - the SPIRE trust bundle (`X509Certificate[]`)
+- A background watcher processes the SPIRE stream, calls `updateSubjectInternal()` for each SVID update, atomically replaces the snapshot, and notifies registered `SvidRotationListener`s.
+- SPIRE unavailability at startup is tolerated gracefully. `getSubject()` returns `null` until the first successful fetch, while a background reconnect path retries with exponential backoff.
+
+### Configuration properties
+
+| Property | Default | Purpose |
+|---|---|---|
+| `spiffe.workload.socket` | `/run/spire/sockets/agent.sock` | SPIRE agent Unix socket path |
+| `spiffe.policy.url` | derived from SPIFFE ID | Bootstrap policy HTTPS URL override |
+| `spiffe.reconnect.max.attempts` | `10` | Maximum reconnect attempts (`0` disables reconnect) |
+| `spiffe.reconnect.initial.backoff.ms` | `1000` | Initial reconnect backoff |
+| `spiffe.reconnect.max.backoff.ms` | `300000` | Maximum reconnect backoff (5 minutes) |
+
+**Debug:** `-Djava.security.debug=spiffe` enables bootstrap-safe diagnostics via `sun.security.util.Debug`.
+
+### `SpiffeSubject`
+
+`SpiffeSubject extends WorkerSubject` is the sealed credential carrier for the current workload identity:
+
+- `private` constructor — only `SpiffeCredentialManager` can construct one, preventing identity forgery.
+- `WorkerSubject` subtype — `Subject.callAs(...)` rejects it and `AccessController.getContext()` does not inject it as a scoped subject.
+- Read-only at construction time (`SpiffeSubject(true, ...)`) — downstream code cannot mutate its principal set.
+
+### `SpiffePolicyFile`
+
+`SpiffePolicyFile extends ConcurrentPolicyFile` provides SPIFFE-authenticated bootstrap policy:
+
+- Fetches bootstrap policy from an HTTPS endpoint using the SVID for mutual TLS client authentication (`HttpsClientAuthPolicyParser` under `Subject.doAs(...)`).
+- Derives the default policy URL from the SPIFFE ID trust domain (`spiffe://trust-domain/...` → `https://policy.trust-domain/bootstrap/policy`), unless overridden by `spiffe.policy.url`.
+- Registers as an `SvidRotationListener`, so `refresh()` runs automatically on SVID rotation through `RefreshingParserDecorator`, which obtains fresh credentials from `SpiffeCredentialManager` on each parse.
+- Fail-secure: if bootstrap policy fetch fails, the HTTPS server is unreachable, or a non-200 response / parse failure prevents initialization, `PolicyInitializationException` is thrown and startup does not proceed with an untrusted policy state.
+
+### `SubjectDomainCombiner` principal composition
+
+SPIFFE workload identity remains ambient through the subject-bearing `AccessControlContext` established by `Subject.doAs(...)`, while human/user identity is introduced separately through `Subject.callAs(...)` and `AccessController.getContext()` scoped-subject injection. The result is that policy `principal` matching can evaluate both workload identity (`WorkerSubject` / SPIFFE `X500Principal`) and active user identity together without allowing the workload identity itself to become a scoped `callAs(...)` subject.
+
+---
+
 ## 9) Class Loading and Authorization
 
 Dirty Chai introduces authorization-aware class loading controls (including `LoadClassPermission`) to reduce unauthorized code execution risk.
@@ -439,6 +525,8 @@ Dirty Chai preserves authorization behavior with virtual threads by carrying eff
 - `WorkerSubject` represents service/process identity and is ambient; `Subject.callAs(Subject, Callable)` rejects a `WorkerSubject` with `IllegalArgumentException`.
 - The multi-subject overload `Subject.callAs(Callable<T>, UserSubject...)` binds zero or more `UserSubject` instances simultaneously. `Subject.current()` returns `subject[0]` when multiple subjects are bound.
 - `WorkerSubject` is excluded from this overload by the parameter type and is also skipped by `AccessController.getContext()` when scoped subjects are injected into an `AccessControlContext`.
+
+> **SPIFFE workload identity propagation**: SPIFFE workload identity (`SpiffeSubject` / `WorkerSubject`) is ambient — it is present in `ProtectionDomain` principals at class-load time and in subject-bearing ACC state, not through `Subject.callAs(...)`. The `WorkerSubject` exclusion in `AccessController.getContext()` (§10.1) ensures SPIFFE identity does not bleed into user-scoped `callAs` chains.
 
 ### 10.2) `callAs()` vs `doAs()` propagation model
 
@@ -555,6 +643,9 @@ This section mirrors the thread-creation analysis for adjacent APIs that define 
   at a trusted URL cannot satisfy a `digest`-constrained grant — the policy will not match
   unless the artifact's SHA-256 (or other allowed algorithm) matches the pinned value in the
   `digest` clause
+- **SPIFFE workload identity forgery**: `SpiffeSubject` is only constructible inside
+  `SpiffeCredentialManager` via a `private` constructor, so external code cannot fabricate
+  a `SpiffeSubject` and inject forged SPIFFE principals into a `ProtectionDomain`
 
 ---
 
@@ -600,6 +691,7 @@ This section mirrors the thread-creation analysis for adjacent APIs that define 
 6. `WorkerSubject` is never injected via scoped-subject handling into an `AccessControlContext`; process identity remains ambient via `ProtectionDomain`.
 7. A `DigestGrant` never implies a domain whose `CodeSource` is a plain `CodeSource` — the `CodeSource` must be a `DigestCodeSource` with a matching algorithm and digest; otherwise the grant does not apply.
 8. `SecureClassLoader` stores a `ProtectionDomain` in `pdcache` only after all permission checks have passed and the digest has been computed; a plain `CodeSource` key is never stored, so no cache hit can bypass the digest requirement on a subsequent `defineClass` call.
+9. SPIFFE principal injection into `ProtectionDomain` occurs only when the VM is fully booted (`VM.isBooted()`), a `SecurityManager` is active, and `SpiffeCredentialManager.getSubject()` returns a non-null read-only `SpiffeSubject`; all other conditions result in `pals = null` (fail-secure: no SPIFFE principals injected rather than forged ones).
 
 ---
 
@@ -610,3 +702,4 @@ This section mirrors the thread-creation analysis for adjacent APIs that define 
 - `VULNERABILITIES_ADDRESSED.md` (resolved issues)
 - `SECURITY.md` (security policy and reporting)
 - `PROCESS_ISOLATION.md` (reflection/MethodHandle N-8, finalizer/Cleaner N-9, class-init N-10, consolidated lifecycle analysis with attach gating N-11, test plan N-12)
+- SPIFFE/SPIRE implementation details: `src/java.base/share/classes/au/zeus/jdk/authorization/spire/`
