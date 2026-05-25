@@ -79,7 +79,7 @@ If any required condition does not match, the operation is denied.
 5. **Caller-sensitive privilege boundaries**: privileged APIs retain caller-sensitive behavior.
 6. **URI-validated code source matching**: policy matching relies on RFC 3986 URI handling.
 7. **Content-hash code source integrity**: when a `SecurityManager` is active, `SecureClassLoader` promotes every network-loaded `CodeSource` to a `DigestCodeSource` (SHA-256 by default) before computing the `ProtectionDomain`.  Policy grants that use a `digest` clause are only matched by `DigestCodeSource`-backed domains, enforcing content-addressed trust.
-8. **SPIFFE workload identity binding**: when a `SecurityManager` is active, `SecureClassLoader` stamps `ProtectionDomain`s for code with a non-null codebase, including network-loaded code, with the current SPIFFE workload principals obtained from the SPIRE-managed `SpiffeSubject`. This lets policy `principal` clauses match both code identity and verified infrastructure identity. Injection is deferred until `VM.isBooted()` and skipped if the SPIFFE Verifiable Identity Document (SVID) is not yet available (fail-secure: under-privilege rather than over-privilege).
+8. **SPIFFE workload identity binding**: when a `SecurityManager` is active, `SecureClassLoader` stamps `ProtectionDomain`s for code with a non-null codebase, including network-loaded code, with the current SPIFFE workload principals obtained from the SPIRE-managed `SpiffeSubject`. This lets policy `principal` clauses match both code identity and verified infrastructure identity. Injection is deferred until `VM.isBooted()`. If the SPIFFE Verifiable Identity Document (SVID) is not yet available, principal stamping is skipped (fail-secure: under-privilege rather than over-privilege).
 
 ---
 
@@ -429,7 +429,7 @@ When a `SecurityManager` is active, `SecureClassLoader.getProtectionDomain()` co
 
 ### Principal stamping
 
-If the returned `SpiffeSubject` is non-null and read-only, `SecureClassLoader` extracts the `X500Principal` set from the current SVID leaf certificate and passes those principals as the `pals` array to the `ProtectionDomain` constructor. The read-only check happens before principal extraction. The resulting domain therefore carries both the code identity (`CodeSource` / `DigestCodeSource`) and the verified workload identity asserted by SPIRE.
+After verifying that the returned `SpiffeSubject` is non-null and read-only, `SecureClassLoader` extracts the `X500Principal` set from the current SVID leaf certificate and passes those principals as the `pals` array to the `ProtectionDomain` constructor. The resulting domain therefore carries both the code identity (`CodeSource` / `DigestCodeSource`) and the verified workload identity asserted by SPIRE.
 
 ### Policy integration
 
@@ -491,7 +491,7 @@ When the SVID rotates, `SpiffeCredentialManager` atomically replaces its current
 `SpiffePolicyFile extends ConcurrentPolicyFile` provides SPIFFE-authenticated bootstrap policy:
 
 - Fetches bootstrap policy from an HTTPS endpoint using the SVID for mutual TLS client authentication; `HttpsClientAuthPolicyParser` performs the HTTPS fetch inside `Subject.doAs(...)`.
-- Derives the default policy URL from the SPIFFE ID trust domain (`spiffe://trust-domain/...` → `https://policy.trust-domain/bootstrap/policy`), unless overridden by `spiffe.policy.url`.
+- Derives the default policy URL from the SPIFFE ID trust domain (`spiffe://trust-domain/...` -> `https://policy.trust-domain/bootstrap/policy`), unless overridden by `spiffe.policy.url`.
 - Registers as an `SvidRotationListener`, so `refresh()` runs automatically on SVID rotation through `RefreshingParserDecorator`, which obtains fresh credentials from `SpiffeCredentialManager` on each parse.
 - Fail-secure: if bootstrap policy fetch fails, the HTTPS server is unreachable, or a non-200 response / parse failure prevents initialization, `PolicyInitializationException` is thrown and startup does not proceed with an untrusted policy state.
 
