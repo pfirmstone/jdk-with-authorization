@@ -79,7 +79,7 @@ If any required condition does not match, the operation is denied.
 5. **Caller-sensitive privilege boundaries**: privileged APIs retain caller-sensitive behavior.
 6. **URI-validated code source matching**: policy matching relies on RFC 3986 URI handling.
 7. **Content-hash code source integrity**: when a `SecurityManager` is active, `SecureClassLoader` promotes every network-loaded `CodeSource` to a `DigestCodeSource` (SHA-256 by default) before computing the `ProtectionDomain`.  Policy grants that use a `digest` clause are only matched by `DigestCodeSource`-backed domains, enforcing content-addressed trust.
-8. **SPIFFE workload identity binding**: when a `SecurityManager` is active, every `ProtectionDomain` created by `SecureClassLoader` for network-loaded code is stamped with the current SPIFFE workload principals obtained from the SPIRE-managed `SpiffeSubject`. This enables policy `principal` clauses to match both code identity and verified infrastructure identity simultaneously. Injection is deferred until `VM.isBooted()` to avoid bootstrap deadlock, and is skipped if the SVID is not yet available (fail-secure: under-privilege rather than over-privilege).
+8. **SPIFFE workload identity binding**: when a `SecurityManager` is active, `SecureClassLoader` stamps network-loaded `ProtectionDomain`s with the current SPIFFE workload principals obtained from the SPIRE-managed `SpiffeSubject`. This lets policy `principal` clauses match both code identity and verified infrastructure identity. Injection is deferred until `VM.isBooted()` and skipped if the SVID is not yet available (fail-secure: under-privilege rather than over-privilege).
 
 ---
 
@@ -355,8 +355,8 @@ SecureClassLoader.defineClass(name, bytes, cs)
   │
   ├─ SecurityManager active and codebase != null?
   │   ├─ VM.isBooted()? → SpiffeCredentialManager.getInstance().getSubject()
-  │   │     non-null and read-only → pals[] = X500Principals from SpiffeSubject
-  │   │     null (SPIRE not yet connected, or pre-boot) → pals = null
+  │   │   ├─ non-null and read-only? → pals[] = X500Principals from SpiffeSubject
+  │   │   └─ otherwise? → pals = null (SPIRE not yet connected, or pre-boot)
   │   ├─ new ProtectionDomain(cs, perms, loader, pals)   ← SPIFFE principals embedded
   │   ├─ check URLPermission("GET:") — must be granted to the new domain
   │   ├─ download artifact; compute SHA-256 digest
@@ -497,7 +497,7 @@ When the SVID rotates, `SpiffeCredentialManager` atomically replaces its current
 
 ### `SubjectDomainCombiner` principal composition
 
-SPIFFE workload identity remains ambient through the subject-bearing `AccessControlContext` established by `Subject.doAs(...)`, while human/user identity is introduced separately through `Subject.callAs(...)` and `AccessController.getContext()` scoped-subject injection. The result is that policy `principal` matching can evaluate both workload identity (`WorkerSubject` / SPIFFE `X500Principal`) and active user identity together without allowing the workload identity itself to become a scoped `callAs(...)` subject.
+SPIFFE workload identity remains ambient through the subject-bearing `AccessControlContext` established by `Subject.doAs(...)`. Human/user identity is introduced separately through `Subject.callAs(...)` and `AccessController.getContext()` scoped-subject injection. This lets policy `principal` matching evaluate workload identity (`WorkerSubject` / SPIFFE `X500Principal`) alongside active user identity without allowing the workload identity itself to become a scoped `callAs(...)` subject.
 
 ---
 
