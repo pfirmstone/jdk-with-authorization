@@ -700,6 +700,7 @@ The following threats are fully blocked by the DirtyChai permission layer withou
 | Untrusted `<clinit>` loading trusted classes | Untrusted `ProtectionDomain` on stack; intersection enforced | Policy must not grant AllPermission to untrusted PDs |
 | Untrusted code triggering `invokedynamic` bootstrap | Untrusted PD on stack; intersection enforced | Same as above |
 | Unauthorized runtime attach | `AttachPermission("attachVirtualMachine")` in attach provider path | When SecurityManager policy denies attach |
+| Supply-chain content-substitution / dependency-confusion | `digest "SHA-256:…"` policy selector → `DigestGrant` at `ConcurrentPolicyFile` + `SecureClassLoader.getProtectionDomain()` auto-promotion (PR #203) | `SecureClassLoader` downloads the artifact and promotes the plain `CodeSource` to `DigestCodeSource` (SHA-256); `DigestGrant.implies()` requires exact `Arrays.equals` match on digest bytes; a plain `CodeSource` always implies `false` regardless of URL |
 
 ### 17.2 Where Process Isolation Is Required
 
