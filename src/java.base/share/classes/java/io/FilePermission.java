@@ -34,12 +34,14 @@ import java.util.Collections;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.BiFunction;
 
+import java.net.URISyntaxException;
 import jdk.internal.access.JavaIOFilePermissionAccess;
 import jdk.internal.access.SharedSecrets;
 import sun.nio.fs.DefaultFileSystemProvider;
 import sun.security.action.GetPropertyAction;
 import sun.security.util.FilePermCompat;
 import sun.security.util.SecurityConstants;
+import au.zeus.jdk.net.Uri;
 
 /**
  * This class represents access to a file or directory.  A FilePermission consists
@@ -812,7 +814,22 @@ public final class FilePermission extends Permission {
             return false;
 
         if (this.invalid || that.invalid) {
-            return false;
+            // npath is useless for invalid instances (path contained characters
+            // illegal on this OS). Use Uri to normalise the original name string:
+            // Uri.parseAndCreate percent-encodes illegal chars uniformly and
+            // applies case-insensitive comparison for file: paths on Windows,
+            // so two FilePermissions with the same invalid path are equal.
+            if (this.invalid != that.invalid) return false;
+            if (this.mask != that.mask) return false;
+            if (this.directory != that.directory) return false;
+            if (this.recursive != that.recursive) return false;
+            try {
+                Uri thisUri = Uri.parseAndCreate(this.getName());
+                Uri thatUri = Uri.parseAndCreate(that.getName());
+                return thisUri.equals(thatUri);
+            } catch (URISyntaxException e) {
+                return this.getName().equals(that.getName());
+            }
         }
         if (FilePermCompat.nb) {
             return (this.mask == that.mask) &&
@@ -837,9 +854,18 @@ public final class FilePermission extends Permission {
      */
     @Override
     public int hashCode() {
+        if (invalid) {
+            // Must be consistent with the Uri-based equals() for invalid instances.
+            try {
+                return Objects.hash(mask, directory, recursive,
+                        Uri.parseAndCreate(getName()).hashCode());
+            } catch (URISyntaxException e) {
+                return Objects.hash(mask, directory, recursive, getName());
+            }
+        }
         if (FilePermCompat.nb) {
             return Objects.hash(
-                    mask, allFiles, directory, recursive, npath, npath2, invalid);
+                    mask, allFiles, directory, recursive, npath, npath2);
         } else {
             return 0;
         }
