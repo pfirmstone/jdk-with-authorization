@@ -33,6 +33,7 @@ import java.net.URISyntaxException;
 import java.net.URL;
 import java.net.URLPermission;
 import java.util.Arrays;
+import java.util.LinkedHashSet;
 import sun.security.util.Debug;
 
 import java.util.Map;
@@ -173,7 +174,45 @@ public class SecureClassLoader extends ClassLoader {
                                          byte[] b, int off, int len,
                                          CodeSource cs)
     {
-        return defineClass(name, b, off, len, getProtectionDomain(cs));
+        return defineClass(name, b, off, len, getProtectionDomain(cs, null));
+    }
+
+    /**
+     * Converts an array of bytes into an instance of class {@code Class},
+     * with an optional CodeSource and process Principal's. Before the
+     * class can be used it must be resolved.
+     * <p>
+     * If a non-null CodeSource is supplied a ProtectionDomain is
+     * constructed and associated with the class being defined.
+     *
+     * @param      name the expected name of the class, or {@code null}
+     *                  if not known, using '.' and not '/' as the separator
+     *                  and without a trailing ".class" suffix.
+     * @param      b    the bytes that make up the class data. The bytes in
+     *             positions {@code off} through {@code off+len-1}
+     *             should have the format of a valid class file as defined by
+     *             <cite>The Java Virtual Machine Specification</cite>.
+     * @param      off  the start offset in {@code b} of the class data
+     * @param      len  the length of the class data
+     * @param      cs   the associated CodeSource, or {@code null} if none
+     * @param      p    JVM process principals.
+     * @return the {@code Class} object created from the data,
+     *         and optional CodeSource.
+     * @throws     ClassFormatError if the data did not contain a valid class
+     * @throws     IndexOutOfBoundsException if either {@code off} or
+     *             {@code len} is negative, or if
+     *             {@code off+len} is greater than {@code b.length}.
+     *
+     * @throws     SecurityException if an attempt is made to add this class
+     *             to a package that contains classes that were signed by
+     *             a different set of certificates than this class, or if
+     *             the class name begins with "java.".
+     */
+    protected final Class<?> defineClass(String name,
+                                         byte[] b, int off, int len,
+                                         CodeSource cs, Principal [] p)
+    {
+        return defineClass(name, b, off, len, getProtectionDomain(cs, p));
     }
 
     /**
@@ -205,7 +244,39 @@ public class SecureClassLoader extends ClassLoader {
     protected final Class<?> defineClass(String name, java.nio.ByteBuffer b,
                                          CodeSource cs)
     {
-        return defineClass(name, b, getProtectionDomain(cs));
+        return defineClass(name, b, getProtectionDomain(cs, null));
+    }
+    
+    /**
+     * Converts a {@link java.nio.ByteBuffer ByteBuffer}
+     * into an instance of class {@code Class}, with an optional CodeSource
+     * and process Principal's.
+     * Before the class can be used it must be resolved.
+     * <p>
+     * If a non-null CodeSource is supplied a ProtectionDomain is
+     * constructed and associated with the class being defined.
+     *
+     * @param      name the expected name of the class, or {@code null}
+     *                  if not known, using '.' and not '/' as the separator
+     *                  and without a trailing ".class" suffix.
+     * @param      b    the bytes that make up the class data.  The bytes from positions
+     *                  {@code b.position()} through {@code b.position() + b.limit() -1}
+     *                  should have the format of a valid class file as defined by
+     *                  <cite>The Java Virtual Machine Specification</cite>.
+     * @param      cs   the associated CodeSource, or {@code null} if none
+     * @param      p    JVM process principals.
+     * @return the {@code Class} object created from the data,
+     *         and optional CodeSource.
+     * @throws     ClassFormatError if the data did not contain a valid class
+     * @throws     SecurityException if an attempt is made to add this class
+     *             to a package that contains classes that were signed by
+     *             a different set of certificates than this class, or if
+     *             the class name begins with "java.".
+     */
+    protected final Class<?> defineClass(String name, java.nio.ByteBuffer b,
+                                         CodeSource cs, Principal [] p)
+    {
+        return defineClass(name, b, getProtectionDomain(cs, p));
     }
 
     /**
@@ -236,11 +307,11 @@ public class SecureClassLoader extends ClassLoader {
      * Returned cached ProtectionDomain for the specified CodeSource.
      */
     @SuppressWarnings("removal")
-    private ProtectionDomain getProtectionDomain(CodeSource cs) {
-        if (cs == null) {
-            return null;
-        }
-
+    private ProtectionDomain getProtectionDomain(CodeSource cs, Principal [] p) {
+        if (cs == null && (p == null || p.length == 0)) return null;
+        Set<Principal> principals = null;
+        if (p != null && p.length > 0) principals = new LinkedHashSet<>(); // preserve order.
+        
         CodeSourceKey key;
         try {
             key = new CodeSourceKey(cs);
@@ -271,6 +342,11 @@ public class SecureClassLoader extends ClassLoader {
             Principal[] pals = null;
             if (sub != null && sub.isReadOnly()) {
                 Set<Principal> prin = sub.getPrincipals();
+                if (principals != null) {
+                    principals.addAll(prin);
+                    principals.addAll(Arrays.asList(p));
+                    prin = principals;
+                }
                 pals = prin.toArray(new Principal[0]);
             }
             pd = new ProtectionDomain(cs, perms, SecureClassLoader.this, pals);
