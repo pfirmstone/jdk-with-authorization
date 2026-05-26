@@ -1,8 +1,8 @@
 # Dirty Chai Security Model
 
-- **Version:** 2.3
-- **Date:** 2026-05-13
-- **Last Reviewed:** 2026-05-13
+- **Version:** 2.4
+- **Date:** 2026-05-26
+- **Last Reviewed:** 2026-05-26
 - **Project:** Dirty Chai
 - **Repository:** https://github.com/pfirmstone/DirtyChai
 
@@ -49,7 +49,7 @@ Use this path first, then return to the deeper sections below.
    ```
 
 4. **Use Subject-aware execution where policy requires principals**:
-   - Wrap entrypoints in `Subject.callAs(...)` / `Subject.doAs(...)`.
+   - Wrap entrypoints in `Subject.callAs(...)`. `Subject.doAs(...)` is retained for backward compatibility only; new code should prefer `Subject.callAs(...)`.
    - Use `Thread.Builder` / `ThreadFactory` inside that scope for consistent Subject-aware context inheritance.
    - Create executors using those factories within the same scope so worker threads inherit the intended context baseline.
 
@@ -525,6 +525,7 @@ Dirty Chai preserves authorization behavior with virtual threads by carrying eff
 
 - `UserSubject` represents human/client identity and can be bound with `Subject.callAs(...)`.
 - `WorkerSubject` represents service/process identity and is ambient; `Subject.callAs(Subject, Callable)` rejects a `WorkerSubject` with `IllegalArgumentException`.
+- `Subject.doAs(Subject, PrivilegedAction)` and `Subject.doAs(Subject, PrivilegedExceptionAction)` also throw `IllegalArgumentException` when the `Subject` argument is a `WorkerSubject` instance — consistent with the `callAs` restriction above. `Subject.doAs` is retained for backward compatibility; new code should use `Subject.callAs(...)` instead.
 - The multi-subject overload `Subject.callAs(Callable<T>, UserSubject...)` binds zero or more `UserSubject` instances simultaneously. `Subject.current()` returns `subject[0]` when multiple subjects are bound.
 - `WorkerSubject` is excluded from this overload by the parameter type and is also skipped by `AccessController.getContext()` when scoped subjects are injected into an `AccessControlContext`.
 
@@ -535,6 +536,9 @@ Dirty Chai preserves authorization behavior with virtual threads by carrying eff
 - `Subject.callAs(...)` binds subjects in a `ScopedValue`. Any code path that later calls `AccessController.getContext()` inside that scope receives an `AccessControlContext` with those scoped user subjects injected automatically.
 - `Subject.doAs(...)` follows the older model: it snapshots the current `AccessControlContext`, associates the subject with a `SubjectDomainCombiner`, and establishes that subject-bearing context at the `doPrivileged` boundary.
 - The two APIs therefore no longer have identical propagation semantics. `callAs()` is ambient within the lexical scope through `getContext()`, while `doAs()` remains tied to the snapshotted ACC / privileged-boundary path.
+- Both `callAs(...)` and `doAs(...)` reject a `WorkerSubject` argument with `IllegalArgumentException`. Process/workload identity (`WorkerSubject` / `SpiffeSubject`) is always ambient through `ProtectionDomain` stamping (§8.2) and is never bound via either API.
+
+> **Deprecation note:** `Subject.doAs(...)` is retained for backward compatibility with existing code and JGDMS consumers. It is not recommended for new development. New code should use `Subject.callAs(...)`, which integrates with the `ScopedValue`-backed subject injection described above and produces more predictable propagation semantics. Formal `@Deprecated` annotation is under consideration (see tracked issue); coordination with upstream OpenJDK is required before that annotation is applied.
 
 ### 10.3) Thread builders inside `callAs(...)`
 
@@ -691,9 +695,10 @@ This section mirrors the thread-creation analysis for adjacent APIs that define 
 4. Policy evaluation must remain deny-by-default.
 5. Validation failures must remain fail-secure.
 6. `WorkerSubject` is never injected via scoped-subject handling into an `AccessControlContext`; process identity remains ambient via `ProtectionDomain`.
-7. A `DigestGrant` never implies a domain whose `CodeSource` is a plain `CodeSource` — the `CodeSource` must be a `DigestCodeSource` with a matching algorithm and digest; otherwise the grant does not apply.
-8. `SecureClassLoader` stores a `ProtectionDomain` in `pdcache` only after all permission checks have passed and the digest has been computed; a plain `CodeSource` key is never stored, so no cache hit can bypass the digest requirement on a subsequent `defineClass` call.
-9. SPIFFE principal injection into `ProtectionDomain` occurs only when the VM is fully booted (`VM.isBooted()`), a `SecurityManager` is active, and `SpiffeCredentialManager.getSubject()` returns a non-null read-only `SpiffeSubject`; all other conditions result in `pals = null` (fail-secure: no SPIFFE principals injected rather than forged ones).
+7. Neither `Subject.callAs(...)` nor `Subject.doAs(...)` accepts a `WorkerSubject` as a bound subject; both throw `IllegalArgumentException`. Process identity is always injected exclusively through `ProtectionDomain` principal stamping at class-load time.
+8. A `DigestGrant` never implies a domain whose `CodeSource` is a plain `CodeSource` — the `CodeSource` must be a `DigestCodeSource` with a matching algorithm and digest; otherwise the grant does not apply.
+9. `SecureClassLoader` stores a `ProtectionDomain` in `pdcache` only after all permission checks have passed and the digest has been computed; a plain `CodeSource` key is never stored, so no cache hit can bypass the digest requirement on a subsequent `defineClass` call.
+10. SPIFFE principal injection into `ProtectionDomain` occurs only when the VM is fully booted (`VM.isBooted()`), a `SecurityManager` is active, and `SpiffeCredentialManager.getSubject()` returns a non-null read-only `SpiffeSubject`; all other conditions result in `pals = null` (fail-secure: no SPIFFE principals injected rather than forged ones).
 
 ---
 
