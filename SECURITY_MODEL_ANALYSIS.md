@@ -1,10 +1,10 @@
 # Security Model Analysis — Dirty Chai
 
-**Version:** 1.1  
-**Date:** 2026-04-30  
-**Scope:** Source-code analysis of the Dirty Chai security model as implemented in the current `trunk` branch, including process-isolation necessity analysis: virtual thread pinning, ForkJoinPool carrier-thread saturation, SecurityManager bypass risk, FFM resource-exhaustion surfaces, and process-isolation decision boundaries.  
+**Version:** 1.2  
+**Date:** 2026-05-13  
+**Scope:** Source-code analysis of the Dirty Chai security model as implemented in the current `trunk` branch, including process-isolation necessity analysis: virtual thread pinning, ForkJoinPool carrier-thread saturation, SecurityManager bypass risk, FFM resource-exhaustion surfaces, and process-isolation decision boundaries.  This version adds coverage of the `DigestCodeSource` / `DigestGrant` content-addressed trust feature merged in PR #203, and the `digest` policy-file selector implemented in `DefaultPolicyScanner` / `DefaultPolicyParser`.  
 **Analyst:** Copilot (AI-assisted analysis; content reviewed and approved for this exempt document per `CLAUDE.md`)  
-**Related Documents:** `SECURITY_MODEL.md`, `SECURITY_ANALYSIS.md`, `STACK_VALIDATION_ANALYSIS.md`, `PROCESS_ISOLATION.md`, `VULNERABILITIES_ADDRESSED.md`
+**Related Documents:** `SECURITY_MODEL.md`, `SECURITY_ANALYSIS.md`, `STACK_VALIDATION_ANALYSIS.md`, `PROCESS_ISOLATION.md`, `VULNERABILITIES_ADDRESSED.md`, `DIGEST_GRANT_PLAN.md`
 
 ---
 
@@ -16,8 +16,12 @@ The analysis is based on a direct reading of:
 
 - `java.lang.System` (`System.java`) — SecurityManager installation
 - `java.security.AccessController` (`AccessController.java`) — privileged execution
+- `java.security.DigestCodeSource` — content-addressed code source (new in PR #203)
+- `java.security.SecureClassLoader` — class loading with automatic `DigestCodeSource` promotion
 - `au.zeus.jdk.authorization.sm.CombinerSecurityManager` — SM implementation
 - `au.zeus.jdk.authorization.policy.ConcurrentPolicyFile` — policy engine
+- `au.zeus.jdk.authorization.policy.DefaultPolicyScanner` / `DefaultPolicyParser` — policy file syntax (including new `digest` selector)
+- `org.apache.river.api.security.DigestGrant` — content-hash-based permission grant (new in PR #203)
 - `au.zeus.jdk.net.Uri` — RFC 3986 URI validation
 - `au.zeus.jdk.authorization.guards.*` — custom permission guards
 - All existing security analysis `.md` documents
@@ -39,6 +43,12 @@ Five areas from the core-model analysis warrant continued attention:
 | `CombinerSecurityManager` cache unbounded growth | TTL eviction is time-based, not count-based | Low-severity DoS if a large number of distinct `AccessControlContext` objects are created |
 | `SocketPermission` in checked-permission cache | Comment in code acknowledges the SocketPermission caching concern but proceeds | DNS resolution outcomes that change over time could allow a cached allow to persist |
 | `NativeMemoryPermission` — FFM surface coverage | Guards `global-arena`, `shared-arena`, `confined-arena`, `auto-arena`, and `reinterpret-memory-segment` | Coverage appears complete for current FFM API surface |
+
+One area previously listed as a gap has been closed since version 1.1:
+
+| Area | Finding | Resolution |
+|------|---------|------------|
+| Content-addressed trust / dependency confusion | Attackers could serve a different artifact at a trusted URL and satisfy a `codebase`-only policy grant | **Closed (PR #203)** — `SecureClassLoader` now auto-promotes network `CodeSource` to `DigestCodeSource`; policy `digest` clauses (`DigestGrant`) match only when the artifact hash matches the pinned value |
 
 ---
 
@@ -90,9 +100,26 @@ Five areas from the core-model analysis warrant continued attention:
 │  ├─ AllPermission fast path for infrastructure            │
 │  ├─ static domain permissions                             │
 │  └─ per-grant: CodeSource match (RFC 3986 URI) +          │
+│               Digest match (DigestGrant only —            │
+│                 pd.getCodeSource() must be DigestCodeSource│
+│                 with matching algorithm + bytes) +        │
 │               Principal match +                           │
 │               grant.implies(perm)                         │
 │  no match → deny (fail-secure)                            │
+└───────────────────────────────────────────────────────────┘
+
+SecureClassLoader (class-loading path):
+┌───────────────────────────────────────────────────────────┐
+│  SecureClassLoader.getProtectionDomain(CodeSource cs)     │
+│  ├─ cs already DigestCodeSource? → use as-is              │
+│  ├─ pdcache hit? → return cached ProtectionDomain         │
+│  ├─ SM active and codebase non-null?                      │
+│  │   ├─ check URLPermission("GET:")                       │
+│  │   ├─ download artifact; compute SHA-256 digest         │
+│  │   ├─ promote cs → DigestCodeSource                     │
+│  │   └─ recompute permissions from DigestCodeSource       │
+│  ├─ check LoadClassPermission.LOAD_CLASS_ALLOW            │
+│  └─ pdcache.putIfAbsent(key, pd)                          │
 └───────────────────────────────────────────────────────────┘
 ```
 
@@ -273,6 +300,80 @@ try {
 
 A null `CodeSource` cannot match any grant clause (no `CodeBase` string can equal null). Code with a null `CodeSource` therefore receives no policy-granted permissions. **HC-5 compliance: PASS.**
 
+### 7.4 `digest` Policy Selector and `DigestGrant` (PR #203)
+
+**Implementation:** `DefaultPolicyScanner.java` (token `"digest"`), `DefaultPolicyParser.java` (`resolveGrant()`), `DigestGrant.java`.
+
+#### 7.4.1 Policy Syntax
+
+A `grant` block may now include a `digest` clause in addition to the existing `signedby`, `codebase`, and `principal` selectors:
+
+```
+grant codebase "https://trusted.example.com/lib.jar",
+      digest "SHA-256:3a7bd3e2360a3d29eea436fcfb7e44c735d117c42d1c1835420b6b9942dd4f1b"
+{
+    permission java.io.FilePermission "/tmp/-", "read,write";
+};
+```
+
+The scanner tokenises `digest` as a keyword and expects a single quoted string in `algorithm:hexValue` form (`DefaultPolicyScanner.java:231–237`). The parser hex-decodes the value, calls `pgb.digest(algorithm, bytes)`, and sets `context(PermissionGrantBuilder.DIGEST)`, producing a `DigestGrant` (`DefaultPolicyParser.java:281–299`).
+
+#### 7.4.2 `DigestGrant` Implication Semantics
+
+`DigestGrant.implies(ProtectionDomain pd)` (and the `CodeSource`-based overload) enforces the following chain:
+
+1. Delegates to `super.implies(pd)` — URI/codebase, signer, and principal checks from `URIGrant` / `CertificateGrant`.
+2. Extracts `pd.getCodeSource()`.
+3. If the CodeSource is **not** a `DigestCodeSource` → returns `false` immediately. A plain `CodeSource` never satisfies a digest grant, regardless of URL match.
+4. Compares `digestAlgorithm` (exact string equality, case-sensitive).
+5. Compares `digest` bytes with `Arrays.equals`.
+6. Only if all six conditions hold does the grant apply.
+
+**Security property:** A `DigestGrant` is content-pinned. Swapping the artifact at a trusted URL (dependency confusion, supply-chain substitution) produces a different SHA-256 and cannot satisfy the grant. This is fail-secure: any mismatch — wrong type, wrong algorithm, wrong bytes — returns `false`.
+
+#### 7.4.3 `SecureClassLoader` Auto-Promotion to `DigestCodeSource`
+
+`SecureClassLoader.getProtectionDomain(CodeSource cs)` (`SecureClassLoader.java:239+`) is the single point where `ProtectionDomain` objects are created for loaded classes. The updated flow is:
+
+1. **If `cs` is already a `DigestCodeSource`**: use it as-is as the cache key; no re-download.
+2. **If SM is active and `cs` has a non-null codebase URL**:
+   - Check `URLPermission("GET:")` for the new domain.
+   - Download the artifact; compute SHA-256.
+   - Promote `cs` → `DigestCodeSource(uri, certs, "SHA-256")`.
+   - Recompute permissions from the promoted `DigestCodeSource`.
+3. Check `LoadClassPermission.LOAD_CLASS_ALLOW`.
+4. `pdcache.putIfAbsent(key, pd)` — only after all checks pass.
+
+The `CodeSourceKey` record distinguishes plain `CodeSource` keys from `DigestCodeSource` keys: a null `digestAlgorithm` key (plain `CS`) is **never equal** to a non-null `digestAlgorithm` key (`DigestCS`). This prevents a cached plain-CS lookup from satisfying a subsequent `defineClass` call that expects a digest-bearing domain.
+
+#### 7.4.4 DOS Defences in `DigestCodeSource`
+
+`DigestCodeSource` enforces hard limits on stream content to prevent resource exhaustion during artifact download and deserialization:
+
+| Limit | Value | Purpose |
+|-------|-------|---------|
+| `MAX_STREAM_BYTES` | 512 MiB | Abort digest computation on abnormally large artifact downloads |
+| `MAX_CERT_COUNT` | 100 | Bound certificate array size during deserialization |
+| `MAX_CERT_BYTES` | 64 KiB | Bound per-certificate DER size during deserialization |
+| `MAX_DIGEST_BYTES` | 512 bytes | Bound digest field size during deserialization |
+
+#### 7.4.5 Allowed Hash Algorithms
+
+`DigestCodeSource` accepts only:
+
+```
+SHA-256, SHA-384, SHA-512, SHA-512/256, SHA3-256, SHA3-384, SHA3-512
+```
+
+Any other algorithm string throws `IllegalArgumentException` at construction time. This prevents weak-hash policy grants (MD5, SHA-1) from being expressed.
+
+#### 7.4.6 Assessment
+
+- **HC-5 compliance: PASS** — a `DigestGrant` for a `DigestCodeSource` with `null` URI still requires a non-null `DigestCodeSource` type; no bypass via null CodeSource.
+- **HC-7 compliance: PASS** — `DigestCodeSource.equals()` uses `Uri.urlToUri(url)` for DNS-free URI comparison, consistent with the rest of the policy engine.
+- **Fail-secure:** Type mismatch (plain `CodeSource` vs. `DigestCodeSource`) returns `false`; byte mismatch returns `false`; algorithm mismatch returns `false`.
+- **Dependency-confusion threat: CLOSED** — confirmed by code inspection: `SecureClassLoader` auto-promotes, `DigestGrant` type-guards, and `CodeSourceKey` prevents cache reuse across CS and DigestCS keys.
+
 ---
 
 ## 8. AccessController Analysis
@@ -345,6 +446,9 @@ This is the intended behavior and is documented in `SECURITY_MODEL.md` section 1
 | Validation failures are fail-secure | Exception handling in `validateCallerStackWithStackWalker()`, `ConcurrentPolicyFile` URI parsing | **HOLDS** — SecurityException or null CodeSource on any failure |
 | Null CodeSource is always unprivileged | `ConcurrentPolicyFile` grant matching | **HOLDS** — null CodeSource never matches a grant |
 | No reflection in security-critical SM installation path | `validateCallerStackWithStackWalker()` | **HOLDS** — reflection frames are detected and rejected |
+| `DigestGrant` never implies a plain `CodeSource` domain | `DigestGrant.implies(ProtectionDomain)` | **HOLDS** — `instanceof DigestCodeSource` check; plain CS returns false immediately |
+| `SecureClassLoader` stores `ProtectionDomain` in `pdcache` only after digest computed | `SecureClassLoader.getProtectionDomain()` | **HOLDS** — `pdcache.putIfAbsent` called only after SHA-256 computation and all permission checks |
+| Plain `CodeSourceKey` and `DigestCodeSourceKey` never compare equal | `CodeSourceKey.equals()` in `SecureClassLoader` | **HOLDS** — null vs. non-null `digestAlgorithm` comparison prevents cache reuse across CS/DigestCS |
 
 ---
 
@@ -364,12 +468,14 @@ This is the intended behavior and is documented in `SECURITY_MODEL.md` section 1
 
 6. **ScopedValue recursion guard** — using `ScopedValue` for recursion tracking in `CombinerSecurityManager` is the correct modern choice and inherits properly across virtual thread continuations.
 
+7. **Content-addressed trust via `DigestCodeSource` / `DigestGrant` (PR #203)** — `SecureClassLoader` automatically promotes every network-loaded `CodeSource` to a `DigestCodeSource` (SHA-256) when a SecurityManager is active. Policy `digest` clauses produce `DigestGrant` objects that match only if the artifact hash matches the pinned value. This is the first known OpenJDK-based implementation that closes the dependency-confusion / content-substitution supply-chain attack vector at the policy-evaluation layer. The policy file scanner (`DefaultPolicyScanner`) and parser (`DefaultPolicyParser`) support the `digest "algorithm:hexValue"` syntax natively, making the feature usable without programmatic grant construction.
+
 ### 12.2 Open Gaps
 
 | ID | Description | Severity | Documented? |
 |----|-------------|----------|-------------|
 | G-2 | Virtual thread carrier pinning cannot be prevented once a virtual thread is running | Low (requires prior `createVirtualThread` grant) | Yes — `PROCESS_ISOLATION.md` |
-| G-3 | `SerialObjectPermission` in `readOrdinaryObject()` — coverage of `readProxyDesc()` and `readClassDesc()` should be verified to confirm gadget chains through proxy deserialization are blocked | Medium | Not yet documented |
+| G-3 | `SerialObjectPermission` in `readOrdinaryObject()` — `readProxyDesc()` does not have a corresponding guard; gadget chains that reach object creation via `TC_PROXYCLASSDESC` are not blocked by the current guard placement | Medium | Yes — `SECURITY_MODEL.md` section 13, G-3 confirmed |
 | G-4 | `contextCache` and `checked` caches have time-based TTL but no count-based cap — high-volume distinct-context workloads can cause unbounded cache growth | Low | Not yet documented |
 | G-5 | `SocketPermission` in the `checked` cache may return a stale allow after DNS state changes within the TTL window | Low | Acknowledged in source code comment |
 | G-6 | Virtual threads that enter `synchronized` blocks pin their carrier thread; once running, no JVM mechanism can forcibly terminate or unpin them — carrier-thread exhaustion is possible for code already granted `createVirtualThread` | Low (requires prior grant) | Documented in `PROCESS_ISOLATION.md` |
