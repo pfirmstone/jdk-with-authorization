@@ -515,7 +515,7 @@ public final class AccessController {
         CodeSource cs = getResource(caller);
         ProtectionDomain pd = new DomainIdentity(cs, toPermissions(perms), null, null);
         if (context == null){
-            context = AccessControlContext.create(new ProtectionDomain[]{pd}, dc, false);
+            context = AccessControlContext.create(new ProtectionDomain[]{pd}, dc, true);
         } else {
             if (dc == null) dc = context.getCombiner();
             context = context.intersectionOfPermsDoWithCombiner(dc, pd);
@@ -928,7 +928,7 @@ public final class AccessController {
         if (context == null){
             context = AccessControlContext.create(
                     new ProtectionDomain[]{pd},
-                    dc, false);
+                    dc, true);
         } else {
             if (dc == null) dc = context.getCombiner();
             context = context.intersectionOfPermsDoWithCombiner(dc, pd);

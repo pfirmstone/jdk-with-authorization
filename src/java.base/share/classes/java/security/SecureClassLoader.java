@@ -28,6 +28,7 @@ package java.security;
 import au.zeus.jdk.authorization.guards.LoadClassPermission;
 import au.zeus.jdk.authorization.spire.SpiffeCredentialManager;
 import au.zeus.jdk.net.Uri;
+import java.io.FilePermission;
 import java.io.IOException;
 import java.net.URISyntaxException;
 import java.net.URL;
@@ -351,13 +352,20 @@ public class SecureClassLoader extends ClassLoader {
             }
             pd = new ProtectionDomain(cs, perms, SecureClassLoader.this, pals);
             if (cs.location != null) {
-                Permission checkURL = new URLPermission(key.uri.toString(), "GET:");
+                Permission checkURL;
+                String scheme = key.uri.getScheme();
+                if ("file".equals(scheme)){
+                    checkURL = new FilePermission(key.uri.toString(), "read");
+                } else {
+                    checkURL = new URLPermission(key.uri.toString(), "GET:");
+                }
                 sm.checkPermission(checkURL,
                         AccessControlContext.create(new ProtectionDomain[]{pd}, false));
-                // Promote plain CodeSource to DigestCodeSource by downloading the
-                // artifact and computing its content digest.  The algorithm is
-                // hard-coded to "SHA-256" for now; making it configurable is a
-                // planned follow-up.
+                // Promote plain CodeSource to DigestCodeSource by computing its
+                // content digest.  For jrt:/jmod: URIs DigestCodeSource walks
+                // every module entry via ModuleReader; for file: and remote URLs
+                // it reads the stream directly.  The algorithm is hard-coded to
+                // "SHA-256" for now; making it configurable is a planned follow-up.
                 try {
                     digest = new DigestCodeSource(key.uri, key.certs, "SHA-256");
                     perms = SecureClassLoader.this.getPermissions(digest);

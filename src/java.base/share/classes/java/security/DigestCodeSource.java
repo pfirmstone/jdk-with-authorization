@@ -40,14 +40,20 @@ import java.security.cert.Certificate;
 import java.security.cert.CertificateEncodingException;
 import java.security.cert.CertificateException;
 import java.security.cert.CertificateFactory;
+import java.lang.module.ModuleFinder;
+import java.lang.module.ModuleReader;
+import java.lang.module.ModuleReference;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
+import java.util.TreeMap;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.stream.Stream;
 import sun.net.util.URLUtil;
 
 /**
@@ -815,6 +821,59 @@ public final class DigestCodeSource extends CodeSource implements Externalizable
     // -----------------------------------------------------------------------
 
     /**
+     * Computes an aggregate digest of a named JDK module by walking every
+     * resource entry via {@link ModuleReader} in lexicographic order and
+     * feeding each entry's bytes into the digest.  This covers {@code jrt:}
+     * and {@code jmod:} URIs whose module-root URL cannot be opened as a
+     * single stream.
+     *
+     * <p>The digest is computed over the concatenation of:
+     * {@code (entry-name-UTF8-bytes + entry-content-bytes)} for every entry,
+     * in sorted name order, so the result is deterministic.
+     *
+     * @param moduleName the plain module name (e.g. {@code "jdk.localedata"})
+     * @param algorithm  digest algorithm (e.g. {@code "SHA-256"})
+     * @return raw digest bytes
+     * @throws IOException              if any module resource cannot be read
+     * @throws NoSuchAlgorithmException if the algorithm is unavailable
+     * @throws SecurityException        if the module is not found
+     */
+    private static byte[] computeModuleDigest(String moduleName, String algorithm)
+            throws IOException, NoSuchAlgorithmException {
+        // Locate the module in the system image.
+        Optional<ModuleReference> oref = ModuleFinder.ofSystem().find(moduleName);
+        if (oref.isEmpty()) {
+            throw new SecurityException("Module not found in system image: " + moduleName);
+        }
+        MessageDigest md = MessageDigest.getInstance(algorithm);
+        try (ModuleReader reader = oref.get().open();
+             Stream<String> entries = reader.list()) {
+            // Sort for a deterministic digest regardless of iteration order.
+            entries.sorted().forEach(name -> {
+                try {
+                    Optional<InputStream> oin = reader.open(name);
+                    if (oin.isPresent()) {
+                        // Mix in the entry name so renames are detected.
+                        md.update(name.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                        try (InputStream in = oin.get()) {
+                            byte[] buf = new byte[8192];
+                            int n;
+                            while ((n = in.read(buf)) >= 0) {
+                                md.update(buf, 0, n);
+                            }
+                        }
+                    }
+                } catch (IOException ex) {
+                    throw new java.io.UncheckedIOException(ex);
+                }
+            });
+        } catch (java.io.UncheckedIOException ex) {
+            throw ex.getCause();
+        }
+        return md.digest();
+    }
+
+    /**
      * Returns the content digest of the artifact at the given URI/URL.
      *
      * <h4>Two-layer caching strategy</h4>
@@ -825,20 +884,24 @@ public final class DigestCodeSource extends CodeSource implements Externalizable
      *       On a cache hit the response body (JAR bytes) is served from memory;
      *       on a miss the bytes are downloaded and the cache is populated for
      *       future callers — including any code outside {@code DigestCodeSource}
-     *       that loads from the same URL.</li>
+     *       that loads from the same URL.
+     *       <br><em>Note:</em> for {@code jrt:} and {@code jmod:} URIs Layer 1
+     *       is skipped — the module image is read directly via
+     *       {@link ModuleReader}, which has its own OS-level caching.</li>
      *   <li><b>Layer 2 — {@code digestCache} (TOCTOU defence):</b> the digest
      *       computed from the stream (cached or fresh) is compared against the
      *       first-trusted value recorded for this {@code (URI, algorithm)} pair.
-     *       If the values differ the remote artifact has changed since it was
-     *       first loaded; the stale entries are evicted from both caches and a
-     *       {@link SecurityException} is thrown (fail-secure).</li>
+     *       If the values differ the remote artifact (or local JDK image) has
+     *       changed since it was first loaded; a {@link SecurityException} is
+     *       thrown (fail-secure).  This layer applies to <em>all</em> schemes,
+     *       including {@code jrt:} and {@code jmod:}.</li>
      * </ol>
      *
      * <p>DOS defence: throws {@link IOException} if the stream exceeds
      * {@link #MAX_STREAM_BYTES} (default 512 MiB).
      *
      * @param uri       RFC 3986 URI used as the cache key (must not be {@code null})
-     * @param url       URL opened on a cache miss
+     * @param url       URL opened on a cache miss (ignored for {@code jrt:}/{@code jmod:})
      * @param algorithm digest algorithm (e.g. {@code "SHA-256"})
      * @return a fresh defensive copy of the raw digest bytes
      * @throws IOException              if the URL cannot be read or the stream
@@ -849,24 +912,43 @@ public final class DigestCodeSource extends CodeSource implements Externalizable
      */
     private static byte[] computeDigest(Uri uri, URL url, String algorithm)
             throws IOException, NoSuchAlgorithmException {
-        // Layer 1: URLConnection consults JarResponseCache automatically via
-        // setUseCaches(true).  On a cache hit no network connection is opened;
-        // on a miss the response is downloaded and stored by JarResponseCache.
-        URLConnection conn = url.openConnection();
-        conn.setUseCaches(true);
-
         byte[] computed;
-        try (InputStream raw = conn.getInputStream()) {
-            InputStream buffered = raw instanceof BufferedInputStream
-                    ? raw : new BufferedInputStream(raw, 8192);
-            computed = computeDigestFromStream(buffered, algorithm);
-        } finally {
-            if (conn instanceof HttpURLConnection http) {
-                http.disconnect();
+
+        String scheme = uri.getScheme();
+        if ("jrt".equals(scheme) || "jmod".equals(scheme)) {
+            // Layer 1 is skipped — module entries are read directly via
+            // ModuleReader.  The result still flows through Layer 2 below.
+            String path = uri.getPath();
+            String moduleName = (path != null && path.startsWith("/"))
+                    ? path.substring(1) : path;
+            if (moduleName == null || moduleName.isEmpty()) {
+                throw new IOException("Cannot compute digest: no module name in URI: " + uri);
+            }
+            // Strip any trailing resource path — we digest the whole module.
+            int slash = moduleName.indexOf('/');
+            if (slash != -1) moduleName = moduleName.substring(0, slash);
+            computed = computeModuleDigest(moduleName, algorithm);
+        } else {
+            // Layer 1: URLConnection consults JarResponseCache automatically via
+            // setUseCaches(true).  On a cache hit no network connection is opened;
+            // on a miss the response is downloaded and stored by JarResponseCache.
+            URLConnection conn = url.openConnection();
+            conn.setUseCaches(true);
+
+            try (InputStream raw = conn.getInputStream()) {
+                InputStream buffered = raw instanceof BufferedInputStream
+                        ? raw : new BufferedInputStream(raw, 8192);
+                computed = computeDigestFromStream(buffered, algorithm);
+            } finally {
+                if (conn instanceof HttpURLConnection http) {
+                    http.disconnect();
+                }
             }
         }
 
         // Layer 2: compare against the first-trusted digest for this URI.
+        // Applies to all schemes — including jrt: and jmod: — so that a
+        // tampered JDK image is detected on every subsequent class load.
         DigestCacheKey key = new DigestCacheKey(uri, algorithm);
         byte[] trusted = digestCache.putIfAbsent(key, computed.clone());
         if (trusted != null && !Arrays.equals(trusted, computed)) {
@@ -875,9 +957,11 @@ public final class DigestCodeSource extends CodeSource implements Externalizable
             // fresh content; the trusted digest entry is deliberately kept so that
             // any concurrent thread that also downloaded the malicious version
             // cannot silently re-establish it as trusted after this remove.
-            JAR_CACHE.invalidate(Uri.uriToURI(uri));
+            if (!("jrt".equals(scheme) || "jmod".equals(scheme))) {
+                JAR_CACHE.invalidate(Uri.uriToURI(uri));
+            }
             throw new SecurityException(
-                    "Remote artifact digest has changed since first load; "
+                    "Artifact digest has changed since first load; "
                     + "refusing to load from: " + uri);
         }
 

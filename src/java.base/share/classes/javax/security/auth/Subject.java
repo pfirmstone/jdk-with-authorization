@@ -339,8 +339,10 @@ public sealed class Subject implements java.io.Serializable permits
             sm.checkPermission(AuthPermissionHolder.GET_SUBJECT_PERMISSION);
         }
 
-        Objects.requireNonNull(acc, ResourcesMgr.getString
-                ("invalid.null.AccessControlContext.provided"));
+        if (acc == null) {
+            throw new NullPointerException(ResourcesMgr.getString(
+                    "invalid.null.AccessControlContext.provided"));
+        }
 
         // return the Subject from the DomainCombiner of the provided context
         DomainCombiner dc = Context.combiner(acc);

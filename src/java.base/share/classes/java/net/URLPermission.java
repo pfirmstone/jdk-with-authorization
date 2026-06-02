@@ -258,12 +258,18 @@ public final class URLPermission extends Permission {
             this.ssp = url.substring(delim + 1);
 
             if (!ssp.startsWith("//")) {
-                if (!ssp.equals("*")) {
-                    throw new IllegalArgumentException(
-                        "Invalid URL string: \"" + url + "\"");
+                if (ssp.equals("*")) {
+                    this.authority = new Authority(scheme, "*");
+                    return;
                 }
-                this.authority = new Authority(scheme, "*");
-                return;
+                if (ssp.startsWith("/")) {
+                    // Path-only URI with no authority (e.g. jrt:/module.name)
+                    this.path = ssp;
+                    this.authority = new Authority(scheme, "*");
+                    return;
+                }
+                throw new IllegalArgumentException(
+                    "Invalid URL string: \"" + url + "\"");
             }
             String authpath = ssp.substring(2);
 
