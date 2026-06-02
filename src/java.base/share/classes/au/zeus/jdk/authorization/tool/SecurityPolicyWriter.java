@@ -409,7 +409,9 @@ public class SecurityPolicyWriter extends CombinerSecurityManager{
                         CodeSource cs = null; 
                         Principal [] principals = null;
                         try {
-                            cs = pd.getCodeSource();
+                            cs = (pd instanceof ProtectionDomainKey pdk)
+                                    ? pdk.originalCodeSource()
+                                    : pd.getCodeSource();
                             principals = pd.getPrincipals();
                         } catch (NullPointerException e){
                             // On some occassions ProtectionDomain hasn't been
@@ -452,7 +454,7 @@ public class SecurityPolicyWriter extends CombinerSecurityManager{
                                 }
                             }
                             if (codebase != null){
-                                pw.print("// codebase \"");
+                                pw.print("codebase \"");
                                 String codebaseStr = replaceValuesWithProperties(codebase.toString());
                                 pw.print(codebaseStr);
                                 pw.print("\"");
@@ -478,8 +480,22 @@ public class SecurityPolicyWriter extends CombinerSecurityManager{
                                     pw.print("\n");
                                 }
                             }
+                            // Emit principal clauses.
+                            if (principals != null && principals.length > 0) {
+                                for (int i = 0; i < principals.length; i++) {
+                                    pw.print("    principal ");
+                                    pw.print(principals[i].getClass().getCanonicalName());
+                                    pw.print(" \"");
+                                    pw.print(principals[i].getName());
+                                    pw.print("\"");
+                                    if (i < principals.length - 1) pw.print(",");
+                                    pw.print("\n");
+                                }
+                            }
                         } else {
-                            pw.print("\n");
+                            // No codebase and no principals: emit a bare "grant" block
+                            // that applies to all code regardless of origin.
+                            pw.print("grant\n");
                         }
                         pw.print("{\n");
 
@@ -604,30 +620,40 @@ public class SecurityPolicyWriter extends CombinerSecurityManager{
      * ProtectionDomainKey identity ignores the ClassLoader.
      */
     private static class ProtectionDomainKey extends ProtectionDomain{
-        
-        private static UriCodeSource getCodeSource(ProtectionDomain pd){
+
+        private static UriCodeSource getUriCodeSource(ProtectionDomain pd){
             if (pd == null) return null; // privileged system code.
             CodeSource cs = pd.getCodeSource();
             if (cs != null) return new UriCodeSource(cs);
             return null;
         }
 
-        private final CodeSource codeSource;
+        private final CodeSource codeSource;       // UriCodeSource — used for equals/hashCode only
+        private final CodeSource originalCodeSource; // original (possibly DigestCodeSource) — returned by getCodeSource()
         private final Principal[] princiPals;
         private final int hashCode;
 
         ProtectionDomainKey(ProtectionDomain pd){
-            this(getCodeSource(pd), pd.getPermissions(), pd.getPrincipals());
+            this(getUriCodeSource(pd), pd.getCodeSource(), pd.getPermissions(), pd.getPrincipals());
         }
-        
-        ProtectionDomainKey(UriCodeSource urics, PermissionCollection<? extends Permission> perms, Principal [] p){
+
+        ProtectionDomainKey(UriCodeSource urics, CodeSource original, PermissionCollection<? extends Permission> perms, Principal [] p){
             super(urics, perms, null, p);
             this.codeSource = urics;
+            this.originalCodeSource = original;
             this.princiPals = p;
             int hash = 7;
             hash = 29 * hash + Objects.hashCode(this.codeSource);
             hash = 29 * hash + Arrays.deepHashCode(this.princiPals);
             this.hashCode = hash;
+        }
+
+        /**
+         * Returns the original CodeSource (which may be a DigestCodeSource),
+         * not the UriCodeSource wrapper used internally for equality checks.
+         */
+        CodeSource originalCodeSource() {
+            return originalCodeSource;
         }
 
         @Override
@@ -644,7 +670,7 @@ public class SecurityPolicyWriter extends CombinerSecurityManager{
         public int hashCode() {
             return hashCode;
         }
-        
+
     }
     
     /**
