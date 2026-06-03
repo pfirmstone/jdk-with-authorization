@@ -25,7 +25,7 @@
 
 package java.security;
 
-
+import au.zeus.jdk.authorization.sm.CombinerSecurityManager;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashSet;
@@ -443,14 +443,12 @@ public final class AccessControlContext {
             if (sm != null) {
                 AccessControlContext unAuthorizedContext =  AccessController.getContext();
                 Permission perm = SecurityConstants.CREATE_ACC_PERMISSION;
-                boolean authorized = unAuthorizedContext.implies(perm);
-                if (!authorized){
-                    if (throwSecurityException) {
-                        throw new AccessControlException("access denied "+perm, perm);
-                    } else {
-                        return unAuthorizedContext;
-                    }
+                try {
+                    sm.checkPermission(perm, unAuthorizedContext);
+                } catch (SecurityException se){
+                    if (throwSecurityException) throw se;
                 }
+                return unAuthorizedContext;
             }
         }
         return null;
@@ -958,7 +956,8 @@ public final class AccessControlContext {
      */
     public static abstract sealed class ContextBuilder 
             permits ClassLoader.Context, ForkJoinPool.Context,
-            MethodHandles.Context, Subject.Context, Thread.Context {
+            MethodHandles.Context, Subject.Context, Thread.Context, 
+            CombinerSecurityManager.Context {
         
         /**
          * Creates a new ContextBuilder instance;

@@ -84,7 +84,7 @@ extends SecurityManager implements CachingSecurityManager {
     private static Logger logger;
     private static final Object loggerLock = new Object();
     private static final ScopedValue<Integer> TRUSTED_RECURSIVE_CALL = ScopedValue.newInstance();
-
+    
     /**
      * Logger is lazily loaded, the SecurityManager can be loaded prior to
      * the system ClassLoader, attempting to load a Logger will cause a 
@@ -299,13 +299,7 @@ extends SecurityManager implements CachingSecurityManager {
             new CallableOp<AccessControlContext, SecurityException>(){
                 @Override
                 public AccessControlContext call() throws SecurityException {
-                    return AccessController.doPrivileged( 
-                        new PrivilegedAction<AccessControlContext>(){
-                            public AccessControlContext run() {
-                                return AccessControlContext.create(finalExecutionContext, dc);
-                            }
-                        }
-                    );
+                    return Context.create(finalExecutionContext, dc);
                 }
             });
             // Optimise the delegateContext, this runs the DelegateDomainCombiner
@@ -597,6 +591,23 @@ extends SecurityManager implements CachingSecurityManager {
      */
     protected boolean checkPermission(ProtectionDomain pd, Permission p){
         return pd.implies(p);
+    }
+    
+    /**
+     * Builds AccessControlContext instances or obtains from cache, without
+     * permission checks.
+     */
+    public final static class Context extends AccessControlContext.ContextBuilder{
+        
+        Context(){
+        }
+        
+        static final AccessControlContext.ContextBuilder builder = new Context();
+        
+        static AccessControlContext create(AccessControlContext context, DomainCombiner combiner){
+            return builder.build(context, combiner);
+        }
+        
     }
     
 }

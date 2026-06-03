@@ -536,6 +536,7 @@ public final class System {
             enableAccessControlContextCache();
             Object.class.getResource("java/lang/ANY");
             DefaultFileSystemProvider.theFileSystem();
+            initScopedValueCacheConstants();
         }
     
         try {
@@ -2537,6 +2538,16 @@ public final class System {
             Class.forName("java.security.ContextCache", true, loader);
         } catch (Exception e){
             throw new Error("Unable to load Context cache for AccessControlContext", e);
+        }
+    }
+    
+    private static void initScopedValueCacheConstants(){
+        // Initialize ScopedValue.Cache.Constants.
+        try {
+            ClassLoader loader = ClassLoader.getPlatformClassLoader();
+            Class.forName("java.lang.ScopedValue$Cache$Constants", true, loader);
+        } catch (Exception e){
+            throw new Error("Unable to initialize ScopedValue$Cache$Constants", e);
         }
     }
 
