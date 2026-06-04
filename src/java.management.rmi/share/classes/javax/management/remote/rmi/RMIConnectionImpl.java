@@ -42,11 +42,13 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.CompletionException;
 
 import javax.management.*;
 import javax.management.remote.JMXServerErrorException;
 import javax.management.remote.NotificationResult;
 import javax.security.auth.Subject;
+import javax.security.auth.UserSubject;
 import jdk.internal.access.SharedSecrets;
 import sun.reflect.misc.ReflectUtil;
 
@@ -1303,6 +1305,14 @@ public class RMIConnectionImpl implements RMIConnection, Unreferenced {
                 // Modern case
                 if (subject == null) {
                     return action.run();
+                } else if (subject instanceof UserSubject us) {
+                    try {
+                        return Subject.callAs(us, () -> action.run());
+                    } catch (CompletionException ce) {
+                        Throwable cause = ce.getCause();
+                        if (cause instanceof RuntimeException re) throw re;
+                        throw new RuntimeException(cause);
+                    }
                 } else {
                     return Subject.doAs(subject, action);
                 }
@@ -1440,6 +1450,15 @@ public class RMIConnectionImpl implements RMIConnection, Unreferenced {
                         } else {
                             throw new PrivilegedActionException(e);
                         }
+                    }
+                } else if (subject instanceof UserSubject us) {
+                    try {
+                        return Subject.callAs(us, () -> op.run());
+                    } catch (CompletionException ce) {
+                        Throwable cause = ce.getCause();
+                        if (cause instanceof PrivilegedActionException pae) throw pae;
+                        if (cause instanceof Exception ex) throw new PrivilegedActionException(ex);
+                        throw ce;
                     }
                 } else {
                     return Subject.doAs(subject, op);
@@ -1627,7 +1646,18 @@ public class RMIConnectionImpl implements RMIConnection, Unreferenced {
                 if (!SharedSecrets.getJavaLangAccess().allowSecurityManager()) {
                     // Modern case
                     if (subject != null) {
-                        return Subject.doAs(subject, (PrivilegedExceptionAction<T>) () -> wrappedClass.cast(mo.get()));
+                        if (subject instanceof UserSubject us) {
+                            try {
+                                return Subject.callAs(us, () -> wrappedClass.cast(mo.get()));
+                            } catch (CompletionException ce) {
+                                Throwable cause = ce.getCause();
+                                if (cause instanceof IOException ioe) throw ioe;
+                                if (cause instanceof RuntimeException re) throw re;
+                                throw new RuntimeException(cause);
+                            }
+                        } else {
+                            return Subject.doAs(subject, (PrivilegedExceptionAction<T>) () -> wrappedClass.cast(mo.get()));
+                        }
                     } else {
                         return wrappedClass.cast(mo.get());
                     }

@@ -44,6 +44,7 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
@@ -61,6 +62,7 @@ import javax.management.NotificationBroadcasterSupport;
 import javax.management.ObjectName;
 import javax.management.ReflectionException;
 import javax.security.auth.Subject;
+import javax.security.auth.UserSubject;
 import jdk.internal.access.SharedSecrets;
 import static javax.management.monitor.MonitorNotification.*;
 
@@ -1545,6 +1547,14 @@ public abstract class Monitor
                 // No SecurityManager permitted:
                 if (s == null) {
                     action.run();
+                } else if (s instanceof UserSubject us) {
+                    try {
+                        Subject.callAs(us, () -> { action.run(); return null; });
+                    } catch (CompletionException ce) {
+                        Throwable cause = ce.getCause();
+                        if (cause instanceof RuntimeException re) throw re;
+                        throw new RuntimeException(cause);
+                    }
                 } else {
                     Subject.doAs(s, action);
                 }
