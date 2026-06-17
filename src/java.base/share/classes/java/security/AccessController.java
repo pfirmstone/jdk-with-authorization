@@ -993,7 +993,7 @@ public final class AccessController {
             // If this context is used in Subject.doAs, the SubjectDomainCombiner
             // will be replaced.
             Subject [] subject = SubjectAccess.SCOPED.get();
-            if (subject != null){              
+            if (subject != null && subject.length > 0){              
                 DomainCombiner existing = acc.getCombiner();
                 for (int i = 0, l = subject.length; i < l; i++){ // The last ACC created will contain all the Principals.
                     if (subject[i] instanceof WorkerSubject) continue;
