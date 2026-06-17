@@ -56,6 +56,7 @@ import au.zeus.jdk.concurrent.Ref;
 import au.zeus.jdk.concurrent.Referrer;
 import java.lang.ScopedValue.CallableOp;
 import java.util.concurrent.Executors;
+import org.apache.river.api.security.PermissionDelegate;
 
 /**
  * CombinerSecurityManager, is intended to be a highly scalable
@@ -590,7 +591,16 @@ extends SecurityManager implements CachingSecurityManager {
      * @return true if ProtectionDomain pd has Permission p.
      */
     protected boolean checkPermission(ProtectionDomain pd, Permission p){
-        return pd.implies(p);
+        if (pd.implies(p)) return true;
+        // A delegating permission (e.g. org.apache.river.api.security.DelegatePermission)
+        // is satisfied when the domain implies its substitute permission.
+        // Recognised via the PermissionDelegate interface so this SecurityManager
+        // stays decoupled from any concrete delegating-permission type, and the
+        // delegate check stays off the hot path (only on a failed direct imply).
+        if (p instanceof PermissionDelegate){
+            return pd.implies(((PermissionDelegate) p).getPermissionToCheck());
+        }
+        return false;
     }
     
     /**

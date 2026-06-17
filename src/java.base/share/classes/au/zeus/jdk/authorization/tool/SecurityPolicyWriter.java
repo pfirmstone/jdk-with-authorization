@@ -122,7 +122,7 @@ import au.zeus.jdk.authorization.policy.PolicyUtils;
  * A property file may be specified to replace paths with properties to
  * allow these to be customized for later policy file expansion in deployment for
  * CodeSource url and FilePermission path's, by setting the following property:
- * <code>-DSecurityPolicyWriter.path.properties=</code> Properties defined in this
+ * <code>-DpolpAudit.path.properties=</code> Properties defined in this
  * property file shouldn't reference other properties declared in this file.
  * <p>
  * If a policy file already exists, only additional permission grants

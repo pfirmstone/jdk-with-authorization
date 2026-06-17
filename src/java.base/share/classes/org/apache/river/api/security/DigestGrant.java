@@ -39,6 +39,17 @@ import java.util.Arrays;
  * {@link #getBuilderTemplate()}, and {@link #readObject} throws
  * {@link InvalidObjectException}.
  *
+ * <p><b>Operator note — fail-closed on a non-DirtyChai JVM.</b> This grant
+ * depends on {@link DigestCodeSource}, which exists only on a DirtyChai
+ * (or otherwise digest-aware) JVM. On a stock JVM that class is absent, so no
+ * {@link ProtectionDomain} can ever present a {@link DigestCodeSource} and
+ * every {@code DigestGrant} consequently implies nothing (fail-secure: the
+ * permissions it would have conferred simply never apply). This is by design,
+ * but it is a configuration footgun: an empty "no digest-matched grants apply"
+ * result on the wrong JVM should not be misread as a broken policy. If digest
+ * enforcement is expected but no digest grants are taking effect, verify the
+ * runtime is a digest-aware JVM before suspecting the policy itself.
+ *
  * @author Peter Firmstone
  * @since 27
  */
