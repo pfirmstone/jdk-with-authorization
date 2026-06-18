@@ -338,13 +338,42 @@ public class ProtectionDomain {
     }
 
     /**
+     * Check and see if this {@code ProtectionDomain} implies the permissions
+     * expressed in the {@code Permission} object at least once.
+     * <p>
+     * The permission will be checked against the combination
+     * of the {@code PermissionCollection} supplied at construction and
+     * the current policy binding.
+     *
+     * @param perm the {@code Permission} object to check.
+     *
+     * @return {@code true} if {@code perm} is implied by this
+     * {@code ProtectionDomain}.
+     */
+    @SuppressWarnings("removal")
+    public boolean impliesOnce(Permission perm) {
+
+        if (hasAllPerm) {
+            // internal permission collection already has AllPermission -
+            // no need to go to policy
+            return true;
+        }
+        if (Policy.getPolicyNoCheck().implies(this, perm)) return true;
+        if (Policy.getPolicyNoCheck().impliesOnce(this, perm)) return true;
+        // Supports AccessControlContext only Permissions, that cannot be supported by policy.
+        // Note that dynamic policy can determine permission based on ClassLoader
+        if (permissions != null) return permissions.implies(perm);
+        return false;
+    }
+
+    /**
      * This method has almost the same logic flow as {@link #implies} but
      * it ensures some level of FilePermission compatibility after JDK-8164705.
      *
      * This method is called by {@link AccessControlContext#checkPermission}
      * and not intended to be called by an application.
      */
-    boolean impliesWithAltFilePerm(Permission perm) {
+    boolean impliesWithAltFilePerm(Permission perm, boolean oneShot) {
 
         // If FilePermCompat.compat is set (default value), FilePermission
         // checking compatibility should be considered.
@@ -359,7 +388,7 @@ public class ProtectionDomain {
 
         if (!filePermCompatInPD || !FilePermCompat.compat ||
                 getClass() != ProtectionDomain.class) {
-            return implies(perm);
+            return oneShot ? impliesOnce(perm) : implies(perm);
         }
 
         if (hasAllPerm) {
@@ -377,6 +406,7 @@ public class ProtectionDomain {
         // a null codesource.
         if (policy != null){
             if (policy.implies(this, perm)) return true;
+            if (oneShot && policy.impliesOnce(this, perm)) return true;
             // The PolicyFile implementation supports compatibility
             // inside, and it also covers the static permissions,
             // but it cannot check static permissions with a null
@@ -385,6 +415,7 @@ public class ProtectionDomain {
                 p2 = FilePermCompat.newPermUsingAltPath(perm);
                 p2Calculated = true;
                 if (p2 != null && policy.implies(this, p2)) return true;
+                if (oneShot && p2 != null && policy.impliesOnce(this, p2)) return true;
             }
         }
         // Warning: poor scalability, this supports

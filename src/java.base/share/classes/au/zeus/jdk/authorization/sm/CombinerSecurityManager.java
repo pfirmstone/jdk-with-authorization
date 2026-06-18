@@ -322,10 +322,15 @@ extends SecurityManager implements CachingSecurityManager {
             );
         }
         // Normal execution, same as SecurityManager.
-        delegateContext.checkPermission(perm); // Throws SecurityException.
-        /* It's ok to cache SocketPermission if we use a comparator */
-        // If we get to here, no exceptions were thrown, caller has permission.
-        checkedPerms.add(perm);
+        if (Context.check(delegateContext, perm, false)){
+            /* It's ok to cache SocketPermission if we use a comparator */
+            // If we get to here, no exceptions were thrown, caller has permission.
+            checkedPerms.add(perm);
+            return;
+        }
+        // One shot permission check, do not cache.
+        if (Context.check(delegateContext, perm, true)) return;
+        throw new AccessControlException("access denied "+perm, perm);
     }
     
     /**
@@ -529,6 +534,94 @@ extends SecurityManager implements CachingSecurityManager {
                 return true;
             }
         }
+
+        /* An earlier implementation used interruption to cancel running tasks,
+         * this interruption only added complexity, in most cases permission
+         * checks are expected to pass and failure occurs far less often, 
+         * for that reason, it is acceptable for all tasks to run to completion.  
+         * The overall performance cost of using task interruption was likely 
+         * greater, due to increased access of shared memory for only a small
+         * performance benefit for failling permission checks.
+         * 
+         * If the current thread is interrupted, the interrupt status is
+         * preserved, this is done in cases where permission is required to perform
+         * safe shutdown
+         */
+        @Override
+        public boolean impliesOnce(Permission perm) {
+            Thread currentThread = Thread.currentThread();
+            boolean interrupt = Thread.interrupted(); // Clears the interrupt and stores it.
+            int l = context.length;
+            /* This is both a performance optimisation and a safety precaution.
+             * When there are only a few domains on the stack, they are 
+             * normally privileged and will return very quickly.
+             * 
+             * Also, permission checks performed inside PrivilegedAction
+             * calls by the Policy may come from setting or getting context security
+             * sensitive variables when wrappingPrivilegedAction
+             * permission checks.
+             * 
+             * The policy may accept Objects from other ProtectionDomain's
+             * as part of a PermissionGrant, this domain must be included
+             * in the context so it can be checked, but since that would
+             * create a recursive call, we avoid recursion
+             * by not splitting that permission check among multiple threads.
+             */
+            if ( l < 4 ){ 
+                for ( int i = 0; i < l; i++ ){
+                    if (! checkOnce(context[i], perm)) {
+                        if (interrupt) currentThread.interrupt();
+                        return false;
+                    }
+                }
+                if (interrupt) currentThread.interrupt();
+                return true;
+            }
+            CountDownLatch latch = new CountDownLatch(l);
+            List<RunnableFuture<Boolean>> resultList = new ArrayList<RunnableFuture<Boolean>>(l);
+            for ( int i = 0; i < l; i++ ){
+                resultList.add(new FutureTask<Boolean>(
+                    new PermissionOnceCheck(context[i], perm, latch)
+                ));
+            }
+            Iterator<RunnableFuture<Boolean>> it = resultList.iterator();
+            while (it.hasNext()){
+                executor.execute(it.next());
+            }
+            try {
+                // We can change either call to add a timeout.
+                if (!latch.await(10L, TimeUnit.SECONDS)) return false; // Throws InterruptedException
+                it = resultList.iterator();
+                try {
+                    while (it.hasNext()){
+                            Boolean result = it.next().get(); // Throws InterruptedException
+                            if (result.equals(Boolean.FALSE)) {
+                                if (interrupt) currentThread.interrupt();
+                                return false;
+                            }
+                    }
+                    if (interrupt) currentThread.interrupt();
+                    return true;
+                } catch (ExecutionException ex) {
+                    // This should never happen, unless a runtime exception occurs.
+                    if (getLogger().isLoggable(Level.DEBUG)) getLogger().log(Level.DEBUG, "Unexpected exception", ex);
+                    throw new SecurityException("Unrecoverable: ", ex.getCause()); // Bail out.
+                }
+            } catch (InterruptedException ex) {
+                // REMIND: Java Memory Model and thread interruption.           
+                // We've been externally interrupted, during execution.
+                // Do this the slow way to avoid reinterruption during shutdown cleanup!
+                if (getLogger().isLoggable(Level.DEBUG)) getLogger().log(Level.DEBUG, "External Interruption", ex);
+                for ( int i = 0; i < l; i++ ){
+                    if (!checkOnce(context[i], perm)) {
+                        currentThread.interrupt(); // restore external interrupt.
+                        return false;
+                    }
+                }
+                currentThread.interrupt(); // restore external interrupt.
+                return true;
+            }
+        }
         
         @Override
         public String toString(){
@@ -552,9 +645,9 @@ extends SecurityManager implements CachingSecurityManager {
      * Immutable callable task, discarded immediately after use.
      */
     private class PermissionCheck implements Callable<Boolean> {
-        private final ProtectionDomain pd;
-        private final Permission p;
-        private final CountDownLatch latch;
+        final ProtectionDomain pd;
+        final Permission p;
+        final CountDownLatch latch;
         
         PermissionCheck(ProtectionDomain pd, Permission p, CountDownLatch c){
             if (pd == null || p == null) throw new NullPointerException();
@@ -581,7 +674,52 @@ extends SecurityManager implements CachingSecurityManager {
                 latch.countDown();
             }
         }
-        
+    }
+
+    /**
+     * Immutable callable task, discarded immediately after use.
+     */
+    private class PermissionOnceCheck extends PermissionCheck {
+        PermissionOnceCheck(ProtectionDomain pd, Permission p, CountDownLatch c){
+            super(pd, p, c);
+        }
+
+        public Boolean call() throws Exception {
+            try {
+                Boolean result = AccessController.doPrivileged( 
+                    new PrivilegedAction<Boolean>(){
+                        public Boolean run() {
+                            boolean result = checkOnce(pd, p);
+                            return Boolean.valueOf(result);
+                        }
+                    }  
+                );
+                return result;
+            } finally {
+                // In case we exit with a runtime exception, ensure threads
+                // aren't left waiting.
+                latch.countDown();
+            }
+        }
+    }
+
+    /**
+     * Enables customisation of permission check.
+     * @param pd protection domain to be checked.
+     * @param p permission to be checked.
+     * @return true if ProtectionDomain pd has Permission p.
+     */
+    protected boolean checkOnce(ProtectionDomain pd, Permission p){
+        if (pd.impliesOnce(p)) return true;
+        // A delegating permission (e.g. org.apache.river.api.security.DelegatePermission)
+        // is satisfied when the domain implies its substitute permission.
+        // Recognised via the PermissionDelegate interface so this SecurityManager
+        // stays decoupled from any concrete delegating-permission type, and the
+        // delegate check stays off the hot path (only on a failed direct imply).
+        if (p instanceof PermissionDelegate){
+            return pd.impliesOnce(((PermissionDelegate) p).getPermissionToCheck());
+        }
+        return false;
     }
     
     /**
@@ -616,6 +754,10 @@ extends SecurityManager implements CachingSecurityManager {
         
         static AccessControlContext create(AccessControlContext context, DomainCombiner combiner){
             return builder.build(context, combiner);
+        }
+
+        static boolean check(AccessControlContext context, Permission perm, boolean oneShot){
+            return builder.implies(context, perm, oneShot);
         }
         
     }

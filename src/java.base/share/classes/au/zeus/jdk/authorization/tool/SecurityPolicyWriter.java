@@ -333,6 +333,12 @@ public class SecurityPolicyWriter extends CombinerSecurityManager{
     
     @Override
     protected boolean checkPermission(ProtectionDomain pd, Permission p){
+        // A one-shot (escalation) permission must never enter the generated floor:
+        // recording it would promote a transient, human-gated grant to a permanent
+        // baseline grant. Detect it while the one-shot grant is still live (record
+        // time -- it is gone by shutdown): stable policy denies AND a one-shot grant
+        // allows. Observe-only still allows the operation; it is simply not recorded.
+        if (!pd.implies(p) && pd.impliesOnce(p)) return true;
         pd = new ProtectionDomainKey(pd);
 	Collection<Permission> perms = domainPermissions.get(pd);
 	    if (perms == null) {

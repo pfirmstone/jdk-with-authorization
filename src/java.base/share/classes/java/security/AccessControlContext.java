@@ -622,10 +622,10 @@ public final class AccessControlContext {
     public void checkPermission(Permission perm)
         throws AccessControlException
     {
-        if (!implies(perm)) throw new AccessControlException("access denied "+perm, perm);
+        if (!implies(perm, false)) throw new AccessControlException("access denied "+perm, perm);
     }
     
-    private boolean implies(Permission perm){
+    private boolean implies(Permission perm, boolean oneShot){
         boolean dumpDebug = false;
 
         if (perm == null) {
@@ -679,7 +679,7 @@ public final class AccessControlContext {
         if (context == null) return true;
 
         for (int i=0, len = context.length; i < len; i++) {
-            if (context[i] != null && !context[i].impliesWithAltFilePerm(perm)) {
+            if (context[i] != null && !context[i].impliesWithAltFilePerm(perm, oneShot)) {
                 if (dumpDebug) {
                     debug.println("access denied " + perm);
                 }
@@ -1012,7 +1012,17 @@ public final class AccessControlContext {
         public DomainCombiner getCombiner(AccessControlContext acc){
             return acc.getCombiner();
         }
-        
+
+        /**
+         * Allows permission check without throwing a SecurityException
+         * @param acc, the AccessControlContext
+         * @param perm, the permission
+         * @param oneShot, check for a one shot permission.
+         * @return true if permission is implied by the context.
+         */
+        public boolean implies(AccessControlContext acc, Permission perm, boolean oneShot){
+            return acc.implies(perm, oneShot);
+        }
         
     }
 }
