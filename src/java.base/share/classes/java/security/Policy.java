@@ -794,6 +794,24 @@ public abstract class Policy {
     }
 
     /**
+     * Evaluates the global policy for the permissions granted to
+     * the ProtectionDomain and tests whether the permission is
+     * granted for single use.
+     *
+     * @param domain the ProtectionDomain to test
+     * @param permission the Permission object to be tested for implication.
+     *
+     * @return {@code true} if "permission" is a proper subset of a permission
+     * granted to this ProtectionDomain for single use. Returns false by default.
+     *
+     * @see java.security.ProtectionDomain
+     * @since 1.4
+     */
+    public boolean impliesOnce(ProtectionDomain domain, Permission permission) {
+        return false;
+    }
+
+    /**
      * Refreshes/reloads the policy configuration. The behavior of this method
      * depends on the implementation. For example, calling {@code refresh}
      * on a file-based policy will cause the file to be re-read.
