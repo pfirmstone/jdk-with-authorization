@@ -339,7 +339,8 @@ public class ProtectionDomain {
 
     /**
      * Check and see if this {@code ProtectionDomain} implies the permissions
-     * expressed in the {@code Permission} object at least once.
+     * expressed in the {@code Permission} object by ephemeral authority (never cached,
+     * never recorded; lifetime use-count governed by the grant).
      * <p>
      * The permission will be checked against the combination
      * of the {@code PermissionCollection} supplied at construction and
@@ -351,7 +352,7 @@ public class ProtectionDomain {
      * {@code ProtectionDomain}.
      */
     @SuppressWarnings("removal")
-    public boolean impliesOnce(Permission perm) {
+    public boolean impliesEphemeral(Permission perm) {
 
         if (hasAllPerm) {
             // internal permission collection already has AllPermission -
@@ -359,7 +360,7 @@ public class ProtectionDomain {
             return true;
         }
         if (Policy.getPolicyNoCheck().implies(this, perm)) return true;
-        if (Policy.getPolicyNoCheck().impliesOnce(this, perm)) return true;
+        if (Policy.getPolicyNoCheck().impliesEphemeral(this, perm)) return true;
         // Supports AccessControlContext only Permissions, that cannot be supported by policy.
         // Note that dynamic policy can determine permission based on ClassLoader
         if (permissions != null) return permissions.implies(perm);
@@ -373,7 +374,7 @@ public class ProtectionDomain {
      * This method is called by {@link AccessControlContext#checkPermission}
      * and not intended to be called by an application.
      */
-    boolean impliesWithAltFilePerm(Permission perm, boolean oneShot) {
+    boolean impliesWithAltFilePerm(Permission perm, boolean ephemeral) {
 
         // If FilePermCompat.compat is set (default value), FilePermission
         // checking compatibility should be considered.
@@ -388,7 +389,7 @@ public class ProtectionDomain {
 
         if (!filePermCompatInPD || !FilePermCompat.compat ||
                 getClass() != ProtectionDomain.class) {
-            return oneShot ? impliesOnce(perm) : implies(perm);
+            return ephemeral ? impliesEphemeral(perm) : implies(perm);
         }
 
         if (hasAllPerm) {
@@ -406,7 +407,7 @@ public class ProtectionDomain {
         // a null codesource.
         if (policy != null){
             if (policy.implies(this, perm)) return true;
-            if (oneShot && policy.impliesOnce(this, perm)) return true;
+            if (ephemeral && policy.impliesEphemeral(this, perm)) return true;
             // The PolicyFile implementation supports compatibility
             // inside, and it also covers the static permissions,
             // but it cannot check static permissions with a null
@@ -415,7 +416,7 @@ public class ProtectionDomain {
                 p2 = FilePermCompat.newPermUsingAltPath(perm);
                 p2Calculated = true;
                 if (p2 != null && policy.implies(this, p2)) return true;
-                if (oneShot && p2 != null && policy.impliesOnce(this, p2)) return true;
+                if (ephemeral && p2 != null && policy.impliesEphemeral(this, p2)) return true;
             }
         }
         // Warning: poor scalability, this supports

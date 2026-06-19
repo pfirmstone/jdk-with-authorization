@@ -328,7 +328,7 @@ extends SecurityManager implements CachingSecurityManager {
             checkedPerms.add(perm);
             return;
         }
-        // One shot permission check, do not cache.
+        // Ephemeral authority: re-check via impliesEphemeral, never cache the result.
         if (Context.check(delegateContext, perm, true)) return;
         throw new AccessControlException("access denied "+perm, perm);
     }
@@ -548,7 +548,7 @@ extends SecurityManager implements CachingSecurityManager {
          * safe shutdown
          */
         @Override
-        public boolean impliesOnce(Permission perm) {
+        public boolean impliesEphemeral(Permission perm) {
             Thread currentThread = Thread.currentThread();
             boolean interrupt = Thread.interrupted(); // Clears the interrupt and stores it.
             int l = context.length;
@@ -569,7 +569,7 @@ extends SecurityManager implements CachingSecurityManager {
              */
             if ( l < 4 ){ 
                 for ( int i = 0; i < l; i++ ){
-                    if (! checkOnce(context[i], perm)) {
+                    if (! checkEphemeral(context[i], perm)) {
                         if (interrupt) currentThread.interrupt();
                         return false;
                     }
@@ -613,7 +613,7 @@ extends SecurityManager implements CachingSecurityManager {
                 // Do this the slow way to avoid reinterruption during shutdown cleanup!
                 if (getLogger().isLoggable(Level.DEBUG)) getLogger().log(Level.DEBUG, "External Interruption", ex);
                 for ( int i = 0; i < l; i++ ){
-                    if (!checkOnce(context[i], perm)) {
+                    if (!checkEphemeral(context[i], perm)) {
                         currentThread.interrupt(); // restore external interrupt.
                         return false;
                     }
@@ -689,7 +689,7 @@ extends SecurityManager implements CachingSecurityManager {
                 Boolean result = AccessController.doPrivileged( 
                     new PrivilegedAction<Boolean>(){
                         public Boolean run() {
-                            boolean result = checkOnce(pd, p);
+                            boolean result = checkEphemeral(pd, p);
                             return Boolean.valueOf(result);
                         }
                     }  
@@ -709,15 +709,15 @@ extends SecurityManager implements CachingSecurityManager {
      * @param p permission to be checked.
      * @return true if ProtectionDomain pd has Permission p.
      */
-    protected boolean checkOnce(ProtectionDomain pd, Permission p){
-        if (pd.impliesOnce(p)) return true;
+    protected boolean checkEphemeral(ProtectionDomain pd, Permission p){
+        if (pd.impliesEphemeral(p)) return true;
         // A delegating permission (e.g. org.apache.river.api.security.DelegatePermission)
         // is satisfied when the domain implies its substitute permission.
         // Recognised via the PermissionDelegate interface so this SecurityManager
         // stays decoupled from any concrete delegating-permission type, and the
         // delegate check stays off the hot path (only on a failed direct imply).
         if (p instanceof PermissionDelegate){
-            return pd.impliesOnce(((PermissionDelegate) p).getPermissionToCheck());
+            return pd.impliesEphemeral(((PermissionDelegate) p).getPermissionToCheck());
         }
         return false;
     }
@@ -756,8 +756,8 @@ extends SecurityManager implements CachingSecurityManager {
             return builder.build(context, combiner);
         }
 
-        static boolean check(AccessControlContext context, Permission perm, boolean oneShot){
-            return builder.implies(context, perm, oneShot);
+        static boolean check(AccessControlContext context, Permission perm, boolean ephemeral){
+            return builder.implies(context, perm, ephemeral);
         }
         
     }

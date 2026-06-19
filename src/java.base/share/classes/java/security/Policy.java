@@ -795,19 +795,25 @@ public abstract class Policy {
 
     /**
      * Evaluates the global policy for the permissions granted to
-     * the ProtectionDomain and tests whether the permission is
-     * granted for single use.
+     * the ProtectionDomain and tests whether permission is granted to
+     * the domain by ephemeral authority - reported her but never by
+     * implies.  Ephemeral authority must never be promoted to standing
+     * authority: the SecurityManager must not cache an implies derived
+     * from it, and polpAudit tooling must not record it into the 
+     * generated floor.  How long / how many time it is valid is a property
+     * of the grant (lease TTL, single-use nonce, or countdown latch), 
+     * not of this relation. 
      *
      * @param domain the ProtectionDomain to test
      * @param permission the Permission object to be tested for implication.
      *
      * @return {@code true} if "permission" is a proper subset of a permission
-     * granted to this ProtectionDomain for single use. Returns false by default.
+     * granted to this ProtectionDomain for ephemeral use. Returns false by default.
      *
      * @see java.security.ProtectionDomain
      * @since 1.4
      */
-    public boolean impliesOnce(ProtectionDomain domain, Permission permission) {
+    public boolean impliesEphemeral(ProtectionDomain domain, Permission permission) {
         return false;
     }
 
