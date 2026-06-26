@@ -37,6 +37,7 @@ package java.util.concurrent;
 
 import java.security.AccessController;
 import java.security.AccessControlContext;
+import java.security.Permission;
 import java.security.PrivilegedAction;
 import java.security.ProtectionDomain;
 import jdk.internal.access.JavaLangAccess;
@@ -311,7 +312,17 @@ public class ForkJoinWorkerThread extends Thread {
 
         @SuppressWarnings("removal")
         static AccessControlContext createACC() {
-            return AccessControlContext.neverPrivileged();
+            return AccessController.doPrivileged(
+                new PrivilegedAction<AccessControlContext>(){
+                    @Override
+                    public AccessControlContext run() {
+                        return AccessController.getContext();
+                    }
+
+                },
+                null,
+                new Permission[0]
+            );
         }
         static ThreadGroup createGroup() {
             ThreadGroup group = Thread.currentThread().getThreadGroup();

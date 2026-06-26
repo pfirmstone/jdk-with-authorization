@@ -25,6 +25,8 @@
 package sun.nio.ch;
 
 import java.io.IOException;
+import java.security.AccessController;
+import java.security.PrivilegedAction;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
@@ -357,12 +359,17 @@ public abstract class Poller {
         void start() {
             if (pollerMode == Mode.VTHREAD_POLLERS) {
                 startPlatformThread("MasterPoller", masterPoller::pollerLoop);
-                ThreadFactory factory = Thread.ofVirtual()
-                        .inheritInheritableThreadLocals(false)
-                        .name("SubPoller-", 0)
-                        .uncaughtExceptionHandler((t, e) -> e.printStackTrace())
-                        .factory();
-                executor = Executors.newThreadPerTaskExecutor(factory);
+                ThreadFactory factory = AccessController.doPrivileged(
+                        new PrivilegedAction<ThreadFactory>(){
+                            public ThreadFactory run(){
+                                return Thread.ofVirtual()
+                                    .inheritInheritableThreadLocals(false)
+                                    .name("SubPoller-", 0)
+                                    .uncaughtExceptionHandler((t, e) -> e.printStackTrace())
+                                    .factory();
+                            }
+                        });
+                    executor = Executors.newThreadPerTaskExecutor(factory);
                 Arrays.stream(readPollers).forEach(p -> {
                     executor.execute(() -> p.subPollerLoop(masterPoller));
                 });

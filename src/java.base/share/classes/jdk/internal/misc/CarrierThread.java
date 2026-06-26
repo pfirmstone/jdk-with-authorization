@@ -27,6 +27,7 @@ package jdk.internal.misc;
 
 import java.security.AccessControlContext;
 import java.security.AccessController;
+import java.security.Permission;
 import java.security.PrivilegedAction;
 import java.security.ProtectionDomain;
 import java.util.concurrent.ForkJoinPool;
@@ -138,7 +139,17 @@ public class CarrierThread extends ForkJoinWorkerThread {
      */
     @SuppressWarnings("removal")
     private static AccessControlContext innocuousACC() {
-        return AccessControlContext.neverPrivileged();
+        return AccessController.doPrivileged(
+                new PrivilegedAction<AccessControlContext>(){
+                    @Override
+                    public AccessControlContext run() {
+                        return AccessController.getContext();
+                    }
+
+                },
+                null,
+                new Permission[0]
+            );
     }
 
     /**

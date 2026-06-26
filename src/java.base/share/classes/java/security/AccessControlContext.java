@@ -445,6 +445,7 @@ public final class AccessControlContext {
                 Permission perm = SecurityConstants.CREATE_ACC_PERMISSION;
                 try {
                     sm.checkPermission(perm, unAuthorizedContext);
+                    return null;
                 } catch (SecurityException se){
                     if (throwSecurityException) throw se;
                 }
@@ -696,7 +697,7 @@ public final class AccessControlContext {
                     final Debug db = debug;
                     AccessController.doPrivileged (new PrivilegedAction<>() {
                         public Void run() {
-                            db.println("domain that failed "+pd);
+                            db.println("domain that failed "+pd.getCodeSource());
                             return null;
                         }
                     });

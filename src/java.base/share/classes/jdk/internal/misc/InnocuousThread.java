@@ -27,6 +27,7 @@ package jdk.internal.misc;
 
 import java.security.AccessControlContext;
 import java.security.AccessController;
+import java.security.Permission;
 import java.security.ProtectionDomain;
 import java.security.PrivilegedAction;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -190,7 +191,17 @@ public final class InnocuousThread extends Thread {
     // Use Unsafe to access Thread group and ThreadGroup parent fields
     static {
         try {
-            ACC = AccessControlContext.neverPrivileged();
+            ACC = AccessController.doPrivileged(
+                new PrivilegedAction<AccessControlContext>(){
+                    @Override
+                    public AccessControlContext run() {
+                        return AccessController.getContext();
+                    }
+
+                },
+                null,
+                new Permission[0]
+            );
 
             // Find and use topmost ThreadGroup as parent of new group
             UNSAFE = jdk.internal.misc.Unsafe.getUnsafe();

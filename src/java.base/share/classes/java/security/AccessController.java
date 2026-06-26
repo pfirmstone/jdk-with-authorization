@@ -450,7 +450,7 @@ public final class AccessController {
         ProtectionDomain pd = new DomainIdentity(cs, toPermissions(perms), null, null);
         if (context == null){
             context = AccessControlContext.create(
-                    new ProtectionDomain[]{pd}, (AccessControlContext) null, false);
+                    new ProtectionDomain[]{pd}, (AccessControlContext) null, true);
         } else {
             context = context.intersectionPermissions(pd);
         }
@@ -845,7 +845,7 @@ public final class AccessController {
         ProtectionDomain pd = new DomainIdentity(cs, toPermissions(perms), null, null);
         if (context == null){
             context = AccessControlContext.create(
-                    new ProtectionDomain[]{pd}, (AccessControlContext) null, false);
+                    new ProtectionDomain[]{pd}, (AccessControlContext) null, true);
         } else {
             context = context.intersectionPermissions(pd);
         }
@@ -1118,7 +1118,7 @@ public final class AccessController {
                 ProtectionDomain callerDomain = clazz.getProtectionDomain();
                 CodeSource callerCodeSource = callerDomain.getCodeSource();
                 Module module = clazz.getModule();
-                String moduleName = module.getName();
+                String moduleName = module != null ? module.getName() : null;
                 if (moduleName != null){
                     StringBuilder sb = new StringBuilder();
                     sb.append("jrt:/").append(moduleName).append("/").append(clazz.getName());
@@ -1138,9 +1138,28 @@ public final class AccessController {
                 }
                 // For non module code.
                 ClassLoader callerLoader = clazz.getClassLoader();
-                URL url = callerLoader.getResource(clazz.getName());
-                return new CodeSource(url, callerCodeSource != null?
+                URL url = callerLoader != null ? callerLoader.getResource(clazz.getName()) : null;
+                if (url != null) return new CodeSource(url, callerCodeSource != null?
                                 callerCodeSource.getCertificates() : null);
+                // bootstrap workaround for null modules and null ClassLoaders
+                if (callerCodeSource != null){
+                    try {
+                        String urlstring = callerCodeSource.getLocationNoFragString();
+                        StringBuilder sb = new StringBuilder();
+                        sb.append(urlstring);
+                        sb.append("/").append(clazz.getName());
+                        return new CodeSource(new URI(sb.toString()).toURL(),
+                                callerCodeSource.getCertificates());
+                    } catch (MalformedURLException | URISyntaxException ex) {
+                        // ✅ SECURITY: Return null CodeSource on exception.
+                        // A null CodeSource cannot match any policy grants,
+                        // preventing privilege escalation if URI validation fails.
+                        // This fail-secure approach ensures that malformed URIs
+                        // cannot be exploited to bypass policy enforcement.
+                        return null;
+                    }
+                }
+                return null;
             }
         });
     }
