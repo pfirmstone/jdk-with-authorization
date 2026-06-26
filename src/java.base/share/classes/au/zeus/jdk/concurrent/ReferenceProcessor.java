@@ -320,6 +320,7 @@ class ReferenceProcessor<T> implements ReferenceQueuingFactory<T, Referrer<T>> {
         public Thread run() {
             Thread t = new Thread(g, r, "Reference collection cleaner");
             try {
+                t.setDaemon(true);
                 t.setContextClassLoader(null);
                 t.setPriority(Thread.MAX_PRIORITY);
             } catch (SecurityException e){
