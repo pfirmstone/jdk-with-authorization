@@ -115,6 +115,15 @@ public final class Loader extends SecureClassLoader {
     private final AccessControlContext acc;
 
     /**
+     * Provides access to Module without permission checks.
+     */
+    public static final class Mod extends ModuleReference.NoCheck {
+        private Mod(){}
+    }
+
+    static final Mod MOD = new Mod();
+
+    /**
      * A module defined/loaded to a {@code Loader}.
      */
     private static class LoadedModule {
@@ -135,7 +144,7 @@ public final class Loader extends SecureClassLoader {
         }
 
         ModuleReference mref() { return mref; }
-        String name() { return mref.descriptor().name(); }
+        String name() { return MOD.descriptor(mref).name(); }
         URL location() { return url; }
         CodeSource codeSource() { return cs; }
     }
@@ -156,7 +165,7 @@ public final class Loader extends SecureClassLoader {
         this.parent = parent;
 
         ModuleReference mref = resolvedModule.reference();
-        ModuleDescriptor descriptor = mref.descriptor();
+        ModuleDescriptor descriptor = MOD.descriptor(mref);
         String mn = descriptor.name();
         this.nameToModule = Map.of(mn, mref);
 
@@ -186,7 +195,7 @@ public final class Loader extends SecureClassLoader {
         Map<String, LoadedModule> localPackageToModule = new HashMap<>();
         for (ResolvedModule resolvedModule : modules) {
             ModuleReference mref = resolvedModule.reference();
-            ModuleDescriptor descriptor = mref.descriptor();
+            ModuleDescriptor descriptor = MOD.descriptor(mref);
             nameToModule.put(descriptor.name(), mref);
             descriptor.packages().forEach(pn -> {
                 LoadedModule lm = new LoadedModule(mref);
@@ -248,14 +257,14 @@ public final class Loader extends SecureClassLoader {
                     // find the class loader for the module
                     // For now we use the platform loader for modules defined to the
                     // boot loader
-                    assert layer.findModule(mn).isPresent();
+                    assert MOD.findModule(layer, mn).isPresent();
                     loader = layer.findLoader(mn);
                     if (loader == null)
                         loader = ClassLoaders.platformClassLoader();
                 }
 
                 // find the packages that are exported to the target module
-                ModuleDescriptor descriptor = other.reference().descriptor();
+                ModuleDescriptor descriptor = MOD.descriptor(other.reference());
                 if (descriptor.isAutomatic()) {
                     ClassLoader l = loader;
                     descriptor.packages().forEach(pn -> remotePackage(pn, l));
@@ -394,7 +403,7 @@ public final class Loader extends SecureClassLoader {
         } else {
             for (ModuleReference mref : nameToModule.values()) {
                 try {
-                    URL url = findResource(mref.descriptor().name(), name);
+                    URL url = findResource(MOD.descriptor(mref).name(), name);
                     if (url != null) return url;
                 } catch (IOException ioe) {
                     // ignore
@@ -479,7 +488,7 @@ public final class Loader extends SecureClassLoader {
         } else {
             List<URL> urls = new ArrayList<>();
             for (ModuleReference mref : nameToModule.values()) {
-                URL url = findResource(mref.descriptor().name(), name);
+                URL url = findResource(MOD.descriptor(mref).name(), name);
                 if (url != null) {
                     urls.add(url);
                 }
@@ -688,7 +697,7 @@ public final class Loader extends SecureClassLoader {
      * API is updated.
      */
     private boolean isOpen(ModuleReference mref, String pn) {
-        ModuleDescriptor descriptor = mref.descriptor();
+        ModuleDescriptor descriptor = MOD.descriptor(mref);
         if (descriptor.isOpen() || descriptor.isAutomatic())
             return true;
         for (ModuleDescriptor.Opens opens : descriptor.opens()) {

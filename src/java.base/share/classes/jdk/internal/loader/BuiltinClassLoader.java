@@ -154,6 +154,15 @@ public class BuiltinClassLoader
         }
     }
 
+    /**
+     * Provides access to Module without permission checks.
+     */
+    public static final class Mod extends ModuleReference.NoCheck {
+        private Mod(){}
+    }
+
+    private static final Mod MOD = new Mod();
+
     // maps package name to loaded module for modules in the boot layer
     private static final Map<String, LoadedModule> packageToModule;
     static {
@@ -227,7 +236,7 @@ public class BuiltinClassLoader
      * types in the module visible.
      */
     public void loadModule(ModuleReference mref) {
-        ModuleDescriptor descriptor = mref.descriptor();
+        ModuleDescriptor descriptor = MOD.descriptor(mref);
         String mn = descriptor.name();
         if (nameToModule.putIfAbsent(mn, mref) != null) {
             throw new InternalError(mn + " already defined to this loader");
@@ -1064,7 +1073,7 @@ public class BuiltinClassLoader
      * API is updated.
      */
     private boolean isOpen(ModuleReference mref, String pn) {
-        ModuleDescriptor descriptor = mref.descriptor();
+        ModuleDescriptor descriptor = MOD.descriptor(mref);
         if (descriptor.isOpen() || descriptor.isAutomatic())
             return true;
         for (ModuleDescriptor.Opens opens : descriptor.opens()) {

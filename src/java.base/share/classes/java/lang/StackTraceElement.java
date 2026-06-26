@@ -33,6 +33,8 @@ import jdk.internal.module.ModuleReferenceImpl;
 import java.lang.constant.ConstantDescs;
 import java.lang.module.ModuleReference;
 import java.lang.module.ResolvedModule;
+import java.security.AccessController;
+import java.security.PrivilegedAction;
 import java.util.HashSet;
 import java.util.Objects;
 import java.util.Optional;
@@ -515,7 +517,7 @@ public final class StackTraceElement implements java.io.Serializable {
         if (!VM.isModuleSystemInited())
             return true;
 
-        return ModuleLayer.boot() == m.getLayer() && HashedModules.contains(m);
+        return ModuleLayer.boot() == m.getLayerNoCheck() && HashedModules.contains(m);
     }
 
     /*

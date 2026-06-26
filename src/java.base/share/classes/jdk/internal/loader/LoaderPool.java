@@ -54,7 +54,7 @@ public final class LoaderPool {
                       ClassLoader parentLoader)
     {
         Map<String, Loader> loaders = new HashMap<>();
-        for (ResolvedModule resolvedModule : cf.modules()) {
+        for (ResolvedModule resolvedModule : Loader.MOD.modules(cf)) {
             Loader loader = new Loader(resolvedModule, this, parentLoader);
             String mn = resolvedModule.name();
             loaders.put(mn, loader);

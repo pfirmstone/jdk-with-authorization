@@ -596,11 +596,20 @@ public final class ServiceLoader<S>
     }
 
     /**
+     * Provides access to Module without permission checks.
+     */
+    public static final class Mod extends Module.NoCheck {
+        private Mod(){}
+    }
+
+    private static final Mod mod = new Mod();
+
+    /**
      * Returns {@code true} if the provider is in an explicit module
      */
     private boolean inExplicitModule(Class<?> clazz) {
         Module module = clazz.getModule();
-        return module.isNamed() && !module.getDescriptor().isAutomatic();
+        return module.isNamed() && !mod.getDescriptor(module).isAutomatic();
     }
 
     /**

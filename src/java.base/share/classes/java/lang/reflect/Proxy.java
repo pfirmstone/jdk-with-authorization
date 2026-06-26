@@ -474,6 +474,14 @@ public class Proxy implements java.io.Serializable {
     }
 
     /**
+     * Provides access to Module without permission checks.
+     */
+    public final static class Mod extends Module.NoCheck {
+        private Mod(){}
+    }
+    private static final Mod mod = new Mod();
+
+    /**
      * Builder for a proxy class.
      *
      * If the module is not specified in this ProxyBuilder constructor,
@@ -503,7 +511,7 @@ public class Proxy implements java.io.Serializable {
                         throw new InternalError("Unnamed package cannot be added to " + module);
                     }
 
-                    if (!module.getDescriptor().packages().contains(packageName)) {
+                    if (!mod.getDescriptor(module).packages().contains(packageName)) {
                         throw new InternalError(packageName + " not exist in " + module.getName());
                     }
 

@@ -592,6 +592,10 @@ public final class Configuration {
         return modules;
     }
 
+    Set<ResolvedModule> modulesNoCheck(){
+        return modules;
+    }
+
 
     /**
      * Finds a resolved module in this configuration, or if not in this

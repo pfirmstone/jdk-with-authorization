@@ -228,6 +228,10 @@ public final class Module implements AnnotatedElement {
         return descriptor;
     }
 
+    ModuleDescriptor getDescriptorNoCheck() {
+        return descriptor;
+    }
+
     /**
      * Returns the module layer that contains this module or {@code null} if
      * this module is not in a module layer.
@@ -245,6 +249,11 @@ public final class Module implements AnnotatedElement {
      */
     public ModuleLayer getLayer() {
         SecurityConstants.READ_MODULE_TOPOLOGY.checkGuard(null);
+        return getLayerNoCheck();
+    }
+
+    ModuleLayer getLayerNoCheck() {
+
         if (isNamed()) {
             ModuleLayer layer = this.layer;
             if (layer != null)
@@ -256,6 +265,82 @@ public final class Module implements AnnotatedElement {
             }
         }
         return null;
+    }
+
+    /**
+     * Provides access to modules without permission checks.
+     */
+    public static sealed abstract class NoCheck permits java.lang.reflect.Proxy.Mod,
+            java.util.ServiceLoader.Mod,
+            java.lang.module.ModuleReference.NoCheck {
+
+        /**
+         * Constructor
+         */
+        protected NoCheck(){}
+
+        /**
+         * Returns the module descriptor for this module or {@code null} if this
+         * module is an unnamed module.
+         *
+         * @param m The Module.
+         * @return The module descriptor for this module
+         */
+        public ModuleDescriptor getDescriptor(Module m){
+            return m.getDescriptorNoCheck();
+        }
+
+        /**
+         * Returns the module layer that contains this module or {@code null} if
+         * this module is not in a module layer.
+         *
+         * A module layer contains named modules and therefore this method always
+         * returns {@code null} when invoked on an unnamed module.
+         *
+         * <p> <a href="reflect/Proxy.html#dynamicmodule">Dynamic modules</a> are
+         * named modules that are generated at runtime. A dynamic module may or may
+         * not be in a module layer. </p>
+         *
+         * @param m the Module.
+         * @return The module layer that contains this module
+         *
+         * @see java.lang.reflect.Proxy
+         */
+        public ModuleLayer getLayer(Module m){
+            return m.getLayerNoCheck();
+        }
+
+        /**
+         * Returns an unmodifiable set of the modules in the ModuleLayer.
+         *
+         * @param ml the ModuleLayer.
+         * @return A possibly-empty unmodifiable set of the modules in this layer
+         */
+        public Set<Module> modules(ModuleLayer ml){
+            return ml.modulesNoCheck();
+        }
+
+        /**
+         * Returns the module with the given name in this layer, or if not in this
+         * layer, the parent layers. Finding a module in
+         * parent layers is equivalent to invoking {@code findModule} on each
+         * parent, in search order, until the module is found or all parents have
+         * been searched. In a <em>tree of layers</em>  then this is equivalent to
+         * a depth-first search.
+         *
+         * @param  ml
+         *         The ModuleLayer
+         * @param  name
+         *         The name of the module to find
+         *
+         * @return The module with the given name or an empty {@code Optional}
+         *         if there isn't a module with this name in this layer or any
+         *         parent layer
+         */
+        public Optional<Module> findModule(ModuleLayer ml, String name) {
+            return ml.findModuleNoCheck(name);
+        }
+
     }
 
     /**
@@ -1318,7 +1403,7 @@ public final class Module implements AnnotatedElement {
     {
         boolean isBootLayer = (ModuleLayer.boot() == null);
 
-        int numModules = cf.modules().size();
+        int numModules = ModuleLayer.MOD.modules(cf).size();
         Map<String, Module> nameToModule = HashMap.newHashMap(numModules);
 
         // to avoid repeated lookups and reduce iteration overhead, we create
@@ -1327,7 +1412,7 @@ public final class Module implements AnnotatedElement {
         Module[] modules = new Module[numModules];
         ClassLoader[] classLoaders = new ClassLoader[numModules];
 
-        resolvedModules = cf.modules().toArray(resolvedModules);
+        resolvedModules = ModuleLayer.MOD.modules(cf).toArray(resolvedModules);
 
         // record that we want to bind the layer to non-boot and non-platform
         // module loaders as a final step
@@ -1358,7 +1443,7 @@ public final class Module implements AnnotatedElement {
         // define each module in the configuration to the VM
         for (int index = 0; index < numModules; index++) {
             ModuleReference mref = resolvedModules[index].reference();
-            ModuleDescriptor descriptor = mref.descriptor();
+            ModuleDescriptor descriptor = ModuleLayer.MOD.descriptor(mref);
             String name = descriptor.name();
             ClassLoader loader = classLoaders[index];
             Module m;
@@ -1435,7 +1520,7 @@ public final class Module implements AnnotatedElement {
             for (int index = 0; index < numModules; index++) {
                 ResolvedModule resolvedModule = resolvedModules[index];
                 ModuleReference mref = resolvedModule.reference();
-                ModuleDescriptor descriptor = mref.descriptor();
+                ModuleDescriptor descriptor = ModuleLayer.MOD.descriptor(mref);
                 if (!descriptor.provides().isEmpty()) {
                     Module m = modules[index];
                     ClassLoader loader = classLoaders[index];

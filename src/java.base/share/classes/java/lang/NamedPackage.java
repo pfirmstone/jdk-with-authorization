@@ -71,8 +71,8 @@ class NamedPackage {
      * a named module; otherwise, returns null.
      */
     URI location() {
-        if (module.isNamed() && module.getLayer() != null) {
-            Configuration cf = module.getLayer().configuration();
+        if (module.isNamed() && module.getLayerNoCheck() != null) {
+            Configuration cf = module.getLayerNoCheck().configuration();
             ModuleReference mref
                 = cf.findModule(module.getName()).get().reference();
             return mref.location().orElse(null);

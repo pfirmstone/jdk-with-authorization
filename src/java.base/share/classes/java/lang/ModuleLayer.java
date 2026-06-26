@@ -542,7 +542,7 @@ public final class ModuleLayer {
         checkGetClassLoaderPermission();
 
         try {
-            Loader loader = new Loader(cf.modules(), parentLoader);
+            Loader loader = new Loader(MOD.modules(cf), parentLoader);
             loader.initRemotePackageMap(cf, parents);
             ModuleLayer layer = new ModuleLayer(cf, parents, mn -> loader);
             return new Controller(layer);
@@ -550,6 +550,15 @@ public final class ModuleLayer {
             throw new LayerInstantiationException(e.getMessage());
         }
     }
+
+    /**
+     * Provides access without permission checks.
+     */
+    public static final class Mod extends java.lang.module.ModuleReference.NoCheck {
+        private Mod(){}
+    }
+
+    static final Mod MOD = new Mod();
 
     /**
      * Creates a new module layer by defining the modules in the given {@code
@@ -758,8 +767,8 @@ public final class ModuleLayer {
     {
         // HashMap allows null keys
         Map<ClassLoader, Set<String>> loaderToPackages = new HashMap<>();
-        for (ResolvedModule resolvedModule : cf.modules()) {
-            ModuleDescriptor descriptor = resolvedModule.reference().descriptor();
+        for (ResolvedModule resolvedModule : MOD.modules(cf)) {
+            ModuleDescriptor descriptor = MOD.descriptor(resolvedModule.reference());
             ClassLoader loader = clf.apply(descriptor.name());
 
             Set<String> loaderPackages
@@ -850,6 +859,10 @@ public final class ModuleLayer {
      */
     public Set<Module> modules() {
         SecurityConstants.READ_MODULE_TOPOLOGY.checkGuard(null);
+        return modulesNoCheck();
+    }
+
+    Set<Module> modulesNoCheck() {
         Set<Module> modules = this.modules;
         if (modules == null) {
             this.modules = modules = Set.copyOf(nameToModule.values());
@@ -876,10 +889,14 @@ public final class ModuleLayer {
      *         parent layer
      */
     public Optional<Module> findModule(String name) {
+        SecurityConstants.READ_MODULE_TOPOLOGY.checkGuard(null);
+        return findModuleNoCheck(name);
+    }
+
+    Optional<Module> findModuleNoCheck(String name){
         Objects.requireNonNull(name);
         if (this == EMPTY_LAYER)
             return Optional.empty();
-        SecurityConstants.READ_MODULE_TOPOLOGY.checkGuard(null);
         Module m = nameToModule.get(name);
         if (m != null)
             return Optional.of(m);

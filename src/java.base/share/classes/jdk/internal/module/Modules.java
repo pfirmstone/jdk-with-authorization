@@ -65,6 +65,14 @@ public class Modules {
 
     private static final JavaLangAccess JLA = SharedSecrets.getJavaLangAccess();
     private static final JavaLangModuleAccess JLMA = SharedSecrets.getJavaLangModuleAccess();
+    static final Mod MOD = new Mod();
+
+    /**
+     * Access Module methods without permission checks.
+     */
+    public static final class Mod extends ModuleReference.NoCheck{
+        private Mod(){}
+    }
 
     /**
      * Creates a new Module. The module has the given ModuleDescriptor and
@@ -192,7 +200,7 @@ public class Modules {
      * Updates module m to provide a service
      */
     public static void addProvides(Module m, Class<?> service, Class<?> impl) {
-        ModuleLayer layer = m.getLayer();
+        ModuleLayer layer = MOD.getLayer(m);
 
         PrivilegedAction<ClassLoader> pa = m::getClassLoader;
         @SuppressWarnings("removal")
@@ -251,7 +259,7 @@ public class Modules {
         if (top == null)
             top = ModuleLayer.boot();
 
-        Module module = top.findModule(name).orElse(null);
+        Module module = MOD.findModule(top, name).orElse(null);
         if (module != null) {
             // module already loaded
             return module;
@@ -268,14 +276,14 @@ public class Modules {
         ModuleLayer newLayer = top.defineModules(cf, clf);
 
         // add qualified exports/opens to give access to modules in child layer
-        Map<String, Module> map = newLayer.modules().stream()
+        Map<String, Module> map = MOD.modules(newLayer).stream()
                                           .collect(Collectors.toMap(Module::getName,
                                                   Function.identity()));
         ModuleLayer layer = top;
         while (layer != null) {
-            for (Module m : layer.modules()) {
+            for (Module m : MOD.modules(layer)) {
                 // qualified exports
-                m.getDescriptor().exports().stream()
+                MOD.getDescriptor(m).exports().stream()
                     .filter(ModuleDescriptor.Exports::isQualified)
                     .forEach(e -> e.targets().forEach(target -> {
                         Module other = map.get(target);
@@ -284,7 +292,7 @@ public class Modules {
                         }}));
 
                 // qualified opens
-                m.getDescriptor().opens().stream()
+                MOD.getDescriptor(m).opens().stream()
                     .filter(ModuleDescriptor.Opens::isQualified)
                     .forEach(o -> o.targets().forEach(target -> {
                         Module other = map.get(target);
@@ -302,9 +310,9 @@ public class Modules {
         JLA.addNonExportedPackages(newLayer);
 
         // update the built-in class loaders to make the types visible
-        for (ResolvedModule resolvedModule : cf.modules()) {
+        for (ResolvedModule resolvedModule : MOD.modules(cf)) {
             ModuleReference mref = resolvedModule.reference();
-            String mn = mref.descriptor().name();
+            String mn = MOD.descriptor(mref).name();
             ClassLoader cl = clf.apply(mn);
             if (cl == null) {
                 BootLoader.loadModule(mref);
@@ -317,7 +325,7 @@ public class Modules {
         topLayer = newLayer;
 
         // return module
-        return newLayer.findModule(name)
+        return MOD.findModule(newLayer, name)
                        .orElseThrow(() -> new InternalError("module not loaded"));
 
     }
@@ -331,7 +339,7 @@ public class Modules {
         ModuleLayer top = topLayer;
         if (top == null)
             top = ModuleLayer.boot();
-        return top.findModule(name);
+        return MOD.findModule(top, name);
     }
 
     // the top-most layer

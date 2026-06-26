@@ -69,7 +69,7 @@ public final class ModuleLoaderMap {
          */
         Mapper(Configuration cf) {
             var map = new HashMap<String, String>();
-            for (ResolvedModule resolvedModule : cf.modules()) {
+            for (ResolvedModule resolvedModule : jdk.internal.module.Modules.MOD.modules(cf)) {
                 String mn = resolvedModule.name();
                 if (!Modules.bootModules.contains(mn)) {
                     if (Modules.platformModules.contains(mn)) {

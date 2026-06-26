@@ -29,6 +29,7 @@ import java.io.IOException;
 import java.net.URI;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import sun.security.util.SecurityConstants;
 
 
@@ -74,6 +75,45 @@ public abstract class ModuleReference {
         SecurityConstants.READ_MODULE_TOPOLOGY.checkGuard(null);
         return descriptor;
     }
+
+    /**
+     * Provides access without a permission check.
+     */
+    public static abstract sealed class NoCheck extends java.lang.Module.NoCheck
+            permits jdk.internal.loader.BuiltinClassLoader.Mod,
+                    jdk.internal.loader.Loader.Mod, java.lang.ModuleLayer.Mod,
+                    jdk.internal.module.Modules.Mod {
+
+        /**
+         * Constructor
+         */
+        protected NoCheck(){
+
+        }
+
+        /**
+         * Returns the module descriptor.
+         *
+         * @param  ref the ModuleReference
+         * @return The module descriptor
+         */
+        public final ModuleDescriptor descriptor(ModuleReference ref) {
+            return ref.descriptor;
+        }
+
+        /**
+         * Returns an unmodifiable set of the resolved modules in this configuration.
+         *
+         * @param  c Configuration
+         * @return A possibly-empty unmodifiable set of the resolved modules
+         *         in this configuration
+         */
+        public Set<ResolvedModule> modules(Configuration c) {
+            return c.modulesNoCheck();
+        }
+
+    }
+
 
     /**
      * Returns the location of this module's content, if known.

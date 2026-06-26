@@ -118,7 +118,7 @@ public final class ServicesCatalog {
      * Registers the providers in the given module in this services catalog.
      */
     public void register(Module module) {
-        ModuleDescriptor descriptor = module.getDescriptor();
+        ModuleDescriptor descriptor = Modules.MOD.getDescriptor(module);
         for (Provides provides : descriptor.provides()) {
             String service = provides.service();
             List<String> providerNames = provides.providers();
