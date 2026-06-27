@@ -37,9 +37,10 @@ import java.net.URL;
  * credentials on every policy fetch, even after SVID rotation.
  *
  * <p>When {@link #refresh()} is called (either manually or via SVID rotation
- * notification), the decorator obtains the current Subject from
+ * notification), the decorator obtains the current credential Subject from
  * {@link SpiffeCredentialManager} before fetching, ensuring the policy is
- * always retrieved with valid credentials.
+ * always retrieved with valid credentials.  Note that credential Subject is
+ * a plain Subject, not an instance of WorkerSubject.
  *
  * <p>Fail-secure by construction: if the HTTPS server is unreachable,
  * returns a non-200 response, or the policy cannot be parsed,

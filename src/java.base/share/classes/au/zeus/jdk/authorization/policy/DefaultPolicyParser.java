@@ -559,19 +559,19 @@ public class DefaultPolicyParser implements PolicyParser {
         return certs.toArray(new Certificate[certs.size()]);
     }
     
-    void log(String message){
+    public static void log(String message){
         log(message, null, null);
     }
     
-    void log(String message, Throwable thrown){
+    public static void log(String message, Throwable thrown){
         log(message, null, thrown);
     }
     
-    void log(String message, Object[] parameters){
+    public static void log(String message, Object[] parameters){
         log(message, parameters, null);
     }
     
-    void log(   final String message,
+    public static void log(   final String message,
                 final Object[] parameters,
                 final Throwable thrown)
     {

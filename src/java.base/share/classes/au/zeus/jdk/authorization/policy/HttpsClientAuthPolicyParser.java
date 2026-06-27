@@ -37,6 +37,7 @@ import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Properties;
+import javax.security.auth.WorkerSubject;
 
 /**
  * A {@link PolicyParser} that fetches a policy file over HTTPS using a
@@ -46,7 +47,8 @@ import java.util.Properties;
  * public credential and the private key as a private credential — is supplied
  * at construction time. The URL is opened inside a
  * {@link Subject#doAs(Subject, PrivilegedExceptionAction)} call so that the
- * JSSE stack can locate the Subject's credentials during the TLS handshake.
+ * JSSE stack can locate the Subject's credentials during the TLS handshake. 
+ * This Subject is not an instance of WorkerSubject.
  *
  * <p>The supplied Subject should be read-only (caller must invoke
  * {@link Subject#setReadOnly()} before construction) to prevent credential
@@ -90,9 +92,18 @@ public class HttpsClientAuthPolicyParser extends DefaultPolicyParser {
      * @throws NullPointerException if {@code spiffeSubject} is {@code null}
      */
     public HttpsClientAuthPolicyParser(Subject spiffeSubject) {
+        this(spiffeSubject, check(spiffeSubject));
+    }
+    
+    private HttpsClientAuthPolicyParser(Subject spiffeSubject, boolean check) {
         super();
-        if (spiffeSubject == null) throw new NullPointerException("spiffeSubject");
         this.spiffeSubject = spiffeSubject;
+    }
+    
+    private static final boolean check(Subject spiffeSubject){
+        if (spiffeSubject == null) throw new NullPointerException("spiffeSubject");
+        if (spiffeSubject instanceof WorkerSubject) throw new IllegalArgumentException("WorkerSubject not allowed here.");
+        return true;
     }
 
     /**

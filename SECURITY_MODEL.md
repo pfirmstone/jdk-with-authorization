@@ -485,21 +485,32 @@ When the SVID rotates, `SpiffeCredentialManager` atomically replaces its current
 `SpiffeSubject extends WorkerSubject` is the sealed credential carrier for the current workload identity:
 
 - `private` constructor — only `SpiffeCredentialManager` can construct one, preventing identity forgery.
-- `WorkerSubject` subtype — `Subject.callAs(...)` rejects it (see §10.1, "UserSubject, WorkerSubject, and `callAs(...)`"), and the scoped-subject injection path described there excludes it when building an `AccessControlContext`.
+- `WorkerSubject` subtype — `Subject.callAs(...)` **and** `Subject.doAs(...)`/`doAsPrivileged(...)` reject it (see §10.1, "UserSubject, WorkerSubject, and `callAs(...)`"), and the scoped-subject injection path described there excludes it when building an `AccessControlContext`. The worker identity is ambient only; reach it via `Subject.processWorker()`.
 - Read-only at construction time (`SpiffeSubject(true, ...)`) — downstream code cannot mutate its principal set.
 
 ### `SpiffePolicyFile`
 
 `SpiffePolicyFile extends ConcurrentPolicyFile` provides SPIFFE-authenticated bootstrap policy:
 
-- Fetches bootstrap policy from an HTTPS endpoint using the SVID for mutual TLS client authentication; `HttpsClientAuthPolicyParser` establishes the `Subject.doAs(...)` context in which the HTTPS fetch runs.
+- Fetches bootstrap policy from an HTTPS endpoint using the SVID for mutual TLS client authentication; `HttpsClientAuthPolicyParser` opens the connection inside a `Subject.doAs(...)` context so JSSE can locate the SVID credentials during the handshake. That `doAs` subject **must be a plain (non-`WorkerSubject`) `Subject`** carrying the SVID `CertPath` (public credential) + `X500PrivateCredential` (private credential) — `doAs` rejects a `WorkerSubject`. See the discrepancy flag below.
 - Derives the default policy URL from the SPIFFE ID trust domain (`spiffe://trust-domain/...` -> `https://policy.trust-domain/bootstrap/policy`), unless overridden by `spiffe.policy.url`.
 - Registers as an `SvidRotationListener`, so `refresh()` runs automatically on SVID rotation through `RefreshingParserDecorator`, which obtains fresh credentials from `SpiffeCredentialManager` on each parse.
 - Fail-secure: if bootstrap policy fetch fails, the HTTPS server is unreachable, or a non-200 response / parse failure prevents initialization, `PolicyInitializationException` is thrown and startup does not proceed with an untrusted policy state.
 
 ### `SubjectDomainCombiner` principal composition
 
-SPIFFE workload identity is ambient through `ProtectionDomain` stamping at class-load time and can also be carried in subject-bearing `AccessControlContext` (ACC) state established by `Subject.doAs(...)`. Human/user identity is introduced separately through `Subject.callAs(...)` and `AccessController.getContext()` scoped-subject injection. This lets policy `principal` matching evaluate workload identity (`WorkerSubject` / SPIFFE `X500Principal`) alongside active user identity without allowing the workload identity itself to become a scoped `callAs(...)` subject.
+SPIFFE workload identity is **ambient**: it is stamped into every network-loaded `ProtectionDomain` at class-load time and is obtained as a fresh reference via `Subject.processWorker()`. It is **never** carried as a scoped or ACC-bound subject — the sealed `SpiffeSubject` (`WorkerSubject`) is rejected by **both** `Subject.callAs(...)` **and** `Subject.doAs(...)`/`doAsPrivileged(...)`, each of which throws `IllegalArgumentException` for a `WorkerSubject`. Human/user identity is introduced separately through `Subject.callAs(...)` and `AccessController.getContext()` scoped-subject injection. This lets policy `principal` matching evaluate the ambient workload identity (`WorkerSubject` / SPIFFE `X500Principal`, read from the stamped `ProtectionDomain`s) alongside the active user identity, without the workload identity ever becoming a `doAs` or `callAs` subject.
+
+> **Discrepancy flag (bootstrap policy fetch — needs human source change).** As currently
+> wired, `RefreshingParserDecorator` (and the direct `SpiffePolicyFile(Subject, URL)`
+> constructor) pass `SpiffeCredentialManager.getSubject()` — which returns a `SpiffeSubject`
+> (`WorkerSubject`, constructed at `SpiffeCredentialManager` line ~373) — into
+> `HttpsClientAuthPolicyParser`, which calls `Subject.doAs(spiffeSubject, …)`. Because
+> `Subject.doAs`/`doAsPrivileged` reject `WorkerSubject` (same guard as `callAs`), this
+> bootstrap fetch throws `IllegalArgumentException` at runtime. The fix is to hand the
+> parser a **plain `Subject`** holding the same SVID credentials (`CertPath` +
+> `X500PrivateCredential`) rather than the sealed `SpiffeSubject`. Flagged for human
+> implementation — DirtyChai source is advise-only here.
 
 ---
 

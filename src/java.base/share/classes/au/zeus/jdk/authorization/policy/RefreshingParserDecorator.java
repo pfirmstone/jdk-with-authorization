@@ -21,12 +21,21 @@
 package au.zeus.jdk.authorization.policy;
 
 import au.zeus.jdk.authorization.spire.SpiffeCredentialManager;
+import java.io.IOException;
+import java.lang.System.Logger;
 import org.apache.river.api.security.PermissionGrant;
 
 import javax.security.auth.Subject;
 import java.net.URL;
+import java.security.GeneralSecurityException;
+import java.security.KeyStoreException;
 import java.util.Collection;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Properties;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
+import sun.security.util.Debug;
 
 /**
  * Decorator for {@link PolicyParser} that obtains a fresh {@link Subject}
@@ -46,6 +55,8 @@ import java.util.Properties;
 final class RefreshingParserDecorator implements PolicyParser {
 
   private final SpiffeCredentialManager credentialManager;
+  
+  private final ConcurrentMap<String, Collection<PermissionGrant>> cached = new ConcurrentHashMap<>();
 
   /**
    * Constructs a decorator that delegates to a fresh
@@ -75,14 +86,29 @@ final class RefreshingParserDecorator implements PolicyParser {
   @Override
   public Collection<PermissionGrant> parse(URL location, Properties system)
       throws Exception {
-    // Obtain fresh Subject (may have rotated since last parse)
-    Subject currentSubject = credentialManager.getSubject();
-    
-    // Create a fresh parser with current credentials
-    HttpsClientAuthPolicyParser freshParser =
-        new HttpsClientAuthPolicyParser(currentSubject);
-    
-    // Delegate to the fresh parser
-    return freshParser.parse(location, system);
+    Collection<PermissionGrant> result = null;
+    try{
+        // Obtain fresh Subject (may have rotated since last parse)
+        Subject currentSubject = credentialManager.getCredentialSubject();
+        if (currentSubject == null){
+            DefaultPolicyParser.log("Spiffe Subject is null");
+            result = cached.get(location.toExternalForm());
+            if (result != null) return result;
+            throw new NullPointerException("SpiffeSubject was null");
+        }
+
+        // Create a fresh parser with current credentials
+        HttpsClientAuthPolicyParser freshParser =
+            new HttpsClientAuthPolicyParser(currentSubject);
+
+        // Delegate to the fresh parser
+        result = freshParser.parse(location, system);
+        cached.replace(location.toExternalForm(), result);
+    } catch (IOException | GeneralSecurityException e){
+        result = cached.get(location.toExternalForm());
+        DefaultPolicyParser.log("Unable to refresh policy, url: {0}", new Object[]{location.toExternalForm()}, e);
+        if (result == null) throw e;
+    }
+    return result;
   }
 }

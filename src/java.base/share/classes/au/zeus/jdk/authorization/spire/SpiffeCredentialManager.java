@@ -129,9 +129,11 @@ public final class SpiffeCredentialManager implements AutoCloseable {
     private final Subject          currentSubject;
     private final String           currentSpiffeId;
     private final X509Certificate[] trustBundle;
+    private final Subject credentialSubject;
 
-    R(Subject s, String id, X509Certificate[] certs) {
+    R(Subject s, Subject cs, String id, X509Certificate[] certs) {
       this.currentSubject  = s;
+      this.credentialSubject = cs;
       this.currentSpiffeId = id;
       this.trustBundle     = certs;
     }
@@ -214,6 +216,27 @@ public final class SpiffeCredentialManager implements AutoCloseable {
   public Subject getSubject() {
     R r = subjectBundle.get();
     return r != null ? r.currentSubject : null;
+  }
+  
+  /**
+   * Returns the current SPIFFE credential {@link Subject} containing X.509 SVID
+   * credentials, or {@code null} if no SVID has been obtained from SPIRE yet.
+   *
+   * <p>The returned Subject is read-only and contains:
+   * <ul>
+   *   <li>Public credentials: {@link java.security.cert.CertPath} (leaf + intermediates)
+   *   <li>Private credentials: {@link X500PrivateCredential} for the leaf certificate
+   *   <li>Principal: {@link X500Principal} from the leaf certificate
+   * </ul>
+   *
+   * <p>Callers must check for {@code null} — this occurs when SPIRE has not yet
+   * provided credentials (startup race or SPIRE unavailability).
+   *
+   * @return current SPIFFE Subject, or {@code null} if unavailable
+   */
+  public Subject getCredentialSubject() {
+    R r = subjectBundle.get();
+    return r != null ? r.credentialSubject : null;
   }
 
   /**
@@ -376,6 +399,13 @@ public final class SpiffeCredentialManager implements AutoCloseable {
           Collections.unmodifiableSet(pubCreds),
           Collections.unmodifiableSet(privCreds)
       );
+      
+      Subject credentialSubject = new Subject(
+          true,
+          Collections.unmodifiableSet(principals),
+          Collections.unmodifiableSet(pubCreds),
+          Collections.unmodifiableSet(privCreds)
+      );
 
       // Parse trust bundle
       X509Certificate[] bundle;
@@ -391,7 +421,7 @@ public final class SpiffeCredentialManager implements AutoCloseable {
       }
 
       // Atomic update — visible immediately to all readers
-      subjectBundle.set(new R(subject, svid.spiffeId, bundle));
+      subjectBundle.set(new R(subject, credentialSubject, svid.spiffeId, bundle));
       if (debug != null) debug.println("SVID updated: spiffeId=" + svid.spiffeId);
 
     } catch (CertificateException e) {

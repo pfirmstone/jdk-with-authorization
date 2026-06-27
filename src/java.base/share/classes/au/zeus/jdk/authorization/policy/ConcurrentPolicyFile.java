@@ -528,7 +528,7 @@ public class ConcurrentPolicyFile extends Policy implements ScalableNestedPolicy
                                     throw (SecurityException) ex;
                                 }
 				if (parser instanceof DefaultPolicyParser && DEBUG != null){
-				    ((DefaultPolicyParser) parser).log(
+				    DefaultPolicyParser.log(
 						"security.1A8",
 						new Object[]{policyLocations[i], ex.getMessage()}
 				    );

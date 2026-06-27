@@ -250,15 +250,42 @@ required here.
 
 When JERI serialises an ACC for remote transmission it must:
 
-1. Iterate the `ProtectionDomain[]` obtained via
-   `JavaSecurityAccess.getProtectDomains(acc)`.
-2. For each domain call `pd.getCodeSource()`.  If it is a `DigestCodeSource`,
-   serialise the URL, certificates, algorithm, and digest.
-3. On the remote side, reconstruct a `DigestCodeSource` from those fields and
-   create a `ProtectionDomain` (or look one up from a local cache keyed on the
-   digest) so that the reconstructed ACC carries the same code identity.
-4. Use `DigestGrant` (created with `PermissionGrantBuilder`) to match
-   dynamically granted permissions to those reconstructed domains.
+1. Iterate the **complete** `ProtectionDomain[]` obtained via
+   `JavaSecurityAccess.getProtectDomains(acc)`.  Transmit *every* domain, not
+   only the `DigestCodeSource` ones.  Codebase domains are subtractive in the
+   AND-across-domains check, so omitting one drops a constraint and *elevates*
+   privilege (fail-open).  Send the full reducing set; never prune it.
+2. For each domain serialise the codebase URL and certificates.  Capture the
+   content digest from **either** source:
+   - a `DigestCodeSource` (its `digestAlgorithm` + `digest` fields), or
+   - an `httpmd:` URL parameter (`…;sha-256=…`) on an ordinary `CodeSource`.
+   A domain with neither is still serialised — it crosses as a reducer with no
+   verified code identity (treated worst-case on receipt, never dropped).
+   Principals are carried too, but the receiver honours only those the
+   connection authenticated (see step 4).
+3. On the remote side, reconstruct each domain.  For a digest-bearing domain
+   reconstruct a `DigestCodeSource` (or look one up from a local cache keyed on
+   the digest) so the reconstructed ACC preserves code identity; for a
+   digest-less domain reconstruct an ordinary `CodeSource` — still included, as
+   a reducer.
+4. Score the reconstructed domains against the receiver's **static** policy —
+   they reduce *within* that ceiling and are **not** a source of dynamic grants.
+   Inbound call authorization makes no dynamic grants.  A `DigestGrant` in the
+   static policy may match a digest-bearing domain to give it the authority the
+   policy assigns that digest; a digest-less domain receives only the URL-scoped
+   operational permissions static policy already allows for its URL.  A claimed
+   digest that does **not** verify is an attack signal — reject the call, do not
+   strip-and-proceed.  A known-vulnerable digest may be blocklisted outright.
+   Principals contribute to grant matching only when the connection
+   authenticated them; an unauthenticated baked-in principal keeps its (reducing)
+   codebase but adds no principal.
+
+`DigestGrant` created via `PermissionGrantBuilder` remains the mechanism for the
+separate **proxy-loading** path (dynamic `Security.grant` at proxy preparation,
+client or server), which is distinct from the inbound-authorization path above.
+See `JGDMS-STD-003` §10.4–§10.5 and
+`JGDMS/docs/DESIGN-spiffe-authorization-acc-transmission-2026-06-27.md` §3 for
+the full receiving-side model.
 
 ---
 

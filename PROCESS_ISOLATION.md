@@ -371,7 +371,7 @@ policy authority is actually decided.
 - [ ] GROUP-POLICY-DISCIPLINE (high): Validate/deploy policy subset checks between admin and group JVM policies.
 - [ ] GROUP-DESERIALIZATION-AUTHORITY (high): Instrument group JVM reconstruction path to assert/document `DeSerializationPermission` authority source.
 - [ ] POLICY-PRECEDENCE-REACTIVATION (medium): Specify and validate policy-authority precedence for re-activation and mismatch diagnostics.
-- [ ] TLS-SUBJECT-PROPAGATION (medium): Define TLS subject propagation contract into service deserialization context.
+- [~] TLS-SUBJECT-PROPAGATION (medium): Define TLS subject propagation contract into service deserialization context. **Contract now specified** (design) in `JGDMS/docs/DESIGN-spiffe-authorization-acc-transmission-2026-06-27.md` and `JGDMS-STD-003` §10.4–§10.6: the transmitted ACC carries *connection-authenticated principals only* plus the *complete* set of reducing codebase domains; receiver keeps every domain (never strips), scores against its static policy ceiling, and authorizes via two gates (workload + validated user). Implementation pending.
 
 #### JGDMS code evidence
 
@@ -1397,6 +1397,20 @@ applying the client's restrictions rather than the server's full privileges.
 service (e.g., with a valid but low-privilege Kerberos ticket), the server can enforce
 that the caller's operations are bounded by the caller's own `ProtectionDomain`
 permissions.  The server does not grant its own elevated permissions to arbitrary callers.
+
+> **Refined by later design (2026-06-27).** The "propagate the caller's ACC" sketch above
+> predates the worked-out receiving-side model in
+> `JGDMS/docs/DESIGN-spiffe-authorization-acc-transmission-2026-06-27.md` and
+> `JGDMS-STD-003` §10.4–§10.6. Three refinements matter: (1) the receiver **keeps every
+> transmitted codebase domain as a reducer and never strips one** — codebases are
+> subtractive, so dropping a domain *elevates* privilege; (2) the transmitted ACC carries
+> **only connection-authenticated principals** (identity is additive — an unvalidated
+> subject is dropped, not honored), while codebases need not be authenticated because they
+> can only reduce; (3) authorization is **two-gate** — a workload `AccessPermission` over
+> the connection ACC plus, for sensitive methods, a user `AccessPermission` over a
+> per-receiver-validated user (JWT) subject — never one merged elevated context. The
+> caller's ACC can only *reduce within* the receiver's static-policy ceiling; it can never
+> raise the server's authority.
 
 ### Combined Architecture for a JGDMS Service
 
@@ -2790,6 +2804,22 @@ grant Principal javax.security.auth.x500.X500Principal "CN=MyClient, O=Example" 
 will correctly apply to the service method invocation because the
 `SubjectDomainCombiner` injects the principal into the `AccessControlContext`
 intersection that `CombinerSecurityManager.checkPermission()` evaluates.
+
+> **Reconcile with the later two-gate design (2026-06-27).** This mechanism propagates the
+> authenticated **peer/workload** identity — and under
+> `JGDMS/docs/DESIGN-spiffe-authorization-acc-transmission-2026-06-27.md` (and
+> `JGDMS-STD-003` §10.5) that is exactly **Gate 1** (workload `AccessPermission` over the
+> connection-authenticated context). Two adjustments follow: (1) The peer `Subject` should
+> carry the **SPIFFE URI SAN as a `SpiffePrincipal`** (`SpiffePrincipal.fromCertificate`),
+> not only the `X500Principal`, so SPIFFE-keyed grants match — SPIFFE deliberately separates
+> the *workload* (the SVID peer) from the *human*. (2) A human user is a **separate** JWT
+> identity validated **per receiver**; sensitive/admin methods require a **second gate**
+> over that validated user subject, so the peer principal alone must not authorize an
+> administrative call. Note the constraint that *the local process's own ambient
+> `WorkerSubject` is never passed through `doAs`/`callAs`* concerns the worker reached via
+> `Subject.processWorker()`; it does **not** forbid this locally-constructed, read-only
+> *peer-representation* `Subject`, which exists only to carry the authenticated peer's
+> principals into grant matching for Gate 1.
 
 #### Integration with `CombinerSecurityManager`
 
