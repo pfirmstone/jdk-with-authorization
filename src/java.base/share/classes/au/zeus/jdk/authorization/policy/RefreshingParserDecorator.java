@@ -23,19 +23,16 @@ package au.zeus.jdk.authorization.policy;
 import au.zeus.jdk.authorization.spire.SpiffeCredentialManager;
 import java.io.IOException;
 import java.lang.System.Logger;
+import java.lang.System.Logger.Level;
 import org.apache.river.api.security.PermissionGrant;
 
 import javax.security.auth.Subject;
 import java.net.URL;
 import java.security.GeneralSecurityException;
-import java.security.KeyStoreException;
 import java.util.Collection;
-import java.util.HashMap;
-import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
-import sun.security.util.Debug;
 
 /**
  * Decorator for {@link PolicyParser} that obtains a fresh {@link Subject}
@@ -55,7 +52,8 @@ import sun.security.util.Debug;
 final class RefreshingParserDecorator implements PolicyParser {
 
   private final SpiffeCredentialManager credentialManager;
-  
+  private static final Logger LOGGER = System.getLogger(RefreshingParserDecorator.class.getName());
+
   private final ConcurrentMap<String, Collection<PermissionGrant>> cached = new ConcurrentHashMap<>();
 
   /**
@@ -91,7 +89,7 @@ final class RefreshingParserDecorator implements PolicyParser {
         // Obtain fresh Subject (may have rotated since last parse)
         Subject currentSubject = credentialManager.getCredentialSubject();
         if (currentSubject == null){
-            DefaultPolicyParser.log("Spiffe Subject is null");
+            LOGGER.log(Level.WARNING, "Spiffe Subject is null");
             result = cached.get(location.toExternalForm());
             if (result != null) return result;
             throw new NullPointerException("SpiffeSubject was null");
@@ -103,10 +101,10 @@ final class RefreshingParserDecorator implements PolicyParser {
 
         // Delegate to the fresh parser
         result = freshParser.parse(location, system);
-        cached.replace(location.toExternalForm(), result);
+        cached.put(location.toExternalForm(), result);
     } catch (IOException | GeneralSecurityException e){
         result = cached.get(location.toExternalForm());
-        DefaultPolicyParser.log("Unable to refresh policy, url: {0}", new Object[]{location.toExternalForm()}, e);
+        LOGGER.log(Level.WARNING, "Unable to refresh policy, url: {0}", new Object[]{location.toExternalForm()}, e);
         if (result == null) throw e;
     }
     return result;
