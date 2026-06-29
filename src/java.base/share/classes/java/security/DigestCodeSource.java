@@ -135,6 +135,7 @@ public final class DigestCodeSource extends CodeSource implements Externalizable
     private transient byte[] digest;
     private transient Uri uri;           // RFC 3986 form; avoids DNS in equals/hashCode
     private transient int cachedHashCode;
+    private transient boolean unverified = false;
     /**
      * Cached defensive copy of the certificate array returned by
      * {@link #getCertificates()}.  {@code getCertificates()} allocates a new
@@ -477,6 +478,26 @@ public final class DigestCodeSource extends CodeSource implements Externalizable
             throws MalformedURLException, IOException, NoSuchAlgorithmException {
         this(url, uri, certs, checkAlgorithm(digestAlgorithm), computeDigest(uri, url, digestAlgorithm));
     }
+    
+    /**
+     * This constructor creates an unchecked DigestCodeSource.
+     * 
+     * @param uri The Uri normalized from.
+     * @param certs Certificates the CodeSource is signed by.
+     * @param digestAlgorithm the digest algorithm, eg SHA-256
+     * @param digest The digest bytes.
+     * @throws MalformedURLException The the uri string is malformed.
+     * @throws URISyntaxException if the uri string is not RFC3986 compliant.
+     */
+    public DigestCodeSource(String uri, Certificate[] certs, String digestAlgorithm, byte[] digest) throws MalformedURLException, URISyntaxException{
+        this(parseUri(uri), certs, digestAlgorithm, digest);
+        
+    }
+    
+    private DigestCodeSource(Uri uri, Certificate[] certs, String digestAlgorithm, byte[] digest) throws MalformedURLException{
+        this(uriToUrl(uri), uri, certs, checkAlgorithm(digestAlgorithm), digest);
+        unverified = true;
+    }
 
     private DigestCodeSource(URL url, Uri uri, Certificate[] certs, String digestAlgorithm, byte[] digest)
             throws MalformedURLException {
@@ -631,6 +652,14 @@ public final class DigestCodeSource extends CodeSource implements Externalizable
         }
         sb.append(')');
         return sb.toString();
+    }
+    
+    /**
+     * Returns true if the digest hasn't been verified.
+     * @return true if the digest wasn't calculated 
+     */
+    public boolean unverified(){
+        return unverified;
     }
 
     /**
@@ -814,6 +843,7 @@ public final class DigestCodeSource extends CodeSource implements Externalizable
 
         uri = uriFromUrl(loc);   // throws IOException if loc is non-null but unparseable
         cachedHashCode = computeHashCode();
+        unverified = true;
     }
 
     // -----------------------------------------------------------------------
