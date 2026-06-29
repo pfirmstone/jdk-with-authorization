@@ -20,7 +20,7 @@
 * @since 3.0.0
 */
 
-package au.zeus.jdk.authorization.policy;
+package org.apache.river.api.security;
 
 import au.zeus.jdk.authorization.impl.Messages;
 import java.security.Principal;
@@ -37,14 +37,13 @@ import java.security.Principal;
  * acceptable principal and compares it with the actual principal. 
  * 
  * @see PermissionGrant
- * @see org.apache.river.api.security.ConcurrentPolicyFile
  */
 public final class UnresolvedPrincipal implements Principal {
 
     /** 
      * Wildcard value denotes any class and/or any name. 
      */
-    static final String WILDCARD = DefaultPolicyScanner.PrincipalEntry.WILDCARD;
+    static final String WILDCARD = "*";
 
     // Class name
     private final String klass;
@@ -60,7 +59,7 @@ public final class UnresolvedPrincipal implements Principal {
      * @throws IllegalArgumentException if <code>klass</code> value 
      * is <code>null </code> or is empty string 
      */
-    UnresolvedPrincipal(String klass, String name) {
+    public UnresolvedPrincipal(String klass, String name) {
         if (klass == null || klass.length() == 0) {
             throw new IllegalArgumentException(Messages.getString("security.91")); //$NON-NLS-1$
         }

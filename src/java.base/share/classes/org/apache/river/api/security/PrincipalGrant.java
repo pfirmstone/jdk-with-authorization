@@ -18,7 +18,6 @@
 
 package org.apache.river.api.security;
 
-import au.zeus.jdk.authorization.policy.UnresolvedPrincipal;
 import java.io.File;
 import java.io.FilePermission;
 import java.io.InvalidObjectException;
