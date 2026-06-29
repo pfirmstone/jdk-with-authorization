@@ -293,10 +293,13 @@ public class DefaultPolicyParser implements PolicyParser {
             String hexValue   = rawDigest.substring(colon + 1);
             pgb.digest(algorithm, hexDecode(hexValue))
                .context(PermissionGrantBuilder.DIGEST);
+        } else if (signerString != null && codebases.isEmpty()) {
+            pgb.context(PermissionGrantBuilder.CODESOURCE_CERTS);
+        } else if (ge.getPrincipals(null) != null && codebases.isEmpty()){
+            pgb.context(PermissionGrantBuilder.PRINCIPAL);
         } else {
             pgb.context(PermissionGrantBuilder.URI);
         }
-
         return pgb.build();
     }
 
