@@ -13,7 +13,7 @@ import java.util.Set;
  * 
  * @author peter
  */
-public sealed class WorkerSubject extends Subject permits SpiffeSubject{
+public sealed class WorkerSubject extends Subject permits SpiffeSubject, RemoteSubject{
     private static final long serialVersionUID = 1L;
     
     /**
