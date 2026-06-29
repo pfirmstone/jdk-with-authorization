@@ -279,8 +279,6 @@ public class DefaultPolicyParser implements PolicyParser {
            .principals(principals.toArray(new Principal[principals.size()]))
            .permissions(permissions.toArray(new Permission[permissions.size()]));
 
-        // If a digest clause was present, decode it and produce a DigestGrant.
-        // Otherwise fall back to a plain URIGrant.
         String rawDigest = ge.getDigest();
         if (rawDigest != null) {
             int colon = rawDigest.indexOf(':');
@@ -295,7 +293,7 @@ public class DefaultPolicyParser implements PolicyParser {
                .context(PermissionGrantBuilder.DIGEST);
         } else if (signerString != null && codebases.isEmpty()) {
             pgb.context(PermissionGrantBuilder.CODESOURCE_CERTS);
-        } else if (ge.getPrincipals(null) != null && codebases.isEmpty()){
+        } else if (!principals.isEmpty() && codebases.isEmpty()){
             pgb.context(PermissionGrantBuilder.PRINCIPAL);
         } else {
             pgb.context(PermissionGrantBuilder.URI);
