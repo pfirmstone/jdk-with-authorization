@@ -30,10 +30,13 @@ import java.security.Principal;
 import java.security.PrivilegedAction;
 import java.security.ProtectionDomain;
 import java.security.DomainIdentity;
+import java.util.Arrays;
 import java.util.Set;
 import java.util.HashSet;
 import java.util.Iterator;
+import java.util.LinkedHashSet;
 import java.util.Objects;
+import jdk.internal.misc.VM;
 import sun.security.util.SecurityConstants;
 
 /**
@@ -62,13 +65,20 @@ import sun.security.util.SecurityConstants;
 @SuppressWarnings("removal")
 public class SubjectDomainCombiner implements java.security.DomainCombiner {
 
-    private final Subject subject;
+    private final Subject[] subject;
     private final int hashCode;
     private final Principal[] principals; // cached if subject is read-only
-
-    private static final sun.security.util.Debug debug =
-        sun.security.util.Debug.getInstance("combiner",
+    
+    private static class Holder {
+        private static final sun.security.util.Debug debug =
+            sun.security.util.Debug.getInstance("combiner",
                                         "\t[SubjectDomainCombiner]");
+    }
+    
+    static sun.security.util.Debug debug(){
+        if (VM.isBooted()) return Holder.debug;
+        return null;
+    }
 
     /**
      * Associate the provided {@code Subject} with this
@@ -81,24 +91,45 @@ public class SubjectDomainCombiner implements java.security.DomainCombiner {
         this(notNull(subject), true);
     }
     
-    private SubjectDomainCombiner(Subject subject, boolean checked){
+    /**
+     * Creates a SubjectDomainCombiner if there is a Subject or Subjects
+     * associated with the current Thread.  Returns null if no Subject's are 
+     * associated with the current Thread.
+     * 
+     * @return A SubjectDomainCombiner if there is at least one Subject associated
+     * with the current thread.
+     */
+    public static SubjectDomainCombiner currentAll(){
+        Subject [] current = Subject.currentAllNoCheck();
+        if (current != null && current.length > 0){
+            return new SubjectDomainCombiner(current, true);
+        }
+        return null;
+    }
+    
+    private SubjectDomainCombiner(Subject[] subject, boolean checked){
         this.subject = subject;
 
-        if (subject.isReadOnly()) {
+        if (subject[0].isReadOnly()) { // Multi array subjects are all read only.
             // Cache ACC Subject principals only (not SCOPED_SUBJECT —
             // that changes per request and must be read in combine())
-            Set<Principal> principalSet = subject.getPrincipals();
+            Set<Principal> principalSet = new LinkedHashSet<>();
+            int hash = 3;
+            for (int i = 0, l = subject.length; i < l; i++){
+                    principalSet.addAll(subject[i].getPrincipals());
+                    hash = 17 * hash + subject[i].hashCode();
+            }
             principals = principalSet.toArray(new Principal[principalSet.size()]);
-            this.hashCode = subject.hashCode();
+            this.hashCode = hash;
         } else {
             principals = null;
             this.hashCode = System.identityHashCode(subject);
         }
     }
     
-    private static Subject notNull(Subject subject) throws NullPointerException {
+    private static Subject[] notNull(Subject subject) throws NullPointerException {
         if (subject == null) throw new NullPointerException("Subject cannot be null");
-        return subject;
+        return new Subject[]{subject};
     }
 
     /**
@@ -120,10 +151,10 @@ public class SubjectDomainCombiner implements java.security.DomainCombiner {
             sm.checkPermission(new AuthPermission
                 ("getSubjectFromDomainCombiner"));
         }
-        return subject;
+        return subject[0];
     }
     
-    Subject subject(){
+    Subject [] subject(){
         return subject;
     }
     
@@ -131,7 +162,7 @@ public class SubjectDomainCombiner implements java.security.DomainCombiner {
     public boolean equals(Object o) {
         if (this == o) return true;
         if (!(o instanceof SubjectDomainCombiner other)) return false;
-        return Objects.equals(this.subject, other.subject);
+        return Arrays.equals(this.subject, other.subject);
     }
 
     @Override
@@ -187,18 +218,13 @@ public class SubjectDomainCombiner implements java.security.DomainCombiner {
      */
     public ProtectionDomain[] combine(ProtectionDomain[] currentDomains,
                                 ProtectionDomain[] assignedDomains) {
-        if (debug != null) {
-            if (subject == null) {
-                debug.println("null subject");
+        if (debug() != null) {
+            if (subject == null || subject.length == 0) {
+                debug().println("null subject");
             } else {
-                final Subject s = subject;
-                AccessController.doPrivileged
-                    (new java.security.PrivilegedAction<Void>() {
-                    public Void run() {
-                        debug.println(s.toString());
-                        return null;
-                    }
-                });
+                final Subject[] s = subject;
+                // Don't print private credentials the permission check will cause recurisive permissino checks.
+                for (Subject sub : s) debug().println(sub.toString(false));
             }
             printInputDomains(currentDomains, assignedDomains);
         }
@@ -221,8 +247,8 @@ public class SubjectDomainCombiner implements java.security.DomainCombiner {
         // No need to optimize assignedDomains because it should
         // have been previously optimized (when it was set).
 
-        if (debug != null) {
-            debug.println("after optimize");
+        if (debug() != null) {
+            debug().println("after optimize");
             printInputDomains(currentDomains, assignedDomains);
         }
 
@@ -247,20 +273,25 @@ public class SubjectDomainCombiner implements java.security.DomainCombiner {
                 // adding Principals to privileged domains.
                 subjectPd = pd;
             } else {
+                Principal[] existing = pd.getPrincipals();
+                int elen = existing.length, mlen = mergedPrincipals.length, tlen = elen + mlen;
+                Principal[] pals = new Principal[tlen];
+                for (int j = 0; j < elen; j++) pals[j] = existing[j];
+                for (int j = 0; j < mlen; j++) pals[j+elen] = mergedPrincipals[j];
                 subjectPd = new DomainIdentity(pd.getCodeSource(),
                                         pd.getPermissions(),
                                         pd.getClassLoader(),
-                                        mergedPrincipals);
+                                        pals);
             }
             domainSet.add(subjectPd);
         }
         
-        if (debug != null) {
-            debug.println("updated current: ");
+        if (debug() != null) {
+            debug().println("updated current: ");
             Iterator<ProtectionDomain> it = domainSet.iterator();
             int i = 0;
             while (it.hasNext()) {
-                debug.println("\tupdated[" + i + "] = " +
+                debug().println("\tupdated[" + i + "] = " +
                                 printDomain(it.next()));
                 i++;
             }
@@ -277,13 +308,13 @@ public class SubjectDomainCombiner implements java.security.DomainCombiner {
         // that we will return
         ProtectionDomain[] newDomains = domainSet.toArray(new ProtectionDomain[domainSet.size()]);
 
-        if (debug != null) {
+        if (debug() != null) {
             if (newDomains == null || newDomains.length == 0) {
-                debug.println("returning null");
+                debug().println("returning null");
             } else {
-                debug.println("combinedDomains: ");
+                debug().println("combinedDomains: ");
                 for (int i = 0; i < newDomains.length; i++) {
-                    debug.println("newDomain " + i + ": " +
+                    debug().println("newDomain " + i + ": " +
                                   printDomain(newDomains[i]));
                 }
             }
@@ -312,21 +343,21 @@ public class SubjectDomainCombiner implements java.security.DomainCombiner {
      * @return array of merged principals (ACC + SCOPED_SUBJECT)
      */
     private Principal[] getMergedPrincipals() {
-        Set<Principal> merged = new HashSet<>();
+        Set<Principal> merged = new LinkedHashSet<>();
 
         // 1. Add ACC Subject principals (eg SPIFFE workload identity)
-        if (subject.isReadOnly()) {
+        if (subject[0].isReadOnly()) { // Multi subject array is always read only.
             // Use cached array (constructed in constructor)
-            for (int i = 0; i < principals.length; i++) {
-                merged.add(principals[i]);
+            for (Principal principal : principals) {
+                merged.add(principal);
             }
         } else {
             // Mutable Subject — must read on every call
-            Set<Principal> accPrincipals = subject.getPrincipals();
+            Set<Principal> accPrincipals = subject[0].getPrincipals();
             merged.addAll(accPrincipals);
 
-            if (debug != null) {
-                debug.println("ACC Subject is mutable");
+            if (debug() != null) {
+                debug().println("ACC Subject is mutable");
             }
         }
 
@@ -336,29 +367,29 @@ public class SubjectDomainCombiner implements java.security.DomainCombiner {
     private static void printInputDomains(ProtectionDomain[] currentDomains,
                                 ProtectionDomain[] assignedDomains) {
         if (currentDomains == null || currentDomains.length == 0) {
-            debug.println("currentDomains null or 0 length");
+            debug().println("currentDomains null or 0 length");
         } else {
             for (int i = 0; currentDomains != null &&
                         i < currentDomains.length; i++) {
                 if (currentDomains[i] == null) {
-                    debug.println("currentDomain " + i + ": SystemDomain");
+                    debug().println("currentDomain " + i + ": SystemDomain");
                 } else {
-                    debug.println("currentDomain " + i + ": " +
+                    debug().println("currentDomain " + i + ": " +
                                 printDomain(currentDomains[i]));
                 }
             }
         }
 
         if (assignedDomains == null || assignedDomains.length == 0) {
-            debug.println("assignedDomains null or 0 length");
+            debug().println("assignedDomains null or 0 length");
         } else {
-            debug.println("assignedDomains = ");
+            debug().println("assignedDomains = ");
             for (int i = 0; assignedDomains != null &&
                         i < assignedDomains.length; i++) {
                 if (assignedDomains[i] == null) {
-                    debug.println("assignedDomain " + i + ": SystemDomain");
+                    debug().println("assignedDomain " + i + ": SystemDomain");
                 } else {
-                    debug.println("assignedDomain " + i + ": " +
+                    debug().println("assignedDomain " + i + ": " +
                                 printDomain(assignedDomains[i]));
                 }
             }

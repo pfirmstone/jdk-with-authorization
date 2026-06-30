@@ -992,47 +992,24 @@ public final class AccessController {
             // If we want scoped subjects to be first class participants
             // If this context is used in Subject.doAs, the SubjectDomainCombiner
             // will be replaced.
-            Subject [] subject = SubjectAccess.SCOPED.get();
-            if (subject != null && subject.length > 0){              
+            SubjectDomainCombiner sdc = SubjectDomainCombiner.currentAll();
+            if (sdc != null){              
                 DomainCombiner existing = acc.getCombiner();
-                for (int i = 0, l = subject.length; i < l; i++){ // The last ACC created will contain all the Principals.
-                    if (subject[i] instanceof WorkerSubject) continue;
-                    SubjectDomainCombiner sdc = new SubjectDomainCombiner(subject[i]);
-                    ProtectionDomain[] combined = sdc.combine(acc.getContext(), acc.getContext());
-                
-                    // Also inject into privilegedContext if present
-                    AccessControlContext privileged = acc.privilegedContext();
-                    if (privileged != null) {
-                        ProtectionDomain[] combinedPrivileged = sdc.combine(
-                            privileged.getContext(), privileged.getContext());
-                        privileged = AccessControlContext.create(
-                            combinedPrivileged, privileged.privilegedContext(),
-                            privileged.getCombiner(), privileged.isPrivileged());
-                    }
-
-                    acc = AccessControlContext.create(combined, privileged, existing, acc.isPrivileged());
+                ProtectionDomain[] combined = sdc.combine(acc.getContext(), null);
+                // Also inject into privilegedContext if present
+                AccessControlContext privileged = acc.privilegedContext();
+                if (privileged != null) {
+                    ProtectionDomain[] combinedPrivileged = sdc.combine(
+                        privileged.getContext(), null);
+                    privileged = AccessControlContext.create(
+                        combinedPrivileged, privileged.privilegedContext(),
+                        privileged.getCombiner(), privileged.isPrivileged());
                 }
+                acc = AccessControlContext.create(combined, privileged, existing, acc.isPrivileged());
             }
             return acc;
         }
     }
-    
-    /**
-     * Non Standard API
-     * 
-     * Helper class to capture SCOPED_SUBJECT.
-     */
-    public static final class SubjectAccess extends Subject.NoCheck {
-        
-        private final static SubjectAccess SCOPED = new SubjectAccess();
-        
-        private SubjectAccess(){}
-        
-        private Subject [] get(){
-            return current();
-        }
-    }
-    
 
     /**
      * Determines whether the access request indicated by the
@@ -1063,32 +1040,7 @@ public final class AccessController {
             throw new NullPointerException("permission can't be null");
         }
 
-        AccessControlContext stack = getStackAccessControlContext();
-        // if context is null, we had privileged system code on the stack.
-        if (stack == null) {
-            Debug debug = AccessControlContext.getDebug();
-            boolean dumpDebug = false;
-            if (debug != null) {
-                dumpDebug = !Debug.isOn("codebase=");
-                dumpDebug &= !Debug.isOn("permission=") ||
-                    Debug.isOn("permission=" + perm.getClass().getCanonicalName());
-            }
-
-            if (dumpDebug && Debug.isOn("stack")) {
-                Thread.dumpStack();
-            }
-
-            if (dumpDebug && Debug.isOn("domain")) {
-                debug.println("domain (context is null)");
-            }
-
-            if (dumpDebug) {
-                debug.println("access allowed "+perm);
-            }
-            return;
-        }
-
-        AccessControlContext acc = stack.optimize();
+        AccessControlContext acc = getContext();
         acc.checkPermission(perm);
     }
     

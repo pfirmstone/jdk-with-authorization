@@ -26,9 +26,6 @@
 package javax.security.auth;
 
 import au.zeus.jdk.authorization.spire.SpiffeCredentialManager;
-import java.io.IOException;
-import java.io.ObjectInputStream;
-import java.io.ObjectOutputStream;
 import java.io.ObjectStreamField;
 import java.security.*;
 import java.text.MessageFormat;
@@ -99,8 +96,7 @@ import sun.security.util.ResourcesMgr;
  * @see java.security.Principal
  * @see java.security.DomainCombiner
  */
-public sealed class Subject implements java.io.Serializable permits 
-        WorkerSubject, UserSubject {
+public sealed class Subject permits WorkerSubject, UserSubject {
 
     @java.io.Serial
     private static final long serialVersionUID = -8308522755600156056L;
@@ -349,6 +345,8 @@ public sealed class Subject implements java.io.Serializable permits
 
     private static final ScopedValue<Subject []> SCOPED_SUBJECT =
             ScopedValue.newInstance();
+    
+    private static final ScopedValue<Boolean> STACK_CONTEXT = ScopedValue.newInstance();
 
     /**
      * Returns the primary {@link UserSubject} bound to the current thread, or
@@ -430,6 +428,11 @@ public sealed class Subject implements java.io.Serializable permits
         if (sm != null) {
             sm.checkPermission(AuthPermissionHolder.GET_SUBJECT_PERMISSION);
         }
+        return currentAllNoCheck();
+    }
+    
+    static Subject [] currentAllNoCheck() {
+        if (STACK_CONTEXT.isBound()) return NO_SUBJECTS; // Prevents principal injection in AccessController.getContext
         Subject [] subject = NoCheck.current();
         return subject != null && subject.length > 0 ? subject.clone() : NO_SUBJECTS;
     }
@@ -438,7 +441,7 @@ public sealed class Subject implements java.io.Serializable permits
      * Internal implementation class that provides access to SCOPED_SUBJECT
      * without permission checks.
      */
-    public static abstract sealed class NoCheck permits AccessController.SubjectAccess, 
+    public static abstract sealed class NoCheck permits 
             Thread.SubjectAccess {
         
         /**
@@ -452,15 +455,6 @@ public sealed class Subject implements java.io.Serializable permits
          */
         protected static Subject [] current(){
             return SCOPED_SUBJECT.isBound() ? SCOPED_SUBJECT.get() : new Subject[0];
-        }
-        
-        /**
-         * Static method that returns getSubject from SubjectDomainCombiner
-         * @param sdc - SubjectDomainCombiner
-         * @return Subject
-         */
-        protected static Subject getSubject(SubjectDomainCombiner sdc){
-            return sdc.subject();
         }
         
         /**
@@ -593,7 +587,7 @@ public sealed class Subject implements java.io.Serializable permits
      * @throws NullPointerException if action is null, subject is null,
      *         or any element of subject is null
      * @throws IllegalArgumentException if any element of {@code subjects}
-     *         is a {@code WorkerSubject}
+     *         is a {@code WorkerSubject}, or if any Subject isn't read only.
      */
     public static <T> T callAs(Callable<T> action, UserSubject... subject)
         throws CompletionException {
@@ -602,6 +596,7 @@ public sealed class Subject implements java.io.Serializable permits
         for (int i = 0; i < subject.length; i++) {
             Objects.requireNonNull(subject[i],
                 "subjects[" + i + "] must not be null");
+            if (!subject[i].isReadOnly()) throw new IllegalArgumentException("Subjects must be read only");
         }
         java.lang.SecurityManager sm = System.getSecurityManager();
         if (sm != null) {
@@ -611,10 +606,11 @@ public sealed class Subject implements java.io.Serializable permits
     }
 
     /**
-     * An empty Subject array constant for use when no Subject is present.  This avoids
+     * An empty UserSubject array constant for use when no UserSubject is present.  This avoids
      * the need to allocate a new empty array each time an empty Subject array is needed.
      */
-    public static final Subject[] NO_SUBJECTS = new Subject[0];
+    public static final UserSubject [] NO_USER_SUBECT = new UserSubject[0];
+    static final Subject[] NO_SUBJECTS = new Subject[0];
 
     /**
      * Utility method to return a non-null Subject array, converting a null input to an empty array.
@@ -666,14 +662,10 @@ public sealed class Subject implements java.io.Serializable permits
      *
      * <p> Unlike {@link #callAs(Subject, Callable)}, this method does
      * establish a privileged execution boundary; an {@code AccessControlContext}
-     * snapshot is taken that captures the current Thread's {@link ScopedValue}
-     * Subject Principal's prior to updating the {@link ScopedValue} Subject 
-     * for the duration of {@code action}, remaining available across any 
-     * {@code doPrivileged} calls made within {@code action}. 
-     * 
-     * <p>Calls to {@code callAs} may be nested with different {@code Subject}s; each
-     * nested call shadows the previous current subject for its duration, restoring
-     * it when {@code action} completes, whether normally or exceptionally.
+     * snapshot is taken, this method doesn't capture the current Thread's {@link ScopedValue}
+     * Subject Principal's. The {@link ScopedValue} Subject 
+     * for the duration of {@code action}, remains available across any 
+     * {@code AccessController.doPrivileged} calls made within {@code action}. 
      *
      * <p> This method is intended for user identity. 
      *
@@ -740,7 +732,9 @@ public sealed class Subject implements java.io.Serializable permits
         java.lang.SecurityManager sm = System.getSecurityManager();
         if (sm != null) sm.checkPermission(AuthPermissionHolder.DO_AS_PERMISSION);
         Objects.requireNonNull(action, ResourcesMgr.getString("invalid.null.action.provided"));
-        return doNoCheck(action, AccessController.getContext(), subject != null ? new Subject[]{subject} : NO_SUBJECTS);
+        AccessControlContext context =
+            ScopedValue.where(STACK_CONTEXT, true).call(AccessController::getContext);
+        return doNoCheck(action, context, subject != null ? new Subject[]{subject} : NO_SUBJECTS);
     }
 
     /**
@@ -786,7 +780,9 @@ public sealed class Subject implements java.io.Serializable permits
         java.lang.SecurityManager sm = System.getSecurityManager();
         if (sm != null) sm.checkPermission(AuthPermissionHolder.DO_AS_PERMISSION);
         Objects.requireNonNull(action, ResourcesMgr.getString("invalid.null.action.provided"));
-        return doNoCheck(action, AccessController.getContext(), subject != null ? new Subject[]{subject} : NO_SUBJECTS);
+        AccessControlContext context =
+            ScopedValue.where(STACK_CONTEXT, true).call(AccessController::getContext);
+        return doNoCheck(action, context, subject != null ? new Subject[]{subject} : NO_SUBJECTS);
     }
 
     /**
@@ -1338,62 +1334,6 @@ public sealed class Subject implements java.io.Serializable permits
     }
 
     /**
-     * Writes this object out to a stream (i.e., serializes it).
-     *
-     * @param  oos the {@code ObjectOutputStream} to which data is written
-     * @throws IOException if an I/O error occurs
-     */
-    @java.io.Serial
-    private void writeObject(java.io.ObjectOutputStream oos)
-                throws java.io.IOException {
-        synchronized(principals) {
-            oos.defaultWriteObject();
-        }
-    }
-
-    /**
-     * Reads this object from a stream (i.e., deserializes it)
-     *
-     * @param  s the {@code ObjectInputStream} from which data is read
-     * @throws IOException if an I/O error occurs
-     * @throws ClassNotFoundException if a serialized class cannot be loaded
-     */
-    @SuppressWarnings("unchecked")
-    @java.io.Serial
-    private void readObject(java.io.ObjectInputStream s)
-                throws java.io.IOException, ClassNotFoundException {
-
-        ObjectInputStream.GetField gf = s.readFields();
-
-        readOnly = gf.get("readOnly", false);
-
-        Set<Principal> inputPrincs = (Set<Principal>)gf.get("principals", null);
-
-        Objects.requireNonNull(inputPrincs,
-                ResourcesMgr.getString("invalid.null.input.s."));
-
-        // Rewrap the principals into a SecureSet
-        try {
-            LinkedList<Principal> principalList = collectionNullClean(inputPrincs);
-            principals = Collections.synchronizedSet(new SecureSet<>
-                                (this, PRINCIPAL_SET, principalList));
-        } catch (NullPointerException npe) {
-            // Sometimes people deserialize the principals set only.
-            // Subject is not accessible, so just don't fail.
-            principals = Collections.synchronizedSet
-                        (new SecureSet<>(this, PRINCIPAL_SET));
-        }
-
-        // The Credential {@code Set} is not serialized, but we do not
-        // want the default deserialization routine to set it to null.
-        this.pubCredentials = Collections.synchronizedSet
-                        (new SecureSet<>(this, PUB_CREDENTIAL_SET));
-        this.privCredentials = Collections.synchronizedSet
-                        (new SecureSet<>(this, PRIV_CREDENTIAL_SET));
-        if (readOnly) hashCode = computeHashCode();
-    }
-
-    /**
      * Tests for null-clean collections (both non-null reference and
      * no null elements)
      *
@@ -1421,11 +1361,7 @@ public sealed class Subject implements java.io.Serializable permits
      *
      * @serial include
      */
-    private static class SecureSet<E>
-        implements Set<E>, java.io.Serializable {
-
-        @java.io.Serial
-        private static final long serialVersionUID = 7911754171111800359L;
+    private static class SecureSet<E> implements Set<E> {
 
         /**
          * @serialField this$0 Subject The outer Subject instance.
@@ -1801,57 +1737,6 @@ public sealed class Subject implements java.io.Serializable permits
                 h += Objects.hashCode(obj);
             }
             return h;
-        }
-
-        /**
-         * Writes this object out to a stream (i.e., serializes it).
-         *
-         * @serialData If this is a private credential set,
-         *      a security check is performed to ensure that
-         *      the caller has permission to access each credential
-         *      in the set.  If the security check passes,
-         *      the set is serialized.
-         *
-         * @param  oos the {@code ObjectOutputStream} to which data is written
-         * @throws IOException if an I/O error occurs
-         */
-        @java.io.Serial
-        private void writeObject(java.io.ObjectOutputStream oos)
-                throws java.io.IOException {
-
-            if (which == Subject.PRIV_CREDENTIAL_SET) {
-                // check permissions before serializing
-                Iterator<E> i = iterator();
-                while (i.hasNext()) {
-                    i.next();
-                }
-            }
-            ObjectOutputStream.PutField fields = oos.putFields();
-            fields.put("this$0", subject);
-            fields.put("elements", elements);
-            fields.put("which", which);
-            oos.writeFields();
-        }
-
-        /**
-         * Restores the state of this object from the stream.
-         *
-         * @param  ois the {@code ObjectInputStream} from which data is read
-         * @throws IOException if an I/O error occurs
-         * @throws ClassNotFoundException if a serialized class cannot be loaded
-         */
-        @SuppressWarnings("unchecked")
-        @java.io.Serial
-        private void readObject(ObjectInputStream ois)
-            throws IOException, ClassNotFoundException
-        {
-            ObjectInputStream.GetField fields = ois.readFields();
-            subject = (Subject) fields.get("this$0", null);
-            which = fields.get("which", 0);
-
-            LinkedList<E> tmp = (LinkedList<E>) fields.get("elements", null);
-
-            elements = Subject.collectionNullClean(tmp);
         }
 
     }
