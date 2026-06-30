@@ -763,7 +763,7 @@ public final class AccessControlContext {
 
         // optimization: if there is a single stack domain and that domain
         // is already in the assigned context; no need to combine
-        if ((slen == 1) && (context[0] == acc.context[0])){
+        if ((slen == 1) && acc.context.length > 0 && (context[0] == acc.context[0])){
             return acc;
         }
 
