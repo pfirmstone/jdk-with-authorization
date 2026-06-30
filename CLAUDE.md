@@ -184,10 +184,23 @@ developers and users who read the GitHub repository:
 - `JGDMS_COMPATIBILITY.md`
 - `PROXY_ISOLATION.md`
 - `DIGEST_GRANT_PLAN.md`
+- `PROBLEMS_SOLVED.md`
+- `MERGE_SECURITY_ASSESSMENT_RUBRIC.md`
+- `AI_Agent_JGDMS-SpiffePolicyFile-context_6.md`
+- `AI_POLICY_DRAFT.md`
+- `openjdk_ai_policy.md`
+- `CLAUDE.md`
+
+This list now covers all repository-root Markdown documents.
 
 Claude MAY assist in drafting or editing content in these files when asked. The contribution
 restrictions of the OpenJDK Interim Policy apply only to artefacts that become part of the
 distributed product (source code, tests, build scripts, and JavaDoc embedded in shipped classes).
+
+**Governance documents.** `CLAUDE.md`, `AI_POLICY_DRAFT.md`, and `openjdk_ai_policy.md` are the
+governing policy documents themselves. They remain editable only at explicit Project Lead
+direction; in particular `openjdk_ai_policy.md` reproduces the external OpenJDK Interim Policy and
+should track that upstream source rather than be independently rewritten.
 
 ### How to Flag AI-Generated Content
 

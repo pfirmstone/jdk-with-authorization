@@ -2672,21 +2672,39 @@ The DirtyChai `Subject.current()` method is implemented as:
 
 ```java
 public static Subject current() {
-    if (!SharedSecrets.getJavaLangAccess().allowSecurityManager()) {
-        return SCOPED_SUBJECT.isBound() ? SCOPED_SUBJECT.get() : null;
-    } else {
-        return getSubject(AccessController.getContext());  // preferred path in DirtyChai
+    java.lang.SecurityManager sm = System.getSecurityManager();
+    if (sm != null) {
+        sm.checkPermission(AuthPermissionHolder.GET_SUBJECT_PERMISSION);
     }
+    Subject[] subject = NoCheck.current();   // reads the SCOPED_SUBJECT ScopedValue
+    return subject != null && subject.length > 0 ? subject[0] : null;
 }
 ```
 
-When a `SecurityManager` is active (the DirtyChai deployment model),
-`Subject.current()` is exactly equivalent to
-`Subject.getSubject(AccessController.getContext())`.  Both idioms are correct
-and supported.  JGDMS uses `Subject.getSubject(acc)` with an explicitly captured
-`AccessControlContext`; this is the correct pattern when the context must be
-captured at one point in time and consulted at another (e.g., capturing the
-context at socket-creation time to identify which server Subject owns the socket).
+And `Subject.getSubject(AccessControlContext)` is now a thin shim over it:
+
+```java
+public static Subject getSubject(final AccessControlContext acc) {
+    if (acc == null) throw new NullPointerException(/* invalid null acc */);
+    return current();   // acc is null-checked, then its contents are IGNORED
+}
+```
+
+> **Correction (current source).** `Subject.getSubject(acc)` no longer reads a
+> subject *out of* the supplied `AccessControlContext`. It null-checks `acc` and
+> then returns `Subject.current()` — i.e. the user subject bound on the
+> `SCOPED_SUBJECT` `ScopedValue` **at the moment `getSubject` is called**. The
+> `acc` argument's contents are ignored. (And `current()` reads the scoped value
+> directly; it does *not* call `getSubject(getContext())`, which would recurse.)
+>
+> Consequence for the "capture early, consult later" pattern: passing an
+> `AccessControlContext` captured at socket-creation time does **not** recover the
+> server `Subject` that was current then — `getSubject(acc)` returns whichever
+> user subject is scoped when the call runs. Code that needs to remember a
+> specific server identity must capture an explicit `Subject` reference, not round-trip
+> it through an `AccessControlContext`. The user subject rides a `ScopedValue`,
+> not the ACC (see §10.2/§10.4 of `SECURITY_MODEL.md` for the divergence from the
+> upstream combiner-on-ACC model).
 
 ### How DirtyChai Can Support Subject Propagation from JGDMS TlsRMIServerSocketFactory
 
@@ -2708,13 +2726,14 @@ AccessController.doPrivileged((PrivilegedAction<Void>)() -> {
 }, NOPERMS_ACC);
 ```
 
-`NOPERMS_ACC` is a no-permissions `AccessControlContext`.  This means the
-connection handler thread — and therefore the service method invocation thread —
-starts with an empty context that contains **no `Subject`** and **no
-`SubjectDomainCombiner`**.  Consequently:
+`NOPERMS_ACC` is a no-permissions `AccessControlContext`.  The dispatch runs on a
+connection-handler thread with **no `UserSubject` bound on the `SCOPED_SUBJECT`
+`ScopedValue`** (the user rides the scoped value, not the ACC — see the API-status
+correction above), so nothing is folded into the context for principal matching.
+Consequently:
 
-- `Subject.getSubject(AccessController.getContext())` returns `null` inside the
-  service method.
+- `Subject.current()` (and `Subject.getSubject(AccessController.getContext())`,
+  which delegates to it) returns `null` inside the service method.
 - Policy grants keyed on `Principal "X500Principal CN=..."` never fire, even
   though the TLS handshake has already authenticated the client.
 
@@ -2783,13 +2802,16 @@ if (peerSubject != null) {
 }
 ```
 
-`Subject.doAsPrivileged` creates a new `AccessControlContext` that wraps
-`NOPERMS_ACC` with a `SubjectDomainCombiner(peerSubject)`.  Throughout the
-execution of `run0()` (and therefore throughout every `UnicastServerRef.dispatch()`
-invocation on that connection), the peer Subject is retrievable via:
+`Subject.doAsPrivileged(peerSubject, action, NOPERMS_ACC)` binds `peerSubject`
+on the `SCOPED_SUBJECT` `ScopedValue` and runs `action` under `doPrivileged` with
+`NOPERMS_ACC` as the code boundary. (It does **not** attach a
+`SubjectDomainCombiner` to the ACC — see the correction under "Integration with
+`CombinerSecurityManager`" below.) Throughout the execution of `run0()` (and
+therefore throughout every `UnicastServerRef.dispatch()` invocation on that
+connection), the peer Subject is the current scoped subject and is retrievable via:
 
 ```java
-Subject caller = Subject.getSubject(AccessController.getContext());
+Subject caller = Subject.current();   // or getSubject(acc), which delegates to current()
 // caller.getPrincipals() contains the peer's X500Principal
 ```
 
@@ -2824,15 +2846,27 @@ intersection that `CombinerSecurityManager.checkPermission()` evaluates.
 #### Integration with `CombinerSecurityManager`
 
 `CombinerSecurityManager` intersects the `ProtectionDomain` permissions from
-every frame on the call stack.  When the `SubjectDomainCombiner` is active, it
-augments the `ProtectionDomain` array with domains seeded from the Subject's
-principal set.  The combiner is applied by `AccessControlContext.optimize()` at
-each `checkPermission()` call, so the security manager sees the full principal
-context without any change to its own implementation.
+every frame on the call stack.
 
-No modification to `CombinerSecurityManager` is required.  The entire
-propagation is accomplished by the `SubjectDomainCombiner` installed by
-`Subject.doAsPrivileged` in the transport layer.
+> **Correction (current source).** The peer subject is **not** propagated by a
+> `SubjectDomainCombiner` that `Subject.doAsPrivileged` retains on the ACC and
+> that `AccessControlContext.optimize()` re-runs at each `checkPermission()`. In
+> DirtyChai the subject bound by `doAsPrivileged`/`callAs` rides the
+> `SCOPED_SUBJECT` `ScopedValue`; its principals are merged into a single
+> multi-principal `ProtectionDomain` by `currentAll()` **inside
+> `AccessController.getContext()`**, and the returned ACC carries no combiner
+> (`acc.getDomainCombiner()` is `null`). Because `AccessController.checkPermission`
+> routes through `getContext()`, that fold is applied for the **stock
+> `SecurityManager` and `CombinerSecurityManager` identically** — subject-aware
+> authorization is not CombinerSM-specific. "No modification to
+> `CombinerSecurityManager` is required" therefore holds, but for the stronger
+> reason that *no* SecurityManager needs the subject wired in specially: the fold
+> lives in `getContext()`. (Note also that `Subject.doAsPrivileged(subject, action,
+> null)` builds an **empty** assigned context — the path that triggered the
+> `AccessControlContext.optimize()` AIOOBE fixed 2026-07-01; see §10.4 of
+> `SECURITY_MODEL.md`.)
+
+No modification to `CombinerSecurityManager` is required.
 
 #### Integration with JGDMS `TlsRMIServerSocketFactory.createServerSocket()`
 
@@ -2848,18 +2882,22 @@ Subject subject = AccessController.doPrivileged(
 SSLContext sslContext = Utilities.getServerSSLContextInfo(subject);
 ```
 
-This pattern captures the **server's** Subject (the identity of the code that
-called `exportObject`) and uses it for key selection during the TLS handshake.
-The DirtyChai extension described above complements this by extracting the
-**client's** Subject from the completed handshake result and binding it to the
-dispatch thread.
+This pattern reads the **server's** Subject and uses it for key selection during
+the TLS handshake. Note (current source): `Subject.getSubject(acc)` here returns
+`Subject.current()` — the scoped user subject in effect when `createServerSocket()`
+runs — **not** a subject recovered from the captured `acc`. It yields the server
+identity only because `exportObject` (and hence `createServerSocket`) executes
+within the server's `callAs`/`doAs` scope, and the `SCOPED_SUBJECT` binding survives
+the intervening `doPrivileged`. The captured `acc` is incidental. The DirtyChai
+extension described above complements this by extracting the **client's** Subject
+from the completed handshake result and binding it to the dispatch thread.
 
 The two subjects serve different roles:
 
 | Subject | Source | Role |
 |---|---|---|
-| Server Subject | `Subject.getSubject(acc)` at `createServerSocket()` | Selects the server's private key for the TLS handshake |
-| Peer (client) Subject | `SSLSession.getPeerCertificates()` after `accept()` | Bound to the dispatch thread via `SubjectDomainCombiner`; governs policy grants for the service method call |
+| Server Subject | `Subject.getSubject(acc)` → `current()` at `createServerSocket()` | Selects the server's private key for the TLS handshake |
+| Peer (client) Subject | `SSLSession.getPeerCertificates()` after `accept()` | Bound to the dispatch thread on the `SCOPED_SUBJECT` `ScopedValue` (via `doAsPrivileged`/`callAs`), folded at `getContext()`; governs policy grants for the service method call |
 
 #### Files Requiring Human Implementation
 

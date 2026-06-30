@@ -242,8 +242,16 @@ DomainCombiner dc = malicious.getCombiner();  // Malicious!
 **Mitigation:**
 - ✅ `getContext()` uses native stack walking (only legitimate contexts)
 - ✅ `createAccessControlContext` permission required
-- ✅ `checkPermission()` invoked BEFORE combiner execution
 - ✅ Permission gate blocks unauthorized combiners
+
+> **Clarification (current model).** Distinguish this anti-injection guard from the
+> *legitimate* `SubjectDomainCombiner.currentAll()` subject fold. The legitimate
+> fold runs **inside `getContext()`** (which `checkPermission` itself invokes) and
+> is **not** retained on the resulting `AccessControlContext` — `acc.getDomainCombiner()`
+> is `null` by design. So the bound user subject is merged in *during* the
+> `checkPermission → getContext → currentAll` flow, for the stock `SecurityManager`
+> and `CombinerSecurityManager` identically; it is not a separate combiner installed
+> on the ACC that runs "after" the check. See `SECURITY_MODEL.md` §10.4.
 
 
 ### 9. **ClassLoader URL Data Injection**
@@ -476,6 +484,15 @@ As documented in `SECURITY_MODEL.md`, installation uses a conditional path:
 DirtyChai consistently treats null or invalid `CodeSource` as unprivileged. URI validation failures and invalid grant materialization paths remain fail-secure (no matching grant, no privilege).
 
 
+## Recent Fixes and Corrections (July 1, 2026)
+
+| ID / Area | Severity | Issue | Fix Status |
+|---|---|---|---|
+| F-12 | Medium (availability/robustness) | `AccessControlContext.optimize()` dereferenced `acc.context[0]` without a length check. After DirtyChai moved user-subject propagation off the ACC `SubjectDomainCombiner` and onto a `ScopedValue` folded inside `getContext()` (see `SECURITY_MODEL.md` §10.4), `Subject.doAsPrivileged(subject, action, null)` — which builds an **empty** assigned context (`NULL_PD_ARRAY`) — reached this inherited OpenJDK shortcut and threw `ArrayIndexOutOfBoundsException` on the first permission check inside the action, under an installed `SecurityManager`. DirtyChai-only: upstream always attaches a `SubjectDomainCombiner`, which routes `optimize()` down a different branch that never hits the line. | ✅ Guarded the shortcut with `acc.context.length > 0` (stricter than upstream's own `assigned != null` test, which would still miss a non-null empty array). Regression: `qa/jtreg/org/apache/river/api/security/doAsPrivNullAcc`. |
+
+This is a robustness/availability fix, not a new authorization bypass: the defect was a crash (`AIOOBE`) on a legitimate execute-as path under the production `SecurityManager`, and was never reachable on stock OpenJDK. The N-13 TLS peer-subject dispatch (`SECURITY_ANALYSIS.md`) is a concrete `doAsPrivileged(..., null)` call site that depended on this fix.
+
+
 ## Vulnerability Mitigation Matrix
 
 | CVE/Vulnerability | Type | Severity | Mitigation | Status |
@@ -497,6 +514,7 @@ DirtyChai consistently treats null or invalid `CodeSource` as unprivileged. URI 
 | Unsafe reflection frame gap | Privilege Escape | Low | Added `sun.misc.Unsafe` detection | ✅ Fixed (F-11) |
 | Unauthorised platform thread creation | DoS / isolation bypass | Medium | `RuntimePermission("createPlatformThread")` checks at thread-creation entry points | ✅ Implemented (see `SECURITY_MODEL.md` §11.1–11.6) |
 | Unauthorised virtual thread creation | DoS / isolation bypass | Medium | `RuntimePermission("createVirtualThread")` checks at thread-creation entry points | ✅ Implemented (see `SECURITY_MODEL.md` §11.1–11.6) |
+| `doAsPrivileged(...,null)` empty-context crash under SM (DirtyChai-only) | Availability/robustness | Medium | `AccessControlContext.optimize()` length guard (`context.length > 0`) after the ScopedValue subject-fold rework | ✅ Fixed (F-12, July 1 2026) |
 | JMX/RMI RCE | RCE | Critical | Socket/Serial/ClassLoad permissions | ✅ Blocked |
 | Agent injection | Code execution | High | RuntimePermission gating | ✅ Blocked |
 | Property injection | Info disclosure | Medium | PropertyPermission control | ✅ Blocked |

@@ -396,6 +396,17 @@ Each overload retrieves the caller class via `Reflection.getCallerClass()` and u
 - Attackers cannot "route through" a trusted `doPrivileged` block to elevate privileges beyond what the trusted block explicitly grants.
 - The `neverPrivileged()` context (used for finalizer threads in this codebase) ensures cleanup callbacks cannot inherit caller privilege.
 
+### 8.3 Bound-Subject Fold and SecurityManager Unification
+
+`AccessController.getContext()` does more than intersect code domains: it also folds any user `Subject`(s) bound on the `SCOPED_SUBJECT` `ScopedValue` (via `Subject.callAs(...)`/`doAs(...)`) into the returned context, using `SubjectDomainCombiner.currentAll()`.
+
+- The fold is **transient**: the combiner runs *during* `getContext()` and is **not** retained on the returned `AccessControlContext` (`acc.getDomainCombiner()` is `null`). The bound user rides the `ScopedValue`, not the ACC.
+- Because `AccessController.checkPermission` routes through `getContext()`, the **stock `SecurityManager` and `CombinerSecurityManager` fold the bound subject identically** — subject-aware authorization is not `CombinerSecurityManager`-specific.
+- Multiple bound `UserSubject`s merge onto a single multi-principal `ProtectionDomain` (intersection/`containsAll` semantics for grant matching).
+- Ambient workload identity (`WorkerSubject`/`SpiffeSubject`) is **never** folded here; it reaches `ProtectionDomain`s by class-load stamping or the verified TLS peer chain, and is rejected by `doAs`/`doAsPrivileged`/`callAs`.
+
+This is a deliberate divergence from upstream OpenJDK, which instead attaches a `SubjectDomainCombiner` to the `doAs`/`doAsPrivileged` `AccessControlContext`. See `SECURITY_MODEL.md` §10.4 — including the `AccessControlContext.optimize()` AIOOBE that the divergence exposed (empty `doAsPrivileged(...,null)` context), fixed 2026-07-01.
+
 ---
 
 ## 9. RFC 3986 URI Validation (Uri.java)
@@ -428,7 +439,7 @@ Virtual threads that execute `synchronized` blocks pin their carrier thread. No 
 ### 10.3 AccessControlContext Inheritance at Thread Creation
 
 Builder-path threads capture the creator's `AccessController.getContext()` at construction. This means:
-- A thread created inside `Subject.callAs(...)` inherits the Subject context.
+- A thread created inside `Subject.callAs(...)` inherits the Subject context — because `getContext()` folds the then-current scoped `UserSubject`(s) into the captured `AccessControlContext` at construction time (a snapshot of the fold described in §8.3, not live `ScopedValue` inheritance into the new thread).
 - A thread created outside any Subject scope inherits the minimal public context.
 
 This is the intended behavior and is documented in `SECURITY_MODEL.md` section 11.

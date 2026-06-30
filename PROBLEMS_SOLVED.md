@@ -1,6 +1,6 @@
 # Problems Solved by JGDMS and DirtyChai
 
-**Last Reviewed:** 2026-06-23
+**Last Reviewed:** 2026-07-01
 
 This document catalogues the engineering problems that the **JGDMS** distributed-services
 framework and the **DirtyChai** OpenJDK fork solve, organised by problem area
@@ -70,7 +70,7 @@ sandboxing, both projects point developers to GraalVM/Espresso process isolation
 | 5 | Remote method invocation | JERI pluggable transport/invocation | (platform RMI/serialization guards) |
 | 6 | Per-method security constraints | `InvocationConstraints`, constrainable proxies | (authorization mechanism beneath them) |
 | 7 | Service discovery | Authenticated IPv6 multicast/unicast | RFC 3986 URIs, no DNS in policy path |
-| 8 | Authorization & policy | Remote/revocable policy, Subject-per-thread | Retained + hardened `Policy`/`AccessController` |
+| 8 | Authorization & policy | Remote/revocable policy, Subject-per-scope (`ScopedValue`) | Retained + hardened `Policy`/`AccessController` |
 | 9 | Process & proxy isolation | Phoenix activation groups, BAE/VerdictRegistry | Per-service policy enforcement |
 | 10 | Transport security | TLSv1.3 endpoints, method constraints | (TLS stack remains platform-provided) |
 | 11 | Native code (JNI/FFM) boundary | — | `NativeInvocationPermission`, `NativeMemoryPermission` |
@@ -381,9 +381,11 @@ And upstream Java removed authorization entirely in Java 24.
 - `RemotePolicyProvider` — grant permissions dynamically (e.g. to a freshly authenticated
   service) without a restart.
 - `RevocablePolicy` — revoke grants at runtime (River added revocation via GC of unused grants).
-- JAAS Subject-based grants: `Security.getCurrentPrincipals()` prefers the user `Subject` bound
-  via `Subject.callAs()` (a `ScopedValue`) over the ACC Subject; `GrantPermission.checkGuard()`
-  injects user principals into the check. Following OSGi's lead, a service can bundle the
+- JAAS Subject-based grants: the user `Subject` is bound via `Subject.callAs()` (a `ScopedValue`
+  that survives `doPrivileged`) and is folded into the effective `AccessControlContext` by
+  `SubjectDomainCombiner.currentAll()` inside `AccessController.getContext()` — it is not carried
+  on the ACC. `Security.getCurrentPrincipals()` / `GrantPermission.checkGuard()` read those bound
+  principals into the check. Following OSGi's lead, a service can bundle the
   permissions it needs and have them granted automatically after authentication, still bounded
   by the administrator.
 
@@ -395,6 +397,23 @@ And upstream Java removed authorization entirely in Java 24.
   caller as a `jrt:/module/class` domain for debuggability.
 - Makes `AccessControlContext` immutable and caches instances (needed for virtual-thread
   support).
+- Carries the bound user `Subject` on a `ScopedValue` and folds it centrally in
+  `AccessController.getContext()` (which `checkPermission` routes through), instead of attaching a
+  `SubjectDomainCombiner` to the `doAs`/`doAsPrivileged` `AccessControlContext` as upstream OpenJDK
+  does. Consequence: the stock `SecurityManager` and `CombinerSecurityManager` fold the bound
+  subject identically, and `acc.getDomainCombiner()` is `null` by design. The ambient SPIFFE
+  `WorkerSubject` is never folded by this path (it reaches `ProtectionDomain`s via class-load
+  stamping / the verified TLS peer chain) and is rejected by `doAs`/`doAsPrivileged`/`callAs`;
+  multi-party `callAs` binding is conjunctive (a multi-principal grant fires only when all bound
+  principals are co-present — `PrincipalGrant.containsAll`).
+- This rework exposed and fixed (2026-07-01) a latent inherited defect: `AccessControlContext.optimize()`
+  carried an old OpenJDK shortcut dereferencing `acc.context[0]` that upstream never reached with an
+  empty assigned context (its combiner-on-ACC routed `optimize()` down a different branch). With the
+  combiner gone, `Subject.doAsPrivileged(subject, action, null)` — an empty assigned context
+  (`NULL_PD_ARRAY`) — hit `[0]` on a zero-length array → `ArrayIndexOutOfBoundsException` on the first
+  permission check inside the action, under the production `SecurityManager`. Guarded with
+  `acc.context.length > 0`; DirtyChai-only, never affected stock OpenJDK. Regression:
+  `qa/jtreg/org/apache/river/api/security/doAsPrivNullAcc`.
 - `setSecurityManager(null)` throws `IllegalArgumentException`, so an injected privileged
   context cannot disable enforcement; custom SecurityManagers pass layered caller/stack/domain
   checks before installation.
@@ -403,8 +422,8 @@ And upstream Java removed authorization entirely in Java 24.
 
 | | JGDMS | DirtyChai |
 |---|---|---|
-| Mechanism | `ConcurrentPolicyFile`, `RemotePolicyProvider`, `RevocablePolicy`, Subject-based grants, `GrantPermission` | Retained `SecurityManager`/`AccessController`, reduced-privilege `doPrivileged`, immutable `AccessControlContext`, `SecurityPolicyWriter` |
-| Location | `jgdms-platform/.../org/apache/river/api/security/` | `java/security/`, `au/zeus/jdk/authorization/policy/`, `.../tool/SecurityPolicyWriter.java` |
+| Mechanism | `ConcurrentPolicyFile`, `RemotePolicyProvider`, `RevocablePolicy`, Subject-based grants, `GrantPermission` | Retained `SecurityManager`/`AccessController`, reduced-privilege `doPrivileged`, immutable `AccessControlContext`, `ScopedValue` subject-fold at `getContext()` (no combiner on the ACC), `SecurityPolicyWriter` |
+| Location | `jgdms-platform/.../org/apache/river/api/security/` | `java/security/`, `javax/security/auth/Subject.java`, `au/zeus/jdk/authorization/policy/`, `.../tool/SecurityPolicyWriter.java` |
 
 ---
 

@@ -31,7 +31,7 @@ OpenJDK 21 is the last LTS release line that still includes SecurityManager APIs
 | Module topology read/inspection API gate (`Module.getDescriptor()`, `Module.getLayer()`, `ModuleLayer.modules()`, `ModuleLayer.findModule()`, `Configuration.modules()`, `ModuleReference.descriptor()`) | No dedicated `RuntimePermission("readModuleTopology")` gate at these API entry points | `SecurityConstants.READ_MODULE_TOPOLOGY.checkGuard(null)` gate at topology-inspection entry points, preventing untrusted code from enumerating internal module structure |
 | Executors + thread factory behavior | `Executors.defaultThreadFactory()` returns classic `DefaultThreadFactory` | `Executors.defaultThreadFactory()` routes through `Thread.ofPlatform().group(...).factory()` and therefore through Dirty Chai platform-thread permission checks |
 | Virtual thread creation path | `ThreadBuilders` virtual/platform builder paths do not enforce dedicated `createVirtualThread`/`createPlatformThread` checks | Builder `unstarted()` and `factory()` paths enforce explicit runtime permissions and capture `AccessController.getContext()` for inherited security context |
-| `AccessController` / `AccessControlContext` / `Subject` model | OpenJDK 21 `doPrivileged(..., AccessControlContext, Permission...)` uses wrapper/context-validation flow (`checkContext`/`createWrapper`), with `Subject` propagation via ACC/`SubjectDomainCombiner` | Explicit limited-privilege domain intersection via `DomainIdentity`, ACC builder/authorization helpers, and ACC/`SubjectDomainCombiner` subject propagation in active Dirty Chai runtime path |
+| `AccessController` / `AccessControlContext` / `Subject` model | OpenJDK 21 `doPrivileged(..., AccessControlContext, Permission...)` uses wrapper/context-validation flow (`checkContext`/`createWrapper`), with `Subject` propagation via a `SubjectDomainCombiner` attached to the ACC | Explicit limited-privilege domain intersection via `DomainIdentity`, ACC builder/authorization helpers, and **`ScopedValue`-backed subject propagation**: the bound user rides `SCOPED_SUBJECT` and is folded by `SubjectDomainCombiner.currentAll()` inside `AccessController.getContext()` — no combiner retained on the ACC (`acc.getDomainCombiner()==null`). See `SECURITY_MODEL.md` §10.4. |
 
 ### A) New Guards vs OpenJDK 21
 
@@ -112,11 +112,14 @@ Security impact: stronger anti-escalation behavior when constructing or constrai
 
 #### `Subject`
 
-Dirty Chai runtime `Subject` behavior is single-path because `allowSecurityManager()` is always true (`System.java`):
+`Subject` is a **sealed** hierarchy in Dirty Chai (`Subject permits UserSubject, WorkerSubject`; `WorkerSubject permits SpiffeSubject, RemoteSubject`; a plain `Subject` remains instantiable for legacy/service identity):
 
-- effective Dirty Chai runtime path: ACC/`SubjectDomainCombiner`-based retrieval and execution (legacy compatibility path)
+- **User identity** is bound with `Subject.callAs(...)` (n-party via `callAs(Callable, UserSubject...)`) on the `SCOPED_SUBJECT` `ScopedValue`, which survives `doPrivileged`. It is read with `current()`/`currentAll()` and folded into the effective `AccessControlContext` by `SubjectDomainCombiner.currentAll()` **inside `AccessController.getContext()`** — it is *not* carried on the ACC, and `acc.getDomainCombiner()` is `null`. Because `checkPermission` routes through `getContext()`, the stock `SecurityManager` and `CombinerSecurityManager` fold the bound user identically (no "only the combiner-aware SM sees the Subject" caveat).
+- `Subject.getSubject(AccessControlContext)` is a deprecated shim that **ignores its `acc` argument** and returns `Subject.current()` (the scoped user subject).
+- **Workload identity** (`WorkerSubject` / `SpiffeSubject`) is ambient, established only by SPIRE infrastructure, and is **rejected** by `doAs`/`doAsPrivileged`/`callAs` (`IllegalArgumentException`); it reaches `ProtectionDomain`s by class-load stamping (`SpiffeSubject`) or the verified TLS peer chain (`RemoteSubject`), and is never folded by `currentAll()`.
+- Multi-party binding is conjunctive (intersection): a multi-principal grant fires only when **all** bound principals are co-present (`PrincipalGrant.containsAll`).
 
-Security impact in Dirty Chai runtime: legacy authorization checks remain consistently active for subject propagation paths.
+Security impact in Dirty Chai runtime: subject-aware authorization is active at every enforcement entry point under any installed `SecurityManager`, and the ambient workload identity cannot be shed or forged through the execute-as APIs. See `SECURITY_MODEL.md` §10 — and §10.4 for the divergence from the upstream combiner-on-ACC model and the `AccessControlContext.optimize()` AIOOBE fixed 2026-07-01.
 
 **Principal identity model and cross-realm risk:**
 
@@ -882,14 +885,16 @@ See residual row 15.
 2. For TLS connections, peer certificates are read from `SSLSession.getPeerCertificates()`.
 3. The end-entity `X509Certificate` principal (`X500Principal`) is extracted and bound to a read-only Subject: `new Subject(true, Set.of(principal), Set.of(), Set.of())`.
 4. `ConnectionHandler.run()` dispatches under that identity via `Subject.doAsPrivileged(subject, (PrivilegedAction<Void>) () -> { run0(); return null; }, null)`.
-5. Service execution can resolve the authenticated peer identity with `Subject.getSubject(AccessController.getContext())`.
+5. Service execution can resolve the authenticated peer identity with `Subject.current()` (or `Subject.getSubject(AccessController.getContext())`, which delegates to `current()` and ignores its `acc` argument).
 
 ### Exception Handling, Fallback, and Subject Immutability
 - `SSLPeerUnverifiedException` is explicitly handled during peer extraction. If peer verification is unavailable, dispatch proceeds without Subject binding (unauthenticated path), preserving availability and fail-secure behavior.
 - `Subject(true, principals, ...)` keeps the Subject read-only, preventing downstream principal mutation and Subject-based privilege injection.
 
 ### Integration: ACC Semantics and CombinerSecurityManager
-Passing `null` ACC to `Subject.doAsPrivileged` intentionally uses an empty context so authorization derives from Subject principals through `SubjectDomainCombiner` (principal-only authorization for the authenticated peer identity). No `CombinerSecurityManager` changes were required; existing permission intersection semantics apply unchanged.
+Passing `null` ACC to `Subject.doAsPrivileged` intentionally uses an empty context so authorization derives from the bound peer Subject's principals (principal-only authorization for the authenticated peer identity). The peer Subject rides the `SCOPED_SUBJECT` `ScopedValue`; its principals are folded into the effective context by `currentAll()` **inside `AccessController.getContext()`** — **no `SubjectDomainCombiner` is retained on the ACC** (`acc.getDomainCombiner()==null`). Because `checkPermission` routes through `getContext()`, that fold applies to the stock `SecurityManager` and `CombinerSecurityManager` identically, so no `CombinerSecurityManager` changes were required.
+
+> **Caveat (fixed 2026-07-01).** `Subject.doAsPrivileged(subject, action, null)` builds an *empty* assigned context (`NULL_PD_ARRAY`). Until 2026-07-01 this exact empty-context path triggered an `ArrayIndexOutOfBoundsException` in `AccessControlContext.optimize()` — an inherited OpenJDK shortcut that dereferenced `context[0]`, reachable only once the upstream combiner-on-ACC was removed — the first time the dispatched action performed a permission check (e.g. `Subject.current()`/`getSubject` → `getContext` → `optimize`). Fixed by guarding the shortcut with `acc.context.length > 0`. This implemented null-ACC dispatch is a concrete instance of that path. See `SECURITY_MODEL.md` §10.4; regression `qa/jtreg/org/apache/river/api/security/doAsPrivNullAcc`.
 
 ### Security Properties Achieved
 - Principal binding from authenticated TLS peer to dispatch execution context.
@@ -1149,9 +1154,12 @@ trusted callback code is allowed only if policy grants the required permission.
 
 Both Finalizer and Cleaner threads now execute under
 `AccessControlContext.neverPrivileged()`.  This is **more restrictive than
-unprivileged**: a `neverPrivileged` context cannot accumulate permissions from
-authenticated `Subject` principals, so the `Subject.doAsPrivileged()` escalation
-path is completely closed.
+unprivileged**: a `neverPrivileged` context does not gain permissions from any
+`Subject` bound in scope, so the `Subject.doAsPrivileged()` escalation path is
+completely closed.  (Note the current model: `doAs`/`doAsPrivileged`/`callAs`
+*replace* the bound user subject rather than accumulating principals, and the
+ambient `WorkerSubject` is never folded by `currentAll()` — so there is no
+principal set for a `neverPrivileged` finalizer to inherit.)
 
 ```
 neverPrivileged (finalizer/cleaner thread):
@@ -1575,7 +1583,7 @@ The main remaining risks are **operational** (policy configuration and whitelist
 - `src/java.base/share/classes/java/security/AccessController.java` — privileged execution and limited-privilege intersection behavior
 - `src/java.base/share/classes/java/security/AccessControlContext.java` — ACC construction/authorization and intersection helpers
 - `src/java.base/share/classes/java/security/DomainIdentity.java` — caller-linked protection-domain type used in limited-privilege intersection paths
-- `src/java.base/share/classes/javax/security/auth/Subject.java` — active ACC/`SubjectDomainCombiner` subject propagation path in Dirty Chai runtime
+- `src/java.base/share/classes/javax/security/auth/Subject.java` — sealed `Subject` hierarchy; `ScopedValue`-backed (`SCOPED_SUBJECT`) user-subject propagation folded by `SubjectDomainCombiner.currentAll()` inside `AccessController.getContext()` (no combiner retained on the ACC); ambient `WorkerSubject`/`SpiffeSubject` rejected by `doAs`/`callAs`
 - `src/java.management/share/classes/sun/management/Util.java` — centralized `ManagementPermission("monitor"/"control")` gate checks
 - `src/java.management/share/classes/sun/management/ThreadImpl.java` — management permission checks protecting native-backed thread inspection/control operations
 - `src/java.management/share/classes/sun/management/MemoryImpl.java` — management permission checks for native-backed memory control operations
