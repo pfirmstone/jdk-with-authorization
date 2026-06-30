@@ -720,6 +720,7 @@ public sealed class Subject permits WorkerSubject, UserSubject {
      * @see AccessController#doPrivilegedWithCombiner(PrivilegedAction)
      */
     @SuppressWarnings("removal")
+    @Deprecated
     public static <T> T doAs(final Subject subject,
                              final java.security.PrivilegedAction<T> action) {
         if (subject instanceof WorkerSubject)
@@ -768,6 +769,7 @@ public sealed class Subject permits WorkerSubject, UserSubject {
      * @see AccessController#doPrivilegedWithCombiner(PrivilegedExceptionAction)
      */
     @SuppressWarnings("removal")
+    @Deprecated
     public static <T> T doAs(final Subject subject,
                         final java.security.PrivilegedExceptionAction<T> action)
                         throws java.security.PrivilegedActionException {
@@ -833,6 +835,7 @@ public sealed class Subject permits WorkerSubject, UserSubject {
      * @see AccessController#doPrivilegedWithCombiner(PrivilegedAction)
      */
     @SuppressWarnings("removal")
+    @Deprecated
     public static <T> T doAsPrivileged(final Subject subject,
                         final java.security.PrivilegedAction<T> action,
                         final java.security.AccessControlContext acc) {
@@ -920,6 +923,7 @@ public sealed class Subject permits WorkerSubject, UserSubject {
      * @see AccessController#doPrivilegedWithCombiner(PrivilegedExceptionAction)
      */
     @SuppressWarnings("removal")
+    @Deprecated
     public static <T> T doAsPrivileged(final Subject subject,
                         final java.security.PrivilegedExceptionAction<T> action,
                         final java.security.AccessControlContext acc)
