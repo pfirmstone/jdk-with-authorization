@@ -159,7 +159,7 @@ extends SecurityManager implements CachingSecurityManager {
         ProtectionDomain [] context = new ProtectionDomain[1];
         privilegedDomain = this.getClass().getProtectionDomain();
         context[0] = privilegedDomain;
-        SMPrivilegedContext = new AccessControlContext(context);
+        SMPrivilegedContext = Context.create(context);
         dc = new DelegateDomainCombiner();
         ConcurrentMap<Referrer<AccessControlContext>, 
                 Referrer<AccessControlContext>> internal = 
@@ -754,6 +754,10 @@ extends SecurityManager implements CachingSecurityManager {
         
         static AccessControlContext create(AccessControlContext context, DomainCombiner combiner){
             return builder.build(context, combiner);
+        }
+        
+        static AccessControlContext create(ProtectionDomain [] domain){
+            return builder.build(domain);
         }
 
         static boolean check(AccessControlContext context, Permission perm, boolean ephemeral){

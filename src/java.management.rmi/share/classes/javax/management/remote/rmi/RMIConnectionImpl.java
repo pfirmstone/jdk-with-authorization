@@ -58,6 +58,7 @@ import com.sun.jmx.remote.util.ClassLoaderWithRepository;
 import com.sun.jmx.remote.util.ClassLogger;
 import com.sun.jmx.remote.util.EnvHelp;
 import com.sun.jmx.remote.util.OrderClassLoaders;
+import java.util.concurrent.Callable;
 import javax.management.loading.ClassLoaderRepository;
 
 /**
@@ -1304,14 +1305,14 @@ public class RMIConnectionImpl implements RMIConnection, Unreferenced {
                 if (subject == null) {
                     return action.run();
                 } else {
-                    return Subject.doAs(subject, action);
+                    return Subject.callAs(subject, (Callable<NotificationResult>)()-> action.run());
                 }
             } else {
                 // SM permitted
                 if (acc == null) {
-                    return action.run(); // No Subject or ACC
+                    return action.run(); // No Subject or ACC  ??? 2026 July 1, 
                 } else {
-                    return AccessController.doPrivileged(action, acc);
+                    return Subject.callAs(subject, () -> AccessController.doPrivileged(action, acc));
                 }
             }
         } finally {
@@ -1442,7 +1443,7 @@ public class RMIConnectionImpl implements RMIConnection, Unreferenced {
                         }
                     }
                 } else {
-                    return Subject.doAs(subject, op);
+                    return Subject.callAs(subject, () -> op.run());
                 }
             } else {
                 // SM permitted
@@ -1457,7 +1458,7 @@ public class RMIConnectionImpl implements RMIConnection, Unreferenced {
                         }
                     }
                 } else {
-                    return AccessController.doPrivileged(op, acc);
+                    return Subject.callAs(subject, ()->AccessController.doPrivileged(op, acc));
                 }
             }
         } catch (Error e) {
@@ -1627,16 +1628,16 @@ public class RMIConnectionImpl implements RMIConnection, Unreferenced {
                 if (!SharedSecrets.getJavaLangAccess().allowSecurityManager()) {
                     // Modern case
                     if (subject != null) {
-                        return Subject.doAs(subject, (PrivilegedExceptionAction<T>) () -> wrappedClass.cast(mo.get()));
+                        return Subject.callAs(subject, (Callable<T>) () -> wrappedClass.cast(mo.get()));
                     } else {
                         return wrappedClass.cast(mo.get());
                     }
                 } else {
                     // SM permitted
                     if (acc != null) {
-                        return AccessController.doPrivileged(
+                        return Subject.callAs(subject, ()-> AccessController.doPrivileged(
                                 (PrivilegedExceptionAction<T>) () ->
-                                        wrappedClass.cast(mo.get()), acc);
+                                        wrappedClass.cast(mo.get()), acc));
                     } else {
                         return wrappedClass.cast(mo.get());
                     }

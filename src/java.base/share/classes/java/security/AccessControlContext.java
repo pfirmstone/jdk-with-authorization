@@ -357,7 +357,9 @@ public final class AccessControlContext {
      * context. The non-duplicate domains are copied from the array. Subsequent
      * changes to the array will not affect this {@code AccessControlContext}.
      * @throws NullPointerException if {@code context} is {@code null}
+     * @deprecated to support VirtualThread's use a factory method instead.
      */
+    @Deprecated
     public AccessControlContext(ProtectionDomain[] context){
         this(notNull(context), checkAuthorized(false,false));
     }
@@ -429,7 +431,10 @@ public final class AccessControlContext {
      *          caller does not have the "createAccessControlContext"
      *          {@link SecurityPermission}
      * @since 1.3
+     * 
+     * @deprecated to support VirtualThread's use a factory method instead.
      */
+    @Deprecated
     public AccessControlContext(AccessControlContext acc,
                             @SuppressWarnings("removal") DomainCombiner combiner) 
     {

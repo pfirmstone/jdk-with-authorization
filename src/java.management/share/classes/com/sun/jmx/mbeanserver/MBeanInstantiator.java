@@ -759,7 +759,7 @@ public class MBeanInstantiator {
         ProtectionDomain protectionDomain = new ProtectionDomain(null, permissions);
         ProtectionDomain[] domains = {protectionDomain};
         @SuppressWarnings("removal")
-        AccessControlContext ctx = new AccessControlContext(domains);
+        AccessControlContext ctx = AccessControlContext.create(domains);
         @SuppressWarnings("removal")
         ClassLoader loader = AccessController.doPrivileged(new PrivilegedAction<>() {
             public ClassLoader run() {

@@ -48,6 +48,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.lang.System.Logger.Level;
+import java.util.concurrent.Callable;
 import javax.management.AttributeNotFoundException;
 import javax.management.InstanceNotFoundException;
 import javax.management.IntrospectionException;
@@ -176,8 +177,7 @@ public abstract class Monitor
     private volatile Subject subject;
     @SuppressWarnings("removal")
     private static final AccessControlContext noPermissionsACC =
-            AccessControlContext.create(
-            new ProtectionDomain[] {new ProtectionDomain(null, null)});
+            AccessControlContext.unprivileged();
     @SuppressWarnings("removal")
     private volatile AccessControlContext acc = noPermissionsACC;
 
@@ -1546,14 +1546,14 @@ public abstract class Monitor
                 if (s == null) {
                     action.run();
                 } else {
-                    Subject.doAs(s, action);
+                    Subject.callAs(s, (Callable<Void>) () -> action.run());
                 }
             } else {
                 if (ac == null) {
                     throw new SecurityException("AccessControlContext cannot be null");
                 }
                 // ACC means SM is permitted.
-                AccessController.doPrivileged(action, ac);
+                Subject.callAs(s, () -> AccessController.doPrivileged(action, ac));
             }
             synchronized (Monitor.this) {
                 if (Monitor.this.isActive() &&

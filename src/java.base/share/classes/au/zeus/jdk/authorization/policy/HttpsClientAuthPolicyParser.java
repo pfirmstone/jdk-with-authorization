@@ -29,6 +29,7 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.Reader;
 import java.net.URL;
+import java.security.AccessController;
 import java.security.KeyStore;
 import java.security.PrivilegedActionException;
 import java.security.PrivilegedExceptionAction;
@@ -37,6 +38,7 @@ import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Properties;
+import java.util.concurrent.Callable;
 import javax.security.auth.WorkerSubject;
 
 /**
@@ -128,6 +130,7 @@ public class HttpsClientAuthPolicyParser extends DefaultPolicyParser {
      *         failures
      */
     @Override
+    @SuppressWarnings("deprecation")
     public Collection<PermissionGrant> parse(final URL location,
             final Properties system) throws Exception {
         if (!"https".equalsIgnoreCase(location.getProtocol())) {
@@ -136,18 +139,17 @@ public class HttpsClientAuthPolicyParser extends DefaultPolicyParser {
                     + location);
         }
 
-        try {
-            return Subject.doAs(spiffeSubject,
-                    new PrivilegedExceptionAction<Collection<PermissionGrant>>() {
-                        @Override
-                        public Collection<PermissionGrant> run() throws Exception {
-                            return fetchAndParse(location, system);
-                        }
-                    });
-        } catch (PrivilegedActionException e) {
-            // Unwrap — callers expect Exception, not PrivilegedActionException
-            throw e.getException();
-        }
+        return Subject.callAs(spiffeSubject, new Callable<Collection<PermissionGrant>>() {
+            @Override
+            public Collection<PermissionGrant> call() throws Exception {
+                return AccessController.doPrivileged(new PrivilegedExceptionAction<Collection<PermissionGrant>>() {
+                    @Override
+                    public Collection<PermissionGrant> run() throws Exception {
+                        return fetchAndParse(location, system);
+                    }
+                });
+            }
+        }); // Unwrap — callers expect Exception, not PrivilegedActionException
     }
 
     /**
