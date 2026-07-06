@@ -483,7 +483,7 @@ public abstract class SSLContextImpl extends SSLContextSpi {
     }
 
     public boolean isUsableWithQuic() {
-        return trustManager instanceof X509TrustManagerImpl;
+        return trustManager instanceof X509ExtendedTrustManager;
     }
 
     /*
