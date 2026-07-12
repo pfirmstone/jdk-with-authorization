@@ -173,6 +173,7 @@ public class SecurityPolicyWriter extends CombinerSecurityManager{
     private final Cert certFunc;
     private final Map<String,String> pathReplacements;
     private final String hostname;
+    private final String tmpDir;
     
     @SuppressWarnings("deprecation")
     private SecurityPolicyWriter(
@@ -201,11 +202,15 @@ public class SecurityPolicyWriter extends CombinerSecurityManager{
                 getLogger().log(Level.ERROR, "Unable to read properties file", ex);
             }
         }
-        p.put("java.io.tmpdir", System.getProperty("java.io.tmpdir"));
+        this.tmpDir = System.getProperty("java.io.tmpdir");
+        p.put("java.io.tmpdir", tmpDir);
         p.put("java.home", System.getProperty("java.home"));
         if (hostname!= null) p.put("HOST", hostname);
-//        p.put("jsk.home", System.getProperty("jsk.home"));
-//        p.put("qa.home", System.getProperty("qa.home"));
+        // Jini Support
+        String jh = System.getProperty("jsk.home"); 
+        if (jh != null) p.put("jsk.home", jh);
+        String qh = System.getProperty("qa.home");  
+        if (qh != null) p.put("qa.home", qh);
         Map<String,String> paths = new HashMap<String,String>(p.size());
         Set<Entry<Object,Object>> propSet = p.entrySet();
         Iterator<Entry<Object,Object>> propIt = propSet.iterator();
@@ -533,7 +538,11 @@ public class SecurityPolicyWriter extends CombinerSecurityManager{
                                 literal carriage returns that must be escaped.  */
                                 String name = p.getName();
                                 if (p instanceof FilePermission){
-                                    name = replaceValuesWithProperties(name);
+                                    if (name.contains(tmpDir)){
+                                        name = tmpDir + "${/}-";
+                                    } else {
+                                        name = replaceValuesWithProperties(name);
+                                    }
                                     name = name.replace("/", "${/}");
                                 } else if (p instanceof SocketPermission || p instanceof URLPermission){
                                     name = name.replace(hostname, "${HOST}");
