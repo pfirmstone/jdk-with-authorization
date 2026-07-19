@@ -832,6 +832,169 @@ See residual row 15.
 
 ---
 
+### 14) TLS KeyManager Algorithm-Constraint Checking Promoted to Default `SunX509`
+
+DirtyChai changes which `KeyManagerFactory` algorithms enforce
+`jdk.certpath.disabledAlgorithms` constraint checking against a client/server's own
+certificate chain during TLS alias selection. This section documents the change, the
+compatibility consequence for existing deployments, and the diagnostic/opt-out path.
+
+#### Background — OpenJDK Behavior
+
+Stock OpenJDK ships two `KeyManagerFactory` algorithm implementations in
+`sun.security.ssl`. In this DirtyChai tree both now extend the shared
+certificate-checking base class `X509KeyManagerCertChecking`, but that was not
+always true of the default algorithm:
+
+| Algorithm name | Implementation class | Constraint checking (stock OpenJDK) | Constraint checking (DirtyChai) |
+|---|---|---|---|
+| `SunX509` (**default** — `ssl.KeyManagerFactory.algorithm=SunX509` in `java.security`) | `SunX509KeyManagerImpl` | **Not applied.** Stock `SunX509KeyManagerImpl` does not extend `X509KeyManagerCertChecking` and performs no `jdk.certpath.disabledAlgorithms` filtering against the presenter's own chain. | **Applied.** `SunX509KeyManagerImpl` now extends `X509KeyManagerCertChecking`; checking is controlled by `isCheckingDisabled()`, which reads the DirtyChai-introduced `jdk.tls.SunX509KeyManager.certChecking` system property (default: **enabled**) |
+| `NewSunX509` (rarely selected explicitly) | `X509KeyManagerImpl` | **Applied**, unconditionally — `isCheckingDisabled()` is hard-coded `false`, no opt-out | Unchanged — same as stock OpenJDK |
+
+In other words: the `AlgorithmConstraints` check inside
+`X509KeyManagerCertChecking.conformsToAlgorithmConstraints()` (called from
+`checkAlias()` for every candidate alias) already existed in stock OpenJDK, but only
+reachable through `X509KeyManagerImpl`/`NewSunX509` — an algorithm name applications
+must opt into explicitly by string, and rarely do. Stock OpenJDK's default-algorithm
+implementation, `SunX509KeyManagerImpl`, was a separate, simpler class that never
+performed this filtering at all. DirtyChai's fork point changed `SunX509KeyManagerImpl`
+to also extend `X509KeyManagerCertChecking` (adding the `isCheckingDisabled()`
+override and its backing `jdk.tls.SunX509KeyManager.certChecking` property), so the
+same `checkAlias()` / `conformsToAlgorithmConstraints()` path now runs under the
+algorithm name essentially every JSSE client and server uses implicitly (`SunX509`,
+the default), not only under `NewSunX509`.
+
+#### Mechanism
+
+`X509KeyManagerCertChecking.checkAlias()` (in
+`src/java.base/share/classes/sun/security/ssl/X509KeyManagerCertChecking.java`)
+runs a set of mandatory checks (non-`X509Certificate` chain entries, key-type
+mismatch, issuer mismatch) followed by an optional block gated on `checksDisabled`:
+
+```java
+// --- Optional checks, depending on "checksDisabled" toggle ---
+
+// Check the algorithm constraints
+if (constraints != null &&
+        !conformsToAlgorithmConstraints(constraints, chain,
+                checkType.getValidator())) {
+
+    if (SSLLogger.isOn() && SSLLogger.isOn("keymanager")) {
+        SSLLogger.fine("Ignore alias " + alias +
+                ": certificate chain does not conform to " +
+                "algorithm constraints");
+    }
+    return null;
+}
+```
+
+`conformsToAlgorithmConstraints()` walks the certificate chain (trust anchor to
+target) through an `AlgorithmChecker` built from the negotiated/local
+`AlgorithmConstraints` (which fold in `jdk.certpath.disabledAlgorithms`, default:
+`RSA keySize < 1024, DSA keySize < 1024, EC keySize < 224, MD2, MD5, SHA1 ...`). If
+any certificate in the chain fails a constraint, `checkAlias()` returns `null` for
+that alias — the candidate is silently excluded from the sorted results in
+`getAliases()`/`chooseAlias()`. **No exception is thrown**; the alias is simply not
+offered. If none of a `KeyManager`'s aliases pass, `chooseClientAlias()` /
+`chooseEngineClientAlias()` (and the server-side equivalents) return `null`, which
+downstream JSSE code treats as "no suitable credential."
+
+#### Rationale
+
+This reads as deliberate hardening rather than an incidental side effect: it closes a
+gap where an application using the *default* `KeyManagerFactory` algorithm name —
+which is the overwhelming majority of TLS client/server code, since most callers
+never specify `"NewSunX509"` explicitly — could have a weak or explicitly
+disabled-algorithm certificate (e.g. sub-1024-bit RSA) silently accepted and
+presented as a valid identity, purely because of which internal implementation class
+backed the algorithm name they happened to use. Promoting the check onto the default
+path means the choice of algorithm *name* no longer determines whether
+`jdk.certpath.disabledAlgorithms` is enforced against the presenter's own
+certificate.
+
+#### Configuration — `jdk.tls.SunX509KeyManager.certChecking`
+
+`SunX509KeyManagerImpl.isCheckingDisabled()` reads the system property
+`jdk.tls.SunX509KeyManager.certChecking` (default: **`true`**, i.e. checking
+enabled):
+
+```java
+@Override
+protected boolean isCheckingDisabled() {
+    return "false".equalsIgnoreCase(System.getProperty(
+            "jdk.tls.SunX509KeyManager.certChecking", "true"));
+}
+```
+
+Setting `-Djdk.tls.SunX509KeyManager.certChecking=false` restores the pre-hardening
+behavior for the default `SunX509` algorithm: `checksDisabled` becomes `true`,
+`getAlgorithmConstraints(...)` returns `null`, and `conformsToAlgorithmConstraints()`
+short-circuits to `true` for every chain — algorithm-constraint filtering (and the
+`CheckType` extension/expiry/EKU checks in `certificateCheck()`) is skipped entirely
+for that `KeyManager` instance. `X509KeyManagerImpl` (`NewSunX509`) has no such
+property; `isCheckingDisabled()` is hard-coded `false` there, matching stock OpenJDK.
+
+**Caution:** this property is a blanket opt-out, not a per-certificate exception.
+Setting it disables the same hardening for every certificate presented by that
+`KeyManager`, not just the one the caller intended to work around. It should be used
+to unblock a known-legitimate deployment (e.g. while re-issuing weak test/dev
+certificates) and re-enabled once the underlying certificates are replaced — not
+left set in production configuration.
+
+#### Diagnosis
+
+Because the failure mode is "no alias found," not an exception, it can present
+downstream as an unrelated-looking handshake failure (e.g. no client certificate
+sent, or server-side "no suitable certificate" behavior) with no stack trace pointing
+at the cause. To confirm this path is responsible, enable KeyManager-level SSL
+debug logging:
+
+```
+-Djavax.net.debug=keymanager
+```
+
+Look for `SSLLogger.fine` output of the form `Ignore alias <alias>: certificate
+chain does not conform to algorithm constraints`, emitted from
+`conformsToAlgorithmConstraints()` when a chain entry fails the `AlgorithmChecker`
+(`sun.security.provider.certpath.AlgorithmChecker`) check. A cause reported by the
+checker's `CertPathValidatorException` (e.g. `RSA keySize < 1024`) confirms the
+disabled-algorithm constraint is the reason the alias was excluded, distinguishing
+it from the mandatory key-type/issuer mismatches earlier in `checkAlias()`, which log
+different messages (`"key algorithm does not match"`, `"issuers do not match"`).
+
+#### Compatibility Consequence
+
+Any application or library that constructs its `KeyManagerFactory` via
+`KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm())` or
+`KeyManagerFactory.getInstance("SunX509")` — i.e. essentially anything that does not
+explicitly request `"NewSunX509"` — and that presents a certificate failing
+`jdk.certpath.disabledAlgorithms` (most commonly encountered with legacy or
+test/dev-generated sub-1024-bit RSA keys) will now have that certificate's alias
+silently excluded from selection where it was previously accepted under the default
+algorithm name. This has been observed downstream in at least one dependent
+project's test suite, where 512-bit RSA test fixtures that previously round-tripped
+successfully stopped being offered as a client identity once run against this
+DirtyChai default. The fix in that case belongs to the certificate/test-fixture side
+(replace or re-key the offending certificate); this section documents the DirtyChai
+behavior so the failure mode is recognizable rather than mysterious.
+
+#### Relationship to SecurityManager Permission Model
+
+This check is independent of the SecurityManager/policy model: it is a TLS-layer
+certificate-hygiene guard inside the `KeyManager`, not a `Permission`/`Policy`
+decision, and it runs identically whether or not a `SecurityManager` is installed.
+
+#### Residual Risks
+
+| Risk | Description | Mitigation |
+|------|-------------|------------|
+| Undocumented behavior change at fork point | The commit that introduced `X509KeyManagerCertChecking` and wired both `SunX509KeyManagerImpl`/`X509KeyManagerImpl` to it did not describe this change in its commit message, making the default-algorithm behavior change discoverable only by reading the class hierarchy directly | This section; cross-reference from any future release notes covering TLS/KeyManager behavior |
+| Silent exclusion, not an exception | Applications relying on `chooseClientAlias()`/`chooseEngineClientAlias()` returning a non-null alias for a disabled-algorithm certificate will see `null`/handshake failure with no direct exception identifying the cause | `-Djavax.net.debug=keymanager` diagnosis path above; consider surfacing a warning-level log by default in a future revision |
+
+See residual row 16.
+
+---
+
 ## Threat Review (Current)
 
 ### Blocked or strongly mitigated
@@ -850,6 +1013,7 @@ See residual row 15.
 - Opening `jdk.foreign` to untrusted code increases reachability of FFM APIs, including `MemorySegment.reinterpret()` and `Arena.global()`, both gated by `NativeMemoryPermission`; such module-open grants must be treated as high-sensitivity policy decisions.
 - Principal name-keyed policy grants are vulnerable to cross-realm name collision; administrators must use fully-qualified principal types in grants (e.g., `KerberosPrincipal` with realm embedded) and avoid name-only matching across authentication domains.
 - Module export grants to untrusted code may introduce indirect access paths via trusted code's public APIs; every export decision must be reviewed as a security-relevant policy choice.
+- Default `SunX509` `KeyManager` algorithm-constraint enforcement (§14) can be disabled deployment-wide via `-Djdk.tls.SunX509KeyManager.certChecking=false`; this is a legitimate escape hatch for known-legitimate weak certificates but removes the hardening for every certificate the affected `KeyManager` presents, not just the intended one.
 
 ---
 
@@ -872,6 +1036,7 @@ See residual row 15.
 | 13 | FFM address/allocation surfaces (N-16) — **RESOLVED** | All FFM address-acquisition and arena-allocation surfaces are now gated: `Arena.ofConfined()`, `Arena.ofShared()`, and `Arena.ofAuto()` now each require `NativeMemoryPermission` (commit b62577c, 2026-04-24); `Linker.nativeLinker()` now requires `NativeInvocationPermission("native-linker")` (same commit); `MemorySegment.ofAddress(long)` now requires `NativeMemoryPermission("address-memory-segment")` (commit 3561dab, 2026-04-24) | — |
 | 14 | FFM capability delegation risks (N-17) | Downcall `MethodHandle`, upcall stub `MemorySegment`, arena objects, and native segments are authority-carrying objects; once delegated to less-trusted code, no SM check fires at use time | Treat FFM capability objects as ambient authority; trusted code must not delegate them to untrusted code; document delegation policy constraints for administrators; see §8.4 and §8.8 Step 6 |
 | 15 | JarFile DoS — per-stream limit only (§13) — **WRAP-AROUND MITIGATION COMPLETE (commit 6b4815e9, 2026-04-30)** | Signed-integer wrap-around in both single-byte and bulk-read paths is now blocked via negative-value checks (see §13 for implementation details). | Acceptable residual for typical deployments. |
+| 16 | Default `SunX509` KeyManager silently excludes disabled-algorithm certificates (§14) | `X509KeyManagerCertChecking`-derived constraint checking now runs on the default `SunX509` algorithm, not only `NewSunX509`; certificates failing `jdk.certpath.disabledAlgorithms` (e.g. sub-1024-bit RSA) are silently excluded from alias selection (`null` alias, no exception), which can look like an unrelated handshake failure downstream | Diagnose with `-Djavax.net.debug=keymanager`; re-key or replace the offending certificate; `-Djdk.tls.SunX509KeyManager.certChecking=false` is a documented but security-reducing escape hatch — see §14 |
 
 ## Analysis: N-13 TLS Subject Authentication Context Propagation (COMPLETED)
 
