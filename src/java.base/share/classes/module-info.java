@@ -74,6 +74,7 @@
  * @moduleGraph
  * @since 9
  */
+@SuppressWarnings("module")
 module java.base {
 
     exports java.io;
@@ -195,6 +196,7 @@ module java.base {
     exports jdk.internal.logger to
         java.logging;
     exports jdk.internal.net.quic to
+        tech.kwik.core,
         java.net.http;
     exports jdk.internal.org.xml.sax to
         jdk.jfr;
