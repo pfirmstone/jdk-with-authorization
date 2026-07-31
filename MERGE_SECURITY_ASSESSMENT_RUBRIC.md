@@ -1,14 +1,16 @@
 # Merge Security-Impact Assessment Rubric (Phase 2)
 
-> **Status: DRAFT companion to [`AI_POLICY_DRAFT.md`](AI_POLICY_DRAFT.md) §8, Phase 2.**
-> This rubric operationalizes the *security-impact assessment* of an upstream merge: the static
-> review that finds where SM-free upstream code, merged into DirtyChai, is **missing a guard** or
-> **missing a `doPrivileged` block** under DirtyChai's restored authorization model.
+> **Status: ACTIVE — the operative rubric for [`AI_POLICY.md`](AI_POLICY.md) §8, Phase 2.**
+> Phase 2 was **adopted 2026-07-31** (decision 1a), so this rubric governs an activity that is now
+> explicitly in force rather than merely permitted-in-principle.
+> It operationalizes the *security-impact assessment* of an upstream merge: the static review that
+> finds where SM-free upstream code, merged into DirtyChai, is **missing a guard** or **missing a
+> `doPrivileged` block** under DirtyChai's restored authorization model.
 >
-> It is **pure analysis** — it produces a punch-list, never edits code — so it is usable **today**
-> under the current advise-only policy, by a human or an agent, whether or not the Zone-D partition is
-> ever adopted. Authoring the fixes is Phase 3 (§8 of the policy draft: human-authored under (1a),
-> AI-draft-behind-gate under (1b)).
+> It is **pure analysis** — it produces a punch-list, never edits code — so it is usable by a human or
+> an agent, and its status is unaffected by whether the Zone-D partition is ever adopted. Authoring
+> the fixes is Phase 3, which is **human-authored**: Zone D was **not** adopted, so the
+> AI-draft-behind-gate variant described in the policy is not available today.
 >
 > **Authoritative trust model:** [`SECURITY_MODEL.md`](SECURITY_MODEL.md). Where this rubric and the
 > model disagree, the model wins and this rubric is the bug. Section refs below (§5.1, §11, §12, §13,
@@ -401,7 +403,7 @@ assessment misses it, nothing else will.
 
 ## 10. References
 
-- [`AI_POLICY_DRAFT.md`](AI_POLICY_DRAFT.md) — §8 (the three-phase pipeline), §5 (security gate)
+- [`AI_POLICY.md`](AI_POLICY.md) — §8 (the three-phase pipeline), §5 (security gate)
 - [`SECURITY_MODEL.md`](SECURITY_MODEL.md) — §5.1 guard entry points, §7 privilege boundaries, §9
   class loading, §11 thread creation, §12 threats, §13 limitations, §15 invariants
 - [`CLAUDE.md`](CLAUDE.md) — HC-1…HC-7, FM-1…FM-7, per-file security levels

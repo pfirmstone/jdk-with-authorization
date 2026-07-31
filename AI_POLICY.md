@@ -1,16 +1,32 @@
-# DirtyChai AI Engagement Policy — DRAFT / PROPOSAL
+# DirtyChai AI Engagement Policy
 
-> **Status: DRAFT — NOT IN FORCE.** This document proposes a *partitioned* successor to the
-> blanket adoption of the OpenJDK Interim Policy on Generative AI currently recorded in
+> **Status: PARTIALLY ADOPTED — v1.0, ratified 2026-07-31 by the Project Lead.**
+> Successor to the blanket adoption of the OpenJDK Interim Policy on Generative AI recorded in
 > [`openjdk_ai_policy.md`](openjdk_ai_policy.md) and operationalized in [`CLAUDE.md`](CLAUDE.md).
-> Until a human maintainer ratifies it, **the existing blanket advise-only policy remains
-> authoritative.** This file changes nothing on its own; it exists to be reviewed, edited, and
-> either adopted or discarded by a human.
+> What is and is not in force:
 >
-> **Authorship note:** This draft was produced with AI assistance under the *Repository
-> Documentation Exception* of the current policy (repo-root developer `.md`, not a shipped build
-> artefact). If this draft is kept, add `AI_POLICY_DRAFT.md` (or its adopted name) to the
-> exemption list in `openjdk_ai_policy.md` / `CLAUDE.md`.
+> - **§8 Phase 1 + Phase 2 (decision 1a) are ADOPTED and IN FORCE.** Inbound upstream-tracking
+>   (mechanical tag-to-tag merges, whose merged lines remain upstream-authored) and the Phase-2
+>   merge security-impact assessment (analysis producing a punch-list, not code) are confirmed
+>   permitted. This required no partition — it clarifies the existing policy rather than changing it.
+> - **The Zone-D partition (§4, decision 1b) is NOT ADOPTED.** The divergent security core remains
+>   **advise-only**: AI does not originate source, tests, or shipped documentation there. §8 Phase 3
+>   remediation is human-authored — a human writes every `doPrivileged` block and guard from the
+>   agent's punch-list. §4, the Zone-D half of §6, and §7 are retained below as a *ratified-in-waiting*
+>   design: they describe what would take effect **if and only if** 1b is later adopted, and they
+>   confer no authority today.
+> - **§5 posture, ratified for any future 1b adoption:** AI-draft-permitted-behind-the-gate, rather
+>   than a blanket AI-free rule for §5 files. `System.java` and `AccessController.java` remain
+>   human-authored regardless. This records the risk posture; it does **not** activate Zone D.
+> - **§5 applies today irrespective of AI**, because it is a standing engineering rule that predates
+>   and outlives this policy.
+>
+> Where this document and [`SECURITY_MODEL.md`](SECURITY_MODEL.md) diverge on the trust model,
+> `SECURITY_MODEL.md` is authoritative and this document is the bug.
+>
+> **Authorship note:** produced with AI assistance under the *Repository Documentation Exception*
+> (repo-root developer `.md`, not a shipped build artefact), and amended at explicit Project Lead
+> direction per the governance-document rule in [`CLAUDE.md`](CLAUDE.md).
 
 ---
 
@@ -58,6 +74,15 @@ the higher-value, lower-risk of the two.
   in part. Where the same code matters across repos (e.g. the authorization contracts), the
   DirtyChai-side rules in this document govern the DirtyChai copy.
 
+> **Standing recommendation (outside this policy's scope, recorded because the asymmetry is real).**
+> The repositories excluded above carry, in practice, *more* AI-authored security code than DirtyChai
+> does — JGDMS in particular, where a large fraction of recent trust-core work was agent-authored —
+> and they have no AI policy at all. Being unbound by the OpenJDK Interim Policy removes the
+> *upstream-eligibility* constraint; it does not remove the need for provenance and corroboration.
+> Those repositories should adopt, at minimum, the §6 provenance-trailer discipline and a §5-style
+> gate over their own trust cores. Nothing in this document imposes that — it is a recommendation to
+> the Project Lead, not a rule.
+
 ---
 
 ## 3. The three distinctions the policy is built on
@@ -75,6 +100,16 @@ virtual-thread work, `Subject`/`ScopedValue` evolution, anything not tied to the
 model). *Divergent* = the permanently-forked security core OpenJDK will not take back. A change is
 **upstream-able by default**; it is divergent only when it is clearly bound to fork-only machinery.
 When in doubt, treat it as upstream-able (the conservative choice for eligibility).
+
+> **Axis B is a prediction, not a property.** "Upstream-able" is a forecast about OpenJDK's future
+> direction, made at authoring time with imperfect information. Forecasts fail: code classified
+> divergent today may become genuinely upstream-able later (or a fix in divergent code may turn out
+> to be a general one). Two consequences. First, the *when in doubt, upstream-able* default is
+> load-bearing, not a formality — it is what makes a wrong guess cheap. Second, the §6 provenance
+> ledger exists precisely because the classification is revisable: the standing `git log` query over
+> §5 paths MUST be run **before any outbound submission and before any release**, so that a change
+> whose classification has since changed is caught while a human rewrite is still possible rather
+> than after it has been offered upstream.
 
 **Axis C — Blast radius: security-critical vs ordinary.**
 *Security-critical* = the silent-over-grant surface where a plausible-but-wrong change grants
@@ -134,6 +169,17 @@ policy must not erode.
    digest authorized, truncated at the nearest `doPrivileged`); fail-secure on validation error.
    Each invariant is stated authoritatively in [`SECURITY_MODEL.md`](SECURITY_MODEL.md); these tests
    exist to defend those statements, not to re-derive them.
+
+   **Each such test MUST be demonstrated to be load-bearing.** A test is load-bearing only if it has
+   been shown to **fail when its invariant is deliberately broken** — a negative control, recorded
+   once per invariant (test name, the mutation applied, the observed failure). A test that passes
+   whether or not the guard is present supplies **zero** corroboration, and a green suite of such
+   tests is worse than no suite because it manufactures unearned confidence. This requirement is not
+   hypothetical: the sibling JGDMS repository has produced at least two live instances of the failure
+   mode — a `verify`-phase gate script that exits 0 when its analysis tool is unbuilt, and a jtreg
+   configuration that reported `Passed` without ever running the test body. **Green is not evidence;
+   a demonstrated failure on mutation is.** Where the corroboration side of §5 rests on tests, this
+   clause is what makes that rest on anything at all.
 4. **HC-1 … HC-7 preserved** (the existing Hard Constraints in CLAUDE.md). In particular: never add
    to `trustedSMClass()` without explicit human approval (HC-1); `equals()` not `instanceof` (HC-3);
    `@CallerSensitive` on privileged APIs (HC-4).
@@ -168,10 +214,27 @@ provenance is what makes the partition auditable.
   ```
 
   `role` ∈ {`drafted`, `edited`, `reviewed`}. `zone` records the classification under §4.
+- **The commit body MUST also record the Axis-B justification in one line** — why this change was
+  classified divergent rather than upstream-able. Without it, §9's prohibition on silent
+  reclassification is unenforceable: the trailer records *that* a change was called Zone D, never
+  *why*, so a reclassification cannot be distinguished after the fact from a correct call. One line
+  is enough; it is the difference between an auditable claim and an assertion.
 - This **inverts** the current CLAUDE.md rule ("do NOT add `Co-Authored-By` for AI"). That rule is
   correct *under blanket advise-only*, where a trailer is evidence of a prohibited contribution.
   Under this policy, in Zone D where AI authorship is *permitted*, the trailer is required honesty,
   not a confession. The rule does not change — its precondition does.
+- **Missing provenance is itself a defect.** AI-authored content in Zone D **without** the required
+  trailer MUST be treated as a provenance violation and corrected before merge — not waved through
+  because the authorship was permitted. Permission to author is not permission to author *silently*;
+  an unrecorded Zone-D line is indistinguishable, to every later audit, from an undetected Zone-U
+  violation, and it silently poisons the outbound-eligibility query in §3.
+- **Detection procedure, reworded for the partition.** The existing "detecting AI-generated content
+  → flag it immediately" rule assumes AI content is always prohibited. Under an adopted Zone D that
+  is no longer true and a literal reading would flag legitimate work. The rule becomes: AI content in
+  **Zone U or outbound** is a policy violation (flag per the existing procedure); AI content in
+  **Zone D** is legitimate *if trailered* and a provenance defect *if not*. **Until 1b is adopted the
+  original rule stands unchanged**, because there is no Zone D and all AI-authored content in the
+  divergent core remains prohibited.
 
 **Zone U (advise-only): trailers FORBIDDEN, because AI content is forbidden.**
 
@@ -312,12 +375,30 @@ These hold regardless of zone or authorship:
 - **No AI content in any outbound OpenJDK submission**, and no submission of code with Zone-D
   provenance in its history without a clean human rewrite.
 - **No silent reclassification** of an upstream-able change into Zone D to enable AI authorship.
+  Enforced by the one-line Axis-B justification required in the commit body (§6): a reclassification
+  that cannot be justified in writing at authoring time is one that should not be made.
 
 ---
 
-## 10. Decisions a human must ratify before adoption
+## 10. Ratification record
 
-This draft makes defensible default choices; the following are the genuine judgement calls to confirm:
+Ratified 2026-07-31 by the Project Lead. Status of each decision:
+
+| # | Decision | Outcome |
+|---|---|---|
+| 1a | Inbound upstream-tracking + Phase-2 merge assessment permitted (§8) | **ADOPTED — in force** |
+| 1b | Zone-D partition: AI may originate divergent-core code (§4) | **NOT adopted** — divergent core stays advise-only; §4/§7/Zone-D §6 are ratified-in-waiting only |
+| 2 | Where the Axis-B line falls | **Open** — only bites if 1b is adopted; the §10.2 seed below stands as the proposal |
+| 3 | Security-critical posture | **Ratified: AI-draft-permitted-behind-the-§5-gate** (not fully AI-free). Records the posture for a future 1b; does not activate Zone D. `System.java` / `AccessController.java` human-authored regardless |
+| 4 | Provenance trailer schema | **Open** — only bites if 1b is adopted; schema in §6 stands as the proposal |
+| 5 | IP posture for Zone D | **Not yet accepted** — required before 1b can be adopted, not before 1a |
+| 6 | Update operative files | **Done 2026-07-31** — see §11 |
+
+**What changed in force on ratification:** only decision 1a, which *clarifies* the existing policy
+rather than relaxing it. No new authority to author code was granted anywhere. Adopting 1b later
+requires ratifying decisions 2, 4 and 5 first.
+
+The original text of the judgement calls is retained below, since 2, 4 and 5 remain open:
 
 1. **Two separable decisions, smallest first:**
    - **(1a) Clarify that inbound upstream-tracking + merge security-impact assessment is permitted
@@ -353,7 +434,20 @@ This draft makes defensible default choices; the following are the genuine judge
 
 | Version | Date | Status | Notes |
 |---|---|---|---|
-| 0.1-draft | (unset) | **DRAFT — not in force** | Initial proposal. AI-assisted under the Repository Documentation Exception. Awaiting human review/ratification. |
+| 0.1-draft | (unset) | DRAFT — not in force | Initial proposal. AI-assisted under the Repository Documentation Exception. Awaiting human review/ratification. |
+| 1.0 | 2026-07-31 | **PARTIALLY ADOPTED** | Decision 1a adopted (§8 Phase 1+2 in force). 1b NOT adopted — divergent core remains advise-only. §5 posture ratified for a future 1b. Amendments this revision: load-bearing/negative-control requirement on §5 property tests; Zone-D missing-provenance treated as a defect and detection procedure reworded; one-line Axis-B justification required in commit bodies (makes §9 enforceable); Axis B documented as a revisable prediction with the §6 query bound to submission/release; standing recommendation recorded for the unbound sibling repositories (§2). |
 
-**On adoption:** set a real version/date, change status to Active, and perform the §10.6 updates.
-Until then, [`openjdk_ai_policy.md`](openjdk_ai_policy.md) + [`CLAUDE.md`](CLAUDE.md) govern.
+**§10.6 rollout performed 2026-07-31:**
+- `CLAUDE.md` — decision table and policy notice updated to record that inbound merges and Phase-2
+  security-impact assessment are permitted, and that Zone D is not adopted.
+- `openjdk_ai_policy.md` — a DirtyChai adoption preamble now points here for internal/inbound work.
+  **The verbatim OpenJDK Interim Policy text below that preamble is unmodified**, per the
+  governance rule that this file tracks its external upstream source rather than being rewritten.
+- The file was additionally renamed from `‎openjdk_ai_policy.md` to `openjdk_ai_policy.md`: the
+  original name carried a leading invisible U+200E LEFT-TO-RIGHT MARK, so every markdown link to it
+  in this document and in `CLAUDE.md` — all of which spell the clean name — was silently broken, and
+  any name-matching tooling would have mismatched without error.
+
+Governing documents: this policy for internal/inbound work, [`openjdk_ai_policy.md`](openjdk_ai_policy.md)
+for outbound contributions to OpenJDK, and [`CLAUDE.md`](CLAUDE.md) for day-to-day agent operation.
+Where they conflict on the trust model, [`SECURITY_MODEL.md`](SECURITY_MODEL.md) is authoritative.

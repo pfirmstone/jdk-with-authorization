@@ -1,3 +1,28 @@
+> ## DirtyChai adoption statement
+>
+> **This file reproduces the external OpenJDK Interim Policy verbatim and tracks that upstream
+> source. The text below this box is unmodified and must not be independently rewritten** — amend
+> DirtyChai's *adoption* of it here, never the reproduced policy itself.
+>
+> **DirtyChai adopts the policy below in full for all OUTBOUND contributions to OpenJDK** — pull
+> requests to `openjdk/jdk`, JBS issues, mailing-list mail. No outbound submission may contain
+> AI-generated content, and each carries the PR compliance affirmation.
+>
+> **For INTERNAL and INBOUND work, see [`AI_POLICY.md`](AI_POLICY.md) v1.0**
+> (partially adopted 2026-07-31). The policy below is grounded in the Oracle Contributor Agreement:
+> a contributor must own and be able to grant Oracle unrestricted IP rights in each contribution.
+> That reasoning governs what DirtyChai *sends to* OpenJDK; it does not, by its own terms, govern
+> code that never leaves the fork. Accordingly, two inbound activities are confirmed permitted —
+> mechanical tag-to-tag merges (whose lines remain upstream-authored) and merge security-impact
+> assessment (analysis producing a punch-list, not code). Both are consistent with the second
+> paragraph of the policy below, which expressly permits using these tools to comprehend, debug,
+> and review.
+>
+> **No AI authorship of source, tests, or shipped documentation is permitted anywhere in this
+> repository.** The "Zone D" partition proposed in `AI_POLICY.md` §4 was **not** adopted.
+>
+> Repository-root developer Markdown remains AI-assistable under the Repository Documentation
+> Exception in [`CLAUDE.md`](CLAUDE.md); those files are not part of the distributed build artefact.
 
 # OpenJDK Interim Policy on Generative AI
 

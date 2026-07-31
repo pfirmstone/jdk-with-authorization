@@ -45,6 +45,9 @@
 | Removing a validation layer | **Analyze and advise only. Humans write the fix.** Do NOT generate code |
 | Ambiguous security impact | Ask: "This could affect [X]. Shall I proceed?" |
 | Detecting AI-generated content in a contribution | **Flag it immediately to the contributor and Project Lead.** |
+| Inbound merge from upstream OpenJDK (tag-to-tag) | **Permitted.** Mechanical merge only: merged lines keep upstream's `Author:`; the agent is committer, not author. No AI authorship trailer. Conflicts → report; a human authors the reconciling edit. |
+| Merge security-impact assessment (Phase 2) | **Permitted and encouraged — the highest-leverage AI use on this project.** Produce a punch-list of missing `doPrivileged`/guards per upstream tag. This is analysis, not generation: it yields a report, never code. |
+| Authoring the `doPrivileged`/guard remediations (Phase 3) | **Analyze and advise only. Humans write them.** Zone D is NOT adopted. |
 
 ### Quick Decision: Which Validation Path?
 
@@ -79,6 +82,26 @@ This document provides guidance for AI assistants (Claude) working on the Dirty 
 > (dated April 9, 2026). Claude **must not** generate contributions (source code, documentation, tests,
 > commit messages, or PR content). Claude's role is strictly to **analyze, review, debug, and advise**.
 > All actual contributions must be **written by humans**.
+>
+> **Amendment, ratified 2026-07-31 — see [`AI_POLICY.md`](AI_POLICY.md) v1.0.**
+> The Interim Policy's rationale (the Oracle Contributor Agreement and unsettled AI-output IP) binds
+> **outbound** contributions to OpenJDK. Two **inbound** activities are therefore confirmed permitted,
+> and neither relaxes the rule above because neither generates content:
+> 1. **Mechanical inbound merges** (upstream tag → next tag). The merged lines are upstream's
+>    human-authored work and retain their original `Author:`; the agent is *committer*, not author,
+>    so **no AI authorship trailer is added** — one would assert authorship that did not occur.
+>    Conflicts are reported, not resolved: a human authors every reconciling edit.
+> 2. **Phase-2 merge security-impact assessment** — reviewing each merged delta against
+>    [`SECURITY_MODEL.md`](SECURITY_MODEL.md) via
+>    [`MERGE_SECURITY_ASSESSMENT_RUBRIC.md`](MERGE_SECURITY_ASSESSMENT_RUBRIC.md) and producing a
+>    punch-list of missing `doPrivileged` blocks and guards. This is pure analysis — the use the
+>    Interim Policy explicitly endorses — and produces a **report, never code**.
+>
+> **The Zone-D partition was NOT adopted.** AI does **not** originate source, tests, or shipped
+> documentation anywhere in this repository, including the divergent security core. Writing the
+> remediations that a Phase-2 punch-list identifies remains **human-authored**. The
+> `Co-Authored-By`/`AI-Assisted` trailer scheme in `AI_POLICY.md` §6 is **not** in effect;
+> the existing prohibition on AI trailers stands unchanged.
 
 This section defines explicit constraints, decision thresholds, and escalation rules for AI agents
 working on this project.
@@ -187,7 +210,7 @@ developers and users who read the GitHub repository:
 - `PROBLEMS_SOLVED.md`
 - `MERGE_SECURITY_ASSESSMENT_RUBRIC.md`
 - `AI_Agent_JGDMS-SpiffePolicyFile-context_6.md`
-- `AI_POLICY_DRAFT.md`
+- `AI_POLICY.md`
 - `openjdk_ai_policy.md`
 - `CLAUDE.md`
 
@@ -197,7 +220,7 @@ Claude MAY assist in drafting or editing content in these files when asked. The 
 restrictions of the OpenJDK Interim Policy apply only to artefacts that become part of the
 distributed product (source code, tests, build scripts, and JavaDoc embedded in shipped classes).
 
-**Governance documents.** `CLAUDE.md`, `AI_POLICY_DRAFT.md`, and `openjdk_ai_policy.md` are the
+**Governance documents.** `CLAUDE.md`, `AI_POLICY.md`, and `openjdk_ai_policy.md` are the
 governing policy documents themselves. They remain editable only at explicit Project Lead
 direction; in particular `openjdk_ai_policy.md` reproduces the external OpenJDK Interim Policy and
 should track that upstream source rather than be independently rewritten.
