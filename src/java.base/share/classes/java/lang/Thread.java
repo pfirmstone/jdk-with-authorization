@@ -843,7 +843,7 @@ public class Thread implements Runnable {
             this.inheritedAccessControlContext = AccessController.getContext();
         }
         
-        this.scopedSubject = VM.isBooted() ? SubjectAccess.scoped() : null;
+        this.scopedSubject = VM.isBooted() ? SubjectAccess.scoped() : new Subject[0];
 
         // thread locals
         if (!attached) {
@@ -891,7 +891,7 @@ public class Thread implements Runnable {
             this.contextClassLoader = ClassLoader.getSystemClassLoader();
         }
         
-        this.scopedSubject = VM.isBooted() ? SubjectAccess.scoped() : null;
+        this.scopedSubject = VM.isBooted() ? SubjectAccess.scoped() : new Subject[0];
 
         // special value to indicate this is a newly-created Thread
         this.scopedValueBindings = NEW_THREAD_BINDINGS;
@@ -1710,7 +1710,7 @@ public class Thread implements Runnable {
     @Hidden
     @ForceInline
     final void runWith(Object bindings, Runnable op) {
-        if (scopedSubject != null) {
+        if (scopedSubject.length > 0) {
             ensureMaterializedForStackWalk(bindings);
             SubjectAccess.callNoCheck(() -> {
                 op.run();
