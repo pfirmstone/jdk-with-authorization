@@ -844,7 +844,7 @@ public class Thread implements Runnable {
         }
 
         // Scoped subject should only propagate to virtual threads, not platform threads, for fail closed behaviour.
-        //this.scopedSubject = VM.isBooted() ? SubjectAccess.scoped() : new Subject[0];
+        this.scopedSubject = new Subject[0];
 
         // thread locals
         if (!attached) {
