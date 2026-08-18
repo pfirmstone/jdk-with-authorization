@@ -48,6 +48,10 @@
 | Inbound merge from upstream OpenJDK (tag-to-tag) | **Permitted.** Mechanical merge only: merged lines keep upstream's `Author:`; the agent is committer, not author. No AI authorship trailer. Conflicts → report; a human authors the reconciling edit. |
 | Merge security-impact assessment (Phase 2) | **Permitted and encouraged — the highest-leverage AI use on this project.** Produce a punch-list of missing `doPrivileged`/guards per upstream tag. This is analysis, not generation: it yields a report, never code. |
 | Authoring the `doPrivileged`/guard remediations (Phase 3) | **Analyze and advise only. Humans write them.** Zone D is NOT adopted. |
+| Writing a **new test** | **Permitted (Zone T).** Create it under `test/jdk/ai/` with an `@author` tag naming the model. Must state the invariant it defends (cite `SECURITY_MODEL.md`) and be demonstrated load-bearing — show it FAILS when the invariant is deliberately broken. It runs in group **`tierAI`** (`make test TEST=tierAI`), which is separate from `tier1`–`tier4` and is expected to be GREEN. |
+| Modifying a test **you (AI) authored** | **Permitted (Zone T)** — the `@author` tag still names the model. |
+| Modifying an **existing human-authored file** (test or otherwise) | **Prohibited.** Report the defect; a human edits it. If a human has claimed an AI-authored test via the `@author` tag, it is human-authored from that moment. |
+| Writing shared test **infrastructure** (helpers, harnesses, base classes) | **Analyze and advise only. Humans write it.** A helper with a no-op assert silently weakens every dependent test. |
 
 ### Quick Decision: Which Validation Path?
 
@@ -97,11 +101,26 @@ This document provides guidance for AI assistants (Claude) working on the Dirty 
 >    punch-list of missing `doPrivileged` blocks and guards. This is pure analysis — the use the
 >    Interim Policy explicitly endorses — and produces a **report, never code**.
 >
-> **The Zone-D partition was NOT adopted.** AI does **not** originate source, tests, or shipped
+> **The Zone-D partition was NOT adopted.** AI does **not** originate production source or shipped
 > documentation anywhere in this repository, including the divergent security core. Writing the
 > remediations that a Phase-2 punch-list identifies remains **human-authored**. The
 > `Co-Authored-By`/`AI-Assisted` trailer scheme in `AI_POLICY.md` §6 is **not** in effect;
 > the existing prohibition on AI trailers stands unchanged.
+>
+> **Zone T — AI-authored tests — WAS adopted (2026-07-31, `AI_POLICY.md` §4.1).** This is the sole
+> place AI originates content here. AI may create new test files and modify tests it authored; it may
+> **never** modify an existing human-authored file, author shared test infrastructure, or touch
+> production source. Markers: an `@author` tag naming the model (**authoritative** — whoever changes
+> the tag changes who may edit the file) and a dedicated `ai/` test subtree (also the
+> outbound-eligibility boundary). Two requirements are not negotiable: each test must be demonstrated
+> **load-bearing** (it FAILS when its invariant is deliberately broken — a test that passes either way
+> is worse than no test) and must **state the invariant it defends** rather than snapshot current
+> behaviour, which would cement existing bugs. The AI-trailer prohibition still stands; the `@author`
+> tag is the ratified provenance marker.
+>
+> **Why this is safe today and what would break it:** Zone D is unadopted, so humans write all source
+> and AI writes only tests — the tests are an *independent* check. If Zone D is ever adopted, a single
+> change must never rely on AI-authored code corroborated solely by AI-authored tests.
 
 This section defines explicit constraints, decision thresholds, and escalation rules for AI agents
 working on this project.
@@ -179,7 +198,7 @@ The authoritative text of the policy is in [`openjdk_ai_policy.md`](openjdk_ai_p
 |---------------------|--------|
 | **Generate source code** | Constitutes an AI-generated contribution — violates OpenJDK policy |
 | **Generate documentation** | Includes JavaDoc, comments, and shipped text files — **except** repository-root developer docs (see exception below) |
-| **Generate tests** | Even test code is a contribution and must be human-written |
+| **Generate tests** | ~~Even test code is a contribution and must be human-written~~ — **superseded 2026-07-31 by Zone T** (`AI_POLICY.md` §4.1). AI MAY create new test files and modify tests it authored, in the `ai/` subtree with an `@author` tag, demonstrated load-bearing. It may NOT modify an existing human-authored test, author shared test infrastructure, or let an AI-authored test reach an outbound submission. |
 | **Write commit messages** | Commit messages are content subject to the policy |
 | **Draft PR descriptions** | PR body content is contribution content under the policy |
 | **Auto-create pull requests** | PRs containing AI-generated content violate the policy |

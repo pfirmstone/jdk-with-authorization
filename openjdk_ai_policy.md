@@ -18,8 +18,17 @@
 > paragraph of the policy below, which expressly permits using these tools to comprehend, debug,
 > and review.
 >
-> **No AI authorship of source, tests, or shipped documentation is permitted anywhere in this
+> **No AI authorship of production source or shipped documentation is permitted anywhere in this
 > repository.** The "Zone D" partition proposed in `AI_POLICY.md` §4 was **not** adopted.
+>
+> **One exception, adopted 2026-07-31: AI-authored tests ("Zone T", `AI_POLICY.md` §4.1).** AI may
+> create new test files and modify test files it authored; it may never modify an existing
+> human-authored file, author shared test infrastructure, or touch production source. Such tests
+> carry an `@author` tag naming the model and live in a dedicated `ai/` test subtree. Rationale: tests
+> for the fork's revived authorization model exercise machinery OpenJDK removed, so they are
+> permanently divergent and can never be offered upstream — there is no contribution eligibility to
+> lose. **No AI-authored test may appear in an outbound OpenJDK submission**; the `ai/` subtree
+> boundary makes that checkable by location.
 >
 > Repository-root developer Markdown remains AI-assistable under the Repository Documentation
 > Exception in [`CLAUDE.md`](CLAUDE.md); those files are not part of the distributed build artefact.

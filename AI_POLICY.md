@@ -9,8 +9,16 @@
 >   (mechanical tag-to-tag merges, whose merged lines remain upstream-authored) and the Phase-2
 >   merge security-impact assessment (analysis producing a punch-list, not code) are confirmed
 >   permitted. This required no partition — it clarifies the existing policy rather than changing it.
+> - **Zone T — AI-authored tests (§4.1) is ADOPTED and IN FORCE.** AI may create new test files and
+>   modify test files it authored; it may **not** modify any existing human-authored file, author
+>   shared test infrastructure, or touch production source. AI-authored tests carry an `@author` tag
+>   (the authoritative marker of who may edit the file) and live in a dedicated `ai/` test subtree
+>   (which is also the outbound-eligibility boundary), running as the standalone **`tierAI`** group.
+>   Every such test must be demonstrated load-bearing per §5.3 and must state the invariant it
+>   defends. This is the **only** place AI originates content in this repository.
 > - **The Zone-D partition (§4, decision 1b) is NOT ADOPTED.** The divergent security core remains
->   **advise-only**: AI does not originate source, tests, or shipped documentation there. §8 Phase 3
+>   **advise-only**: AI does not originate production source or shipped documentation there (tests
+>   are the sole exception, governed by Zone T above, and are not part of Zone D). §8 Phase 3
 >   remediation is human-authored — a human writes every `doPrivileged` block and guard from the
 >   agent's punch-list. §4, the Zone-D half of §6, and §7 are retained below as a *ratified-in-waiting*
 >   design: they describe what would take effect **if and only if** 1b is later adopted, and they
@@ -131,6 +139,96 @@ Zone U — advise-only — to preserve OpenJDK contribution eligibility. Only ch
 the divergent core are Zone D. Mixed changes split: the upstream-able hunks are Zone U (human-written),
 the divergent hunks may be Zone D. Do not let a Zone-D edit smuggle an upstream-able change into
 AI authorship.
+
+### 4.1 Zone T — AI-authored tests (**ADOPTED 2026-07-31**)
+
+Zone T is **in force**, independently of Zone D. It is the one place where AI *originates* content in
+this repository.
+
+**Why this is sound, and why it is not a relaxation of the §4 matrix.** Tests for DirtyChai's revived
+authorization model are *definitionally divergent* under Axis B: they exercise machinery OpenJDK
+deliberately removed, so they can never be offered upstream and there is no contribution eligibility
+to lose. The inherited jtreg suite is not merely thin here, it is **structurally unsuitable** — it
+tests the semantics OpenJDK *removed*, not the ones this fork restored. At ratification the divergent
+core had effectively **no** coverage: zero test files referencing `au/zeus/**` or
+`ConcurrentPolicyFile`, one each for `CombinerSecurityManager` and `DigestCodeSource`. Meanwhile §5
+*requires* property tests for the invariants on every change. **The gate was unsatisfiable as
+written.** Zone T exists to close that contradiction.
+
+**The corroboration asymmetry is the point.** Because Zone D is **not** adopted, humans author all
+source and AI authors only tests — so the tests are an *independent* check on human-written code.
+That direction is safe; the reverse would not be. See the anti-circularity rule below.
+
+**Permission.** AI may:
+- **create new test files**, and
+- **modify test files it authored.**
+
+AI may **NOT**:
+- **modify any existing human-authored file** — including a human-authored test, even one that is
+  wrong. Report the defect; a human edits it.
+- author **shared test infrastructure** — helpers, harnesses, base classes, or anything multiple
+  tests depend on. A helper with a no-op assertion silently weakens every dependent test, a blast
+  radius no single test has. Infrastructure stays human-authored; AI may advise on it.
+- author production source, shipped JavaDoc, or anything outside the test tree. Zone T is tests only.
+
+**Marker 1 — the `@author` tag is authoritative.** Every AI-authored test carries an `@author` tag
+identifying the model. **The tag, not memory or convention, determines who may edit the file.** This
+resolves the joint-authorship case explicitly: if a human takes ownership of an AI-authored test,
+they update the `@author` tag to claim it, and it becomes human-authored and AI-immutable from that
+moment. Conversely AI must never remove or alter a human name from an `@author` tag. Whoever changes
+the tag changes the permission — so the tag must be kept honest, and an AI-authored test that lacks
+one is a provenance defect to be corrected before merge, exactly as in §6.
+
+**Marker 2 — the `ai/` directory.** AI-authored tests live in a dedicated `ai` test subtree, mirroring
+the package structure of what they test. This makes the boundary *mechanical rather than
+judgemental* (cf. §8's partition-maintenance note) and gives the segregation a second, structural
+purpose: **an outbound contribution simply never includes that subtree.** Outbound eligibility is
+enforced by location, not by remembering to check.
+
+**Mandatory: every AI-authored test must be demonstrated load-bearing.** The §5.3 negative-control
+requirement is **not optional here** — it is the entire safeguard. A test that passes whether or not
+the guard exists is worse than no test, because it manufactures unearned confidence in exactly the
+surface where confidence must be earned. Each AI-authored test records the mutation applied and the
+observed failure.
+
+**Mandatory: state the invariant, do not snapshot behaviour.** Each AI-authored test names the
+invariant it defends with a reference to [`SECURITY_MODEL.md`](SECURITY_MODEL.md). A test written
+against *current observed behaviour* rather than *intended* behaviour cements whatever bug is
+present — a failure mode observed in practice in the sibling JGDMS repository, where agents added
+tests that pinned existing defects in place. If the intended invariant cannot be stated, the test
+should not be written.
+
+**Mandatory: a Zone-T test that is not wired into a test group does not exist.** A test suite that CI
+never executes is the vacuous-green failure mode in its purest form, and it is *more* dangerous than
+absent coverage because it reads as coverage. Adding tests to the `ai` subtree without registering
+them in the test group is an incomplete change.
+
+**The group is `tierAI`** (`test/jdk/TEST.groups`), covering `test/jdk/ai`. Run it with
+`make test TEST=tierAI`. It is deliberately **not** part of `tier1`–`tier4`, for a reason that is
+itself a security property: those tiers hold inherited OpenJDK tests whose state under DirtyChai's
+restored authorization model is not yet triaged, and **a failure that cannot be read is not a test
+result.** `tierAI` is expected to be GREEN — a red `tierAI` is a stop-the-line signal, not noise to
+be filtered. Naming it outside the numeric sequence is intentional: `tier1`–`tier4` are ordered by
+cost, whereas `tierAI` is defined by provenance and expected-greenness, a different axis. Keeping it
+separately runnable also means AI-authored coverage can be assessed — or excluded — as a set, which
+is what makes the outbound-eligibility question answerable.
+
+**Anti-circularity (pre-committed now, before it can occur).** Today Zone T is safe because AI-written
+tests corroborate *human-written* code. If Zone D is ever adopted, that independence disappears the
+moment the same change carries both. Therefore, and binding on any future 1b adoption: **a single
+change must never rely on AI-authored code corroborated solely by AI-authored tests.** Independent
+human verification of one side or the other is required. Recorded here so that adopting 1b later
+cannot silently dissolve the corroboration argument that justified Zone T.
+
+**Outbound.** No AI-authored test may appear in an outbound OpenJDK submission. Upstream patches
+normally travel with their tests, which is precisely how contamination would occur; the `ai/` subtree
+boundary and the `@author` tag together make this checkable before submission.
+
+**Provenance trailers.** The existing prohibition on `Co-Authored-By`/AI trailers **stands unchanged**
+for Zone T. The `@author` tag in the file is the ratified provenance marker, and it is the better one
+for this purpose: the eligibility question is *what is in the tree*, which a tag and a directory
+answer directly, rather than *what is in the history*. Zone D's §6 trailer scheme remains dormant and
+unadopted.
 
 ---
 
@@ -393,6 +491,7 @@ Ratified 2026-07-31 by the Project Lead. Status of each decision:
 | 4 | Provenance trailer schema | **Open** — only bites if 1b is adopted; schema in §6 stands as the proposal |
 | 5 | IP posture for Zone D | **Not yet accepted** — required before 1b can be adopted, not before 1a |
 | 6 | Update operative files | **Done 2026-07-31** — see §11 |
+| 7 | **Zone T — AI-authored tests (§4.1)**, added at Project Lead initiative after ratification | **ADOPTED — in force.** New test files + modification of AI-authored tests only; never an existing human-authored file; test cases only, not infrastructure; `@author` tag + `ai/` subtree as markers; §5.3 load-bearing demonstration mandatory |
 
 **What changed in force on ratification:** only decision 1a, which *clarifies* the existing policy
 rather than relaxing it. No new authority to author code was granted anywhere. Adopting 1b later
@@ -436,6 +535,7 @@ The original text of the judgement calls is retained below, since 2, 4 and 5 rem
 |---|---|---|---|
 | 0.1-draft | (unset) | DRAFT — not in force | Initial proposal. AI-assisted under the Repository Documentation Exception. Awaiting human review/ratification. |
 | 1.0 | 2026-07-31 | **PARTIALLY ADOPTED** | Decision 1a adopted (§8 Phase 1+2 in force). 1b NOT adopted — divergent core remains advise-only. §5 posture ratified for a future 1b. Amendments this revision: load-bearing/negative-control requirement on §5 property tests; Zone-D missing-provenance treated as a defect and detection procedure reworded; one-line Axis-B justification required in commit bodies (makes §9 enforceable); Axis B documented as a revisable prediction with the §6 query bound to submission/release; standing recommendation recorded for the unbound sibling repositories (§2). |
+| 1.1 | 2026-07-31 | **PARTIALLY ADOPTED + ZONE T** | **§4.1 Zone T adopted** at Project Lead initiative: AI may author new tests and modify tests it authored, never an existing human-authored file, test cases only (not shared infrastructure). Markers: authoritative `@author` tag + dedicated `ai/` subtree doubling as the outbound boundary. §5.3 load-bearing demonstration mandatory; tests must state the invariant they defend; unregistered tests treated as non-existent. Anti-circularity rule pre-committed against any future 1b adoption. Motivated by a measured gap: at ratification the divergent core had 0 tests referencing `au/zeus/**` or `ConcurrentPolicyFile` and 1 each for `CombinerSecurityManager`/`DigestCodeSource`, while §5 required property tests on every change — the gate was unsatisfiable. `CLAUDE.md` and the `openjdk_ai_policy.md` preamble updated to match. |
 
 **§10.6 rollout performed 2026-07-31:**
 - `CLAUDE.md` — decision table and policy notice updated to record that inbound merges and Phase-2

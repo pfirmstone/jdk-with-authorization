@@ -64,6 +64,10 @@ tier2 = \
     :tier2_part2 \
     :tier2_part3
 
+# AI authored tests (Zone T, AI_POLICY.md §4.1) are segregated into their own tier to allow for easy exclusion from other tiers.
+tierAI = \
+    :dirtychai_ai
+
 # com/sun/crypto/provider/Cipher is in tier1 because of JDK-8132855
 tier2_part1 = \
     :jdk_security \
@@ -262,6 +266,11 @@ jdk_security = \
     :jdk_security2 \
     :jdk_security3 \
     :jdk_security4
+
+# DirtyChai: AI-authored tests (Zone T, AI_POLICY.md §4.1).
+# Segregated subtree; each test carries an @author tag naming the model.
+dirtychai_ai = \
+    ai
 
 # Tests in this group are manual as they depend on external infra
 # and may fail with external reasons, for instance - change in CA test portal.
