@@ -842,8 +842,9 @@ public class Thread implements Runnable {
         } else {
             this.inheritedAccessControlContext = AccessController.getContext();
         }
-        
-        this.scopedSubject = VM.isBooted() ? SubjectAccess.scoped() : null;
+
+        // Scoped subject should only propagate to virtual threads, not platform threads, for fail closed behaviour.
+        //this.scopedSubject = VM.isBooted() ? SubjectAccess.scoped() : null;
 
         // thread locals
         if (!attached) {
