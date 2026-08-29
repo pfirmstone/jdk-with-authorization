@@ -3903,3 +3903,125 @@ for a given code-base.  When in doubt, process isolation remains the correct
 choice.
 
 ---
+
+## Proposed: Per-Remote-SPIFFE-ID One-Shot Activation Groups for Downloaded Proxy Execution
+
+**Status:** Design proposal, not yet implemented. Captures the design arrived at through
+analysis of the current same-uid `ProcessBuilder`/SecurityManager posture, the OS-level
+guarantees that posture cannot provide regardless of how complete its guards are, and how
+that gap can be closed using the existing activation-group primitive rather than a new one.
+
+### Relationship to existing activation groups
+
+This is **not a new isolation mechanism** — it is a new *lifecycle policy* applied to the
+activation group primitive already described above ("Activation Groups as OS Process
+Boundaries"). The existing group-JVM launch path already goes through `systemd-run` (via
+`ProcessBuilder`) rather than the JVM spawning children directly, and the existing seccomp
+profile for group JVMs already denies the `setuid`/`setgid` syscalls outright (see the
+syscall table above). Both of those existing decisions are consistent with, and a
+precondition for, what follows: **a group JVM must never be able to change its own OS
+identity**, and any uid separation between groups must be assigned by the external,
+already-privileged launcher at process-creation time, not requested by the JVM at runtime.
+
+### Why same-uid groups are insufficient even with hardened SecurityManager guards
+
+A SecurityManager's checked-API guards — however complete — only mediate what code running
+*inside* a process can do when it goes through a JDK API call site. They have no jurisdiction
+over what a *different*, same-uid process can do to it directly via kernel primitives
+(`ptrace`, `/proc/<pid>/mem`, signals). Comprehensive guards (blocking native-library loading,
+FFM/Panama native access, `checkExec`, and file access to `/proc` paths) close the path where
+*downloaded bytecode in the attacking process* deliberately tries to reach those primitives —
+that is a real, meaningful mitigation, not a redundant one. They do not close the path where
+the compromise itself is a JVM memory-safety bug, a JIT bug, or an SM bypass — i.e. arbitrary
+native code execution that never goes through a guarded API call at all, and so was never
+something any guard could have intercepted. Distinct uids close that residual case
+unconditionally, enforced by the kernel, independent of whether any guard anywhere is present,
+correct, or even running.
+
+### Design
+
+1. **Granularity: per remote SPIFFE ID, not per-proxy.** SCAP's digest-based verdict already
+   covers artifact-level risk independent of who sent the code. Process isolation's job is
+   containing *this remote party's* blast radius, which is the identity axis, not the artifact
+   axis. The SPIFFE identity is already established at the JERI/mTLS layer before any
+   deserialization begins, so group assignment can happen at that point, ahead of ClassLoader
+   provisioning.
+
+2. **Uid assignment is external, not dynamic-in-JVM.** Group JVMs are launched with a distinct
+   uid via the existing `systemd-run` launch path's own privilege (e.g. `--uid=`/`User=` on the
+   transient scope/unit), the same way resource limits and the seccomp profile are already
+   applied today. This requires **no new DirtyChai capability** — no Panama FFI `setuid`
+   primitive, no elevated privilege inside the JVM itself — because the JVM never performs the
+   uid switch; the already-privileged external launcher does, before the JVM process exists.
+
+3. **Self-announcement, not polling.** A freshly-launched group registers itself as available
+   over the existing JERI infrastructure — the same idiom already used for service discovery —
+   rather than the Phoenix daemon or trusted core polling for readiness. This requires its own
+   SPIFFE identity axis, distinct from the remote peer's: the group's own infrastructure-issued
+   identity attests "I am a legitimate, externally-provisioned worker," which is a separate
+   claim from the remote peer's identity that the worker will later be assigned to serve.
+   (Mechanics of this attestation are an open question below.)
+
+4. **Mandatory teardown after serving exactly one remote SPIFFE ID — no reuse.** Reuse would
+   require proving a group has been fully scrubbed of the previous tenant's residue (memory,
+   file descriptors, cached state) before handing it to a different peer — the same
+   hard-to-guarantee class of problem as VM/container reuse across tenants in cloud
+   infrastructure. Teardown avoids the proof obligation entirely: there is nothing left to leak,
+   because nothing survives. This is a structural guarantee, not a discipline one — consistent
+   with SCAP verifying structurally rather than trusting a claim, and STD-006's decode path
+   having no hooks rather than trusting careful discipline around hooks.
+
+5. **CDS / Leyden AOT cache to make the resulting churn affordable.** Teardown-after-one-use
+   turns the group pool into a continuously-replenished queue of fresh processes rather than a
+   fixed set, so per-group JVM startup cost is now on the critical path far more often than
+   today's longer-lived groups. A CDS (or Leyden AOT cache) archive, memory-mapped read-only
+   and shared across group JVMs, directly addresses both costs that matter here — startup
+   latency and per-process memory footprint.
+   - **Hard boundary: the archive may only ever contain build-time-known, trusted classes**
+     (JDK base classes and DirtyChai/JGDMS's own known application code) — **never** downloaded
+     or peer-supplied classes. This is also what CDS's own mechanics push toward: a production
+     run can only append to the training-run classpath, not substitute into it, and entries must
+     be JAR files known in advance. If downloaded proxy classes were ever included, every group
+     mapping the archive — across every peer, past and future — would again be sharing a single
+     artifact, reintroducing the shared-fate problem teardown-after-one-use exists to eliminate,
+     just moved into the archive layer.
+   - **Explicit non-goal: do not use CRaC checkpoint/restore as a similar speed-up.** CRaC
+     checkpoints live JVM memory (heap, open file descriptors, in-flight state), not static
+     class metadata. Restoring a checkpoint taken from a "used" group would carry the previous
+     tenant's actual runtime state into whatever restores from it — silently reintroducing the
+     exact cross-tenant leakage teardown-after-one-use was adopted to prevent. CDS is safe for
+     this use case specifically because it holds only pre-known, static class shape; CRaC would
+     not be.
+
+### Scope boundary: proxies only — Entries do not need this
+
+This mechanism exists to contain **downloaded, Turing-complete proxy code that must execute**.
+It does not apply to `Entry` objects. An `Entry` is a value, not a service — it has no remote
+behaviour to indirect a stub to. Under the DER/AtomicSerial model, the client materialises an
+`Entry` as a record generated directly from the embedded schema ("the receiver chooses the
+implementation" — see the STD-006 comparison analysis), never resolving the sender's class *by
+name* at all. This independently and more fundamentally eliminates the classic
+same-class-name-different-definition collision across independently-developed lookup-service
+clients — not by isolating the resolution in another process, but by removing named class
+resolution from the picture entirely. Proxies, which do have remote behaviour, still need a
+local stub referencing the worker-hosted object, on top of the process isolation above; Entries
+need neither the stub nor the worker.
+
+### Open questions (not yet decided)
+
+- **Session granularity.** Does "served one remote SPIFFE ID" mean one whole connection/session,
+  however long-lived, or one discrete operation/request? This determines pool churn rate and
+  replenishment throughput requirements, and should be decided deliberately rather than left to
+  fall out of the implementation.
+- **Standby queue depth / replenishment rate.** How many pre-launched, registered, unused groups
+  are kept warm at any time is a capacity-planning parameter: too shallow and a burst of new
+  distinct peers connecting at once outpaces replenishment, adding fresh-launch latency to the
+  connection path; too deep and idle uids/processes are held without need.
+  Recommend telemetry against real deployments to inform the tuned range.
+  Actual figures should be filled from measurement, not assumed here.
+- **Worker self-announcement protocol.** The mechanics of how a group attests its own
+  infrastructure-issued SPIFFE identity to the trusted core at registration time are not yet
+  specified.
+- **Proxy stub/IPC protocol shape.** What exactly crosses back to the trusted core for a
+  proxy — presumably a local JERI stub over the existing UDS transport, analogous to an
+  ordinary remote proxy stub — is not yet spec'd for this specific worker-hosted case.
